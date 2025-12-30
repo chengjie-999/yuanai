@@ -1,6 +1,5 @@
 import random
 import time
-import streamlit as st
 
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
@@ -24,16 +23,16 @@ def able_web():
             info[code] = name
         code += 1
 
-    st.write('现支持的网站信息如下————')
-    st.write(info)
+    print('现支持的网站信息如下————')
+    print(info)
     return info
 
 
-def app_choose_web(web_driver, info, web_code):
+def app_choose_web(web_driver, info, code=1):
     # 2.1 获取目标网站信息，开始访问
-    st.session_state.web_code = int(st.session_state.web_code)
-    name = info[st.session_state.web_code]
-    url = web_urls[st.session_state.web_code][name][1][0]
+    code = int(code)
+    name = info[code]
+    url = web_urls[code][name][1][0]
 
     #
     web_driver.get(url)
@@ -41,13 +40,12 @@ def app_choose_web(web_driver, info, web_code):
 
     # 3. 处理登录问题
     # choose = st.text_input('是否处理登陆问题：(y/n)')
-    if st.button('登录'):
-        selenium_cookie.use_cookie(web_driver, name, url)
+    selenium_cookie.use_cookie(web_driver, name, url)
 
     # 4. 网站检验
     t = web_driver.title
     if name in t:
-        st.write(f'【{name}】网站已成功打开！！！')
+        print(f'【{name}】网站已成功打开！！！')
     return name
 
 
@@ -86,13 +84,16 @@ def main():
     driver = chrome()
     # while 1:
     # 2. 加载执行的网页
-    name = able_web()
+    info = able_web()
+    name = app_choose_web(driver, info, 0)
+    print(name)
     # 3. 解析数据
     try:
         if name == '小猿众包':
             xiao_yuan.app_go(driver)
     except Exception as e:
-        st.error(e.args)
+        print(e.args)
+    input('运行结束')
     # -1. 关闭浏览器
     driver.quit()
 

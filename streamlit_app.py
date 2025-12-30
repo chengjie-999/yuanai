@@ -1,7 +1,5 @@
 import streamlit as st
-import time
-from spider_lx.auto.web.selenium import selenium_cj
-
+from spider_lx.ui import selenium_ui
 
 # ======================
 # 第一步：初始化会话状态（跨步骤保存数据）
@@ -29,5 +27,5 @@ if "crawl_result" not in st.session_state:
 st.set_page_config(page_title="自动化爬虫可视化工具", page_icon="🕷️")
 st.title("🕷️ 自动化爬虫项目 - Streamlit 可视化版")
 st.divider()
-selenium_cj.app_main()
+selenium_ui.app_main()
 

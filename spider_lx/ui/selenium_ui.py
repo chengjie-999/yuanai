@@ -17,6 +17,15 @@ def app_main():
             st.success("浏览器首次启动成功！")
         else:
             st.warning("浏览器已启动，无需重复开启！")
+
+    if st.button('关闭浏览器'):
+        if st.session_state.browser_started:
+            st.session_state.web_driver.quit()
+            st.session_state.web_driver = None
+            st.session_state.browser_started = False
+        else:
+            st.warning("浏览器未启动！")
+
     if st.session_state.step == 1 and st.session_state.browser_started:
         driver = st.session_state.web_driver
         info = able_web()
@@ -38,10 +47,3 @@ def app_main():
     if st.session_state.step == 3:
         pass
         # -1. 关闭浏览器
-    if st.button('关闭浏览器'):
-        if st.session_state.browser_started:
-            st.session_state.web_driver.quit()
-            st.session_state.web_driver = None
-            st.session_state.browser_started = False
-        else:
-            st.warning("浏览器未启动！")

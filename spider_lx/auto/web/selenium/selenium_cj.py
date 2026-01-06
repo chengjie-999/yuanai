@@ -28,13 +28,30 @@ def able_web():
     return info
 
 
-def app_choose_web(web_driver, info, code=1):
+def open_web(web_driver, info, name='', code=None, url=None):
+    """
+    打开网站
+    :param name:
+    :param web_driver: 浏览器驱动
+    :param info: 现有网站信息
+    :param code:
+    :param url: 手动输入网站
+    :return:
+    """
     # 2.1 获取目标网站信息，开始访问
-    code = int(code)
-    name = info[code]
-    url = web_urls[code][name][1][0]
+    if code:
+        code = int(code)
+        name = info[code]
+        url = web_urls[code][name][1][0]
+    elif name:
+        for website in web_urls:
+            print(website.keys())
+            if name in website.keys():
+                url = website[name][1][0]
+    elif url:
+        name = '未命名网站'
 
-    #
+    print(name, url)
     web_driver.get(url)
     time.sleep(random.randint(3, 6))  # 拟人
 
@@ -85,12 +102,12 @@ def main():
     # while 1:
     # 2. 加载执行的网页
     info = able_web()
-    name = app_choose_web(driver, info, 0)
+    name = open_web(driver, info, 0)
     print(name)
     # 3. 解析数据
     try:
         if name == '小猿众包':
-            xiao_yuan.app_go(driver)
+            xiao_yuan.go(driver)
     except Exception as e:
         print(e.args)
     input('运行结束')

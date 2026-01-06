@@ -16,6 +16,8 @@ if "browser_started" not in st.session_state:
 
 if "web_name" not in st.session_state:
     st.session_state.web_name = ''  # 已完成自动化的网站
+if "web_open" not in st.session_state:
+    st.session_state.web_open = False  # 已完成自动化的网站
 
 if "step" not in st.session_state:
     st.session_state.step = 1  # 1:输入参数 2:执行爬取 3:完成

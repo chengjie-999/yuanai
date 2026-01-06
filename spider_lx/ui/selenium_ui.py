@@ -2,6 +2,7 @@ import streamlit as st
 
 from spider_lx.auto.web.selenium import selenium_cj
 from spider_lx.parse_data import xiao_yuan
+from spider_lx.ui import xiao_yuan_ui
 
 
 def app_main():
@@ -28,26 +29,33 @@ def app_main():
             else:
                 st.warning("浏览器未启动！")
 
-    # -------- 步骤1：打开目标网站 --------
+    # -------- 浏览器打开后，步骤1：打开目标网站 --------
     if st.session_state.step == 1 and st.session_state.browser_started:
         driver = st.session_state.web_driver
-        info = selenium_cj.able_web()
-        st.session_state.web_code = st.selectbox('请选择想要访问的网站', options=info.values())
+        web_info = selenium_cj.able_web()
+        st.session_state.web_name = st.selectbox('请选择想要访问的网站', options=web_info.values())
+        st.write('即将进入：', st.session_state.web_name)
         if st.button('打开网站'):
-            selenium_cj.app_choose_web(driver, info, st.session_state.web_code)
+            name = selenium_cj.open_web(driver, web_info, st.session_state.web_name)
+            if name == st.session_state.web_name and not st.session_state.web_open:
+                st.success('网站已成功打开！')
+                st.session_state.web_open = True
+                st.session_state.step = 2
+            else:
+                st.warning('已经有网页打开')
 
-    # -------- 步骤2：目标网站自动化解析 --------
-    if st.session_state.step == 2:
+    # -------- 浏览器打开后，步骤2：目标网站自动化解析 --------
+    if st.session_state.step == 2 and st.session_state.browser_started:
         try:
             if st.session_state.web_name == '小猿众包':
-                xiao_yuan.app_go(st.session_state.web_drive)
+                xiao_yuan_ui.main()
             else:
                 st.write('目标网站自动化待开发~~~')
         except Exception as e:
             st.error(e.args)
 
     # -------- 步骤3：完成（可选） --------
-    if st.session_state.step == 3:
+    if st.session_state.step == 3 and st.session_state.browser_started:
         pass
 
 

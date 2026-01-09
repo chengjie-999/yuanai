@@ -12,7 +12,7 @@ if "crawl_result" not in st.session_state:
 # 第二步：设置页面基础样式
 # ======================
 st.set_page_config(page_title="自动化爬虫可视化工具", page_icon="🕷️")
-st.title("🕷️ 自动化爬虫项目 - Streamlit 可视化版")
+st.title("🕷️ 自动化爬虫")
 st.divider()
 # web自动化
 selenium_ui.app_main()

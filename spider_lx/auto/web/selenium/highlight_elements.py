@@ -5,26 +5,41 @@ import time
 from spider_lx.auto.web.selenium.selenium_cj import chrome
 
 
-def highlight_elements(driver, elements, duration=3):
+def highlight_elements(driver, elements=None, element=None, duration=3):
     """
     高亮标记找到的元素（修复 JS 语法错误）
+    :param element:
     :param driver: WebDriver 实例
     :param elements: find_elements 返回的元素列表
     :param duration: 高亮持续时间（秒），默认 3 秒
     """
     original_styles = []
-    elements = list(elements)
-    for elem in elements:
-        if elem.is_displayed():  # 只标记可见元素
+    if elements:
+        for elem in elements:
+            if elem.is_displayed():  # 只标记可见元素
+                # 记录原始样式（简化 JS 代码，避免换行）
+                original_style = driver.execute_script("return arguments[0].getAttribute('style');", elem)
+                original_styles.append((elem, original_style))
+
+                # 修复：将多行 JS 改为单行，用分号分隔样式，避免语法错误
+                driver.execute_script(
+                    "arguments[0].setAttribute('style', 'border: 3px solid red !important; background-color: rgba("
+                    "255, 0, "
+                    "0, 0.2) !important; z-index: 9999 !important;');",
+                    elem
+                )
+    if element:
+        if element.is_displayed():  # 只标记可见元素
             # 记录原始样式（简化 JS 代码，避免换行）
-            original_style = driver.execute_script("return arguments[0].getAttribute('style');", elem)
-            original_styles.append((elem, original_style))
+            original_style = driver.execute_script("return arguments[0].getAttribute('style');", element)
+            original_styles.append((element, original_style))
 
             # 修复：将多行 JS 改为单行，用分号分隔样式，避免语法错误
             driver.execute_script(
-                "arguments[0].setAttribute('style', 'border: 3px solid red !important; background-color: rgba(255, 0, "
+                "arguments[0].setAttribute('style', 'border: 3px solid red !important; background-color: rgba("
+                "255, 0, "
                 "0, 0.2) !important; z-index: 9999 !important;');",
-                elem
+                element
             )
 
     time.sleep(duration)  # 保持高亮

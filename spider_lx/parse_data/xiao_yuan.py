@@ -56,7 +56,7 @@ class XiaoYuan:
         return title_cards
 
     def go_question(self, name=''):
-        if name == '单题标答-审核':
+        if '单题标答-审核' in name:
             # 题目 .ol-viewport
             question = self.wait.until(
                 EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport'))
@@ -110,7 +110,7 @@ class XiaoYuan:
                 button = foot.find_element(By.CSS_SELECTOR,
                                            '.ant-space:nth-child(2) .ant-space-item:nth-child(5) .ant-btn')
                 button.click()
-        elif name == '3.0改错-补答':
+        elif'3.0改错-补答' in name:
             # .ant-radio-input 点击已完成补答修改
 
             # .ant-btn-primary 点击提交

@@ -22,7 +22,7 @@ class XiaoYuan:
 
     def start(self, card):
         """
-        开始任务
+        任务卡片点击开始任务
         :param card: 任务卡片
         :return:
         """
@@ -37,14 +37,12 @@ class XiaoYuan:
         小猿众包主页
         :return:
         """
-        wait = WebDriverWait(self.web_driver, 10)  # （最长等10秒，每0.5秒轮询一次）每进行一次页面加载时执行一次显式等待
-
         # 执行主页操作，找到任务卡片
-        cards = wait.until(
+        cards = self.wait.until(
             EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".task-card"))  # 核心：条件 + 定位器 所有匹配元素存在且可见（返回元素列表）
         )
         # cards = web_driver.find_elements(By.CSS_SELECTOR, ".task-card")
-        title_info = []
+        title_cards = {}
         for card in cards:
             # 各个任务卡片，通过标题寻找目标任务
             title = card.find_element(by=By.CSS_SELECTOR, value='.task-card-title').text
@@ -54,8 +52,8 @@ class XiaoYuan:
             warn = card.find_element(By.CSS_SELECTOR, value='.text-warning:nth-child(2)').text
             title = f'{title}【{warn}】'
             print(title)
-            title_info.append(title)
-        return title_info
+            title_cards[title] = card
+        return title_cards
 
     def go_question(self, name=''):
         if name == '单题标答-审核':

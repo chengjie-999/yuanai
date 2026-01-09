@@ -55,13 +55,6 @@ class XiaoYuan:
             title = f'{title}【{warn}】'
             print(title)
             title_info.append(title)
-            if title == '单题标答-审核':
-                start(web_driver, card)
-                go_question(web_driver, wait, title)
-            elif title == '3.0改错-补答':
-                start(web_driver, card)
-                go_question(web_driver, wait, title)
-                pass
         return title_info
 
     def go_question(self, name=''):

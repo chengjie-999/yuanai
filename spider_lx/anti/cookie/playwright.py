@@ -23,10 +23,9 @@ def get_cookie(page, cookie_file_path):
     print('登录信息已保存！！！')
 
 
-def use_cookie(context, page, name, url):
+def use_cookie(page, name, url):
     """
     适配Playwright：读取本地Cookie并添加到Context
-    :param context: Playwright的BrowserContext对象（Cookie绑定到Context）
     :param page: Playwright的Page对象（用于页面操作）
     :param name: 站点名称（用于Cookie文件名）
     :param url: 目标访问URL
@@ -38,7 +37,7 @@ def use_cookie(context, page, name, url):
         os.makedirs(cookie_file_path)
 
     # 拼接Cookie文件路径
-    cookie_file = os.path.join(cookie_file_path, f'【{name}】cookies.txt')
+    cookie_file = os.path.join(cookie_file_path, f'【{name}】cookies.json')
 
     # 若Cookie文件不存在，先手动登录获取
     if not os.path.exists(cookie_file):
@@ -49,12 +48,6 @@ def use_cookie(context, page, name, url):
     # 读取Cookie文件（用json.load替换eval，更安全）
     with open(cookie_file, mode='r', encoding='utf-8') as f:
         cookies = json.load(f)
-
-    # Playwright添加Cookie：通过Context批量添加（无需循环）
-    context.add_cookies(cookies)
-    print('cookie添加成功！！！')
     time.sleep(random.randint(3, 5))
 
-    # 重新发起请求（Page跳转）
-    page.goto(url)
-    time.sleep(random.randint(3, 5))
+    return cookies

@@ -148,10 +148,11 @@ def main():
             # 获取用户输入
             while True:
                 user_input = input("请输入网站编码（如0）：").strip()
-                if user_input.isdigit() and int(user_input) in info:
-                    code = int(user_input)
+                if user_input.isdigit():
                     break
                 print(f"输入无效！请输入{list(info.keys())}中的数字")
+
+            code = user_input
 
             # 3. 打开目标网站（传入用户选择的code）
             name = open_web(context, page, info, code=code)

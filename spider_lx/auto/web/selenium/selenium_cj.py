@@ -5,9 +5,8 @@ from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
-from spider_lx.parse_data import xiao_yuan
 from spider_lx.save_data.urls import web_urls
-from spider_lx.anti import selenium_cookie
+from spider_lx.anti.cookie import selenium
 
 
 def able_web():
@@ -57,7 +56,7 @@ def open_web(web_driver, info, name='', code=None, url=None):
 
     # 3. 处理登录问题
     # choose = st.text_input('是否处理登陆问题：(y/n)')
-    selenium_cookie.use_cookie(web_driver, name, url)
+    selenium.use_cookie(web_driver, name, url)
 
     # 4. 网站检验
     t = web_driver.title
@@ -102,12 +101,12 @@ def main():
     # while 1:
     # 2. 加载执行的网页
     info = able_web()
-    name = open_web(driver, info, 0)
+    name = open_web(driver, info)
     print(name)
     # 3. 解析数据
     try:
         if name == '小猿众包':
-            xiao_yuan.go(driver)
+            pass
     except Exception as e:
         print(e.args)
     input('运行结束')

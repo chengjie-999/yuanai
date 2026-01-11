@@ -48,6 +48,5 @@ def use_cookie(page, name, url):
     # 读取Cookie文件（用json.load替换eval，更安全）
     with open(cookie_file, mode='r', encoding='utf-8') as f:
         cookies = json.load(f)
-    time.sleep(random.randint(3, 5))
 
     return cookies

@@ -3,7 +3,7 @@ import time
 from playwright.sync_api import sync_playwright, Playwright
 from spider_lx.save_data.urls import web_urls
 # 导入改造后的cookie处理函数（替换原selenium版本）
-from spider_lx.anti.cookie.playwright import use_cookie, get_cookie
+from spider_lx.anti.cookie.playwright import use_cookie
 
 
 def able_web():
@@ -23,7 +23,7 @@ def able_web():
     return info
 
 
-def open_web(context, page, info, name='', code=None, url=None):
+def open_web(context, page, info, name='', code=None, url=None, login=True):
     """
     适配Playwright：打开指定网站并处理Cookie登录
     :param context: Playwright浏览器上下文（绑定Cookie）
@@ -57,7 +57,7 @@ def open_web(context, page, info, name='', code=None, url=None):
     # Playwright页面跳转（增加异常捕获）
 
     # 3. 处理登录问题（调用改造后的Playwright版use_cookie）
-    if not context.cookies([url]):
+    if not context.cookies([url]) and login:
         cookies = use_cookie(page=page, name=name, url=url)
         context.add_cookies(cookies)
     try:

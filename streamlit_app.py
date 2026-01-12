@@ -6,14 +6,13 @@ from spider_lx.ui import selenium_ui
 # =================================== #
 
 if "crawl_result" not in st.session_state:
-    st.session_state.crawl_result = []  # 保存爬取结果
+    st.session_state.crawl_result = None  # 保存爬取结果
 
 # ======================
 # 第二步：设置页面基础样式
 # ======================
 st.set_page_config(page_title="自动化爬虫可视化工具", page_icon="🕷️")
-st.title("🕷️ 自动化爬虫")
-st.divider()
+st.sidebar.title("🕷️ 自动化爬虫")
 # web自动化
 selenium_ui.app_main()
 

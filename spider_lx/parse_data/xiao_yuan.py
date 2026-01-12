@@ -15,7 +15,6 @@ class XiaoYuan:
 
     def __init__(self, web_driver: WebDriver):
         self.web_driver = web_driver
-        self.wait = WebDriverWait(web_driver, 30)  # （最长等10秒，每0.5秒轮询一次）每进行一次页面加载时执行一次显式等待
         self.action = ActionChains(web_driver)
 
     def get_html(self):
@@ -50,7 +49,8 @@ class XiaoYuan:
         :return:
         """
         # 执行主页操作，找到任务卡片
-        cards = self.wait.until(
+        wait = WebDriverWait(self.web_driver, 30)  # （最长等10秒，每0.5秒轮询一次）每进行一次页面加载时执行一次显式等待
+        cards = wait.until(
             EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".task-card"))  # 核心：条件 + 定位器 所有匹配元素存在且可见（返回元素列表）
         )
         # cards = web_driver.find_elements(By.CSS_SELECTOR, ".task-card")
@@ -80,9 +80,10 @@ class XiaoYuan:
         :param name: 任务名
         :return:
         """
+        wait = WebDriverWait(self.web_driver, 30)  # （最长等10秒，每0.5秒轮询一次）每进行一次页面加载时执行一次显式等待
         if '单题标答-审核' in name:
             # 题目 .ol-viewport
-            question = self.wait.until(
+            question = wait.until(
                 EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport'))
             )
             # question = web_driver.find_element(By.CSS_SELECTOR, '.ol-viewport')

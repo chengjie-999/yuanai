@@ -79,6 +79,7 @@ def app_main():
                     st.warning("浏览器未启动！")
     with col2:
         show_state()
+
     with col3:
         if st.button('返回上一步') and st.session_state.step > 1:
             st.session_state.step -= 1

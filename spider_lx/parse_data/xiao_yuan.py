@@ -34,14 +34,7 @@ class XiaoYuan:
         start = card.find_element(by=By.CSS_SELECTOR, value='.task-card-content .content-start')
         print(start.text)
         start.click()  # 点击开始任务
-        try:
-            # 处理任务不足
-            card_no = self.web_driver.find_element(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')
-            card_no.click()
-        except NoSuchElementException:
-            return True
-
-        return False
+        return self.box()
 
     def home(self):
         """
@@ -65,18 +58,21 @@ class XiaoYuan:
                 warn = card.find_element(By.CSS_SELECTOR, value='.text-warning:nth-child(2)').text
             except Exception as e:
                 e.args = '暂无任务'
-                break
+                warn = '暂无任务'
 
             title = f'{title}【{warn}】'
             print(title)
             title_cards[title] = card
 
-        # print(title_cards)
+            # 出现单题标答-审核就不选其他任务
+            if '单题标答-审核' in title:
+                break
         return title_cards
 
-    def go_question(self, name):
+    def go_question(self, name, up=False):
         """
         处理任务
+        :param up:
         :param name: 任务名
         :return:
         """
@@ -87,6 +83,41 @@ class XiaoYuan:
                 EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport'))
             )
             # question = web_driver.find_element(By.CSS_SELECTOR, '.ol-viewport')
+            if up:
+                self.question_resize()
+                time.sleep(1)
+
+            # 找到第一个的初次审核的黄框（批改答案） .ol-overlay-container 点击
+            try:
+                ActionChains(self.web_driver).move_to_element(to_element=question).perform()
+                answer = question.find_element(By.CSS_SELECTOR, '.ol-overlay-container')
+                # for answer in answers:
+                self.web_driver.execute_script("window.scrollTo(0, arguments[0].offsetTop);", answer)
+
+                # 再点击
+                answer.click()
+                print('答案点击完成！')
+                time.sleep(0.5)
+                # 判断按钮，点击正确
+                # 正确 .button_3sIPu  1
+                # 错误 .button_3sIPu  2
+                true = question.find_element(By.CSS_SELECTOR, '.button_3sIPu')
+                # 全部正确
+                answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
+                for i in range(len(answers)):
+                    true.click()
+                print('答案判断完成！')
+            except NoSuchElementException:
+                # 找不到元素时执行的“跳过”逻辑（可根据需求修改）
+                print("未找到【批改答案】，已跳过")
+            except ElementNotInteractableException:
+                print(f'【批改答案】交互隐藏！{ElementNotInteractableException().msg}')
+                # ActionChains(self.web_driver).send_keys(Keys.SPACE).perform()
+            except Exception:
+                pass
+
+            # 二次审核的黄框
+            pass
 
             # 找到独立答案 .yst-mathjax-loading
             try:
@@ -105,32 +136,8 @@ class XiaoYuan:
             except ElementNotInteractableException:
                 print('【独立批改答案】交互隐藏！')
 
-            # 找到第一个的黄框（批改答案） .ol-overlay-container 点击
-            try:
-                answer = question.find_element(By.CSS_SELECTOR, '.ol-overlay-container')
-                # for answer in answers:
-                answer.click()
-                print('答案点击完成！')
-                time.sleep(0.5)
-                # 判断按钮，点击正确
-                # 正确 .button_3sIPu  1
-                # 错误 .button_3sIPu  2
-                true = question.find_element(By.CSS_SELECTOR, '.button_3sIPu')
-                # 全部正确
-                answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
-                for i in range(len(answers)):
-                    true.click()
-                print('答案判断完成！')
-            except NoSuchElementException:
-                # 找不到元素时执行的“跳过”逻辑（可根据需求修改）
-                print("未找到【批改答案】，已跳过")
-            except ElementNotInteractableException:
-                print('【批改答案】交互隐藏！')
-                # 滚动滑轮
-                ActionChains(self.web_driver).send_keys(Keys.SPACE*5).perform()
-                pass
-            except Exception:
-                pass
+            if up:
+                self.question_restore()
         elif '3.0改错-补答' in name:
             # .ant-radio-input 点击已完成补答修改
 
@@ -140,18 +147,22 @@ class XiaoYuan:
 
     def go_home(self):
         home = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-menu-item')
+
         home.click()
         print('回首页')
+        return True
 
-    def compete(self, status):
+    def compete(self, status, cause=None):
         """
         提交任务
+        :param cause:
         :param status: 任务状态
-        :return:
+        :return:是否继续
         """
         if not status:
             status = '提交领下一任务'
         foot = self.web_driver.find_element(By.CSS_SELECTOR, '.container_23Xxj')
+
         if status == '提交领下一任务':
             button = foot.find_elements(By.CSS_SELECTOR, '.ant-btn')[-1]
             print(button.text)
@@ -162,18 +173,61 @@ class XiaoYuan:
         elif status == '整题驳回':
             button = foot.find_elements(By.CSS_SELECTOR, '.ant-btn')[1]
             button.click()
-            # 驳回理由
+            # 填写理由
+            ant_input = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-input')
+            ant_input.send_keys(cause)
         else:
             button = foot.find_element(By.CSS_SELECTOR,
                                        '.ant-space:nth-child(2) .ant-space-item:nth-child(5) .ant-btn')
             button.click()
+        time.sleep(0.5)
+        return self.box()
+
+    def question_resize(self, up=True, count=6):
+        if up:
+            # 减小按钮
+            up_button = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-zoom-out')[0]
+            for _ in range(count):
+                up_button.click()
+                time.sleep(0.1)
+        else:
+            pass
+
+    def question_restore(self):
+        re = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-control')[3]
+        re.click()
+
+    def rejection_confirmation(self):
+        """
+        驳回确认
+        :return:
+        """
+        # ant-modal-content
+        reject = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')
+        confirm = reject.find_element(By.CSS_SELECTOR, '.ant-btn-primary')
+        confirm.click()
+
+        pass
+
+    def box(self):
+        """
+        任务消息：任务不足
+        :return:是否继续
+        """
         try:
             # 处理任务不足，点击后返回首页。
-            card_no = self.web_driver.find_element(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')
-            card_no.click()
-            self.go_home()
+            # ant - modal - content
+            box = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')
+            # ant-modal-confirm-title
+            message = box.find_element(By.CSS_SELECTOR, '.ant-modal-confirm-title')
+            print(message)
+            # 点击知道了
+            know = self.web_driver.find_element(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')
+            know.click()
+            return False
         except NoSuchElementException:
             print('任务充足')
+            return True
 
 
 if __name__ == '__main__':

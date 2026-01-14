@@ -52,7 +52,6 @@ def open_web(web_driver, info, name='', code=None, url=None):
 
     print(name, url)
     web_driver.get(url)
-    time.sleep(random.randint(3, 6))  # 拟人
 
     # 3. 处理登录问题
     # choose = st.text_input('是否处理登陆问题：(y/n)')

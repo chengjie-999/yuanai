@@ -35,8 +35,7 @@ def main():
         cards = xiao_yuan.home()
         # st.write(cards)
         cards_name = cards.keys()
-        st.write(cards_name)
-        st.session_state.xiao_yuan_card_name = st.selectbox('请选择要执行的任务',cards_name, len(cards_name)-1)  # 无阻塞，默认第一个数据
+        st.session_state.xiao_yuan_card_name = st.selectbox('请选择要执行的任务', cards_name, len(cards_name) - 1)  # 无阻塞，默认第一个数据
         st.write(st.session_state.xiao_yuan_card_name)
         if st.button('开始任务'):
             # 获得任务卡片
@@ -54,6 +53,10 @@ def main():
         with col1:
             if st.button('审核正确'):
                 xiao_yuan.go_question(st.session_state.xiao_yuan_card_name)
+                if st.button('审核错误'):
+                    pass
+                xiao_yuan.question_restore()
+
             if st.button('提交领下一任务'):
                 go_on = xiao_yuan.compete('提交领下一任务')
                 if not go_on:
@@ -68,12 +71,8 @@ def main():
                 if not go_on:
                     st.session_state.xiao_yuan_step = 1
         with col2:
-            if st.button('审核错误'):
-                pass
             if st.button('缩小'):
                 xiao_yuan.question_resize(count=4)
-            if st.button('恢复正常大小'):
-                xiao_yuan.question_restore()
     if st.session_state.xiao_yuan_step == 2 and '3.0改错-补答' in st.session_state.xiao_yuan_card_name:
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：执行{st.session_state.xiao_yuan_card_name}任务')
         col1, col2 = st.columns(2)

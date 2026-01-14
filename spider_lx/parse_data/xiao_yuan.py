@@ -87,6 +87,23 @@ class XiaoYuan:
                 self.question_resize()
                 time.sleep(1)
 
+            # 找到独立答案 .yst-mathjax-loading
+            try:
+                # 尝试查找元素（这里用ID定位，实际替换为你的定位器）
+                answer = question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading")
+                # 如果找到元素，执行后续操作（如点击、输入）
+                answer.click()
+                time.sleep(0.5)
+                # 点击正确按钮 ant-btn ant-btn-primary button_gjJ0I auditPassButton_OH_ef
+                true = question.find_element(By.CSS_SELECTOR, '.button_gjJ0I')
+                true.click()
+                print('独立答案判断完成')
+            except NoSuchElementException:
+                # 找不到元素时执行的“跳过”逻辑（可根据需求修改）
+                print("未找到【独立批改答案】，已跳过")
+            except ElementNotInteractableException:
+                print('【独立批改答案】交互隐藏！')
+
             # 找到第一个的初次审核的黄框（批改答案） .ol-overlay-container 点击
             try:
                 ActionChains(self.web_driver).move_to_element(to_element=question).perform()
@@ -118,23 +135,6 @@ class XiaoYuan:
 
             # 二次审核的黄框
             pass
-
-            # 找到独立答案 .yst-mathjax-loading
-            try:
-                # 尝试查找元素（这里用ID定位，实际替换为你的定位器）
-                answer = question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading")
-                # 如果找到元素，执行后续操作（如点击、输入）
-                answer.click()
-                time.sleep(0.5)
-                # 点击正确按钮 ant-btn ant-btn-primary button_gjJ0I auditPassButton_OH_ef
-                true = question.find_element(By.CSS_SELECTOR, '.button_gjJ0I')
-                true.click()
-                print('独立答案判断完成')
-            except NoSuchElementException:
-                # 找不到元素时执行的“跳过”逻辑（可根据需求修改）
-                print("未找到【独立批改答案】，已跳过")
-            except ElementNotInteractableException:
-                print('【独立批改答案】交互隐藏！')
 
             if up:
                 self.question_restore()
@@ -215,6 +215,7 @@ class XiaoYuan:
         :return:是否继续
         """
         try:
+            time.sleep(1)
             # 处理任务不足，点击后返回首页。
             # ant - modal - content
             box = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')

@@ -51,10 +51,13 @@ def main():
 
         col1, col2 = st.columns(2)
         with col1:
+            if st.button('审核错误'):
+                pass
+            if st.button('缩小'):
+                xiao_yuan.question_resize()
+            st.divider()
             if st.button('审核正确'):
                 xiao_yuan.go_question(st.session_state.xiao_yuan_card_name)
-                if st.button('审核错误'):
-                    pass
                 xiao_yuan.question_restore()
 
             if st.button('提交领下一任务'):
@@ -71,8 +74,7 @@ def main():
                 if not go_on:
                     st.session_state.xiao_yuan_step = 1
         with col2:
-            if st.button('缩小'):
-                xiao_yuan.question_resize(count=4)
+            pass
     if st.session_state.xiao_yuan_step == 2 and '3.0改错-补答' in st.session_state.xiao_yuan_card_name:
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：执行{st.session_state.xiao_yuan_card_name}任务')
         col1, col2 = st.columns(2)

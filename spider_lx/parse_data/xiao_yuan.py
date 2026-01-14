@@ -189,7 +189,7 @@ class XiaoYuan:
             up_button = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-zoom-out')[0]
             for _ in range(count):
                 up_button.click()
-                time.sleep(0.1)
+                time.sleep(0.05)
         else:
             pass
 
@@ -220,15 +220,18 @@ class XiaoYuan:
             # ant - modal - content
             box = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')
             # ant-modal-confirm-title
-            message = box.find_element(By.CSS_SELECTOR, '.ant-modal-confirm-title')
+            message = box.find_element(By.CSS_SELECTOR, '.ant-modal-confirm-title').text
             print(message)
             # 点击知道了
             know = self.web_driver.find_element(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')
+            get = know.text
+            print(get)
             know.click()
-            return False
+            if get == '知道了':
+                return False
         except NoSuchElementException:
             print('任务充足')
-            return True
+        return True
 
 
 if __name__ == '__main__':

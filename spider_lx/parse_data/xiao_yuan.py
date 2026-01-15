@@ -91,6 +91,7 @@ class XiaoYuan:
             try:
                 # 尝试查找元素（这里用ID定位，实际替换为你的定位器）
                 answer = question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading")
+                ActionChains(self.web_driver).move_to_element(answer).perform()
                 # 如果找到元素，执行后续操作（如点击、输入）
                 answer.click()
                 time.sleep(0.5)
@@ -108,6 +109,7 @@ class XiaoYuan:
             try:
                 ActionChains(self.web_driver).move_to_element(to_element=question).perform()
                 answer = question.find_element(By.CSS_SELECTOR, '.ol-overlay-container')
+                ActionChains(self.web_driver).move_to_element(answer).perform()
                 # for answer in answers:
                 self.web_driver.execute_script("window.scrollTo(0, arguments[0].offsetTop);", answer)
 

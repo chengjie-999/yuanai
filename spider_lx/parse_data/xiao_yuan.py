@@ -36,7 +36,7 @@ class XiaoYuan:
         start.click()  # 点击开始任务
         return self.box()
 
-    def home(self):
+    def home(self, like='单题标答-审核'):
         """
         小猿众包主页
         :return:
@@ -65,7 +65,7 @@ class XiaoYuan:
             title_cards[title] = card
 
             # 出现单题标答-审核就不选其他任务
-            if '单题标答-审核' in title:
+            if like in title:
                 break
         return title_cards
 
@@ -140,7 +140,12 @@ class XiaoYuan:
 
             if up:
                 self.question_restore()
-        elif '3.0改错-补答' in name:
+        if '3.0改错-补答' in name:
+            # .ant-radio-input 点击已完成补答修改
+
+            # .ant-btn-primary 点击提交
+            pass
+        if '抄写图形题-补答审核' in name:
             # .ant-radio-input 点击已完成补答修改
 
             # .ant-btn-primary 点击提交

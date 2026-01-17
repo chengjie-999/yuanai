@@ -69,9 +69,10 @@ class XiaoYuan:
                 break
         return title_cards
 
-    def go_question(self, name, up=False):
+    def go_question(self, name, true=True, up=False):
         """
         处理任务
+        :param true:
         :param up:
         :param name: 任务名
         :return:
@@ -146,9 +147,20 @@ class XiaoYuan:
             # .ant-btn-primary 点击提交
             pass
         if '抄写图形题-补答审核' in name:
-            # .ant-radio-input 点击已完成补答修改
-
-            # .ant-btn-primary 点击提交
+            if true:
+                # .ant-radio-input 点击已完成补答修改
+                t = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-radio-input')[0]
+                t.click()
+                # .ant-btn-primary 点击提交
+                t = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-btn-primary')[-1]
+                t.click()
+            if not true:
+                # .ant-radio-input 点击已完成补答修改
+                t = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-radio-input')[1]
+                t.click()
+                # .ant-btn-primary 点击提交
+                t = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-btn-primary')[-1]
+                # t.click()
             pass
         return
 
@@ -229,8 +241,14 @@ class XiaoYuan:
             # ant-modal-confirm-title
             message = box.find_element(By.CSS_SELECTOR, '.ant-modal-confirm-title').text
             print(message)
+            if message == '当前任务包已处理完毕，是否继续认领下一包？':
+                know = self.web_driver.find_elements(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')[-1]
+                get = know.text
+                print(get)
+                know.click()
+                return True
             # 点击知道了
-            know = self.web_driver.find_element(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')
+            know = self.web_driver.find_elements(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')[-1]
             get = know.text
             print(get)
             know.click()

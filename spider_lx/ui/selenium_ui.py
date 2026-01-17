@@ -1,6 +1,6 @@
 import streamlit as st
 
-from spider_lx.auto.web.selenium import selenium_cj
+from spider_lx.auto.web.selenium import main as selenium_cj
 from spider_lx.ui import xiao_yuan_ui
 
 INITIAL_STATE = {

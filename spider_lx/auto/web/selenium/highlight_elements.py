@@ -2,7 +2,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 import time
 
-from spider_lx.auto.web.selenium.selenium_cj import chrome
+from spider_lx.auto.web.selenium.main import chrome
 
 
 def highlight_elements(driver, elements=None, element=None, duration=3):

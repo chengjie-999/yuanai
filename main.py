@@ -1,4 +1,4 @@
-from spider_lx.auto.web.selenium import selenium_cj
+from spider_lx.auto.web.selenium import main
 
 
 def main():

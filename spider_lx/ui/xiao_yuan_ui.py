@@ -33,6 +33,7 @@ def main():
     if st.session_state.xiao_yuan_step == 1:
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：获取任务信息！')
         cards = xiao_yuan.home()
+        # cards = xiao_yuan.home('抄写图形题-补答审核')
         # st.write(cards)
         cards_name = cards.keys()
         st.session_state.xiao_yuan_card_name = st.selectbox('请选择要执行的任务', cards_name, len(cards_name) - 1)  # 无阻塞，默认第一个数据

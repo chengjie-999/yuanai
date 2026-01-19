@@ -228,7 +228,7 @@ class XiaoYuan:
 
         pass
 
-    def box(self):
+    def box(self, go_on=True):
         """
         任务消息：任务不足
         :return:是否继续
@@ -241,22 +241,22 @@ class XiaoYuan:
             # ant-modal-confirm-title
             message = box.find_element(By.CSS_SELECTOR, '.ant-modal-confirm-title').text
             print(message)
-            if message == '当前任务包已处理完毕，是否继续认领下一包？':
-                know = self.web_driver.find_elements(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')[-1]
+            if message == '当前任务包已处理完毕，是否继续认领下一包？' and go_on:
+                know = self.web_driver.find_elements(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')[1]
                 get = know.text
                 print(get)
                 know.click()
-                return True
+                return go_on
             # 点击知道了
-            know = self.web_driver.find_elements(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')[-1]
+            know = self.web_driver.find_elements(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')[0]
             get = know.text
             print(get)
             know.click()
             if get == '知道了':
-                return False
+                return not go_on
         except NoSuchElementException:
             print('任务充足')
-        return True
+        return go_on
 
 
 if __name__ == '__main__':

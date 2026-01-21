@@ -244,9 +244,9 @@ class XiaoYuan:
             if message == '当前任务包已处理完毕，是否继续认领下一包？' and go_on:
                 know = self.web_driver.find_element(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')
                 get = know.find_element(By.CSS_SELECTOR, '.ant-btn-primary')
-                get = get.text
-                print(get)
-                know.click()
+                get_ = get.text
+                print(get_)
+                get.click()
                 return go_on
             # 点击知道了
             know = self.web_driver.find_element(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')

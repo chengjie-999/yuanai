@@ -1,22 +1,35 @@
 import streamlit as st
 from spider_lx.auto.web.selenium.xiao_yuan import XiaoYuan
 
+INITIAL_STATE = {
+    "xiao_yuan_card_name": '',
+    "xiao_yuan_card": "",
+    "xiao_yuan_like": '单题标答-审核',
+    "xiao_yuan_step": 1,
+    "xiao_yuan_false_causes": ['格式问题'],
+    "xiao_yuan_false_cause": '格式问题'
+}  # 初始状态
+
+
+def initializing_state():
+    """
+    初始化selenium_ui的会话状态（跨步骤保存数据）
+    :return:
+    """
+    for key, default_val in INITIAL_STATE.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_val
+
+
+def reset_to_initial():
+    """回归初始化状态：用保留的初始模板重置所有状态"""
+    for key, default_val in INITIAL_STATE.items():
+        st.session_state[key] = default_val  # 强制覆盖为初始值
+
 
 def main():
     st.divider()
-
-    if "xiao_yuan_card_name" not in st.session_state:
-        st.session_state.xiao_yuan_card = ''  #
-
-    if "xiao_yuan_card" not in st.session_state:
-        st.session_state.xiao_yuan_card = ''  #
-
-    if "xiao_yuan_step" not in st.session_state:
-        st.session_state.xiao_yuan_step = 1  # 小猿操作步骤
-    if "xiao_yuan_false_causes" not in st.session_state:
-        st.session_state.xiao_yuan_false_causes = ['格式问题']  # 小猿题目错误原因
-    if "xiao_yuan_false_cause" not in st.session_state:
-        st.session_state.xiao_yuan_false_cause = '格式问题'  # 小猿题目错误原因
+    initializing_state()
 
     xiao_yuan = XiaoYuan(st.session_state.web_driver)
     col1, col2 = st.columns(2)
@@ -25,23 +38,22 @@ def main():
     with col2:
         if st.button('返回首页'):
             xiao_yuan.go_home()
-            st.session_state.xiao_yuan_step = 1
-            st.session_state.xiao_yuan_card_name = ''
-            st.session_state.xiao_yuan_card = ''
+            reset_to_initial()
+            st.rerun()
 
     # 第一步：开始任务
     if st.session_state.xiao_yuan_step == 1:
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：获取任务信息！')
-        cards = xiao_yuan.home()
-        cards = xiao_yuan.home('抄写图形题-补答审核')
+        cards = xiao_yuan.home(st.session_state.xiao_yuan_like)
         # st.write(cards)
         cards_name = cards.keys()
         st.session_state.xiao_yuan_card_name = st.selectbox('请选择要执行的任务', cards_name, len(cards_name) - 1)  # 无阻塞，默认第一个数据
-        st.write(st.session_state.xiao_yuan_card_name)
+        st.session_state.xiao_yuan_like = st.session_state.xiao_yuan_card_name
         if st.button('开始任务'):
             # 获得任务卡片
             st.session_state.xiao_yuan_card = cards[st.session_state.xiao_yuan_card_name]
             go_on = xiao_yuan.start(st.session_state.xiao_yuan_card)
+            st.write(go_on)
             if go_on:
                 st.session_state.xiao_yuan_step = 2
                 st.rerun()  # 刷新进入步骤2
@@ -98,6 +110,9 @@ def main():
             if st.button('审核正确'):
                 xiao_yuan.go_question(st.session_state.xiao_yuan_card_name)
             if st.button('提交领下一任务'):
-                xiao_yuan.box()
+                go_on = xiao_yuan.box()
+                if not go_on:
+                    st.session_state.xiao_yuan_step = 1
+                    st.rerun()
         with col2:
             pass

@@ -61,7 +61,7 @@ def app_main():
     with col1:
         if not st.session_state.browser_started:
             # 唤醒并配置浏览器
-            if st.button('开启浏览器'):
+            if st.button('开启浏览器', use_container_width=True):
                 if not st.session_state.browser_started:
                     st.session_state.web_driver = get_driver()  # 使用浏览器驱动
                     st.session_state.browser_started = True  # 标记为已启动
@@ -70,7 +70,7 @@ def app_main():
                 else:
                     st.warning("浏览器已启动，无需重复开启！")
         else:
-            if st.button('关闭浏览器'):
+            if st.button('关闭浏览器', use_container_width=True):
                 if st.session_state.browser_started:
                     st.session_state.web_driver.quit()
                     reset_to_initial()
@@ -81,11 +81,11 @@ def app_main():
         show_state()
 
     with col3:
-        if st.button('返回上一步') and st.session_state.step > 1:
+        if st.button('返回上一步', use_container_width=True) and st.session_state.step > 1:
             st.session_state.step -= 1
             st.rerun()
     with col4:
-        if st.button('重载'):
+        if st.button('重载', use_container_width=True):
             st.rerun()
 
     # -------- 浏览器打开后，步骤1：打开目标网站 --------

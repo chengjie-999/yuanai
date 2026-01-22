@@ -1,5 +1,6 @@
 import streamlit as st
 from spider_lx.auto.web.selenium.xiao_yuan import XiaoYuan
+from spider_lx.ui.ai_feedback_button import button_with_loading
 
 INITIAL_STATE = {
     "xiao_yuan_card_name": '',
@@ -105,14 +106,18 @@ def main():
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：执行{st.session_state.xiao_yuan_card_name}任务')
         col1, col2 = st.columns(2)
         with col1:
-            if st.button('审核错误'):
-                xiao_yuan.go_question(st.session_state.xiao_yuan_card_name, true=False)
-            if st.button('审核正确'):
+            if st.button('查看原题目', use_container_width=True):
+                xiao_yuan.to_detail()
+            if st.button('关闭原题目', use_container_width=True):
+                xiao_yuan.close_detail()
+            if st.button('审核正确', type='primary', use_container_width=True):
                 xiao_yuan.go_question(st.session_state.xiao_yuan_card_name)
-            if st.button('提交领下一任务'):
+            if st.button('提交领下一任务', use_container_width=True):
                 go_on = xiao_yuan.box()
                 if not go_on:
                     st.session_state.xiao_yuan_step = 1
                     st.rerun()
+            if st.button('审核错误'):
+                xiao_yuan.go_question(st.session_state.xiao_yuan_card_name, true=False)
         with col2:
             pass

@@ -259,6 +259,29 @@ class XiaoYuan:
             print('任务充足')
         return go_on
 
+    def to_detail(self):
+        """
+        抄写进入题目详情页面
+        :return:
+        """
+        detail = self.web_driver.find_element(By.CSS_SELECTOR, '.content_2t03S a')
+        detail.click()
+        pass
+
+    def close_detail(self):
+        windows = self.web_driver.window_handles
+        print(windows)
+        if len(windows) > 1:
+            self.web_driver.switch_to.window(windows[1])
+            # 保存
+            save = self.web_driver.find_element(By.CSS_SELECTOR, '.footer_3Vgpz .ant-space-item button')
+            print(save.text)
+            save.click()
+            pass
+            self.web_driver.close()
+        self.web_driver.switch_to.window(windows[0])
+        pass
+
 
 if __name__ == '__main__':
     pass

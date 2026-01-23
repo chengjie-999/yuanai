@@ -52,9 +52,8 @@ def app_main():
     # ======================
     initializing_state()
     # 侧边栏
-    st.sidebar.write('【selenium初始状态】', INITIAL_STATE)
-    st.sidebar.write('【selenium当前状态】')
-    for k in INITIAL_STATE:
+    st.sidebar.write('【当前session状态】')
+    for k in st.session_state:
         st.sidebar.write(k, st.session_state[k])
 
     col1, col2, col3, col4 = st.columns(4)

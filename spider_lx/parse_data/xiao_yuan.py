@@ -1,21 +1,19 @@
 import time
 
 from selenium.common import NoSuchElementException, ElementNotInteractableException
-from selenium.webdriver import ActionChains, Keys
+from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 
-from spider_lx.auto.web.selenium.highlight_elements import highlight_elements
 from spider_lx.save_data.save_data import *
 
 
-class XiaoYuan:
+class SeleniumXiaoYuan:
 
     def __init__(self, web_driver: WebDriver):
         self.web_driver = web_driver
-        self.action = ActionChains(web_driver)
 
     def get_html(self):
         html = self.web_driver.page_source

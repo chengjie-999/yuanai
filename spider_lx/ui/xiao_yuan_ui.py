@@ -1,6 +1,5 @@
 import streamlit as st
-from spider_lx.auto.web.selenium.xiao_yuan import XiaoYuan
-from spider_lx.ui.ai_feedback_button import button_with_loading
+from spider_lx.parse_data.xiao_yuan import SeleniumXiaoYuan
 
 INITIAL_STATE = {
     "xiao_yuan_card_name": '',
@@ -32,7 +31,7 @@ def main():
     st.divider()
     initializing_state()
 
-    xiao_yuan = XiaoYuan(st.session_state.web_driver)
+    xiao_yuan = SeleniumXiaoYuan(st.session_state.web_driver)
     col1, col2 = st.columns(2)
     with col1:
         st.success('小猿众包已成功进入！！！')

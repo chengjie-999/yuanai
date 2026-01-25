@@ -7,7 +7,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 
-from spider_lx.save_data.save_data import *
+from spiderlx.core.save.save_data import *
 
 
 class SeleniumXiaoYuan:
@@ -31,8 +31,13 @@ class SeleniumXiaoYuan:
         action.move_to_element(card).perform()
         start = card.find_element(by=By.CSS_SELECTOR, value='.task-card-content .content-start')
         print(start.text)
+        url = self.web_driver.current_url
         start.click()  # 点击开始任务
-        return self.box()
+        time.sleep(3)
+        new_url = self.web_driver.current_url
+        go_on = False if url == new_url else True
+        print(url, new_url, go_on)
+        return self.box() and go_on
 
     def home(self, like='单题标答-审核'):
         """
@@ -211,8 +216,12 @@ class SeleniumXiaoYuan:
             pass
 
     def question_restore(self):
-        re = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-control')[3]
-        re.click()
+        try:
+            re = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-control')[3]
+            re.click()
+        except NoSuchElementException:
+            return False
+        return True
 
     def rejection_confirmation(self):
         """

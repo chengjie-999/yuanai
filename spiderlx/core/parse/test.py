@@ -1,4 +1,4 @@
-from spider_lx.auto.web.selenium.main import chrome
+from spiderlx.auto.web.selenium.main import chrome
 
 
 def test_go():

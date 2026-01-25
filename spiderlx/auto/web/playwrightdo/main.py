@@ -1,9 +1,9 @@
 import random
 import time
 from playwright.sync_api import sync_playwright, Playwright
-from spider_lx.save_data.urls import web_urls
+from spiderlx.core.save import web_urls
 # 导入改造后的cookie处理函数（替换原selenium版本）
-from spider_lx.anti.cookie.playwright import use_cookie
+from spiderlx.anti.cookie.playwright import use_cookie
 
 
 def able_web():

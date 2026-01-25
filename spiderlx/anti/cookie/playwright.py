@@ -1,8 +1,6 @@
 import os.path
-import random
-import time
 import json  # 替换eval，用json更安全
-from spider_lx.save_data.save_data import root_path
+from spiderlx.core.save.save_data import root_path
 
 
 def get_cookie(page, cookie_file_path):

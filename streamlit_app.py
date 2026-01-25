@@ -1,5 +1,5 @@
 import streamlit as st
-from spider_lx.ui import selenium_ui
+from spiderlx.ui import uiselenium
 
 # 运行：streamlit run streamlit_app.py
 # # 基础用法：禁用自动打开浏览器
@@ -18,5 +18,5 @@ if "crawl_result" not in st.session_state:
 st.set_page_config(page_title="自动化爬虫可视化工具", page_icon="🕷️")
 st.sidebar.title("🕷️ 自动化爬虫")
 # web自动化
-selenium_ui.app_main()
+uiselenium.app_main()
 

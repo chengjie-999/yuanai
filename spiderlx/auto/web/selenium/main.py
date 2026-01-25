@@ -1,12 +1,9 @@
-import random
-import time
-
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
-from spider_lx.save_data.urls import web_urls
-from spider_lx.anti.cookie import selenium
+from spiderlx.core.save.urls import web_urls
+from spiderlx.anti.cookie import selenium
 
 
 def able_web():

@@ -1,7 +1,7 @@
 import streamlit as st
 
-from spider_lx.auto.web.selenium import main as selenium_cj
-from spider_lx.ui import xiao_yuan_ui
+from spiderlx.auto.web.selenium import main as selenium_cj
+from spiderlx.ui import uixiaoyuan
 
 INITIAL_STATE = {
     "step": 1,
@@ -108,7 +108,7 @@ def app_main():
     if st.session_state.step == 2 and st.session_state.browser_started:
         st.subheader(f'selenium第{st.session_state.step}步，目标网站自动化解析')
         if st.session_state.web_name == '小猿众包':
-            xiao_yuan_ui.main()
+            uixiaoyuan.main()
         elif st.session_state.web_name == '':
             pass
         else:

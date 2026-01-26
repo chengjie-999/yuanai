@@ -2,6 +2,8 @@ import random
 import time
 
 import streamlit as st
+
+from app_core import initializing_state, reset_to_initial
 from spiderlx.core.parse.xiaoyuan import SeleniumXiaoYuan
 
 INITIAL_STATE = {
@@ -14,22 +16,6 @@ INITIAL_STATE = {
     "xiao_yuan_false_causes": ['格式问题'],
     "xiao_yuan_false_cause": '格式问题',
 }  # 初始状态
-
-
-def initializing_state():
-    """
-    初始化selenium_ui的会话状态（跨步骤保存数据）
-    :return:
-    """
-    for key, default_val in INITIAL_STATE.items():
-        if key not in st.session_state:
-            st.session_state[key] = default_val
-
-
-def reset_to_initial():
-    """回归初始化状态：用保留的初始模板重置所有状态"""
-    for key, default_val in INITIAL_STATE.items():
-        st.session_state[key] = default_val  # 强制覆盖为初始值
 
 
 def home_start(xiao_yuan, output_placeholder=None):
@@ -55,7 +41,7 @@ def go_one(xiao_yuan):
     :param xiao_yuan: 小猿众包
     :return:
     """
-    st.divider()
+
     st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：获取主页任务信息！')
     if not st.session_state.xiao_yuan_auto:
         if st.button('开启自动开始任务'):
@@ -90,17 +76,22 @@ def go_one(xiao_yuan):
 
 
 def main():
-    st.divider()
-    initializing_state()
+    """
+    小猿ui主页
+    :return:
+    """
+    initializing_state(INITIAL_STATE)
 
     xiao_yuan = SeleniumXiaoYuan(st.session_state.web_driver)
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.success('小猿众包已成功进入！！！')
+        st.image("https://xyzb.yuanfudao.com/img/logo.24003130.png", width=150)
     with col2:
+        pass
+    with col3:
         if st.button('返回首页'):
             xiao_yuan.go_home()
-            reset_to_initial()
+            reset_to_initial(INITIAL_STATE)
             # st.session_state.xiao_yuan_auto = True
             st.rerun()
 
@@ -126,7 +117,7 @@ def main():
             if st.button('提交领下一任务'):
                 go_on = xiao_yuan.compete('提交领下一任务')
                 if not go_on:
-                    reset_to_initial()
+                    reset_to_initial(INITIAL_STATE)
                     st.session_state.xiao_yuan_auto = True
                     st.rerun()
             if st.button('整题驳回'):
@@ -171,3 +162,4 @@ def main():
                 xiao_yuan.go_question(st.session_state.xiao_yuan_card_name, true=False)
         with col2:
             pass
+    st.image('https://xyzb.yuanfudao.com/img/task-banner.53406e80.png')

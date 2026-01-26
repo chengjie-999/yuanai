@@ -93,11 +93,13 @@ class SeleniumXiaoYuan:
 
             # 找到独立答案 .yst-mathjax-loading
             try:
+                answer_li = []
                 # 尝试查找元素（这里用ID定位，实际替换为你的定位器）
                 answer = question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading")
                 ActionChains(self.web_driver).move_to_element(answer).perform()
                 # 如果找到元素，执行后续操作（如点击、输入）
                 answer.click()
+                print(answer.text)
                 time.sleep(0.5)
                 # 点击正确按钮 ant-btn ant-btn-primary button_gjJ0I auditPassButton_OH_ef
                 true = question.find_element(By.CSS_SELECTOR, '.button_gjJ0I')
@@ -112,11 +114,13 @@ class SeleniumXiaoYuan:
             # 找到第一个的初次审核的黄框（批改答案） .ol-overlay-container 点击
             try:
                 ActionChains(self.web_driver).move_to_element(to_element=question).perform()
+                if False:
+                    answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
+                    for answer in answers:
+                        pass
                 answer = question.find_element(By.CSS_SELECTOR, '.ol-overlay-container')
+                print(answer.text, __name__)
                 ActionChains(self.web_driver).move_to_element(answer).perform()
-                # for answer in answers:
-                self.web_driver.execute_script("window.scrollTo(0, arguments[0].offsetTop);", answer)
-
                 # 再点击
                 answer.click()
                 print('答案点击完成！')
@@ -136,7 +140,8 @@ class SeleniumXiaoYuan:
             except ElementNotInteractableException:
                 print(f'【批改答案】交互隐藏！{ElementNotInteractableException().msg}')
                 # ActionChains(self.web_driver).send_keys(Keys.SPACE).perform()
-            except Exception:
+            except Exception as e:
+                # print('未知错误', e)
                 pass
 
             # 二次审核的黄框
@@ -231,6 +236,7 @@ class SeleniumXiaoYuan:
         # ant-modal-content
         reject = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')
         confirm = reject.find_element(By.CSS_SELECTOR, '.ant-btn-primary')
+        print(confirm.text)
         confirm.click()
 
         pass

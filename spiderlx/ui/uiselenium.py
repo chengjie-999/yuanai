@@ -1,5 +1,6 @@
 import streamlit as st
 
+from app_core import initializing_state, reset_to_initial
 from spiderlx.auto.web.selenium import main as selenium_cj
 from spiderlx.ui import uixiaoyuan
 
@@ -11,22 +12,6 @@ INITIAL_STATE = {
     "web_name": "",
     "web_open": False
 }  # 初始状态
-
-
-def initializing_state():
-    """
-    初始化selenium_ui的会话状态（跨步骤保存数据）
-    :return:
-    """
-    for key, default_val in INITIAL_STATE.items():
-        if key not in st.session_state:
-            st.session_state[key] = default_val
-
-
-def reset_to_initial():
-    """回归初始化状态：用保留的初始模板重置所有状态"""
-    for key, default_val in INITIAL_STATE.items():
-        st.session_state[key] = default_val  # 强制覆盖为初始值
 
 
 # @st.cache_resource
@@ -50,21 +35,19 @@ def app_main():
     # ======================
     # web自动化首页
     # ======================
-    initializing_state()
-    # 侧边栏
-    st.sidebar.write('【当前session状态】')
-    for k in st.session_state:
-        st.sidebar.write(k, st.session_state[k])
+    initializing_state(INITIAL_STATE)
 
-    col1, col2, col3, col4 = st.columns(4)
+    st.sidebar.image('https://www.runoob.com/wp-content/uploads/2025/01/selenium-automation.png')
+
+    col1, col2, col3, col4 = st.sidebar.columns(4)
     with col1:
         if not st.session_state.browser_started:
             # 唤醒并配置浏览器
-            if st.button('开启浏览器', use_container_width=True):
+            if st.button('开启浏览器', type='primary', use_container_width=True):
                 if not st.session_state.browser_started:
                     st.session_state.web_driver = get_driver()  # 使用浏览器驱动
                     st.session_state.browser_started = True  # 标记为已启动
-                    st.success("浏览器首次启动成功！")
+                    # st.success("浏览器首次启动成功！")
                     st.rerun()
                 else:
                     st.warning("浏览器已启动，无需重复开启！")
@@ -72,7 +55,7 @@ def app_main():
             if st.button('关闭浏览器', use_container_width=True):
                 if st.session_state.browser_started:
                     st.session_state.web_driver.quit()
-                    reset_to_initial()
+                    reset_to_initial(INITIAL_STATE)
                     st.rerun()
                 else:
                     st.warning("浏览器未启动！")
@@ -87,6 +70,8 @@ def app_main():
         if st.button('重载', use_container_width=True):
             st.rerun()
 
+    with st.sidebar.container(border=True):
+        pass
     # -------- 浏览器打开后，步骤1：打开目标网站 --------
     if st.session_state.step == 1 and st.session_state.browser_started:
         st.subheader(f'selenium第{st.session_state.step}步')
@@ -106,7 +91,8 @@ def app_main():
 
     # -------- 浏览器打开后，步骤2：目标网站自动化解析 --------
     if st.session_state.step == 2 and st.session_state.browser_started:
-        st.subheader(f'selenium第{st.session_state.step}步，目标网站自动化解析')
+        with st.sidebar.container(border=True):
+            st.subheader(f'selenium第{st.session_state.step}步，目标网站自动化解析')
         if st.session_state.web_name == '小猿众包':
             uixiaoyuan.main()
         elif st.session_state.web_name == '':

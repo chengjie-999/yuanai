@@ -13,7 +13,8 @@ INITIAL_STATE = {
     "xiao_yuan_auto": False,
     "xiao_yuan_count": 0,
     "xiao_yuan_step": 1,
-    "xiao_yuan_false_causes": ['格式问题'],
+    "xiao_yuan_qa": ['https://xyzb.yuanfudao.com/img/task-banner.53406e80.png'],
+    "xiao_yuan_false_causes": ['格式问题', "举报"],
     "xiao_yuan_false_cause": '格式问题',
 }  # 初始状态
 
@@ -102,6 +103,7 @@ def main():
     # 第二步：执行任务
     if st.session_state.xiao_yuan_step == 2 and '单题标答-审核' in st.session_state.xiao_yuan_card_name:
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：执行{st.session_state.xiao_yuan_card_name}任务')
+        st.session_state.xiao_yuan_qa = xiao_yuan.question_info()
 
         col1, col2 = st.columns(2)
         with col1:
@@ -120,6 +122,9 @@ def main():
                     reset_to_initial(INITIAL_STATE)
                     st.session_state.xiao_yuan_auto = True
                     st.rerun()
+                # time.sleep(2)
+                st.rerun()
+
             if st.button('整题驳回'):
                 st.session_state.xiao_yuan_false_cause = st.selectbox('', st.session_state.xiao_yuan_false_causes)
                 go_on = xiao_yuan.compete('整题驳回', cause=st.session_state.xiao_yuan_false_cause)
@@ -162,4 +167,4 @@ def main():
                 xiao_yuan.go_question(st.session_state.xiao_yuan_card_name, true=False)
         with col2:
             pass
-    st.image('https://xyzb.yuanfudao.com/img/task-banner.53406e80.png')
+    st.image(st.session_state.xiao_yuan_qa)

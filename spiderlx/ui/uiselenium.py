@@ -80,14 +80,15 @@ def app_main():
         st.session_state.web_name = st.selectbox('请选择想要访问的网站', options=web_info.values())
         st.write('即将进入：', st.session_state.web_name)
         if st.button('打开网站'):
-            # 打开要访问的网站
-            name = selenium_cj.open_web(driver, web_info, st.session_state.web_name)
-            if name == st.session_state.web_name:
-                st.success('网站已成功打开！')
-                st.session_state.web_open = True
-                # 进入第二步 —— 自动化解析网站
-                st.session_state.step = 2
-                st.rerun()  # 刷新进入步骤2
+            with st.spinner(f"正在打开{st.session_state.web_name}..."):
+                # 打开要访问的网站
+                name = selenium_cj.open_web(driver, web_info, st.session_state.web_name)
+                if name == st.session_state.web_name:
+                    st.success('网站已成功打开！')
+                    st.session_state.web_open = True
+                    # 进入第二步 —— 自动化解析网站
+                    st.session_state.step = 2
+                    st.rerun()  # 刷新进入步骤2
 
     # -------- 浏览器打开后，步骤2：目标网站自动化解析 --------
     if st.session_state.step == 2 and st.session_state.browser_started:

@@ -1,3 +1,4 @@
+import base64
 import time
 
 from selenium.common import NoSuchElementException, ElementNotInteractableException
@@ -78,7 +79,7 @@ class SeleniumXiaoYuan:
         :param true:
         :param up:
         :param name: 任务名
-        :return:
+        :return: 图片列表
         """
         wait = WebDriverWait(self.web_driver, 30)  # （最长等10秒，每0.5秒轮询一次）每进行一次页面加载时执行一次显式等待
         if '单题标答-审核' in name:
@@ -93,7 +94,6 @@ class SeleniumXiaoYuan:
 
             # 找到独立答案 .yst-mathjax-loading
             try:
-                answer_li = []
                 # 尝试查找元素（这里用ID定位，实际替换为你的定位器）
                 answer = question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading")
                 ActionChains(self.web_driver).move_to_element(answer).perform()
@@ -143,9 +143,6 @@ class SeleniumXiaoYuan:
             except Exception as e:
                 # print('未知错误', e)
                 pass
-
-            # 二次审核的黄框
-            pass
 
             if up:
                 self.question_restore()
@@ -294,6 +291,44 @@ class SeleniumXiaoYuan:
             self.web_driver.close()
         self.web_driver.switch_to.window(windows[0])
         pass
+
+    def question_info(self):
+        wait = WebDriverWait(self.web_driver, 30)
+        qa = []
+        # 参考答案
+        refer = wait.until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, '.ant-image > img'))
+        )
+        refer_img = refer.get_attribute('src')
+        qa.append(refer_img)
+
+        # 题目 .ol-viewport
+        question = wait.until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport'))
+        )
+        # question = web_driver.find_element(By.CSS_SELECTOR, '.ol-viewport')
+        # # 3. 定位 canvas 元素（先确保元素存在）
+        # canvas_elem =question.find_element(By.TAG_NAME, "canvas")
+        # print(canvas_elem)
+        # print('*'*100)
+        # # 4. 核心操作：注入 JavaScript 调用 toDataURL() 获取 Base64 内容
+        # # 注意：JavaScript 中通过 arguments[0] 接收传入的 canvas 元素
+        # canvas_base64 = self.web_driver.execute_script("""
+        #    // 传入的 canvas 元素
+        #    const canvas = arguments[0];
+        #    // 调用 toDataURL() 返回 Base64 字符串
+        #    return canvas.toDataURL("image/png");
+        # """, canvas_elem)
+        # if canvas_base64:
+        #     # 5.1 去除 Base64 字符串头部的 "data:image/png;base64," 前缀
+        #     base64_data = canvas_base64.split(",")[1]
+        #
+        #     # 5.2 解码 Base64 数据为二进制流
+        #     image_binary = base64.b64decode(base64_data)
+        #     print(image_binary)
+        #     qa.append(image_binary)
+
+        return qa
 
 
 if __name__ == '__main__':

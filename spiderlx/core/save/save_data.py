@@ -42,7 +42,17 @@ def root_path(project_name="my_spider"):
         print(f"路径中未找到'{project_name}'目录")
 
 
-def file_save_path(root=root_path()):
+def save_path(*args):
+    root = root_path()
+    save_dir = os.sep + os.sep.join(args)
+    path = root + save_dir
+    if not os.path.exists(path):
+        make_dir(root)
+    print("文件的保存位置：", path)
+    return path
+
+
+def file_save_path(root=root_path(), *args):
     path = root + r'\data\file'
     if not os.path.exists(path):
         make_dir(root)
@@ -134,6 +144,5 @@ class SavedData:
 
 
 if __name__ == '__main__':
-    sd = SavedData('666')
-    sd.save_data_html('77777777777777')
+    save_path('data', 'file', 'img', 'home.png')
 

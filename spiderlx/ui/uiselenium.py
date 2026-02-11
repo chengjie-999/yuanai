@@ -46,6 +46,7 @@ def app_main():
             if st.button('开启浏览器', type='primary', use_container_width=True):
                 if not st.session_state.browser_started:
                     st.session_state.web_driver = get_driver()  # 使用浏览器驱动
+                    st.session_state.app_home = False
                     st.session_state.browser_started = True  # 标记为已启动
                     # st.success("浏览器首次启动成功！")
                     st.rerun()

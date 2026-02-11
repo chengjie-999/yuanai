@@ -1,7 +1,7 @@
 import base64
 import time
 
-from selenium.common import NoSuchElementException, ElementNotInteractableException
+from selenium.common import NoSuchElementException, ElementNotInteractableException, WebDriverException
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.common.by import By
@@ -73,7 +73,7 @@ class SeleniumXiaoYuan:
                 break
         return title_cards
 
-    def go_question(self, name, true=True, up=False):
+    def go_question(self, name, true='1', up=False):
         """
         处理任务
         :param true:
@@ -114,10 +114,7 @@ class SeleniumXiaoYuan:
             # 找到第一个的初次审核的黄框（批改答案） .ol-overlay-container 点击
             try:
                 ActionChains(self.web_driver).move_to_element(to_element=question).perform()
-                if False:
-                    answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
-                    for answer in answers:
-                        pass
+
                 answer = question.find_element(By.CSS_SELECTOR, '.ol-overlay-container')
                 print(answer.text, __name__)
                 ActionChains(self.web_driver).move_to_element(answer).perform()
@@ -134,6 +131,8 @@ class SeleniumXiaoYuan:
                 for i in range(len(answers)):
                     true.click()
                 print('答案判断完成！')
+                return
+
             except NoSuchElementException:
                 # 找不到元素时执行的“跳过”逻辑（可根据需求修改）
                 print("未找到【批改答案】，已跳过")
@@ -207,17 +206,27 @@ class SeleniumXiaoYuan:
         time.sleep(0.5)
         return self.box()
 
-    def question_resize(self, up=True, count=6):
-        if up:
+    def question_resize(self, down=True, count=6):
+        """
+        题目放大或缩小
+        :param down:缩小
+        :param count:点击缩小按钮的次数
+        :return:
+        """
+        if down:
             # 减小按钮
-            up_button = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-zoom-out')[0]
+            down_button = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-zoom-out')[0]
             for _ in range(count):
-                up_button.click()
+                down_button.click()
                 time.sleep(0.05)
         else:
             pass
 
     def question_restore(self):
+        """
+        题目恢复到正常大小
+        :return:
+        """
         try:
             re = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-control')[3]
             re.click()
@@ -235,12 +244,11 @@ class SeleniumXiaoYuan:
         confirm = reject.find_element(By.CSS_SELECTOR, '.ant-btn-primary')
         print(confirm.text)
         confirm.click()
-
-        pass
+        return confirm.text
 
     def box(self, go_on=True):
         """
-        任务消息：任务不足
+        任务消息提示框
         :return:是否继续
         """
         try:
@@ -271,7 +279,7 @@ class SeleniumXiaoYuan:
 
     def to_detail(self):
         """
-        抄写进入题目详情页面
+        【抄写】进入题目详情页面
         :return:
         """
         detail = self.web_driver.find_element(By.CSS_SELECTOR, '.content_2t03S a')
@@ -279,6 +287,10 @@ class SeleniumXiaoYuan:
         pass
 
     def close_detail(self):
+        """
+        【抄写】关闭题目详情页面
+        :return:
+        """
         windows = self.web_driver.window_handles
         print(windows)
         if len(windows) > 1:
@@ -292,9 +304,13 @@ class SeleniumXiaoYuan:
         self.web_driver.switch_to.window(windows[0])
         pass
 
-    def question_info(self):
-        wait = WebDriverWait(self.web_driver, 30)
+    def question_info(self, screenshot=True):
+        """
+        题目的标记答案和参考答案
+        :return:
+        """
         qa = []
+        wait = WebDriverWait(self.web_driver, 30)
         # 参考答案
         refer = wait.until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, '.ant-image > img'))
@@ -303,10 +319,35 @@ class SeleniumXiaoYuan:
         qa.append(refer_img)
 
         # 题目 .ol-viewport
-        question = wait.until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport'))
-        )
-        # question = web_driver.find_element(By.CSS_SELECTOR, '.ol-viewport')
+        if screenshot:
+            wait = WebDriverWait(self.web_driver, 30)
+            question = wait.until(
+                EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport'))
+            )
+            # question = web_driver.find_element(By.CSS_SELECTOR, '.ol-viewport')
+            # 独立标记答案
+            local = img_save_path('独立.png')
+            try:
+                answer = question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading")
+                answer.screenshot(local)
+                qa.append(local)
+            except NoSuchElementException:
+                qa.append(local)
+
+            # 标记答案
+            answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
+            # answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlaycontainer')
+            print(len(answers))
+            i = 0
+            for answer in answers:
+                try:
+                    local = img_save_path(f'答案{i}.png')
+                    mark = answer.screenshot(local)
+                except WebDriverException:
+                    # 元素无法截图
+                    continue
+                qa.append(local)
+                i += 1
         # # 3. 定位 canvas 元素（先确保元素存在）
         # canvas_elem =question.find_element(By.TAG_NAME, "canvas")
         # print(canvas_elem)

@@ -1,9 +1,12 @@
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+# from webdriver_manager.chrome import ChromeDriverManager
 
 from spiderlx.core.save.urls import web_urls
 from spiderlx.anti.cookie import selenium
+# 安装：pip install webdrivermanager-cn
+from webdrivermanager_cn import ChromeDriverManagerAliMirror
 
 
 def able_web():
@@ -81,8 +84,9 @@ def chrome():
     chrome_options.add_experimental_option('useAutomationExtension', False)
 
     # 1. 浏览器驱动
-    # driver = Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-    driver = Chrome(service=Service(executable_path=r"D:\chromedriver-win64\chromedriver.exe"), options=chrome_options)
+    driver = Chrome(service=Service(ChromeDriverManagerAliMirror().install()), options=chrome_options)
+    # driver = Chrome(service=Service(executable_path=r"D:\chromedriver-win64\chromedriver.exe"),
+    # options=chrome_options)
     driver.maximize_window()
     return driver
 

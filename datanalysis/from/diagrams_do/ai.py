@@ -1,7 +1,14 @@
+import os.path
+
 import pandas as pd
 from diagrams import Diagram, Edge
 # 注意：diagrams==0.20.0 仅支持以下两个组件表示数据相关节点，无 Table 类
 from diagrams.generic.storage import Storage
+
+from utils.data_path import root_path
+
+save_path = r'data/ai'
+save_path = os.path.join(root_path(), save_path)
 
 # 1. 加载/模拟CSV/Excel数据（避免文件不存在报错，可独立运行）
 try:

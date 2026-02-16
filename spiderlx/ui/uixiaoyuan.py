@@ -3,7 +3,7 @@ import time
 
 import streamlit as st
 
-from app_core import initializing_state, reset_to_initial
+from utils.app_core import initializing_state, reset_to_initial
 from spiderlx.core.parse.xiaoyuan import SeleniumXiaoYuan
 
 INITIAL_STATE = {

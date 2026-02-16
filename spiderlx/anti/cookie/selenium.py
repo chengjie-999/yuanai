@@ -3,7 +3,7 @@ import random
 
 import time
 
-from spiderlx.core.save.save_data import root_path
+from utils.data_path import root_path
 
 
 def get_cookie(web_driver, cookie_file_path):

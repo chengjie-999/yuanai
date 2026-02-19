@@ -39,7 +39,7 @@ def app_main():
 
     st.sidebar.image('https://www.runoob.com/wp-content/uploads/2025/01/selenium-automation.png')
 
-    col1, col2, col3, col4 = st.sidebar.columns(4)
+    col1, col2, col3 = st.sidebar.columns(3)
     with col1:
         if not st.session_state.browser_started:
             # 唤醒并配置浏览器
@@ -66,9 +66,6 @@ def app_main():
     with col3:
         if st.button('返回上一步', use_container_width=True) and st.session_state.step > 1:
             st.session_state.step -= 1
-            st.rerun()
-    with col4:
-        if st.button('重载', use_container_width=True):
             st.rerun()
 
     with st.sidebar.container(border=True):

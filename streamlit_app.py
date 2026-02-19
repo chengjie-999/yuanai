@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+
+import aicode.headui
 from spiderlx.ui import uiselenium, ai
 from datanalysis.ui import core
 
@@ -28,7 +30,7 @@ initializing_state(INITIAL_STATE)
 # ======================
 # 第二步：设置页面基础样式
 # ======================
-st.set_page_config(page_title="可视化工具", page_icon="🕷️")
+# st.set_page_config(page_title="可视化工具", page_icon="🕷️")
 if st.sidebar.button('重载', use_container_width=True):
     st.rerun()
 
@@ -61,7 +63,7 @@ else:
 
 # 根据session_state中的test状态决定是否运行AI测试代码
 if st.session_state.test:
-    ai.test.main()
+    aicode.headui.main()
     # 如果用户点击关闭AI代码测试按钮，则将app_home状态设为True，test状态设为False，并重新运行应用
     if st.sidebar.button('关闭ai代码测试'):
         st.session_state.app_home = True

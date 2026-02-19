@@ -36,40 +36,38 @@ def app_main():
     # web自动化首页
     # ======================
     initializing_state(INITIAL_STATE)
-
-    st.sidebar.image('https://www.runoob.com/wp-content/uploads/2025/01/selenium-automation.png')
-
-    col1, col2, col3 = st.sidebar.columns(3)
-    with col1:
-        if not st.session_state.browser_started:
-            # 唤醒并配置浏览器
-            if st.button('开启浏览器', type='primary', use_container_width=True):
-                if not st.session_state.browser_started:
-                    st.session_state.web_driver = get_driver()  # 使用浏览器驱动
-                    st.session_state.app_home = False
-                    st.session_state.browser_started = True  # 标记为已启动
-                    # st.success("浏览器首次启动成功！")
-                    st.rerun()
-                else:
-                    st.warning("浏览器已启动，无需重复开启！")
-        else:
-            if st.button('关闭浏览器', use_container_width=True):
-                if st.session_state.browser_started:
-                    st.session_state.web_driver.quit()
-                    reset_to_initial(INITIAL_STATE)
-                    st.rerun()
-                else:
-                    st.warning("浏览器未启动！")
-    with col2:
-        show_state()
-
-    with col3:
-        if st.button('返回上一步', use_container_width=True) and st.session_state.step > 1:
-            st.session_state.step -= 1
-            st.rerun()
-
     with st.sidebar.container(border=True):
-        pass
+        st.image('https://www.runoob.com/wp-content/uploads/2025/01/selenium-automation.png')
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if not st.session_state.browser_started:
+                # 唤醒并配置浏览器
+                if st.button('开启浏览器', type='primary', use_container_width=True):
+                    if not st.session_state.browser_started:
+                        st.session_state.web_driver = get_driver()  # 使用浏览器驱动
+                        st.session_state.app_home = False
+                        st.session_state.browser_started = True  # 标记为已启动
+                        # st.success("浏览器首次启动成功！")
+                        st.rerun()
+                    else:
+                        st.warning("浏览器已启动，无需重复开启！")
+            else:
+                if st.button('关闭浏览器', use_container_width=True):
+                    if st.session_state.browser_started:
+                        st.session_state.web_driver.quit()
+                        reset_to_initial(INITIAL_STATE)
+                        st.rerun()
+                    else:
+                        st.warning("浏览器未启动！")
+        with col2:
+            show_state()
+
+        with col3:
+            if st.button('返回上一步', use_container_width=True) and st.session_state.step > 1:
+                st.session_state.step -= 1
+                st.rerun()
+
     # -------- 浏览器打开后，步骤1：打开目标网站 --------
     if st.session_state.step == 1 and st.session_state.browser_started:
         st.subheader(f'selenium第{st.session_state.step}步')

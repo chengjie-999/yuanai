@@ -9,6 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 
 from spiderlx.core.save.save_data import *
+from utils.data_path import img_save_path
 
 
 class SeleniumXiaoYuan:

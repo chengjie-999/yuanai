@@ -33,7 +33,7 @@ def root_path(project_name="my_spider"):
         target_index = path_parts.index(project_name)
         # 截取到"spiderlx"的上一级目录
         project_path = os.sep.join(path_parts[:target_index + 1])
-        print("项目路径：", project_path)
+        # print("项目路径：", project_path)
         return project_path
     except ValueError:
         print(f"路径中未找到'{project_name}'目录")

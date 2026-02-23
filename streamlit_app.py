@@ -1,3 +1,5 @@
+import os.path
+
 import streamlit as st
 import pandas as pd
 
@@ -6,6 +8,21 @@ from spiderlx.ui import uiselenium, ai
 from datanalysis.ui import core
 
 from utils.app_core import initializing_state, reset_to_initial
+from utils.data_path import root_path
+
+
+def va():
+    open_num = 0
+    for v in st.session_state.values():
+        if not v:
+            open_num += 1
+
+    if not open_num:
+        # st.title('欢迎使用数据可视化工具！！！')
+        # 本地图片
+        st.image(r'C:\Users\24727\Desktop\Code\my_spider\data\file\img\home.jpg')
+    return open_num
+
 
 # 运行：streamlit run streamlit_app.py
 
@@ -18,13 +35,13 @@ from utils.app_core import initializing_state, reset_to_initial
 # 1. 页面基础配置 (必须放在最前面)
 # --------------------------
 st.set_page_config(
-    page_title="数据可视化 Dashboard",
-    page_icon="📊",
+    page_title="数据可视化 DatAnalysis",
+    page_icon=os.path.join(root_path(), 'data/file/img/home.jpg'),
     layout="wide",  # 宽屏布局
     initial_sidebar_state="expanded"  # 侧边栏默认展开
 )
 # 加载自定义CSS（主脚本已完成set_page_config，此处执行无冲突）
-# core.local_css()
+core.local_css()
 
 INITIAL_STATE = {
     "app_home": False,
@@ -45,11 +62,7 @@ initializing_state(INITIAL_STATE)
 
 if st.sidebar.button('重载', use_container_width=True):
     st.rerun()
-
-if (not st.session_state.selenium) and (not st.session_state.datanalysis):
-    # st.title('欢迎使用数据可视化工具！！！')
-    # 本地图片
-    st.image(r'C:\Users\24727\Desktop\Code\my_spider\data\file\img\home.png')
+va()
 
 if st.session_state.selenium:
     if st.sidebar.button('关闭selenium', use_container_width=True):
@@ -77,7 +90,7 @@ else:
 
 # 根据session_state中的test状态决定是否运行AI测试代码
 if st.session_state.test:
-    # aicode.headui.main()
+    aicode.headui.main()
     # 如果用户点击关闭AI代码测试按钮，则将app_home状态设为True，test状态设为False，并重新运行应用
     if st.sidebar.button('关闭ai代码测试'):
         st.session_state.app_home = True
@@ -90,7 +103,6 @@ else:
         st.session_state.test = True
         st.rerun()
 
-
 if st.sidebar.button('查看当前session状态'):
     st.write('📌【当前session状态】')
     session_table = [[key, value] for key, value in st.session_state.items()]
@@ -101,4 +113,3 @@ if st.sidebar.button('查看当前session状态'):
 #     online_video_url = "https://www.w3school.com.cn/i/movie.mp4"  # 推荐：短片段，加载快
 #     # 直接用st.video()即可，音量键正常、有声音
 #     st.video(online_video_url)
-

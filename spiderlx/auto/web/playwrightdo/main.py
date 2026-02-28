@@ -1,9 +1,10 @@
 import random
 import time
 from playwright.sync_api import sync_playwright, Playwright
-from spiderlx.core.save import web_urls
+
 # 导入改造后的cookie处理函数（替换原selenium版本）
 from spiderlx.anti.cookie.playwright import use_cookie
+from spiderlx.core.save.urls import web_urls
 
 
 def able_web():
@@ -26,6 +27,7 @@ def able_web():
 def open_web(context, page, info, name='', code=None, url=None, login=True):
     """
     适配Playwright：打开指定网站并处理Cookie登录
+    :param login: 登录
     :param context: Playwright浏览器上下文（绑定Cookie）
     :param page: Playwright页面对象（页面操作）
     :param info: 网站信息字典

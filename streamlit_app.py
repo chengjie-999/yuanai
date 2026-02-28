@@ -4,7 +4,8 @@ import streamlit as st
 import pandas as pd
 
 import aicode.headui
-from spiderlx.ui import uiselenium, ai
+import spiderlx.ui.playwright
+from spiderlx.ui import uiselenium
 from datanalysis.ui import core
 
 from utils.app_core import initializing_state, reset_to_initial
@@ -13,12 +14,15 @@ from utils.data_path import root_path
 
 def va():
     open_num = 0
-    for v in st.session_state.values():
-        if not v:
-            open_num += 1
-
+    for k, v in st.session_state.items():
+        for key in INITIAL_STATE:
+            if k == key:
+                if not v:
+                    open_num += 1
+    print(open_num)
     if not open_num:
         # st.title('欢迎使用数据可视化工具！！！')
+        st.info(f'【{open_num}】')
         # 本地图片
         st.image(r'C:\Users\24727\Desktop\Code\my_spider\data\file\img\home.jpg')
     return open_num
@@ -47,6 +51,7 @@ INITIAL_STATE = {
     "app_home": False,
     "session_show": False,
     "selenium": True,
+    "playwright": True,
     "test": False,
     'datanalysis': True,
 }  # 初始状态
@@ -74,6 +79,19 @@ else:
     if st.sidebar.button('开始使用selenium', use_container_width=True):
         st.session_state.app_home = False
         st.session_state.selenium = True
+        st.rerun()
+
+if st.session_state.playwright:
+    if st.sidebar.button('关闭playwright', use_container_width=True):
+        st.session_state.playwright = False
+        st.rerun()
+    # web自动化
+    # uiselenium.app_main()
+    spiderlx.ui.playwright.app_main()
+else:
+    if st.sidebar.button('开始使用playwright', use_container_width=True):
+        st.session_state.app_home = False
+        st.session_state.playwright = True
         st.rerun()
 
 if st.session_state.datanalysis:

@@ -1,6 +1,7 @@
 import os.path
 import json  # 替换eval，用json更安全
-from spiderlx.core.save.save_data import root_path
+
+from utils.data_path import root_path
 
 
 def get_cookie(page, cookie_file_path):

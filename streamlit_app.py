@@ -4,28 +4,11 @@ import streamlit as st
 import pandas as pd
 
 import aicode.headui
-import spiderlx.ui.playwright
-from spiderlx.ui import uiselenium
+from spiderlx.ui import spider_app
 from datanalysis.ui import core
 
-from utils.app_core import initializing_state, reset_to_initial
+from utils.app_core import *
 from utils.data_path import root_path
-
-
-def va():
-    open_num = 0
-    for k, v in st.session_state.items():
-        for key in INITIAL_STATE:
-            if k == key:
-                if not v:
-                    open_num += 1
-    print(open_num)
-    if not open_num:
-        # st.title('欢迎使用数据可视化工具！！！')
-        st.info(f'【{open_num}】')
-        # 本地图片
-        st.image(r'C:\Users\24727\Desktop\Code\my_spider\data\file\img\home.jpg')
-    return open_num
 
 
 # 运行：streamlit run streamlit_app.py
@@ -50,8 +33,7 @@ core.local_css()
 INITIAL_STATE = {
     "app_home": False,
     "session_show": False,
-    "selenium": True,
-    "playwright": True,
+    "spider": False,
     "test": False,
     'datanalysis': True,
 }  # 初始状态
@@ -67,59 +49,15 @@ initializing_state(INITIAL_STATE)
 
 if st.sidebar.button('重载', use_container_width=True):
     st.rerun()
-va()
+va(INITIAL_STATE)
 
-if st.session_state.selenium:
-    if st.sidebar.button('关闭selenium', use_container_width=True):
-        st.session_state.selenium = False
-        st.rerun()
-    # web自动化
-    uiselenium.app_main()
-else:
-    if st.sidebar.button('开始使用selenium', use_container_width=True):
-        st.session_state.app_home = False
-        st.session_state.selenium = True
-        st.rerun()
+# 创建侧边栏三列布局（等分），也可自定义比例如 [1,1,1] 或 [2,1,1]
+col1, col2, col3 = st.sidebar.columns(3)
 
-if st.session_state.playwright:
-    if st.sidebar.button('关闭playwright', use_container_width=True):
-        st.session_state.playwright = False
-        st.rerun()
-    # web自动化
-    # uiselenium.app_main()
-    spiderlx.ui.playwright.app_main()
-else:
-    if st.sidebar.button('开始使用playwright', use_container_width=True):
-        st.session_state.app_home = False
-        st.session_state.playwright = True
-        st.rerun()
-
-if st.session_state.datanalysis:
-    if st.sidebar.button('关闭数据分析', use_container_width=True):
-        st.session_state.datanalysis = False
-        st.rerun()
-    # 数据分析
-    core.main()
-else:
-    if st.sidebar.button('数据分析', use_container_width=True):
-        st.session_state.datanalysis = True
-        st.session_state.app_home = False
-        st.rerun()
-
-# 根据session_state中的test状态决定是否运行AI测试代码
-if st.session_state.test:
-    aicode.headui.main()
-    # 如果用户点击关闭AI代码测试按钮，则将app_home状态设为True，test状态设为False，并重新运行应用
-    if st.sidebar.button('关闭ai代码测试'):
-        st.session_state.app_home = True
-        st.session_state.test = False
-        st.rerun()
-# 如果未运行AI测试代码，则检查是否点击ai代码测试按钮以启动测试
-else:
-    if st.sidebar.button('ai代码测试'):
-        st.session_state.app_home = False
-        st.session_state.test = True
-        st.rerun()
+# 使用封装的函数，指定每个按钮所在的列
+render_sidebar_toggle_button("spider", "爬虫", spider_app.main, column=col1)
+render_sidebar_toggle_button("datanalysis", "数据分析", core.main, column=col2)
+render_sidebar_toggle_button("test", "ai代码测试", aicode.headui.main, column=col3)
 
 if st.sidebar.button('查看当前session状态'):
     st.write('📌【当前session状态】')

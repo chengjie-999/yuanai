@@ -89,7 +89,7 @@ def main():
     """
     initializing_state(INITIAL_STATE)
 
-    xiao_yuan = SeleniumXiaoYuan(st.session_state.web_driver)
+    xiao_yuan = SeleniumXiaoYuan(st.session_state.web_driver.driver)
     col1, col2, col3 = st.columns(3)
     with col1:
         st.image("https://xyzb.yuanfudao.com/img/logo.24003130.png", width=150)

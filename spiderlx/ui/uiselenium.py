@@ -8,8 +8,8 @@ INITIAL_STATE = {
     "step": 1,
     "web_driver": "",
     "browser_started": False,
-    "url": "",
     "web_name": "",
+    "web_api": "",
     "web_open": False
 }  # 初始状态
 
@@ -20,7 +20,7 @@ def get_driver():
     获取浏览器驱动，并加入缓存
     :return:浏览器驱动
     """
-    return selenium_cj.chrome()
+    return selenium_cj.WebBrowser()
 
 
 def show_state():
@@ -55,7 +55,7 @@ def app_main():
             else:
                 if st.button('关闭浏览器', use_container_width=True):
                     if st.session_state.browser_started:
-                        st.session_state.web_driver.quit()
+                        st.session_state.web_driver.close_browser()
                         reset_to_initial(INITIAL_STATE)
                         st.rerun()
                     else:
@@ -72,22 +72,41 @@ def app_main():
     if st.session_state.step == 1 and st.session_state.browser_started:
         st.subheader(f'selenium第{st.session_state.step}步')
         driver = st.session_state.web_driver
-        web_info = selenium_cj.able_web()
+
+        web_info = driver.website_info
         st.session_state.web_name = st.selectbox('请选择想要访问的网站', options=web_info.values())
-        st.write('即将进入：', st.session_state.web_name)
-        if st.button('打开网站'):
-            with st.spinner(f"正在打开{st.session_state.web_name}..."):
-                # 打开要访问的网站
-                name = selenium_cj.open_web(driver, web_info, st.session_state.web_name)
-                if name == st.session_state.web_name:
-                    st.success('网站已成功打开！')
-                    st.session_state.web_open = True
-                    # 进入第二步 —— 自动化解析网站
-                    st.session_state.step = 2
-                    st.rerun()  # 刷新进入步骤2
+        st.session_state.web_api = st.text_input("请输入要访问的web_api：", value="https://www.baidu.com")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write('即将进入：', st.session_state.web_name)
+            if st.button('打开已解析网站'):
+                with st.spinner(f"正在打开{st.session_state.web_name}..."):
+                    # 打开要访问的网站
+                    name = driver.open_website(name=st.session_state.web_name)
+                    if name == st.session_state.web_name:
+                        st.success('网站已成功打开！')
+                        st.session_state.web_open = True
+                        # 进入第二步 —— 自动化解析网站
+                        st.session_state.step = 2
+                        st.rerun()  # 刷新进入步骤2
+        with col2:
+            st.write('即将进入：', st.session_state.web_api)
+            if st.button('打开未解析网站'):
+                with st.spinner(f"正在打开{st.session_state.web_api}..."):
+                    # 打开要访问的网站
+                    name = driver.open_website(url=st.session_state.web_api)
+                    if name == st.session_state.web_api:
+                        st.success('网站已成功打开！')
+                        st.session_state.web_open = True
+                        # 进入第二步 —— 自动化解析网站
+                        st.session_state.step = 2
+                        st.rerun()  # 刷新进入步骤2
 
     # -------- 浏览器打开后，步骤2：目标网站自动化解析 --------
     if st.session_state.step == 2 and st.session_state.browser_started:
+        driver = st.session_state.web_driver
+
+        st.session_state.url = driver.get_current_url()
         with st.sidebar.container(border=True):
             st.subheader(f'selenium第{st.session_state.step}步，目标网站自动化解析')
         if st.session_state.web_name == '小猿众包':
@@ -103,5 +122,4 @@ def app_main():
 
 
 if __name__ == '__main__':
-    info = selenium_cj.able_web()
-    print(info.values())
+    pass

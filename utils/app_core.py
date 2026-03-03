@@ -32,9 +32,9 @@ def va(state):
 
 
 # 封装支持分列的侧边栏按钮状态切换逻辑
-def render_sidebar_toggle_button(state_key, button_text, run_func=None, reset_home=True, column=None):
+def render_toggle_button(state_key, button_text, run_func=None, reset_home=True, column=None):
     """
-    渲染侧边栏的状态切换按钮（支持分列）
+    渲染状态切换按钮（支持分列）
 
     参数:
     - state_key: session_state中的状态键名
@@ -53,8 +53,9 @@ def render_sidebar_toggle_button(state_key, button_text, run_func=None, reset_ho
         if run_func:
             run_func()
     else:
-        if container.button(f'开启{button_text}', use_container_width=True):
+        if container.button(f'开启{button_text}', type='primary', use_container_width=True):
             st.session_state[state_key] = True
             if reset_home:
                 st.session_state.app_home = False
             st.rerun()
+    return button_text

@@ -6,7 +6,6 @@ from plotly.data import tips
 
 
 def main():
-    import streamlit as st
 
     # 自定义CSS：放大标签页样式（核心）
     st.markdown("""

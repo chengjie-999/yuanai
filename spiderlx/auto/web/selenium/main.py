@@ -19,10 +19,12 @@ class WebBrowser:
     def __init__(self):
         """初始化浏览器对象，自动完成浏览器配置和网站信息加载"""
         self.driver = None  # 浏览器驱动实例
+        self.option = None
         self.website_info = {}  # 支持的网站信息缓存
         self.current_website_name = None  # 当前打开的网站名称
 
         # 创建对象时自动执行：初始化浏览器 + 加载网站信息
+        self._configure_chrome_options()
         self._initialize_browser()
         self._load_website_info()
 
@@ -42,7 +44,7 @@ class WebBrowser:
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
 
-        return chrome_options
+        self.option = chrome_options
 
     def _initialize_browser(self):
         """私有方法：初始化Chrome浏览器（整合到__init__中）"""
@@ -50,7 +52,7 @@ class WebBrowser:
             # 创建Chrome驱动
             self.driver = Chrome(
                 service=Service(ChromeDriverManagerAliMirror().install()),
-                options=self._configure_chrome_options()
+                options=self.option
             )
             self.driver.maximize_window()
             print("✅ 浏览器初始化成功")
@@ -103,6 +105,7 @@ class WebBrowser:
                 raise ValueError(f"未找到名称为【{name}】的网站")
 
         elif url:
+
             self.current_website_name = '未命名网站'
             target_url = url
 

@@ -1,5 +1,5 @@
 import os.path
-import streamlit as st
+# import streamlit as st
 import pandas as pd
 
 # 导入功能模块（保持原有导入路径）
@@ -11,7 +11,8 @@ from utils.app_core import *
 from utils.data_path import root_path
 
 # ==============================
-# 页面基础配置 (必须放在最前面)  streamlit run streamlit_app.py
+# 页面基础配置 (必须放在最前面)
+# streamlit run streamlit_app.py
 # ==============================
 st.set_page_config(
     page_title="数据可视化 DatAnalysis",

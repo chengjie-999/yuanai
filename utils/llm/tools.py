@@ -85,6 +85,7 @@ def ai_with_tools(question: str):
 
     # 提取AI的回复结果
     ai_message = response.choices[0].message
+    print('【第一次回复】', ai_message)
     final_answer = ""
 
     # 第二步：判断AI是否要调用工具
@@ -122,6 +123,7 @@ def ai_with_tools(question: str):
                 model="deepseek-chat",
                 messages=messages
             )
+            print('【第二次回复】')
             final_answer = final_response.choices[0].message.content
     else:
         # AI不需要调用工具，直接返回文本回复

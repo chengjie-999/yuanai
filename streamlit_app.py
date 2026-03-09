@@ -1,5 +1,5 @@
 import os.path
-# import streamlit as st
+import streamlit as st
 import pandas as pd
 
 # 导入功能模块（保持原有导入路径）
@@ -7,7 +7,7 @@ import aicode.headui
 from spiderlx.ui import spider_app
 from datanalysis.ui import core
 
-from utils.app_core import *
+# from utils.app_core import *
 from utils.data_path import root_path
 
 # ==============================

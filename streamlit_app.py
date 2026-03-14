@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 
 # 导入功能模块（保持原有导入路径）
-import aicode.headui
+from aicode import headui
 from spiderlx.ui import spider_app
 from datanalysis.ui import core
 
@@ -31,7 +31,7 @@ core.local_css()
 FEATURE_CONFIG = {
     "spider": {"tab_name": "🕷 爬虫", "func": spider_app.main},
     "datanalysis": {"tab_name": "📊 数据分析", "func": core.main},
-    "test": {"tab_name": "💻 AI代码测试", "func": aicode.headui.main}
+    "test": {"tab_name": "💻 AI代码测试", "func": headui.main}
 }
 
 # 初始状态配置（基础标签+功能开关）

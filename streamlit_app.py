@@ -7,7 +7,7 @@ import aicode.headui
 from spiderlx.ui import spider_app
 from datanalysis.ui import core
 
-# from utils.app_core import *
+from utils.app_core import initializing_state, render_toggle_button
 from utils.data_path import root_path
 
 # ==============================
@@ -38,9 +38,9 @@ FEATURE_CONFIG = {
 INITIAL_STATE = {
     "app_home": False,
     "session_show": False,
-    "spider": False,
+    "spider": True,
     "test": False,
-    "datanalysis": True,  # 数据分析默认开启
+    "datanalysis": False,  # 数据分析默认开启
 }
 
 # ==============================

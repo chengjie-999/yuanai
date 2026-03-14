@@ -1,7 +1,10 @@
+import os
+
 import streamlit as st
 
 from spiderlx.ui import uiselenium, playwright
 from utils import initializing_state, render_toggle_button
+from utils.data_path import root_path
 
 INITIAL_STATE = {
     "spider": True,
@@ -23,8 +26,13 @@ def main():
             pass
     col1, col2 = st.columns(2)
     render_toggle_button("selenium", "selenium", uiselenium.app_main, column=col1)
-    render_toggle_button("playwright", "playwright", playwright.app_main, column=col2)
+    render_toggle_button("playwright", "playwright", playwright.main, column=col2)
 
 
 if __name__ == '__main__':
-    pass
+    st.set_page_config(
+        page_title="数据采集",
+        page_icon=os.path.join(root_path(), 'data/file/img/home.jpg'),
+        layout="wide",  # 宽屏布局
+        initial_sidebar_state="expanded"  # 侧边栏默认展开
+    )

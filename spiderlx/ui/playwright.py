@@ -1,202 +1,155 @@
+from spiderlx.auto.web.playwrightdo.main import init_playwright_browser
+from multiprocessing import Process, Queue
+import time
+import traceback
 import streamlit as st
-from playwright.sync_api import sync_playwright, Playwright
-
-# 项目内置模块
-from spiderlx.auto.web.playwrightdo.main import init_playwright_browser, able_web
-from utils.app_core import initializing_state, reset_to_initial
-from spiderlx.ui import uixiaoyuan
-
-# -------------------------- 1. 初始化状态（新增context，适配函数返回值） --------------------------
-# 所有状态变量前缀为pw_，新增pw_context存储上下文实例（核心适配点）
-PW_INITIAL_STATE = {
-    "pw_step": 1,  # Playwright步骤
-    "pw_playwright": None,  # Playwright核心实例（新增）
-    "pw_browser": None,  # 浏览器实例
-    "pw_context": None,  # 上下文实例（适配函数返回值）
-    "pw_page": None,  # 页面实例
-    "pw_browser_started": False,  # 浏览器启动状态
-    "pw_url": "",  # 目标URL
-    "pw_web_name": "",  # 选中的网站名称
-    "pw_web_open": False  # 网站是否已打开
-}
+import re
 
 
-# -------------------------- 2. 核心函数（完全适配init_playwright_browser） --------------------------
-def get_pw_driver(headless=False):
-    """
-    获取Playwright驱动（适配init_playwright_browser的返回值）
-    :param headless: 是否无头模式
-    :return: playwright, browser, context, page | None, None, None, None
-    """
+# --------------------------
+# 1. 工具函数：验证URL合法性
+# --------------------------
+def is_valid_url(url):
+    """检查URL是否有效（非空 + 以http/https开头）"""
+    if not url or url.strip() == "":
+        return False
+    pattern = re.compile(r'^https?://.+$', re.IGNORECASE)
+    return bool(pattern.match(url.strip()))
+
+
+# --------------------------
+# 2. 初始化会话态（仅初始化一次）
+# --------------------------
+def init_pw_state():
+    if "pw_cmd_queue" not in st.session_state:
+        st.session_state.pw_cmd_queue = Queue()
+    if "pw_res_queue" not in st.session_state:
+        st.session_state.pw_res_queue = Queue()
+    if "pw_worker_process" not in st.session_state:
+        st.session_state.pw_worker_process = None
+
+
+# --------------------------
+# 3. Playwright子进程（核心修复：从队列传URL）
+# --------------------------
+def playwright_worker(cmd_queue, res_queue):
+    browser = None
+    pw_context = None
     try:
-        # 1. 启动Playwright核心实例
-        playwright = sync_playwright().start()
-        # 2. 调用项目内置函数，传入playwright实例，获取浏览器/上下文/页面
-        browser, context, page = init_playwright_browser(p=playwright, headless=headless)
-        return playwright, browser, context, page
+        from playwright.sync_api import sync_playwright
+        # 手动管理Playwright上下文，避免Event loop closed
+        pw = sync_playwright().start()
+        pw_context = pw
+
+        # 初始化浏览器（调用你的函数）
+        browser, context, page = init_playwright_browser(pw, headless=False)
+        page = page or browser.new_page()
+        page.set_default_timeout(10000)
+
+        # 循环监听指令
+        while True:
+            if not cmd_queue.empty():
+                cmd = cmd_queue.get()
+
+                # 爬取指令：先读URL，再验证，再执行
+                if cmd == "scrape":
+                    # 从队列读取URL（跨进程传参的核心）
+                    url = cmd_queue.get() if not cmd_queue.empty() else ""
+
+                    # 第一步：验证URL合法性
+                    if not is_valid_url(url):
+                        err_msg = f"无效URL：{url}\n请输入以 http/https 开头的合法地址！"
+                        res_queue.put(("error", err_msg))
+                        continue
+
+                    # 第二步：执行爬取（仅URL合法时）
+                    try:
+                        page.goto(url.strip(), wait_until="load")
+                        title = page.title()
+                        res_queue.put(("success", f"✅ 爬取成功\nURL：{url.strip()}\n标题：{title}"))
+                    except Exception as e:
+                        err_msg = f"❌ 爬取失败：{str(e)}"
+                        res_queue.put(("error", err_msg))
+
+                # 退出指令
+                elif cmd == "exit":
+                    break
+
+                time.sleep(0.1)
+
     except Exception as e:
-        st.error(f"Playwright浏览器初始化失败：{str(e)}")
-        return None, None, None, None
+        res_queue.put(("error", f"❌ 浏览器初始化失败：{str(e)}"))
+    finally:
+        # 确保资源正常关闭
+        if browser:
+            try:
+                browser.close()
+            except:
+                pass
+        if pw_context:
+            pw_context.stop()
 
 
-def show_pw_state():
-    """展示Playwright运行状态"""
-    st.write('Playwright开启状态', st.session_state.pw_browser_started)
+# --------------------------
+# 4. 主入口（被render_toggle_button调用）
+# --------------------------
+def main():
+    init_pw_state()
+    st.subheader("Playwright 爬虫模块")
 
-
-def get_able_web():
-    """获取可访问的网站列表（保留原有逻辑）"""
-    return able_web()
-
-
-def open_pw_web(page, web_info, web_name):
-    """
-    打开指定网站（简化参数，context/page已由init_playwright_browser初始化）
-    :param page: Playwright页面实例
-    :param web_info: 网站信息字典
-    :param web_name: 选中的网站名
-    :return: 成功返回web_name，失败返回空字符串
-    """
-    # 反转字典：网站名 → URL
-    web_url_map = {v: k for k, v in web_info.items()}
-    url = web_url_map.get(web_name, "")
-
-    if not url:
-        st.error(f"未找到「{web_name}」对应的URL！")
-        return ""
-
-    try:
-        # 使用预初始化的page访问URL（反检测配置已在context中完成）
-        page.goto(url, wait_until="networkidle", timeout=30000)
-        return web_name
-    except Exception as e:
-        st.error(f"打开「{web_name}」失败：{str(e)}")
-        return ""
-
-
-# -------------------------- 3. 资源清理函数（适配context/浏览器/playwright） --------------------------
-def cleanup_pw_resources():
-    """安全清理Playwright所有资源（上下文→页面→浏览器→playwright）"""
-    try:
-        # 1. 关闭页面
-        if st.session_state.pw_page:
-            st.session_state.pw_page.close()
-        # 2. 关闭上下文（核心：Cookie/环境隔离的上下文必须关闭）
-        if st.session_state.pw_context:
-            st.session_state.pw_context.close()
-        # 3. 关闭浏览器
-        if st.session_state.pw_browser:
-            st.session_state.pw_browser.close()
-        # 4. 停止Playwright核心实例
-        if st.session_state.pw_playwright:
-            st.session_state.pw_playwright.stop()
-        # 5. 重置状态
-        reset_to_initial(PW_INITIAL_STATE)
-        st.success("Playwright资源已全部清理！")
-    except Exception as e:
-        st.error(f"清理Playwright资源失败：{str(e)}")
-
-
-# -------------------------- 4. 主应用逻辑 --------------------------
-def app_main():
-    # 初始化状态（确保每次运行都有基础状态）
-    initializing_state(PW_INITIAL_STATE)
-
-    with st.sidebar.container(border=True):
-        col1, col2, col3 = st.columns(3)
-
-        # 1. 浏览器启停按钮（核心适配init_playwright_browser的返回值）
-        with col1:
-            if not st.session_state.pw_browser_started:
-                if st.button('开启Playwright浏览器', type='primary', use_container_width=True):
-                    # 获取playwright+浏览器+上下文+页面（调试用headless=False）
-                    playwright, browser, context, page = get_pw_driver(headless=False)
-                    # 校验核心实例是否有效
-                    if all([playwright, browser, context, page]):
-                        # 存储所有实例到session_state
-                        st.session_state.pw_playwright = playwright
-                        st.session_state.pw_browser = browser
-                        st.session_state.pw_context = context
-                        st.session_state.pw_page = page
-                        st.session_state.pw_browser_started = True
-                        st.session_state.app_home = False
-                        st.rerun()
-                    else:
-                        st.warning("浏览器启动失败！请检查Chrome是否安装/Playwright驱动是否正常。")
-            else:
-                if st.button('关闭Playwright浏览器', use_container_width=True):
-                    cleanup_pw_resources()
-                    st.session_state.pw_browser_started = False
-                    st.rerun()
-
-        # 2. 展示状态
-        with col2:
-            show_pw_state()
-
-        # 3. 返回上一步
-        with col3:
-            if st.button('返回Playwright上一步', use_container_width=True) and st.session_state.pw_step > 1:
-                st.session_state.pw_step -= 1
-                st.rerun()
-
-    # -------------------------- 步骤1：选择并打开网站 --------------------------
-    if st.session_state.pw_step == 1 and st.session_state.pw_browser_started:
-        st.subheader(f'Playwright第{st.session_state.pw_step}步：选择目标网站')
-        web_info = get_able_web()
-
-        if web_info:
-            # 选择网站（存储到pw_web_name）
-            st.session_state.pw_web_name = st.selectbox(
-                '请选择想要访问的网站',
-                options=list(web_info.values()),
-                key="pw_web_selector",
-                disabled=not st.session_state.pw_browser_started
+    # 按钮1：启动进程（唯一key）
+    if st.button("📌 启动Playwright进程", key="pw_start_btn"):
+        if not st.session_state.pw_worker_process:
+            st.session_state.pw_worker_process = Process(
+                target=playwright_worker,
+                args=(st.session_state.pw_cmd_queue, st.session_state.pw_res_queue)
             )
-            st.write('即将进入：', st.session_state.pw_web_name)
-
-            if st.button('Playwright打开网站', disabled=not st.session_state.pw_web_name):
-                with st.spinner(f"正在打开「{st.session_state.pw_web_name}」..."):
-                    # 使用预初始化的page打开网站
-                    name = open_pw_web(
-                        page=st.session_state.pw_page,
-                        web_info=web_info,
-                        web_name=st.session_state.pw_web_name
-                    )
-                    if name:
-                        st.success(f'「{name}」已成功打开！')
-                        st.session_state.pw_web_open = True
-                        st.session_state.pw_step = 2
-                        st.rerun()
+            st.session_state.pw_worker_process.start()
+            st.success("✅ Playwright进程已启动！")
         else:
-            st.warning("暂无可用的网站列表！")
+            st.warning("⚠️ 进程已启动，无需重复操作！")
 
-    # -------------------------- 步骤2：网站自动化解析 --------------------------
-    if st.session_state.pw_step == 2 and st.session_state.pw_browser_started:
-        with st.sidebar.container(border=True):
-            st.subheader(f'Playwright第{st.session_state.pw_step}步：{st.session_state.pw_web_name} 自动化解析')
-
-        if st.session_state.pw_web_name == '小猿众包':
-            # 传入预初始化的page到小猿众包自动化模块
-            # uixiaoyuan.main(page=st.session_state.pw_page)
-            st.warning('小猿众包自动化模块待开发（已传入Playwright Page实例）')
-        elif not st.session_state.pw_web_name:
-            st.info("请先选择并打开目标网站！")
+    # 按钮2：停止进程（唯一key）
+    if st.button("🛑 停止Playwright进程", key="pw_stop_btn"):
+        if st.session_state.pw_worker_process:
+            st.session_state.pw_cmd_queue.put("exit")
+            if st.session_state.pw_worker_process.is_alive():
+                st.session_state.pw_worker_process.join(timeout=5)
+            st.session_state.pw_worker_process = None
+            st.info("✅ Playwright进程已停止！")
         else:
-            st.write(f'「{st.session_state.pw_web_name}」自动化模块待开发~~~')
+            st.warning("⚠️ 进程未启动，无需停止！")
 
-    # -------------------------- 步骤3：预留扩展 --------------------------
-    if st.session_state.pw_step == 3 and st.session_state.pw_browser_started:
-        st.subheader(f'Playwright第{st.session_state.pw_step}步：预留扩展')
+    # 按钮3：执行爬取（唯一key）
+    if st.button("🚀 执行爬取", key="pw_scrape_btn"):
+        # 先检查进程是否启动
+        if not st.session_state.pw_worker_process:
+            st.error("❌ 请先启动Playwright进程！")
+        else:
+            # 从主页面session_state获取URL
+            target_url = st.session_state.get("url", "https://www.baidu.com")
 
+            # 发送爬取指令 + URL（跨进程传参）
+            st.session_state.pw_cmd_queue.put("scrape")
+            st.session_state.pw_cmd_queue.put(target_url)
 
-# -------------------------- 5. 程序入口 --------------------------
-if __name__ == '__main__':
-    # 测试获取网站列表（可选）
-    try:
-        info = get_able_web()
-        print("可用网站列表：", list(info.values()))
-    except Exception as e:
-        print("获取网站列表失败：", str(e))
+            # 等待并展示结果
+            start_time = time.time()
+            result = None
+            while time.time() - start_time < 10:  # 10秒超时
+                if not st.session_state.pw_res_queue.empty():
+                    result = st.session_state.pw_res_queue.get()
+                    break
+                time.sleep(0.1)
 
-    # 启动Streamlit应用
-    app_main()
+            # 展示结果
+            if result:
+                if result[0] == "success":
+                    st.success(result[1])
+                else:
+                    st.error(result[1])
+            else:
+                st.warning("⚠️ 爬取超时（10秒），请检查URL或网络！")
+
+    # 显示当前URL（和主页面同步）
+    st.info(f"当前待爬取URL：{st.session_state.get('url', '未设置')}")

@@ -87,6 +87,7 @@ def init_playwright_browser(p: Playwright, headless=False):
     browser = p.chromium.launch(
         headless=headless,
         args=[
+            "--no-sandbox",
             # 禁用自动化检测
             "--disable-blink-features=AutomationControlled",
             # 模拟真实窗口大小

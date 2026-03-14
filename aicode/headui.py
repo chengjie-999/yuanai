@@ -5,8 +5,15 @@ from matplotlib import pyplot as plt
 from plotly.data import tips
 
 
-def main():
+def ti():
+    pass
 
+
+def main():
+    t0()
+
+
+def t0():
     # 自定义CSS：放大标签页样式（核心）
     st.markdown("""
         <style>
@@ -120,5 +127,3 @@ def main():
 
     # Streamlit渲染Matplotlib图表（核心步骤）
     st.pyplot(fig)  # 直接传入fig对象即可渲染
-
-

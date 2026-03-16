@@ -45,7 +45,7 @@ async def init_anti_detect_browser(playwright):
         geolocation={"latitude": 31.230416, "longitude": 121.473701},
         permissions=["geolocation"],
         user_agent=random.choice(USER_AGENTS),
-        storage_state=''
+        # storage_state=''
     )
 
     # 注入反检测JS

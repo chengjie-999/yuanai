@@ -9,6 +9,9 @@ from tools import all_tools as tools
 
 
 # 自定义回调处理器（保留之前的修复逻辑）
+from utils.sensitive_data import decrypt_sensitive_data
+
+
 class CustomStdOutCallbackHandler(BaseCallbackHandler):
     def on_chain_start(self, serialized, inputs, **kwargs):
         inputs = inputs or {}
@@ -27,9 +30,14 @@ class CustomStdOutCallbackHandler(BaseCallbackHandler):
         print(f"最终回答：{outputs.get('output', '无')}\n")
 
 
+encrypted_api_key = {
+    'encrypted_data': 'Z0FBQUFBQnB1WE5DY1E3aDM1LVFmV25jRUxVZjJVOE5HaGEwRml6ZXR3NzYxRFVNMjFadU8xakY1eXFITVBWdlBuNXdwZWFFSDVsekJ0a1ZibkVWOHF4amlETm51OUc2UV9BU1c2VUFTZ3Fvdm1KT0VNTWM2RTlISHpmYTFMLTIwQUVDdTk2aXBQN2E=',
+    'salt': 'ihuF3qRKQKP6LGJdpc223g=='}
+password = "MySecurePassword123!"
+api_key = decrypt_sensitive_data(encrypted_api_key, password)
 # 初始化LLM
 llm = ChatOpenAI(
-    api_key="sk-d0b3bf178759483e8e40020f5d00ee02",
+    api_key=api_key,
     base_url="https://api.deepseek.com/v1",
     model="deepseek-chat",
     temperature=0,

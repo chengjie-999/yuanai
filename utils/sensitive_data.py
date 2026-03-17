@@ -106,8 +106,9 @@ if __name__ == "__main__":
     password = "MySecurePassword123!"
 
     # 加密
-    encrypted_result = encrypt_sensitive_data(sensitive_data, password)
-    print("加密结果：", encrypted_result)
+    # encrypted_result = encrypt_sensitive_data(sensitive_data, password)
+    encrypted_result = {'encrypted_data': 'Z0FBQUFBQnB1WE5DY1E3aDM1LVFmV25jRUxVZjJVOE5HaGEwRml6ZXR3NzYxRFVNMjFadU8xakY1eXFITVBWdlBuNXdwZWFFSDVsekJ0a1ZibkVWOHF4amlETm51OUc2UV9BU1c2VUFTZ3Fvdm1KT0VNTWM2RTlISHpmYTFMLTIwQUVDdTk2aXBQN2E=', 'salt': 'ihuF3qRKQKP6LGJdpc223g=='}
+    # print("加密结果：", encrypted_result)
     # 输出示例：
     # {"encrypted_data": "gAAAAABl...", "salt": "XJZ8..."}
 
@@ -117,5 +118,5 @@ if __name__ == "__main__":
     # 输出：sk-d0b3bf178759483e8e40020f5d00ee02
 
     # 验证解密正确性
-    assert decrypted_data == sensitive_data, "加密解密失败！"
-    print("✅ 加密解密验证通过")
+    assert decrypted_data == sensitive_data, "加密失败！"
+    print("✅ 解密验证通过")

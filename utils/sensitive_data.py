@@ -99,24 +99,23 @@ def decrypt_sensitive_data(encrypted_dict: Dict[str, str], password: str) -> str
 
 
 # ---------------------- 测试示例 ----------------------
-if __name__ == "__main__":
-    # 待加密的敏感数据（如API密钥、数据库密码等）
-    sensitive_data = "sk-d0b3bf178759483e8e40020f5d00ee02"
-    # 自定义加密密码（建议复杂且保密）
-    password = "MySecurePassword123!"
-
-    # 加密
-    # encrypted_result = encrypt_sensitive_data(sensitive_data, password)
-    encrypted_result = {'encrypted_data': 'Z0FBQUFBQnB1WE5DY1E3aDM1LVFmV25jRUxVZjJVOE5HaGEwRml6ZXR3NzYxRFVNMjFadU8xakY1eXFITVBWdlBuNXdwZWFFSDVsekJ0a1ZibkVWOHF4amlETm51OUc2UV9BU1c2VUFTZ3Fvdm1KT0VNTWM2RTlISHpmYTFMLTIwQUVDdTk2aXBQN2E=', 'salt': 'ihuF3qRKQKP6LGJdpc223g=='}
-    # print("加密结果：", encrypted_result)
-    # 输出示例：
-    # {"encrypted_data": "gAAAAABl...", "salt": "XJZ8..."}
+def get_api_key(password="MySecurePassword123!"):
+    encrypted_result = {
+        'encrypted_data': 'Z0FBQUFBQnB1WE5DY1E3aDM1LVFmV25jRUxVZjJVOE5HaGEwRml6ZXR3NzYxRFVNMjFadU8xakY1eXFITVBWdlBuNXdwZWFFSDVsekJ0a1ZibkVWOHF4amlETm51OUc2UV9BU1c2VUFTZ3Fvdm1KT0VNTWM2RTlISHpmYTFMLTIwQUVDdTk2aXBQN2E=',
+        'salt': 'ihuF3qRKQKP6LGJdpc223g=='}
 
     # 解密
-    decrypted_data = decrypt_sensitive_data(encrypted_result, password)
-    print("解密结果：", decrypted_data)
+    api_key = decrypt_sensitive_data(encrypted_result, password)
     # 输出：sk-d0b3bf178759483e8e40020f5d00ee02
+    return api_key
 
+
+if __name__ == "__main__":
+    # # 待加密的敏感数据（如API密钥、数据库密码等）
+    sensitive_data = "sk-d0b3bf178759483e8e40020f5d00ee02"
+    # # 自定义加密密码（建议复杂且保密）
+    # password = "MySecurePassword123!"
+    api_key = get_api_key()
     # 验证解密正确性
-    assert decrypted_data == sensitive_data, "加密失败！"
+    assert api_key == sensitive_data, "加密失败！"
     print("✅ 解密验证通过")

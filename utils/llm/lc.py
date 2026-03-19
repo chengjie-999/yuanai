@@ -48,7 +48,7 @@ llm = ChatOpenAI(
 # 配置提示词
 prompt = ChatPromptTemplate.from_messages([
     ("system", "你是一个能调用工具解决问题的助手，严格按照工具的参数要求调用工具，工具返回结果后要整理成自然语言回答用户。"),
-    ("user", "{input}"),
+    ("user", "{inputs}"),
     MessagesPlaceholder(variable_name="agent_scratchpad"),
 ])
 

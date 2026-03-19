@@ -19,16 +19,22 @@ INITIAL_STATE = {
 
 def main():
     initializing_state(INITIAL_STATE)
-    st.info(f'当前url：{st.session_state.url}')
-    if st.session_state.s_step == 1:
-        col1, col2 = st.columns([3, 1])
-        st.session_state.url = col1.text_input("请输入要获取数据的URL：", value="https://www.baidu.com")
-        st.write(st.session_state.url)
-        if col2.button('获取数据到本地'):
-            pass
-    col1, col2 = st.columns(2)
-    render_toggle_button("selenium", "selenium", uiselenium.app_main, column=col1)
-    render_toggle_button("playwright", "playwright", playwright.main, column=col2)
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        col11, col12 = st.columns(2)
+        render_toggle_button("selenium", "selenium", uiselenium.app_main, column=col11)
+        render_toggle_button("playwright", "playwright", playwright.main, column=col12)
+    with col2:
+        container = st.container(border=True)
+        container.image(os.path.join(root_path(), 'data/file/img/home.jpg'))
+        container.info(f'当前url：{st.session_state.url}')
+        if st.session_state.s_step == 1:
+            # col21, col22 = st.columns([3, 1])
+            st.session_state.url = container.text_input("请输入要获取数据的URL：", value=f"{st.session_state.url}")
+            # st.write(st.session_state.url)
+            if container.button(f'获取数据到本地【{st.session_state.url}】'):
+                pass
 
 
 if __name__ == '__main__':

@@ -209,7 +209,7 @@ class SeleniumXiaoYuan:
 
     def question_resize(self, down=True, count=6):
         """
-        题目放大或缩小
+        单题标答审核题目放大或缩小
         :param down:缩小
         :param count:点击缩小按钮的次数
         :return:
@@ -316,6 +316,8 @@ class SeleniumXiaoYuan:
         refer = wait.until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, '.ant-image > img'))
         )
+        global_img = self.web_driver.get_screenshot_as_png()
+        qa.append(global_img)
         refer_img = refer.get_attribute('src')
         qa.append(refer_img)
 

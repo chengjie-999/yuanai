@@ -1,4 +1,6 @@
 import os.path
+import time
+
 import streamlit as st
 import pandas as pd
 
@@ -38,6 +40,7 @@ FEATURE_CONFIG = {
 INITIAL_STATE = {
     "app_home": False,
     "session_show": False,
+    "auto_refresh": False,
     "spider": True,
     "test": False,
     "datanalysis": False,  # 数据分析默认开启
@@ -81,10 +84,10 @@ st.markdown("""
 # 侧边栏功能按钮
 # ==============================
 with st.sidebar:
-    # 重载按钮
-    if st.button('重载', use_container_width=True):
+    col1, col2 = st.columns(2)
+    if col1.button('重载', use_container_width=True):
         st.rerun()
-
+    render_toggle_button("auto_refresh", '自动刷新', column=col2)
 
 # ==============================
 # 第一步：构建动态标签页列表（核心修改：设置标签永远在最后）
@@ -172,9 +175,13 @@ for idx, (tab_label, tab_key) in enumerate(all_tabs):
                 st.error(f"功能加载失败：{str(e)}")
                 st.warning("请检查功能模块是否正常，或联系开发者排查问题")
 
+
 # ==============================
 # 额外功能（可选）
 # ==============================
 # if st.sidebar.button('播放视频'):
 #     online_video_url = "https://www.w3school.com.cn/i/movie.mp4"
 #     st.video(online_video_url)
+if st.session_state.auto_refresh:
+    time.sleep(2)
+    st.rerun()

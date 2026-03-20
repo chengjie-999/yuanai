@@ -1,3 +1,5 @@
+import time
+
 import streamlit as st
 
 
@@ -59,3 +61,4 @@ def render_toggle_button(state_key, button_text, run_func=None, reset_home=True,
                 st.session_state.app_home = False
             st.rerun()
     return button_text
+

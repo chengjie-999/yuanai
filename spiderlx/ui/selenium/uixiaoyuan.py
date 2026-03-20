@@ -110,42 +110,41 @@ def main():
     if st.session_state.xiao_yuan_step == 2 and '单题标答-审核' in st.session_state.xiao_yuan_card_name:
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：执行{st.session_state.xiao_yuan_card_name}任务')
         st.session_state.xiao_yuan_qa = xiao_yuan.question_info(screenshot=False)
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button('缩小'):
-                xiao_yuan.question_resize()
-            st.divider()
-            if st.button('审核正确'):
-                xiao_yuan.go_question(st.session_state.xiao_yuan_card_name)
-                xiao_yuan.question_restore()
+        st.image(st.session_state.xiao_yuan_qa[0], caption='参考答案')
+        col1, col2, col3, col4 = st.columns(4)
+        if col3.button('缩小'):
+            xiao_yuan.question_resize()
 
-            if st.button('提交领下一任务'):
-                go_on = xiao_yuan.compete('提交领下一任务')
-                if not go_on:
-                    reset_to_initial(INITIAL_STATE)
-                    st.session_state.xiao_yuan_auto = True
-                    st.rerun()
-                # time.sleep(2)
+        if col1.button('审核正确'):
+            xiao_yuan.go_question(st.session_state.xiao_yuan_card_name)
+            xiao_yuan.question_restore()
+
+        if col2.button('提交领下一任务'):
+            go_on = xiao_yuan.compete('提交领下一任务')
+            if not go_on:
+                reset_to_initial(INITIAL_STATE)
+                st.session_state.xiao_yuan_auto = True
                 st.rerun()
+            # time.sleep(2)
+            st.rerun()
 
-            if st.button('整题驳回'):
-                st.session_state.xiao_yuan_false_cause = st.selectbox('', st.session_state.xiao_yuan_false_causes)
-                st.write('错误理由：', st.session_state.xiao_yuan_false_cause)
-                go_on = xiao_yuan.compete('整题驳回', cause=st.session_state.xiao_yuan_false_cause)
-                if st.button('确定'):
-                    xiao_yuan.rejection_confirmation()
-                    if not go_on:
-                        st.session_state.xiao_yuan_step = 1
-        with col2:
-            if st.button('展示标记答案'):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.session_state.xiao_yuan_qa = xiao_yuan.question_info()
-                    s_mark = st.session_state.xiao_yuan_qa[1]
-                    st.image(s_mark, caption='独立答案')
-                    marks = st.session_state.xiao_yuan_qa[2:]
-                    for i in range(len(marks)):
-                        st.image(marks[i], caption=f'答案{i}')
+        if col4.button('整题驳回'):
+            st.session_state.xiao_yuan_false_cause = st.selectbox('', st.session_state.xiao_yuan_false_causes)
+            st.write('错误理由：', st.session_state.xiao_yuan_false_cause)
+            go_on = xiao_yuan.compete('整题驳回', cause=st.session_state.xiao_yuan_false_cause)
+            if st.button('确定'):
+                xiao_yuan.rejection_confirmation()
+                if not go_on:
+                    st.session_state.xiao_yuan_step = 1
+        if st.button('展示标记答案'):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.session_state.xiao_yuan_qa = xiao_yuan.question_info()
+                s_mark = st.session_state.xiao_yuan_qa[1]
+                st.image(s_mark, caption='独立答案')
+                marks = st.session_state.xiao_yuan_qa[2:]
+                for i in range(len(marks)):
+                    st.image(marks[i], caption=f'答案{i}')
 
     if st.session_state.xiao_yuan_step == 2 and '3.0改错-补答' in st.session_state.xiao_yuan_card_name:
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：执行{st.session_state.xiao_yuan_card_name}任务')
@@ -179,4 +178,3 @@ def main():
                 xiao_yuan.go_question(st.session_state.xiao_yuan_card_name, true=False)
         with col2:
             pass
-    st.image(st.session_state.xiao_yuan_qa[0], caption='参考答案')

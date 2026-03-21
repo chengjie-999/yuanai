@@ -8,6 +8,7 @@ import pandas as pd
 from aicode import headui
 from spiderlx.ui import spider_app
 from datanalysis.ui import core
+from yuanai.ui import ai
 
 from utils.app_core import initializing_state, render_toggle_button
 from utils.data_path import root_path
@@ -121,6 +122,7 @@ for idx, (tab_label, tab_key) in enumerate(all_tabs):
         # 1. 首页标签内容
         if tab_key == "home":
             st.write("欢迎使用数据可视化平台！")
+            ai.main()
             # 查看Session状态按钮
             if st.button('查看当前session状态', use_container_width=True):
                 st.write('📌【当前session状态】')

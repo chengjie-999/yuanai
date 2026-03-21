@@ -1,6 +1,5 @@
 import streamlit as st
 
-from spiderlx.ui import ai
 from utils.app_core import initializing_state, reset_to_initial
 from spiderlx.auto.web.selenium import main as selenium_cj
 from spiderlx.ui.selenium import uixiaoyuan
@@ -109,7 +108,7 @@ def app_main():
         st.session_state.url = driver.get_current_url()
         with st.sidebar.container(border=True):
             st.subheader(f'selenium第{st.session_state.step}步，目标网站自动化解析')
-            ai.main()
+            # ai.main()
 
         if st.session_state.web_name == '小猿众包':
             uixiaoyuan.main()

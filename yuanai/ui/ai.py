@@ -1,33 +1,28 @@
-import os.path
-
+import os
 import streamlit as st
-from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, AIMessage
 from langchain.callbacks.base import BaseCallbackHandler
 
+from yuanai.core.lc import get_llm, get_prompt, get_agent_executor
+from yuanai.tools import all_tools as tools
 from utils import initializing_state
 from utils.data_path import root_path
-from utils.sensitive_data import get_api_key
 
+# ========== 工具调用显示回调（非流式） ==========
+class ToolCallback(BaseCallbackHandler):
+    """在界面上显示工具调用开始和结束的信息"""
+    def on_tool_start(self, serialized, input_str, **kwargs):
+        tool_name = serialized.get('name', '未知工具')
+        st.sidebar.caption(f"🔧 正在调用工具：{tool_name}")
 
-# ========== 自定义Streamlit流式回调处理器 ==========
-# 适配LangChain的流式输出到Streamlit界面
-class StreamlitStreamingCallback(BaseCallbackHandler):
-    def __init__(self, placeholder, container):
-        self.placeholder = placeholder
-        self.container = container
-        self.full_response = ""
+    def on_tool_end(self, output, **kwargs):
+        preview = str(output)[:50] + "..." if len(str(output)) > 50 else str(output)
+        st.sidebar.caption(f"✅ 工具调用完成：{preview}")
 
-    def on_llm_new_token(self, token: str, **kwargs) -> None:
-        """当收到新token时更新界面"""
-        self.full_response += token
-        self.placeholder.markdown(self.full_response + "▌")
-
-
+# ========== 初始化状态 ==========
 INITIAL_STATE = {
-    "messages": [],
+    "messages": [],  # 格式：[(role, content), ...]
 }
-
 
 def main():
     initializing_state(INITIAL_STATE)
@@ -35,13 +30,11 @@ def main():
     st.write("🤖 小元AI助手")
     col1, col2 = st.columns([3, 1])
 
-    # ========== 1. 用LangChain初始化LLM（替代原生OpenAI客户端） ==========
-    llm = ChatOpenAI(
-        api_key=get_api_key(),
-        base_url="https://api.deepseek.com/v1",  # 保留deepseek接口
+    # 1. 配置 LLM（非流式）
+    llm = get_llm(
+        base_url="https://api.deepseek.com/v1",
         model_name=col2.selectbox("选择模型", ['deepseek-chat', "deepseek-vl2", "deepseek-coder"], index=0),
         temperature=col2.slider("生成温度", 0.0, 1.0, 0.7, step=0.1),
-        streaming=True,  # 开启流式输出
         verbose=False
     )
 
@@ -50,24 +43,26 @@ def main():
         st.session_state.messages = []
         st.rerun()
 
-    # 聊天区域
+    # 2. 渲染历史消息
     chat_container = col1.container(height=500, border=True)
     with chat_container:
-        # 显示历史消息
-        for idx, message in enumerate(st.session_state.messages):
-            with st.chat_message(message["role"], avatar="👤" if message["role"] == "user" else os.path.join(root_path(), "data/file/img/home.ico")):
-                st.markdown(message["content"])
+        for msg in st.session_state.messages:
+            role, content = msg
+            with st.chat_message(
+                role,
+                avatar="👤" if role == "user" else os.path.join(root_path(), "data/file/img/home.ico")
+            ):
+                st.markdown(content)
             st.markdown("<br>", unsafe_allow_html=True)
 
-    # 底部输入框
+    # 3. 处理用户输入
     input_placeholder = col1.empty()
     with input_placeholder:
-        prompt = st.chat_input("请输入你的问题...", key="chat_input")
+        prompt = st.chat_input("请输入你的问题（支持工具调用）...", key="chat_input")
 
-    # ========== 2. 处理用户输入（LangChain消息格式适配） ==========
     if prompt:
-        # 添加用户消息到会话状态
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        # 存储用户消息
+        st.session_state.messages.append(("user", prompt))
 
         # 实时显示用户消息
         with chat_container:
@@ -75,40 +70,43 @@ def main():
                 st.markdown(prompt)
             st.markdown("<br>", unsafe_allow_html=True)
 
-        # ========== 3. LangChain流式调用LLM ==========
+        # 4. 调用 Agent
         with chat_container:
-            with st.chat_message("assistant", avatar=os.path.join(root_path(), "data/file/img/home.ico")):
-                message_placeholder = st.empty()
-                # 初始化自定义流式回调
-                stream_callback = StreamlitStreamingCallback(message_placeholder, chat_container)
+            with st.chat_message(
+                "assistant",
+                avatar=os.path.join(root_path(), "data/file/img/home.ico")
+            ):
+                # 准备对话历史
+                chat_history = []
+                for role, content in st.session_state.messages[:-1]:  # 排除当前输入
+                    if role == "user":
+                        chat_history.append(HumanMessage(content=content))
+                    elif role == "assistant":
+                        chat_history.append(AIMessage(content=content))
 
-                # 转换历史消息为LangChain标准格式
-                langchain_messages = []
-                for msg in st.session_state.messages:
-                    if msg["role"] == "user":
-                        langchain_messages.append(HumanMessage(content=msg["content"]))
-                    elif msg["role"] == "assistant":
-                        langchain_messages.append(AIMessage(content=msg["content"]))
+                # 初始化 Agent 执行器
+                agent_executor = get_agent_executor(
+                    llm=llm,
+                    tools=tools,
+                    prompt=get_prompt()
+                )
 
-                # 调用LLM（流式输出）
                 try:
-                    response = llm.invoke(
-                        langchain_messages,
-                        config={"callbacks": [stream_callback]}  # 绑定回调处理器
-                    )
-                    full_response = response.content
-                    # 最终移除光标，显示完整响应
-                    message_placeholder.markdown(full_response)
+                    result = agent_executor.invoke({
+                        "input": prompt,
+                        "chat_history": chat_history,
+                        "agent_scratchpad": []
+                    })
+                    full_response = result["output"]
                 except Exception as e:
                     full_response = f"请求出错：{str(e)}"
-                    message_placeholder.markdown(full_response)
 
+                st.markdown(full_response)
                 st.markdown("<br>", unsafe_allow_html=True)
 
-        # 添加AI响应到会话历史
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        # 存储 AI 响应
+        st.session_state.messages.append(("assistant", full_response))
         st.rerun()
-
 
 if __name__ == "__main__":
     main()

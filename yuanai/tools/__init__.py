@@ -14,7 +14,7 @@ def load_all_tools():
     # 遍历每个工具文件，导入并收集工具
     for file in tool_files:
         # 导入模块（如 tools.weather、tools.calculator）
-        module_name = f"tools.{file[:-3]}"  # 去掉.py后缀
+        module_name = f"yuanai.tools.{file[:-3]}"  # 去掉.py后缀
         module = importlib.import_module(module_name)
 
         # 遍历模块中的所有属性，收集@tool装饰的工具

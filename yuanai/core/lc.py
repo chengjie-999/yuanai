@@ -26,25 +26,22 @@ class CustomStdOutCallbackHandler(BaseCallbackHandler):
 
 
 # LLM初始化
-def get_llm():
+def get_llm(**kwargs):
     api_key = get_api_key()
     return ChatOpenAI(
         api_key=api_key,
-        base_url="https://api.deepseek.com/v1",
-        model="deepseek-chat",
-        temperature=0,
-        timeout=30,
-        max_retries=2
+        **kwargs,
     )
 
 
-# 提示词
 def get_prompt():
-    return ChatPromptTemplate.from_messages([
-        ("system", "你是一个能调用工具解决问题的助手，严格按照工具的参数要求调用工具，工具返回结果后要整理成自然语言回答用户。"),
-        ("user", "{inputs}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "你是一个能调用工具的助手"),
+        MessagesPlaceholder(variable_name="chat_history"),  # 可选：保留对话历史
+        ("user", "{input}"),  # 正确：变量名改为 input（和调用时一致）
+        MessagesPlaceholder(variable_name="agent_scratchpad")
     ])
+    return prompt
 
 
 # Agent和执行器
@@ -54,7 +51,7 @@ def get_agent_executor(llm, tools, prompt):
         agent=agent,
         tools=tools,
         verbose=False,
-        callbacks=[CustomStdOutCallbackHandler()],
+        # callbacks=[CustomStdOutCallbackHandler()],
         handle_parsing_errors=True,
         max_iterations=5,
         return_intermediate_steps=False
@@ -63,11 +60,20 @@ def get_agent_executor(llm, tools, prompt):
 
 # 对外统一接口
 def ai_with_tools(question: str):
-    llm = get_llm()
+    llm = get_llm(
+        base_url="https://api.deepseek.com/v1",
+        model_name='deepseek-chat',
+        temperature=1,
+        verbose=False
+    )
     prompt = get_prompt()
     agent_executor = get_agent_executor(llm, tools, prompt)
     try:
-        result = agent_executor.invoke({"input": question, "agent_scratchpad": []})
+        result = agent_executor.invoke({
+            "input": question,
+            "agent_scratchpad": [],
+            "chat_history": []  # 添加这一行
+        })
         return result["output"]
     except Exception as e:
         print(f"❌ 调用出错：{str(e)}", file=sys.stderr)
@@ -76,13 +82,4 @@ def ai_with_tools(question: str):
 
 # 测试
 if __name__ == "__main__":
-    print("===== 测试开始 =====")
-    print("测试1 - 新增天气工具：")
-    print(ai_with_tools("上海明天天气怎么样？"))
-    print("|" * 100)
-    print("测试2 - 新增计算工具：")
-    print(ai_with_tools("计算 8 * 9 等于多少？"))
-    print("|" * 100)
-    print("测试3 - 原有工具：")
     print(ai_with_tools("北京今天多少度？再算 100+200"))
-    print("===== 测试结束 =====")

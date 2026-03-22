@@ -1,9 +1,12 @@
+import os.path
+
 import streamlit as st
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, AIMessage
 from langchain.callbacks.base import BaseCallbackHandler
 
 from utils import initializing_state
+from utils.data_path import root_path
 from utils.sensitive_data import get_api_key
 
 
@@ -36,7 +39,7 @@ def main():
     llm = ChatOpenAI(
         api_key=get_api_key(),
         base_url="https://api.deepseek.com/v1",  # 保留deepseek接口
-        model_name=col2.selectbox("选择模型", ['deepseek-chat', "deepseek-reasoner", "deepseek-coder"], index=0),
+        model_name=col2.selectbox("选择模型", ['deepseek-chat', "deepseek-vl2", "deepseek-coder"], index=0),
         temperature=col2.slider("生成温度", 0.0, 1.0, 0.7, step=0.1),
         streaming=True,  # 开启流式输出
         verbose=False
@@ -52,7 +55,7 @@ def main():
     with chat_container:
         # 显示历史消息
         for idx, message in enumerate(st.session_state.messages):
-            with st.chat_message(message["role"], avatar="👤" if message["role"] == "user" else "🤖"):
+            with st.chat_message(message["role"], avatar="👤" if message["role"] == "user" else os.path.join(root_path(), "data/file/img/home.ico")):
                 st.markdown(message["content"])
             st.markdown("<br>", unsafe_allow_html=True)
 
@@ -74,7 +77,7 @@ def main():
 
         # ========== 3. LangChain流式调用LLM ==========
         with chat_container:
-            with st.chat_message("assistant", avatar="🤖"):
+            with st.chat_message("assistant", avatar=os.path.join(root_path(), "data/file/img/home.ico")):
                 message_placeholder = st.empty()
                 # 初始化自定义流式回调
                 stream_callback = StreamlitStreamingCallback(message_placeholder, chat_container)

@@ -111,7 +111,11 @@ def main():
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：执行{st.session_state.xiao_yuan_card_name}任务')
         st.session_state.xiao_yuan_qa = xiao_yuan.question_info(screenshot=False)
         st.image(st.session_state.xiao_yuan_qa[0], caption='参考答案')
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
+        if col5.button(f'刷新'):
+            driver = st.session_state.web_driver
+            r = driver.refresh()
+            st.write(r)
         if col3.button('缩小'):
             xiao_yuan.question_resize()
 

@@ -3,7 +3,7 @@ from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.callbacks import BaseCallbackHandler
 from yuanai.tools import all_tools as tools
-from utils.sensitive_data import decrypt_sensitive_data
+from utils.sensitive_data import get_api_key
 import sys
 
 
@@ -27,12 +27,7 @@ class CustomStdOutCallbackHandler(BaseCallbackHandler):
 
 # LLM初始化
 def get_llm():
-    encrypted_api_key = {
-        'encrypted_data': 'Z0FBQUFBQnB1WE5DY1E3aDM1LVFmV25jRUxVZjJVOE5HaGEwRml6ZXR3NzYxRFVNMjFadU8xakY1eXFITVBWdlBuNXdwZW'
-                          'FFSDVsekJ0a1ZibkVWOHF4amlETm51OUc2UV9BU1c2VUFTZ3Fvdm1KT0VNTWM2RTlISHpmYTFMLTIwQUVDdTk2aXBQN2E=',
-        'salt': 'ihuF3qRKQKP6LGJdpc223g=='}
-    password = "MySecurePassword123!"
-    api_key = decrypt_sensitive_data(encrypted_api_key, password)
+    api_key = get_api_key()
     return ChatOpenAI(
         api_key=api_key,
         base_url="https://api.deepseek.com/v1",

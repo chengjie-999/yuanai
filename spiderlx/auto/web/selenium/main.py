@@ -149,6 +149,19 @@ class WebBrowser:
         except Exception as e:
             print(f"❌ 解析数据时出错: {str(e)}")
 
+    def refresh(self):
+        """
+        刷新当前页面（修正版）
+        等价于按浏览器F5键
+        :return: 刷新成功返回True
+        """
+        if not self.driver:
+            raise RuntimeError("浏览器未初始化，无法刷新")
+
+        print("🔄 正在刷新当前页面...")
+        self.driver.refresh()  # 使用Selenium内置的刷新方法
+        return True
+
     def close_browser(self):
         """关闭浏览器"""
         if self.driver:

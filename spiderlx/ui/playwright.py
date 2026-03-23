@@ -127,7 +127,7 @@ def main():
             st.error("❌ 请先启动Playwright进程！")
         else:
             # 从主页面session_state获取URL
-            target_url = st.session_state.get("url", "https://www.baidu.com")
+            target_url = st.session_state.get("url")
 
             # 发送爬取指令 + URL（跨进程传参）
             st.session_state.pw_cmd_queue.put("scrape")
@@ -152,4 +152,4 @@ def main():
                 st.warning("⚠️ 爬取超时（10秒），请检查URL或网络！")
 
     # 显示当前URL（和主页面同步）
-    st.info(f"当前待爬取URL：{st.session_state.get('url', '未设置')}")
+    st.info(f"当前待爬取URL：{st.session_state.get('url')}")

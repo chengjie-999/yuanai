@@ -99,7 +99,7 @@ home_tab = [("🏠 首页", "home")]
 # 动态标签（根据功能开关状态生成）
 dynamic_tabs = []
 for feature_key, config in FEATURE_CONFIG.items():
-    if st.session_state.get(feature_key, False):
+    if st.session_state.get(feature_key):
         dynamic_tabs.append((config["tab_name"], feature_key))
 
 # 系统设置标签（固定放在最后）
@@ -132,7 +132,7 @@ for idx, (tab_label, tab_key) in enumerate(all_tabs):
             st.write("---")
             st.subheader("已开启的功能")
             # 显示当前开启的功能列表
-            enabled_features = [FEATURE_CONFIG[k]["tab_name"] for k in FEATURE_CONFIG if st.session_state.get(k, False)]
+            enabled_features = [FEATURE_CONFIG[k]["tab_name"] for k in FEATURE_CONFIG if st.session_state.get(k)]
             if enabled_features:
                 for feat in enabled_features:
                     st.success(f"✅ {feat}")

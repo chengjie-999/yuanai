@@ -118,7 +118,8 @@ class WebBrowser:
 
         # 处理Cookie/登录问题（仅针对命名网站）
         if self.current_website_name != '未命名网站':
-            selenium.use_cookie(self.driver, self.current_website_name, target_url)
+            r = selenium.use_cookie(self.driver, self.current_website_name, target_url)
+            print(r)
 
         # 验证网站是否成功加载
         self._verify_website_loaded()

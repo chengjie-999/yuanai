@@ -1,28 +1,29 @@
 import os
 import streamlit as st
-from langchain.schema import HumanMessage, AIMessage
-from langchain.callbacks.base import BaseCallbackHandler
+
+from langchain_core.messages import HumanMessage, AIMessage
 
 from yuanai.core.lc import get_llm, get_prompt, get_agent_executor
 from yuanai.tools import all_tools as tools
 from utils import initializing_state
 from utils.data_path import root_path
 
-# ========== 工具调用显示回调（非流式） ==========
-class ToolCallback(BaseCallbackHandler):
-    """在界面上显示工具调用开始和结束的信息"""
-    def on_tool_start(self, serialized, input_str, **kwargs):
-        tool_name = serialized.get('name', '未知工具')
-        st.sidebar.caption(f"🔧 正在调用工具：{tool_name}")
-
-    def on_tool_end(self, output, **kwargs):
-        preview = str(output)[:50] + "..." if len(str(output)) > 50 else str(output)
-        st.sidebar.caption(f"✅ 工具调用完成：{preview}")
-
 # ========== 初始化状态 ==========
 INITIAL_STATE = {
     "messages": [],  # 格式：[(role, content), ...]
 }
+
+
+def get_chart_history():
+    # 准备对话历史
+    chat_history = []
+    for role, content in st.session_state.messages[:-1]:  # 排除当前输入
+        if role == "user":
+            chat_history.append(HumanMessage(content=content))
+        elif role == "assistant":
+            chat_history.append(AIMessage(content=content))
+    return chat_history
+
 
 def main():
     initializing_state(INITIAL_STATE)
@@ -49,8 +50,8 @@ def main():
         for msg in st.session_state.messages:
             role, content = msg
             with st.chat_message(
-                role,
-                avatar="👤" if role == "user" else os.path.join(root_path(), "data/file/img/home.ico")
+                    role,
+                    avatar="👤" if role == "user" else os.path.join(root_path(), "data/file/img/home.ico")
             ):
                 st.markdown(content)
             st.markdown("<br>", unsafe_allow_html=True)
@@ -58,31 +59,26 @@ def main():
     # 3. 处理用户输入
     input_placeholder = col1.empty()
     with input_placeholder:
-        prompt = st.chat_input("请输入你的问题（支持工具调用）...", key="chat_input")
+        latest_prompt = st.chat_input("请输入你的问题（支持工具调用）...", key="chat_input")
 
-    if prompt:
+    if latest_prompt:
         # 存储用户消息
-        st.session_state.messages.append(("user", prompt))
+        st.session_state.messages.append(("user", latest_prompt))
 
         # 实时显示用户消息
         with chat_container:
             with st.chat_message("user", avatar="👤"):
-                st.markdown(prompt)
+                st.markdown(latest_prompt)
             st.markdown("<br>", unsafe_allow_html=True)
 
         # 4. 调用 Agent
         with chat_container:
             with st.chat_message(
-                "assistant",
-                avatar=os.path.join(root_path(), "data/file/img/home.ico")
+                    "assistant",
+                    avatar=os.path.join(root_path(), "data/file/img/home.ico")
             ):
-                # 准备对话历史
-                chat_history = []
-                for role, content in st.session_state.messages[:-1]:  # 排除当前输入
-                    if role == "user":
-                        chat_history.append(HumanMessage(content=content))
-                    elif role == "assistant":
-                        chat_history.append(AIMessage(content=content))
+
+                chat_history = get_chart_history()
 
                 # 初始化 Agent 执行器
                 agent_executor = get_agent_executor(
@@ -93,7 +89,7 @@ def main():
 
                 try:
                     result = agent_executor.invoke({
-                        "input": prompt,
+                        "input": latest_prompt,
                         "chat_history": chat_history,
                         "agent_scratchpad": []
                     })
@@ -107,6 +103,7 @@ def main():
         # 存储 AI 响应
         st.session_state.messages.append(("assistant", full_response))
         st.rerun()
+
 
 if __name__ == "__main__":
     main()

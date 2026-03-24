@@ -33,9 +33,8 @@ def main():
 
     # 1. 配置 LLM（非流式）
     llm = get_llm(
-        base_url="https://api.deepseek.com/v1",
-        model_name=col2.selectbox("选择模型", ['deepseek-chat', "deepseek-vl2", "deepseek-coder"], index=0),
-        temperature=col2.slider("生成温度", 0.0, 1.0, 0.7, step=0.1),
+        col2.selectbox("选择模型", ['deepseek-chat', "deepseek-vl2", "deepseek-coder"], index=0),
+        temperature=col2.slider("生成温度", 0.0, 1.5, 0.7, step=0.1),
         verbose=False
     )
 

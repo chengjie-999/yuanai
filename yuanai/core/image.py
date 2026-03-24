@@ -106,8 +106,7 @@ def call_llm(
     """
     # 1. 初始化模型
     llm: BaseLanguageModel = get_llm(
-        base_url=base_url,
-        model_name=model_name,
+        model_name,
         temperature=temperature,
         verbose=False
     )

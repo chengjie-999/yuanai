@@ -7,12 +7,29 @@ import sys
 
 
 # LLM初始化
-def get_llm(**kwargs):
-    api_key = get_api_key()
-    return ChatOpenAI(
-        api_key=api_key,
-        **kwargs,
-    )
+def get_llm(model='deepseek-chat', **kwargs):
+    dsllm = ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner']
+    dsmm = ['deepseek-vl2']
+    if model in dsllm:
+        model_type = 'dsllm'
+        ds_api_key = get_api_key(model_type)
+        return ChatOpenAI(
+            api_key=ds_api_key,
+            base_url="https://api.deepseek.com/v1",
+            model=model,
+            **kwargs,
+        )
+    elif model in dsmm:
+        model_type = 'dsmm'
+        ds_api_key = get_api_key(model_type)
+        return ChatOpenAI(
+            api_key=ds_api_key,
+            base_url="https://api.deepseek.com/v1",
+            model=model,
+            **kwargs,
+        )
+    else:
+        raise ValueError(f"无效的model值：{model}")
 
 
 def get_prompt():
@@ -42,8 +59,7 @@ def get_agent_executor(llm, tools, prompt):
 # 对外统一接口
 def ai_with_tools(question: str):
     llm = get_llm(
-        base_url="https://api.deepseek.com/v1",
-        model_name='deepseek-chat',
+        'deepseek-chat',
         temperature=1,
         verbose=False
     )

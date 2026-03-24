@@ -99,15 +99,17 @@ def decrypt_sensitive_data(encrypted_dict: Dict[str, str], password: str) -> str
 
 
 # ---------------------- 测试示例 ----------------------
-def get_api_key(password="MySecurePassword123!"):
-    encrypted_result = {
-        'encrypted_data': 'Z0FBQUFBQnB1WE5DY1E3aDM1LVFmV25jRUxVZjJVOE5HaGEwRml6ZXR3NzYxRFVNMjFadU8xakY1eXFITVBWdlBuNXdwZWFFSDVsekJ0a1ZibkVWOHF4amlETm51OUc2UV9BU1c2VUFTZ3Fvdm1KT0VNTWM2RTlISHpmYTFMLTIwQUVDdTk2aXBQN2E=',
-        'salt': 'ihuF3qRKQKP6LGJdpc223g=='}
+def get_api_key(model_type='dsllm', password="MySecurePassword123!"):
+    if model_type == 'dsllm':
+        dsllm_encrypted_api = {
+            'encrypted_data': 'Z0FBQUFBQnB1WE5DY1E3aDM1LVFmV25jRUxVZjJVOE5HaGEwRml6ZXR3NzYxRFVNMjFadU8xakY1eXFITVBWdlBuNXdwZWFFSDVsekJ0a1ZibkVWOHF4amlETm51OUc2UV9BU1c2VUFTZ3Fvdm1KT0VNTWM2RTlISHpmYTFMLTIwQUVDdTk2aXBQN2E=',
+            'salt': 'ihuF3qRKQKP6LGJdpc223g=='}
 
-    # 解密
-    api_key = decrypt_sensitive_data(encrypted_result, password)
-    # 输出：sk-d0b3bf178759483e8e40020f5d00ee02
-    return api_key
+        # 解密
+        return decrypt_sensitive_data(dsllm_encrypted_api, password)
+        # 输出：sk-d0b3bf178759483e8e40020f5d00ee02
+    else:
+        raise ValueError(f"无效的model_type值：{model_type}，仅支持 'dsllm'")
 
 
 if __name__ == "__main__":

@@ -3,12 +3,13 @@ import time
 
 import streamlit as st
 
+from spiderlx.ui.selenium.resource import get_driver
 from utils.app_core import initializing_state, reset_to_initial
 from spiderlx.auto.web.selenium.xiaoyuan.xiaoyuan import SeleniumXiaoYuan
 
 INITIAL_STATE = {
     "xiao_yuan_card_name": '',
-    "xiao_yuan_card": "",
+    "xiao_yuan_card_selector": "",  # 👈 改这里，存定位符，不存 WebElement
     "xiao_yuan_like": '单题标答-审核',
     "xiao_yuan_auto": False,
     "xiao_yuan_count": 0,
@@ -16,40 +17,35 @@ INITIAL_STATE = {
     "xiao_yuan_qa": ['https://xyzb.yuanfudao.com/img/task-banner.53406e80.png'],
     "xiao_yuan_false_causes": ['格式问题', "举报", '文本压线', '黄框压题干', '最终答案', '不独立'],
     "xiao_yuan_false_cause": '格式问题',
-}  # 初始状态
+}
 
 
-def home_start(xiao_yuan, output_placeholder=None):
+def home_start(xiao_yuan, xiao_yuan_card, output_placeholder=None):
     """
     回首页
-    :param xiao_yuan:
-    :param output_placeholder:
-    :return:
     """
-    go_on = xiao_yuan.start(st.session_state.xiao_yuan_card)
+    go_on = xiao_yuan.start(xiao_yuan_card)  # 👈 直接用，不从session取
     st.session_state.xiao_yuan_count += 1
+
     if output_placeholder:
-        context = {'任务': st.session_state.xiao_yuan_card_name,
-                   '自动点击次数': st.session_state.xiao_yuan_count,
-                   '是否成功': go_on
-                   }
+        context = {
+            '任务': st.session_state.xiao_yuan_card_name,
+            '自动点击次数': st.session_state.xiao_yuan_count,
+            '是否成功': go_on
+        }
         output_placeholder.write(context)
+
     if go_on:
         st.session_state.xiao_yuan_step = 2
         st.session_state.xiao_yuan_auto = False
         st.session_state.xiao_yuan_count = 0
-        st.rerun()  # 刷新进入步骤2
+        st.rerun()
     return go_on
 
 
 def go_one(xiao_yuan):
-    """
-    首页第一步
-    :param xiao_yuan: 小猿众包
-    :return:
-    """
-
     st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：获取主页任务信息！')
+
     if not st.session_state.xiao_yuan_auto:
         if st.button('开启自动开始任务'):
             st.session_state.xiao_yuan_auto = True
@@ -58,26 +54,34 @@ def go_one(xiao_yuan):
         if st.button('关闭自动开始任务'):
             st.session_state.xiao_yuan_auto = False
             st.rerun()
+
     cards = xiao_yuan.home(st.session_state.xiao_yuan_like)
-    # st.write(cards)
-    cards_name = cards.keys()
-    st.session_state.xiao_yuan_card_name = st.selectbox('请选择要执行的任务', cards_name, len(cards_name) - 1)  # 无阻塞，默认第一个数据
+    cards_name = list(cards.keys())
+    st.session_state.xiao_yuan_card_name = st.selectbox('请选择要执行的任务', cards_name, index=len(cards_name) - 1)
     st.session_state.xiao_yuan_like = st.session_state.xiao_yuan_card_name
-    # 获得任务卡片
-    st.session_state.xiao_yuan_card = cards[st.session_state.xiao_yuan_card_name]
-    st.write(st.session_state.xiao_yuan_card_name)
+
+    # 👇 核心修复：不存 WebElement，只存名字！需要用时重新获取
+    xiao_yuan_card = cards[st.session_state.xiao_yuan_card_name]
+    st.session_state.xiao_yuan_card_selector = st.session_state.xiao_yuan_card_name  # 用名字定位
+
+    st.write("当前任务：", st.session_state.xiao_yuan_card_name)
+
     if st.button(f'开始任务'):
-        go_on = home_start(xiao_yuan)
-        context = {'任务': st.session_state.xiao_yuan_card_name,
-                   '点击次数': st.session_state.xiao_yuan_count,
-                   '是否成功': go_on
-                   }
+        go_on = home_start(xiao_yuan, xiao_yuan_card)  # 👈 直接传，不存session
+        context = {
+            '任务': st.session_state.xiao_yuan_card_name,
+            '点击次数': st.session_state.xiao_yuan_count,
+            '是否成功': go_on
+        }
         st.write(context)
 
     output_placeholder = st.empty()
     while st.session_state.xiao_yuan_auto:
         time.sleep(random.randint(6, 15))
-        go_on = home_start(xiao_yuan, output_placeholder)
+        # 每次循环 重新获取卡片，不使用缓存的 WebElement
+        cards_new = xiao_yuan.home(st.session_state.xiao_yuan_like)
+        current_card = cards_new[st.session_state.xiao_yuan_card_name]
+        go_on = home_start(xiao_yuan, current_card, output_placeholder)
         if go_on:
             break
 
@@ -89,7 +93,7 @@ def main():
     """
     initializing_state(INITIAL_STATE)
 
-    xiao_yuan = SeleniumXiaoYuan(st.session_state.web_driver.driver)
+    xiao_yuan = SeleniumXiaoYuan(get_driver().driver)
     col1, col2, col3 = st.columns(3)
     with col1:
         st.image("https://xyzb.yuanfudao.com/img/logo.24003130.png", width=150)
@@ -113,7 +117,7 @@ def main():
         st.image(st.session_state.xiao_yuan_qa[0], caption='参考答案')
         col1, col2, col3, col4, col5 = st.columns(5)
         if col5.button(f'刷新'):
-            driver = st.session_state.web_driver
+            driver = get_driver()
             r = driver.refresh()
             st.write(r)
         if col3.button('缩小'):

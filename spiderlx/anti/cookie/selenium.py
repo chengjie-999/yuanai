@@ -9,12 +9,11 @@ from spiderlx.anti.cookie.core import local_cookies
 from utils.data_path import root_path
 
 
-def get_cookie(web_driver: WebDriver):
+def get_cookie(web_driver: WebDriver, name):
     """
     完成登陆后，获取并保存登录后的Cookie到JSON文件
     :param web_driver: WebDriver实例
     """
-    name = web_driver.title
     cookie_file_path = os.path.join(root_path(), 'data', 'web_cookie', f'【{name}】cookies.json')
     # 获取所有的cookie
     cookies = web_driver.get_cookies()
@@ -27,6 +26,7 @@ def get_cookie(web_driver: WebDriver):
         json.dump(cookies, f, ensure_ascii=False, indent=4)
 
     print('登录信息已保存！！！')
+    return True
 
 
 def use_cookie(web_driver: WebDriver, name, url):
@@ -38,18 +38,19 @@ def use_cookie(web_driver: WebDriver, name, url):
     """
     cookies = local_cookies(name)
     if not cookies:
-        return '需手动登录'
-    # 逐个添加Cookie到浏览器
-    for cookie in cookies:
-        # 兼容不同浏览器的Cookie格式（如expiry字段类型问题）
-        if 'expiry' in cookie and isinstance(cookie['expiry'], float):
-            cookie['expiry'] = int(cookie['expiry'])
-        web_driver.add_cookie(cookie)
+        return False
+    else:
+        # 逐个添加Cookie到浏览器
+        for cookie in cookies:
+            # 兼容不同浏览器的Cookie格式（如expiry字段类型问题）
+            if 'expiry' in cookie and isinstance(cookie['expiry'], float):
+                cookie['expiry'] = int(cookie['expiry'])
+            web_driver.add_cookie(cookie)
 
-    print('Cookie添加成功！！！')
+        print('Cookie添加成功！！！')
 
-    # 随机等待后重新访问目标URL
-    time.sleep(random.randint(3, 5))
-    web_driver.get(url)
-    time.sleep(random.randint(3, 5))
-    return True
+        # 随机等待后重新访问目标URL
+        time.sleep(random.randint(3, 5))
+        web_driver.get(url)
+        time.sleep(random.randint(3, 5))
+        return True

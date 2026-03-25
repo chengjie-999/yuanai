@@ -39,9 +39,10 @@ class AgentDatabase:
         conn.close()
 
     # --------------------------------------------------------------------------
-    # 状态操作
+    # 状态操作（增删改查）
     # --------------------------------------------------------------------------
     def set_state(self, key, value):
+        """创建或更新状态（增/改）"""
         conn = self._get_connection()
         c = conn.cursor()
         c.execute('''
@@ -52,6 +53,7 @@ class AgentDatabase:
         conn.close()
 
     def get_state(self, key, default=None):
+        """获取指定状态值（查单条）"""
         conn = self._get_connection()
         c = conn.cursor()
         c.execute('SELECT value FROM streamlit_state WHERE key = ?', (key,))
@@ -62,14 +64,41 @@ class AgentDatabase:
         return default
 
     def delete_state(self, key):
+        """删除指定状态（删）"""
         conn = self._get_connection()
         c = conn.cursor()
         c.execute('DELETE FROM streamlit_state WHERE key = ?', (key,))
         conn.commit()
         conn.close()
 
+    def get_all_states(self):
+        """获取所有状态键值对（查全部）"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute('SELECT key, value FROM streamlit_state')
+        rows = c.fetchall()
+        conn.close()
+        return {key: json.loads(value) for key, value in rows}
+
+    def clear_all_states(self):
+        """清除所有状态（批量删）"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute('DELETE FROM streamlit_state')
+        conn.commit()
+        conn.close()
+
+    def exists_state(self, key):
+        """检查状态是否存在（辅助查询）"""
+        conn = self._get_connection()
+        c = conn.cursor()
+        c.execute('SELECT 1 FROM streamlit_state WHERE key = ?', (key,))
+        exists = c.fetchone() is not None
+        conn.close()
+        return exists
+
     # --------------------------------------------------------------------------
-    # 聊天记录操作
+    # 聊天记录操作（原有功能保留）
     # --------------------------------------------------------------------------
     def add_chat(self, role, content):
         conn = self._get_connection()
@@ -104,11 +133,20 @@ class AgentDatabase:
 if __name__ == '__main__':
     db = AgentDatabase()
 
-    # 状态
+    # 状态示例
     db.set_state("page", "chat")
     page = db.get_state("page")
+    print("page state:", page)
 
-    # 聊天
+    all_states = db.get_all_states()
+    print("all states:", all_states)
+
+    print("exists 'page'?", db.exists_state("page"))
+    db.delete_state("page")
+    print("exists 'page' after delete?", db.exists_state("page"))
+
+    # 聊天示例
     db.add_chat("user", "你好")
     history = db.get_all_chats()
+    print("chat history:", history)
     db.clear_chats()

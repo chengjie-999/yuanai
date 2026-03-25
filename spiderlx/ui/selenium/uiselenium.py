@@ -1,26 +1,16 @@
 import streamlit as st
 
+from spiderlx.ui.selenium.resource import get_driver
 from utils.app_core import initializing_state, reset_to_initial
-from spiderlx.auto.web.selenium import main as selenium_cj
 from spiderlx.ui.selenium import uixiaoyuan
 
 INITIAL_STATE = {
     "step": 1,
-    "web_driver": "",
     "browser_started": False,
     "web_name": "",
     "web_api": "",
     "web_open": False
 }  # 初始状态
-
-
-# @st.cache_resource
-def get_driver():
-    """
-    获取浏览器驱动，并加入缓存
-    :return:浏览器驱动
-    """
-    return selenium_cj.WebBrowser()
 
 
 def show_state():
@@ -45,7 +35,7 @@ def app_main():
                 # 唤醒并配置浏览器
                 if st.button('开启浏览器', type='primary', use_container_width=True):
                     if not st.session_state.browser_started:
-                        st.session_state.web_driver = get_driver()  # 使用浏览器驱动
+                        get_driver()  # 使用浏览器驱动
                         st.session_state.app_home = False
                         st.session_state.browser_started = True  # 标记为已启动
                         # st.success("浏览器首次启动成功！")
@@ -55,8 +45,9 @@ def app_main():
             else:
                 if st.button('关闭浏览器', use_container_width=True):
                     if st.session_state.browser_started:
-                        st.session_state.web_driver.close_browser()
+                        get_driver().close_browser()
                         reset_to_initial(INITIAL_STATE)
+                        get_driver.clear()
                         st.rerun()
                     else:
                         st.warning("浏览器未启动！")
@@ -71,7 +62,7 @@ def app_main():
     # -------- 浏览器打开后，步骤1：打开目标网站 --------
     if st.session_state.step == 1 and st.session_state.browser_started:
         st.subheader(f'selenium第{st.session_state.step}步')
-        driver = st.session_state.web_driver
+        driver = get_driver()
 
         web_info = driver.website_info
         st.session_state.web_name = st.selectbox('请选择想要访问的网站', options=web_info.values())
@@ -89,6 +80,11 @@ def app_main():
                         # 进入第二步 —— 自动化解析网站
                         st.session_state.step = 2
                         st.rerun()  # 刷新进入步骤2
+                    else:
+                        st.warning('系统未记录登录信息！请手动登录，登录成功后，获取登录信息')
+            if st.button('获取登录信息'):
+                r = driver.get_cookies()
+                st.write(r)
         with col2:
             st.write('即将进入：', st.session_state.web_api)
             if st.button('打开未解析网站'):
@@ -104,7 +100,7 @@ def app_main():
 
     # -------- 浏览器打开后，步骤2：目标网站自动化解析 --------
     if st.session_state.step == 2 and st.session_state.browser_started:
-        driver = st.session_state.web_driver
+        driver = get_driver()
         st.session_state.url = driver.get_current_url()
         with st.sidebar.container(border=True):
             st.subheader(f'selenium第{st.session_state.step}步，目标网站自动化解析')

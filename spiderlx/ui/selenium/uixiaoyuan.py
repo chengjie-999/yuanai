@@ -114,7 +114,7 @@ def main():
     if st.session_state.xiao_yuan_step == 2 and '单题标答-审核' in st.session_state.xiao_yuan_card_name:
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：执行{st.session_state.xiao_yuan_card_name}任务')
         st.session_state.xiao_yuan_qa = xiao_yuan.question_info(screenshot=False)
-        st.image(st.session_state.xiao_yuan_qa[0], caption='参考答案')
+        st.image(st.session_state.xiao_yuan_qa[0], caption='界面')
         col1, col2, col3, col4, col5 = st.columns(5)
         if col5.button(f'刷新'):
             driver = get_driver()
@@ -186,3 +186,5 @@ def main():
                 xiao_yuan.go_question(st.session_state.xiao_yuan_card_name, true=False)
         with col2:
             pass
+
+    st.image(st.session_state.xiao_yuan_qa[1], caption='参考答案')

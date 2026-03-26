@@ -4,7 +4,6 @@ from selenium.webdriver.chrome.service import Service
 
 from spiderlx.anti.cookie.selenium import get_cookie, use_cookie
 from spiderlx.core.save.urls import web_urls
-from spiderlx.anti.cookie import selenium
 from webdrivermanager_cn import ChromeDriverManagerAliMirror
 
 

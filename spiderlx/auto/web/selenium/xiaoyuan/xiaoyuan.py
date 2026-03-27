@@ -168,12 +168,33 @@ class SeleniumXiaoYuan:
             btn = foot.find_element(By.CSS_SELECTOR, '.ant-btn')
         elif status == '整题驳回':
             btn = foot.find_elements(By.CSS_SELECTOR, '.ant-btn')[1]
-            self.web_driver.find_element(By.CSS_SELECTOR, '.ant-input').send_keys(cause)
+
+            # ✅ 先安全点击 打开驳回弹窗
+            self.safe_click(btn)
+            time.sleep(0.5)
+
+            # 等待并填写驳回原因
+            try:
+                input_box = self.wait.until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, '.ant-input'))
+                )
+                input_box.clear()
+                input_box.send_keys(cause)
+            except NoSuchElementException:
+                print("⚠️ 未找到驳回输入框")
+
+            # 找到确认按钮并安全点击
+            confirm_btn = self.wait.until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, '.ant-btn-primary'))
+            )
+            # self.safe_click(confirm_btn)
+            time.sleep(0.5)
+            return self.box()
         else:
             btn = foot.find_element(By.CSS_SELECTOR, '.ant-space:nth-child(2) .ant-space-item:nth-child(5) .ant-btn')
 
-        print(f"点击按钮：{btn.text}")
-        btn.click()
+        # ✅ 所有按钮都用安全点击
+        self.safe_click(btn)
         time.sleep(0.5)
         return self.box()
 
@@ -272,6 +293,13 @@ class SeleniumXiaoYuan:
             except WebDriverException:
                 continue
         return qa
+
+    def safe_click(self, element):
+        """万能安全点击：解决遮挡、不可点击问题"""
+        try:
+            element.click()
+        except Exception:
+            self.web_driver.execute_script("arguments[0].click();", element)
 
 
 if __name__ == '__main__':

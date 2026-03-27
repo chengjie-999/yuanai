@@ -12,10 +12,11 @@ INITIAL_STATE = {
     "xiao_yuan_card_selector": "",  # 👈 改这里，存定位符，不存 WebElement
     "xiao_yuan_like": '单题标答-审核',
     "xiao_yuan_auto": False,
+    "xiao_yuan_home_count": 0,
     "xiao_yuan_count": 0,
     "xiao_yuan_step": 1,
     "xiao_yuan_qa": ['https://xyzb.yuanfudao.com/img/task-banner.53406e80.png'],
-    "xiao_yuan_false_causes": ['格式问题', "举报", '文本压线', '黄框压题干', '最终答案', '不独立'],
+    "xiao_yuan_false_causes": ['格式问题', "举报", '文本压线', '黄框压题干', '最终答案', '不独立', '出框'],
     "xiao_yuan_false_cause": '格式问题',
 }
 
@@ -105,13 +106,16 @@ def main():
         if st.button('返回首页'):
             xiao_yuan.go_home()
             reset_to_initial(INITIAL_STATE)
+            st.session_state.xiao_yuan_home_count = 1
             # st.session_state.xiao_yuan_auto = True
             st.rerun()
 
     # 第一步：首页开始任务
     if st.session_state.xiao_yuan_step == 1:
-        driver.use_cookies()
-        driver.driver.get('https://xyzb.yuanfudao.com/task/main')
+        if st.session_state.xiao_yuan_home_count <= 0:  # 第一次进入，添加cookie
+            driver.use_cookies()
+            driver.driver.get('https://xyzb.yuanfudao.com/task/main')
+        st.session_state.xiao_yuan_home_count += 1
         go_one(xiao_yuan)
 
     # 第二步：执行任务
@@ -120,7 +124,7 @@ def main():
         st.session_state.xiao_yuan_qa = xiao_yuan.question_info(screenshot=False)
         st.image(st.session_state.xiao_yuan_qa[0], caption='界面')
         col1, col2, col3, col4, col5 = st.columns(5)
-        if col5.button(f'刷新'):
+        if col4.button(f'刷新'):
             driver = get_driver()
             r = driver.refresh()
             st.write(r)
@@ -140,14 +144,14 @@ def main():
             # time.sleep(2)
             st.rerun()
 
-        if col4.button('整题驳回'):
-            st.session_state.xiao_yuan_false_cause = st.selectbox('', st.session_state.xiao_yuan_false_causes)
+        st.session_state.xiao_yuan_false_cause = col5.selectbox('错误原因', st.session_state.xiao_yuan_false_causes)
+        if col5.button('整题驳回'):
             st.write('错误理由：', st.session_state.xiao_yuan_false_cause)
             go_on = xiao_yuan.compete('整题驳回', cause=st.session_state.xiao_yuan_false_cause)
-            if st.button('确定'):
-                xiao_yuan.rejection_confirmation()
-                if not go_on:
-                    st.session_state.xiao_yuan_step = 1
+            if not go_on:
+                st.session_state.xiao_yuan_step = 1
+        if col5.button('确定驳回'):
+            xiao_yuan.rejection_confirmation()
         if st.button('展示标记答案'):
             col1, col2 = st.columns(2)
             with col1:
@@ -175,13 +179,13 @@ def main():
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：执行{st.session_state.xiao_yuan_card_name}任务')
         col1, col2 = st.columns(2)
         with col1:
-            if st.button('查看原题目', use_container_width=True):
+            if st.button('查看原题目', width='stretch'):
                 xiao_yuan.to_detail()
-            if st.button('关闭原题目', use_container_width=True):
+            if st.button('关闭原题目', width='stretch'):
                 xiao_yuan.close_detail()
-            if st.button('审核正确', type='primary', use_container_width=True):
+            if st.button('审核正确', type='primary', width='stretch'):
                 xiao_yuan.go_question(st.session_state.xiao_yuan_card_name)
-            if st.button('提交领下一任务', use_container_width=True):
+            if st.button('提交领下一任务', width='stretch'):
                 go_on = xiao_yuan.box()
                 if not go_on:
                     st.session_state.xiao_yuan_step = 1
@@ -191,4 +195,4 @@ def main():
         with col2:
             pass
 
-    st.image(st.session_state.xiao_yuan_qa[1], caption='参考答案')
+    st.image(st.session_state.xiao_yuan_qa[0], caption='参考答案')

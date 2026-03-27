@@ -190,5 +190,5 @@ for idx, (tab_label, tab_key) in enumerate(all_tabs):
 #     online_video_url = "https://www.w3school.com.cn/i/movie.mp4"
 #     st.video(online_video_url)
 if st.session_state.auto_refresh:
-    time.sleep(20)
+    time.sleep(5)
     st.rerun()

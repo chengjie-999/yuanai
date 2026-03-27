@@ -1,377 +1,276 @@
-import base64
 import time
 
-from selenium.common import NoSuchElementException, ElementNotInteractableException, WebDriverException
+from selenium.common import (
+    NoSuchElementException,
+    ElementNotInteractableException,
+    WebDriverException
+)
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 
-from spiderlx.core.save.save_data import *
+from spiderlx.core.save.save_data import SavedData
 from utils.data_path import img_save_path
 
 
 class SeleniumXiaoYuan:
+    """
+    小猿众包自动化业务类
+    功能：任务处理、题目操作、答案审核、截图保存、弹窗处理、任务导航
+    """
 
     def __init__(self, web_driver: WebDriver):
         self.web_driver = web_driver
+        self.wait = WebDriverWait(self.web_driver, 30)
 
     def get_html(self):
+        """获取页面HTML并保存"""
         html = self.web_driver.page_source
         print(html)
-        sd = SavedData(f'小猿')
-        sd.save_data_html(html)
+        save = SavedData('小猿')
+        save.save_data_html(html)
 
     def start(self, card):
         """
-        任务卡片点击开始任务
-        :param card: 任务卡片
-        :return:
+        点击任务卡片开始任务
+        :param card: 任务卡片元素
+        :return: 是否成功进入任务
         """
-        action = ActionChains(self.web_driver)
-        action.move_to_element(card).perform()
-        start = card.find_element(by=By.CSS_SELECTOR, value='.task-card-content .content-start')
-        print(start.text)
-        url = self.web_driver.current_url
-        start.click()  # 点击开始任务
+        ActionChains(self.web_driver).move_to_element(card).perform()
+        start_btn = card.find_element(By.CSS_SELECTOR, '.task-card-content .content-start')
+        print(f"开始任务按钮文本：{start_btn.text}")
+
+        current_url = self.web_driver.current_url
+        start_btn.click()
         time.sleep(3)
         new_url = self.web_driver.current_url
-        go_on = False if url == new_url else True
-        print(url, new_url, go_on)
+
+        go_on = current_url != new_url
+        print(f"原URL：{current_url} | 新URL：{new_url} | 是否跳转：{go_on}")
         return self.box() and go_on
 
     def home(self, like='单题标答-审核'):
         """
-        小猿众包主页
-        :return:
+        主页加载任务卡片，筛选目标任务
+        :param like: 偏好任务名称关键词
+        :return: 任务标题与卡片映射字典
         """
-        # 执行主页操作，找到任务卡片
-        wait = WebDriverWait(self.web_driver, 30)  # （最长等10秒，每0.5秒轮询一次）每进行一次页面加载时执行一次显式等待
-        cards = wait.until(
-            EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".task-card"))  # 核心：条件 + 定位器 所有匹配元素存在且可见（返回元素列表）
+        cards = self.wait.until(
+            EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".task-card"))
         )
-        # cards = web_driver.find_elements(By.CSS_SELECTOR, ".task-card")
         title_cards = {}
+
         for card in cards:
-            # 各个任务卡片，通过标题寻找目标任务
-            title = card.find_element(by=By.CSS_SELECTOR, value='.task-card-title').text
-            # i = 0
-            title = title.strip()
-            # 任务状态 text-warning
+            title = card.find_element(By.CSS_SELECTOR, '.task-card-title').text.strip()
             try:
-                warn = card.find_element(By.CSS_SELECTOR, value='.text-warning:nth-child(2)').text
-            except Exception as e:
-                e.args = '暂无任务'
-                warn = '暂无任务'
+                warn_text = card.find_element(By.CSS_SELECTOR, '.text-warning:nth-child(2)').text
+            except:
+                warn_text = '暂无任务'
 
-            title = f'{title}【{warn}】'
-            print(title)
-            title_cards[title] = card
+            full_title = f'{title}【{warn_text}】'
+            title_cards[full_title] = card
+            print(full_title)
 
-            # 出现单题标答-审核就不选其他任务
-            if like in title:
+            if like in full_title:
                 break
         return title_cards
 
     def go_question(self, name, true='1', up=False):
         """
-        处理任务
-        :param true:
-        :param up:
-        :param name: 任务名
-        :return: 图片列表
+        根据任务类型自动处理题目
+        :param name: 任务名称
+        :param true: 审核结果标记
+        :param up: 是否缩放题目
         """
-        wait = WebDriverWait(self.web_driver, 30)  # （最长等10秒，每0.5秒轮询一次）每进行一次页面加载时执行一次显式等待
         if '单题标答-审核' in name:
-            # 题目 .ol-viewport
-            question = wait.until(
-                EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport'))
-            )
-            # question = web_driver.find_element(By.CSS_SELECTOR, '.ol-viewport')
-            if up:
-                self.question_resize()
-                time.sleep(1)
+            self._handle_single_audit(up)
+        elif '3.0改错-补答' in name:
+            self._handle_fix_answer()
+        elif '抄写图形题-补答审核' in name:
+            self._handle_copy_audit(true)
 
-            # 找到独立答案 .yst-mathjax-loading
-            try:
-                # 尝试查找元素（这里用ID定位，实际替换为你的定位器）
-                answer = question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading")
-                ActionChains(self.web_driver).move_to_element(answer).perform()
-                # 如果找到元素，执行后续操作（如点击、输入）
-                answer.click()
-                print(answer.text)
-                time.sleep(0.5)
-                # 点击正确按钮 ant-btn ant-btn-primary button_gjJ0I auditPassButton_OH_ef
-                true = question.find_element(By.CSS_SELECTOR, '.button_gjJ0I')
-                true.click()
-                print('独立答案判断完成')
-            except NoSuchElementException:
-                # 找不到元素时执行的“跳过”逻辑（可根据需求修改）
-                print("未找到【独立批改答案】，已跳过")
-            except ElementNotInteractableException:
-                print('【独立批改答案】交互隐藏！')
+    def _handle_single_audit(self, up):
+        """单题标答-审核 专用处理逻辑"""
+        question = self.wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport')))
+        if up:
+            self.question_resize()
+            time.sleep(1)
 
-            # 找到第一个的初次审核的黄框（批改答案） .ol-overlay-container 点击
-            try:
-                ActionChains(self.web_driver).move_to_element(to_element=question).perform()
+        # 处理独立答案
+        try:
+            answer = question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading")
+            ActionChains(self.web_driver).move_to_element(answer).click().perform()
+            time.sleep(0.5)
+            question.find_element(By.CSS_SELECTOR, '.button_gjJ0I').click()
+            print("独立答案判断完成")
+        except NoSuchElementException:
+            print("未找到【独立批改答案】，已跳过")
+        except ElementNotInteractableException:
+            print("【独立批改答案】不可交互")
 
-                answer = question.find_element(By.CSS_SELECTOR, '.ol-overlay-container')
-                print(answer.text, __name__)
-                ActionChains(self.web_driver).move_to_element(answer).perform()
-                # 再点击
-                answer.click()
-                print('答案点击完成！')
-                time.sleep(0.5)
-                # 判断按钮，点击正确
-                # 正确 .button_3sIPu  1
-                # 错误 .button_3sIPu  2
-                true = question.find_element(By.CSS_SELECTOR, '.button_3sIPu')
-                # 全部正确
-                answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
-                for i in range(len(answers)):
-                    true.click()
-                print('答案判断完成！')
-                return
+        # 处理批改答案
+        try:
+            ActionChains(self.web_driver).move_to_element(question).perform()
+            answer = question.find_element(By.CSS_SELECTOR, '.ol-overlay-container')
+            answer.click()
+            time.sleep(0.5)
 
-            except NoSuchElementException:
-                # 找不到元素时执行的“跳过”逻辑（可根据需求修改）
-                print("未找到【批改答案】，已跳过")
-            except ElementNotInteractableException:
-                print(f'【批改答案】交互隐藏！{ElementNotInteractableException().msg}')
-                # ActionChains(self.web_driver).send_keys(Keys.SPACE).perform()
-            except Exception as e:
-                # print('未知错误', e)
-                pass
-
-            if up:
-                self.question_restore()
-        if '3.0改错-补答' in name:
-            # .ant-radio-input 点击已完成补答修改
-
-            # .ant-btn-primary 点击提交
+            true_btn = question.find_element(By.CSS_SELECTOR, '.button_3sIPu')
+            answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
+            for _ in answers:
+                true_btn.click()
+            print("答案判断完成")
+        except NoSuchElementException:
+            print("未找到【批改答案】，已跳过")
+        except ElementNotInteractableException:
+            print("【批改答案】不可交互")
+        except Exception:
             pass
-        if '抄写图形题-补答审核' in name:
-            if true:
-                # .ant-radio-input 点击已完成补答修改
-                t = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-radio-input')[0]
-                t.click()
-                # .ant-btn-primary 点击提交
-                t = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-btn-primary')[-1]
-                t.click()
-            if not true:
-                # .ant-radio-input 点击已完成补答修改
-                t = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-radio-input')[1]
-                t.click()
-                # .ant-btn-primary 点击提交
-                t = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-btn-primary')[-1]
-                # t.click()
-            pass
-        return
+
+        if up:
+            self.question_restore()
+
+    def _handle_fix_answer(self):
+        """3.0改错-补答 逻辑（可扩展）"""
+        pass
+
+    def _handle_copy_audit(self, true):
+        """抄写图形题-补答审核 逻辑"""
+        radios = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-radio-input')
+        submit = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-btn-primary')[-1]
+
+        if true:
+            radios[0].click()
+            submit.click()
+        else:
+            radios[1].click()
 
     def go_home(self):
-        home = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-menu-item')
-
-        home.click()
-        print('回首页')
+        """返回主页"""
+        self.web_driver.find_element(By.CSS_SELECTOR, '.ant-menu-item').click()
+        print("返回首页")
         return True
 
     def compete(self, status, cause=None):
         """
-        提交任务
-        :param cause:
-        :param status: 任务状态
-        :return:是否继续
+        提交任务/驳回任务
+        :param status: 提交状态
+        :param cause: 驳回原因
+        :return: 是否继续任务
         """
-        if not status:
-            status = '提交领下一任务'
         foot = self.web_driver.find_element(By.CSS_SELECTOR, '.container_23Xxj')
 
         if status == '提交领下一任务':
-            button = foot.find_elements(By.CSS_SELECTOR, '.ant-btn')[-1]
-            print(button.text)
-            button.click()
+            btn = foot.find_elements(By.CSS_SELECTOR, '.ant-btn')[-1]
         elif status == '提交回首页':
-            button = foot.find_element(By.CSS_SELECTOR, '.ant-btn')
-            button.click()
+            btn = foot.find_element(By.CSS_SELECTOR, '.ant-btn')
         elif status == '整题驳回':
-            button = foot.find_elements(By.CSS_SELECTOR, '.ant-btn')[1]
-            button.click()
-            # 填写理由
-            ant_input = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-input')
-            ant_input.send_keys(cause)
+            btn = foot.find_elements(By.CSS_SELECTOR, '.ant-btn')[1]
+            self.web_driver.find_element(By.CSS_SELECTOR, '.ant-input').send_keys(cause)
         else:
-            button = foot.find_element(By.CSS_SELECTOR,
-                                       '.ant-space:nth-child(2) .ant-space-item:nth-child(5) .ant-btn')
-            button.click()
+            btn = foot.find_element(By.CSS_SELECTOR, '.ant-space:nth-child(2) .ant-space-item:nth-child(5) .ant-btn')
+
+        print(f"点击按钮：{btn.text}")
+        btn.click()
         time.sleep(0.5)
         return self.box()
 
-    def question_resize(self, down=True, count=6):
-        """
-        单题标答审核题目放大或缩小
-        :param down:缩小
-        :param count:点击缩小按钮的次数
-        :return:
-        """
-        if down:
-            # 减小按钮
-            down_button = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-zoom-out')[0]
-            for _ in range(count):
-                down_button.click()
-                time.sleep(0.05)
-        else:
-            pass
+    def question_resize(self, count=6):
+        """缩小题目视图"""
+        zoom_out = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-zoom-out')[0]
+        for _ in range(count):
+            zoom_out.click()
+            time.sleep(0.05)
 
     def question_restore(self):
-        """
-        题目恢复到正常大小
-        :return:
-        """
+        """恢复题目视图"""
         try:
-            re = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-control')[3]
-            re.click()
+            self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-control')[3].click()
+            return True
         except NoSuchElementException:
             return False
-        return True
 
     def rejection_confirmation(self):
-        """
-        驳回确认
-        :return:
-        """
-        # ant-modal-content
-        reject = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')
-        confirm = reject.find_element(By.CSS_SELECTOR, '.ant-btn-primary')
-        print(confirm.text)
+        """确认驳回弹窗"""
+        modal = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')
+        confirm = modal.find_element(By.CSS_SELECTOR, '.ant-btn-primary')
+        print(f"确认驳回：{confirm.text}")
         confirm.click()
         return confirm.text
 
     def box(self, go_on=True):
         """
-        任务消息提示框
-        :return:是否继续
+        统一处理任务弹窗（任务不足/任务完成）
+        :return: 是否继续任务
         """
         try:
             time.sleep(1)
-            # 处理任务不足，点击后返回首页。
-            # ant - modal - content
-            box = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')
-            # ant-modal-confirm-title
-            message = box.find_element(By.CSS_SELECTOR, '.ant-modal-confirm-title').text
-            print(message)
-            if message == '当前任务包已处理完毕，是否继续认领下一包？' and go_on:
-                know = self.web_driver.find_element(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')
-                get = know.find_element(By.CSS_SELECTOR, '.ant-btn-primary')
-                get_ = get.text
-                print(get_)
-                get.click()
-                return go_on
-            # 点击知道了
-            know = self.web_driver.find_element(by=By.CSS_SELECTOR, value='.ant-modal-confirm-btns')
-            get = know.text
-            print(get)
-            know.click()
-            if get == '知道了':
-                return not go_on
+            modal = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')
+            msg = modal.find_element(By.CSS_SELECTOR, '.ant-modal-confirm-title').text
+            print(f"系统提示：{msg}")
+
+            btns = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-confirm-btns')
+            if '是否继续认领下一包' in msg and go_on:
+                primary = btns.find_element(By.CSS_SELECTOR, '.ant-btn-primary')
+                primary.click()
+                return True
+            else:
+                btns.click()
+                return '知道了' not in btns.text
         except NoSuchElementException:
-            print('任务充足')
+            print("任务充足")
         return go_on
 
     def to_detail(self):
-        """
-        【抄写】进入题目详情页面
-        :return:
-        """
-        detail = self.web_driver.find_element(By.CSS_SELECTOR, '.content_2t03S a')
-        detail.click()
-        pass
+        """进入详情页"""
+        self.web_driver.find_element(By.CSS_SELECTOR, '.content_2t03S a').click()
 
     def close_detail(self):
-        """
-        【抄写】关闭题目详情页面
-        :return:
-        """
-        windows = self.web_driver.window_handles
-        print(windows)
-        if len(windows) > 1:
-            self.web_driver.switch_to.window(windows[1])
-            # 保存
-            save = self.web_driver.find_element(By.CSS_SELECTOR, '.footer_3Vgpz .ant-space-item button')
-            print(save.text)
-            save.click()
-            pass
+        """关闭详情页并保存"""
+        handles = self.web_driver.window_handles
+        if len(handles) > 1:
+            self.web_driver.switch_to.window(handles[1])
+            self.web_driver.find_element(By.CSS_SELECTOR, '.footer_3Vgpz .ant-space-item button').click()
             self.web_driver.close()
-        self.web_driver.switch_to.window(windows[0])
-        pass
+            self.web_driver.switch_to.window(handles[0])
 
     def question_info(self, screenshot=True):
         """
-        题目的标记答案和参考答案
-        :return:
+        获取题目截图、参考答案、标记答案截图
+        :return: 图片数据列表
         """
         qa = []
-        wait = WebDriverWait(self.web_driver, 30)
+        # 全局截图
+        qa.append(self.web_driver.get_screenshot_as_png())
+
         # 参考答案
-        refer = wait.until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, '.ant-image > img'))
-        )
-        global_img = self.web_driver.get_screenshot_as_png()
-        qa.append(global_img)
-        refer_img = refer.get_attribute('src')
-        qa.append(refer_img)
+        refer_img = self.wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, '.ant-image > img')))
+        qa.append(refer_img.get_attribute('src'))
 
-        # 题目 .ol-viewport
-        if screenshot:
-            wait = WebDriverWait(self.web_driver, 30)
-            question = wait.until(
-                EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport'))
-            )
-            # question = web_driver.find_element(By.CSS_SELECTOR, '.ol-viewport')
-            # 独立标记答案
+        if not screenshot:
+            return qa
+
+        question = self.wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport')))
+
+        # 独立答案截图
+        try:
             local = img_save_path('独立.png')
+            question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading").screenshot(local)
+            qa.append(local)
+        except NoSuchElementException:
+            qa.append(img_save_path('独立.png'))
+
+        # 标记答案截图
+        answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
+        for i, ans in enumerate(answers):
             try:
-                answer = question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading")
-                answer.screenshot(local)
-                qa.append(local)
-            except NoSuchElementException:
-                qa.append(local)
-
-            # 标记答案
-            answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
-            # answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlaycontainer')
-            print(len(answers))
-            i = 0
-            for answer in answers:
-                try:
-                    local = img_save_path(f'答案{i}.png')
-                    mark = answer.screenshot(local)
-                except WebDriverException:
-                    # 元素无法截图
-                    continue
-                qa.append(local)
-                i += 1
-        # # 3. 定位 canvas 元素（先确保元素存在）
-        # canvas_elem =question.find_element(By.TAG_NAME, "canvas")
-        # print(canvas_elem)
-        # print('*'*100)
-        # # 4. 核心操作：注入 JavaScript 调用 toDataURL() 获取 Base64 内容
-        # # 注意：JavaScript 中通过 arguments[0] 接收传入的 canvas 元素
-        # canvas_base64 = self.web_driver.execute_script("""
-        #    // 传入的 canvas 元素
-        #    const canvas = arguments[0];
-        #    // 调用 toDataURL() 返回 Base64 字符串
-        #    return canvas.toDataURL("image/png");
-        # """, canvas_elem)
-        # if canvas_base64:
-        #     # 5.1 去除 Base64 字符串头部的 "data:image/png;base64," 前缀
-        #     base64_data = canvas_base64.split(",")[1]
-        #
-        #     # 5.2 解码 Base64 数据为二进制流
-        #     image_binary = base64.b64decode(base64_data)
-        #     print(image_binary)
-        #     qa.append(image_binary)
-
+                path = img_save_path(f'答案{i}.png')
+                ans.screenshot(path)
+                qa.append(path)
+            except WebDriverException:
+                continue
         return qa
 
 

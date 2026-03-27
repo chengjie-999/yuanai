@@ -92,13 +92,15 @@ def main():
     :return:
     """
     initializing_state(INITIAL_STATE)
+    driver = get_driver()
 
-    xiao_yuan = SeleniumXiaoYuan(get_driver().driver)
+    xiao_yuan = SeleniumXiaoYuan(driver.driver)
     col1, col2, col3 = st.columns(3)
     with col1:
         st.image("https://xyzb.yuanfudao.com/img/logo.24003130.png", width=150)
     with col2:
-        pass
+        if st.button('重载'):
+            st.rerun()
     with col3:
         if st.button('返回首页'):
             xiao_yuan.go_home()
@@ -108,6 +110,8 @@ def main():
 
     # 第一步：首页开始任务
     if st.session_state.xiao_yuan_step == 1:
+        driver.use_cookies()
+        driver.driver.get('https://xyzb.yuanfudao.com/task/main')
         go_one(xiao_yuan)
 
     # 第二步：执行任务

@@ -5,7 +5,7 @@ import streamlit as st
 import pandas as pd
 
 # 导入功能模块（保持原有导入路径）
-from aicode import headui
+from datanalysis.aicode import headui
 from spiderlx.ui import spider_app
 from datanalysis.ui import core
 from yuanai.ui import ai

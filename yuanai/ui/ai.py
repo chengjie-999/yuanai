@@ -4,7 +4,6 @@ import streamlit as st
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
-from start_chrome import start_chrome
 from yuanai.core.lc import get_llm, get_langgraph_agent
 from yuanai.tools import all_tools as in_tools
 from utils import initializing_state
@@ -65,7 +64,7 @@ def main():
             ):
                 message_placeholder = st.empty()
                 full_response = ""
-                tools = in_tools + [start_chrome]  # 获取所有工具
+                tools = in_tools
                 agent = get_langgraph_agent(llm, tools)
                 system_message = SystemMessage(content="你是一个能调用工具的助手")
                 chat_history = get_chat_history()

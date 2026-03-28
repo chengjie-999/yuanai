@@ -104,7 +104,7 @@ def app_main():
         st.session_state.url = driver.get_current_url()
         with st.sidebar.container(border=True):
             st.subheader(f'selenium第{st.session_state.step}步，目标网站自动化解析')
-            # ai.main()
+            # aitools.main()
 
         if st.session_state.web_name == '小猿众包':
             uixiaoyuan.main()

@@ -7,7 +7,7 @@ from diagrams.generic.storage import Storage
 
 from utils.data_path import root_path
 
-save_path = r'data/ai'
+save_path = r'data/aitools'
 save_path = os.path.join(root_path(), save_path)
 
 # 1. 加载/模拟CSV/Excel数据（避免文件不存在报错，可独立运行）

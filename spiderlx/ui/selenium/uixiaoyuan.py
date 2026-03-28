@@ -194,5 +194,7 @@ def main():
                 xiao_yuan.go_question(st.session_state.xiao_yuan_card_name, true=False)
         with col2:
             pass
-
-    st.image(st.session_state.xiao_yuan_qa[0], caption='参考答案')
+    if len(st.session_state.xiao_yuan_qa) >= 2:
+        st.image(st.session_state.xiao_yuan_qa[1], caption='参考答案')
+    else:
+        st.image(st.session_state.xiao_yuan_qa[0], caption='界面')

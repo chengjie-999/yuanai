@@ -1,5 +1,6 @@
 from langchain_core.tools import tool
 
+
 @tool
 def calculate_sum(a: int, b: int) -> int:
     """计算两个整数的和
@@ -11,6 +12,7 @@ def calculate_sum(a: int, b: int) -> int:
     """
     print('calculate_sum正在被调用')
     return a + b
+
 
 @tool  # 新增计算工具示例
 def calculate_multiply(a: int, b: int) -> int:

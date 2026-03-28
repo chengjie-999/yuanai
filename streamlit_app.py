@@ -5,7 +5,6 @@ import streamlit as st
 import pandas as pd
 
 # 导入功能模块（保持原有导入路径）
-from utils import start_chrome
 from datanalysis.aicode import headui
 from spiderlx.ui import spider_app
 from datanalysis.ui import core
@@ -91,8 +90,6 @@ with st.sidebar:
     if col1.button('重载', use_container_width=True):
         st.rerun()
     render_toggle_button("auto_refresh", '自动刷新', column=col2)
-    if not st.session_state.chrome_port:
-        render_toggle_button("chrome_port", '独立浏览器端口', run_func=start_chrome.start_chrome, column=col3)
 # ==============================
 # 第一步：构建动态标签页列表（核心修改：设置标签永远在最后）
 # ==============================
@@ -148,8 +145,6 @@ for idx, (tab_label, tab_key) in enumerate(all_tabs):
 
             # 分三列展示功能开关按钮
             col1, col2, col3, col4 = st.columns(4)
-
-            render_toggle_button("chrome_port", '独立浏览器端口状态控制', column=col4)
 
             # 爬虫功能开关
             render_toggle_button(

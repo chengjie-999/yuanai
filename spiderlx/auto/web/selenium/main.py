@@ -39,26 +39,6 @@ class BrowserInitializer:
 
         self.options = chrome_options
 
-    def _attach_to_browser_at_port(self):
-        """
-        配置【接管已有浏览器】的参数（9222 端口）
-        用于：连接手动启动的 Chrome，不重新创建浏览器
-        注意：接管模式下禁止添加启动类参数，否则会报错
-        """
-        chrome_options = Options()
-
-        # 核心：接管手动启动的 9222 调试端口
-        chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-
-        # 接管模式下仅保留必要配置
-        chrome_options.add_argument(
-            'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        )
-        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        chrome_options.add_argument("--disable-dev-shm-usage")
-
-        self.options = chrome_options
-
     def create_driver(self):
         """
         创建【全新启动】的浏览器驱动（带反爬）
@@ -76,24 +56,6 @@ class BrowserInitializer:
             return driver
         except Exception as e:
             print(f"❌ 浏览器启动失败: {str(e)}")
-            raise
-
-    def create_browser(self):
-        """
-        创建【接管模式】浏览器驱动（连接 9222 端口）
-        :return: Chrome 驱动实例（连接已打开浏览器）
-        """
-        self._attach_to_browser_at_port()
-
-        try:
-            driver = Chrome(
-                service=Service(ChromeDriverManagerAliMirror().install()),
-                options=self.options
-            )
-            print("✅ 浏览器连接完成（已接管 9222 端口）")
-            return driver
-        except Exception as e:
-            print(f"❌ 浏览器连接失败: {str(e)}")
             raise
 
 
@@ -212,30 +174,10 @@ class MyWebBrowser:
             self.driver = None
 
 
-# ====================== AI 调用工具函数（对外接口）======================
-def get_driver():
-    """
-    AI 工具函数：获取【全新启动】的浏览器操作实例
-    用途：全新打开浏览器，自动处理驱动、反爬
-    :return: MyWebBrowser 业务操作实例
-    """
-    return MyWebBrowser(BrowserInitializer().create_driver())
-
-
-def get_browser():
-    """
-    AI 工具函数：获取【接管模式】浏览器操作实例（连接 9222 端口）
-    用途：接管已手动打开的 Chrome，不重启浏览器
-    :return: MyWebBrowser 业务操作实例
-    """
-    # 已修复：原代码错误调用 create_driver，现改为接管模式
-    return MyWebBrowser(BrowserInitializer().create_browser())
-
-
 # ====================== 主程序入口 ======================
 def main():
     # 使用接管模式
-    browser = get_browser()
+    browser = MyWebBrowser(BrowserInitializer().create_driver())
 
     try:
         browser.open_website(code=0)

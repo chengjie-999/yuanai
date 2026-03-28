@@ -1,30 +1,42 @@
 from langchain_core.tools import tool
 
-# ----------------------
-# 【全局单例】AI 完全看不见，只给工具内部用
-# ----------------------
-from spiderlx.auto.web.selenium.main import get_browser
+from spiderlx.auto.web.selenium.main import MyWebBrowser
+from spiderlx.ui.selenium.resource import get_driver
 
-_browser_instance = None
+_browser_instance: MyWebBrowser | None = None
 
 
-# ----------------------
-# 工具 1：接管浏览器（9222 端口）
-# ----------------------
 @tool
-def open_managed_browser() -> str:
+def launch_new_browser() -> str:
     """
-    接管已手动打开的 Chrome 浏览器（9222 远程调试端口）。
-    必须第一个调用！所有网页操作依赖此工具。
-    无需重启浏览器，直接复用已打开的窗口。
-    返回成功或失败提示。
+    启动一个新的浏览器窗口
     """
     global _browser_instance
+    if _browser_instance:
+        print(_browser_instance)
+        return "✅ 浏览器已启动"
     try:
-        _browser_instance = get_browser()
-        return "✅ 成功接管 9222 端口浏览器，可以开始操作"
+        _browser_instance = get_driver()
+        return "✅ 新浏览器窗口已启动"
     except Exception as e:
-        return f"❌ 接管浏览器失败：{str(e)}"
+        import traceback
+        traceback.print_exc()
+        return f"❌ 启动新浏览器失败：{str(e)}"
+
+
+@tool
+def get_website_info() -> str:
+    """
+    获取网站信息
+    """
+    if not _browser_instance:
+        return "❌ 请先调用 launch_new_browser"
+
+    try:
+        info = _browser_instance.website_info
+        return f"✅ 网站信息：{info}"
+    except Exception as e:
+        return f"❌ 获取网站信息失败：{str(e)}"
 
 
 # ----------------------
@@ -37,7 +49,7 @@ def open_website_by_code(code: int) -> str:
     参数 code：网站编号（从 0 开始）
     """
     if not _browser_instance:
-        return "❌ 请先调用 open_managed_browser 或 launch_new_browser"
+        return "❌ 请先调用 launch_new_browser"
 
     try:
         name = _browser_instance.open_website(code=code)
@@ -60,7 +72,7 @@ def open_website_by_name(name: str) -> str:
 
     try:
         _browser_instance.open_website(name=name)
-        return f"✅ 已打开网站：{name}"
+        return f"✅ 已打开网站：{name}，如果该网站在get_website_info中可以查到，则执行load_cookies"
     except Exception as e:
         return f"❌ 打开网站失败：{str(e)}"
 
@@ -74,6 +86,7 @@ def open_custom_url(url: str) -> str:
     打开自定义网址
     参数 url：完整网址（如：https://www.example.com）
     """
+    print(_browser_instance)
     if not _browser_instance:
         return "❌ 请先启动浏览器"
 
@@ -115,7 +128,7 @@ def load_cookies() -> str:
 
     try:
         _browser_instance.use_cookies()
-        return "✅ Cookie 已加载"
+        return "✅ Cookie 已加载，请调用open_website_by_name重新访问该网站！"
     except Exception as e:
         return f"❌ 加载 Cookie 失败：{str(e)}"
 

@@ -1,135 +1,146 @@
+from sqlalchemy import create_engine, Column, Integer, Text, TIMESTAMP
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 import os
-import sqlite3
 import json
 from utils.data_path import root_path
 
+# ---------------------- SQLAlchemy 基础配置 ----------------------
+Base = declarative_base()
 
+
+# ---------------------- 数据库模型定义（对应原表结构） ----------------------
+class StreamlitState(Base):
+    """状态表模型"""
+    __tablename__ = 'streamlit_state'
+    key = Column(Text, primary_key=True)
+    value = Column(Text)
+
+
+class AIChat(Base):
+    """AI 聊天记录表模型"""
+    __tablename__ = 'ai_chat'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    role = Column(Text, nullable=False)
+    content = Column(Text, nullable=False)
+    create_time = Column(TIMESTAMP, server_default='CURRENT_TIMESTAMP')
+
+
+# ---------------------- 数据库操作类（功能完全对齐原代码） ----------------------
 class AgentDatabase:
     def __init__(self, db_path=None):
-        # 不传路径则默认使用 agent.db
         if db_path is None:
             db_path = os.path.join(root_path(), "agent.db")
         self.db_path = db_path
-        self._init_tables()  # 自动建表
 
-    def _get_connection(self):
-        return sqlite3.connect(self.db_path)
+        # 1. 创建 SQLAlchemy 引擎
+        self.engine = create_engine(f'sqlite:///{self.db_path}')
+        # 2. 创建会话工厂
+        self.Session = sessionmaker(bind=self.engine)
+        # 3. 自动建表
+        self._init_tables()
 
     def _init_tables(self):
-        conn = self._get_connection()
-        c = conn.cursor()
-
-        # 状态表
-        c.execute('''
-        CREATE TABLE IF NOT EXISTS streamlit_state (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )''')
-
-        # AI 聊天表
-        c.execute('''
-        CREATE TABLE IF NOT EXISTS ai_chat (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-
-        conn.commit()
-        conn.close()
+        """自动创建所有表（如果不存在）"""
+        Base.metadata.create_all(self.engine)
 
     # --------------------------------------------------------------------------
     # 状态操作（增删改查）
     # --------------------------------------------------------------------------
     def set_state(self, key, value):
         """创建或更新状态（增/改）"""
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute('''
-            REPLACE INTO streamlit_state (key, value)
-            VALUES (?, ?)
-        ''', (key, json.dumps(value, ensure_ascii=False)))
-        conn.commit()
-        conn.close()
+        session = self.Session()
+        try:
+            # 先查询是否存在，存在则更新，不存在则插入
+            state = session.query(StreamlitState).filter_by(key=key).first()
+            if state:
+                state.value = json.dumps(value, ensure_ascii=False)
+            else:
+                state = StreamlitState(key=key, value=json.dumps(value, ensure_ascii=False))
+                session.add(state)
+            session.commit()
+        finally:
+            session.close()
 
     def get_state(self, key, default=None):
         """获取指定状态值（查单条）"""
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute('SELECT value FROM streamlit_state WHERE key = ?', (key,))
-        row = c.fetchone()
-        conn.close()
-        if row:
-            return json.loads(row[0])
-        return default
+        session = self.Session()
+        try:
+            state = session.query(StreamlitState).filter_by(key=key).first()
+            if state:
+                return json.loads(state.value)
+            return default
+        finally:
+            session.close()
 
     def delete_state(self, key):
         """删除指定状态（删）"""
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute('DELETE FROM streamlit_state WHERE key = ?', (key,))
-        conn.commit()
-        conn.close()
+        session = self.Session()
+        try:
+            session.query(StreamlitState).filter_by(key=key).delete()
+            session.commit()
+        finally:
+            session.close()
 
     def get_all_states(self):
         """获取所有状态键值对（查全部）"""
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute('SELECT key, value FROM streamlit_state')
-        rows = c.fetchall()
-        conn.close()
-        return {key: json.loads(value) for key, value in rows}
+        session = self.Session()
+        try:
+            states = session.query(StreamlitState).all()
+            return {state.key: json.loads(state.value) for state in states}
+        finally:
+            session.close()
 
     def clear_all_states(self):
         """清除所有状态（批量删）"""
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute('DELETE FROM streamlit_state')
-        conn.commit()
-        conn.close()
+        session = self.Session()
+        try:
+            session.query(StreamlitState).delete()
+            session.commit()
+        finally:
+            session.close()
 
     def exists_state(self, key):
         """检查状态是否存在（辅助查询）"""
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute('SELECT 1 FROM streamlit_state WHERE key = ?', (key,))
-        exists = c.fetchone() is not None
-        conn.close()
-        return exists
+        session = self.Session()
+        try:
+            return session.query(StreamlitState).filter_by(key=key).first() is not None
+        finally:
+            session.close()
 
     # --------------------------------------------------------------------------
     # 聊天记录操作（原有功能保留）
     # --------------------------------------------------------------------------
     def add_chat(self, role, content):
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO ai_chat (role, content)
-            VALUES (?, ?)
-        ''', (role, content))
-        conn.commit()
-        conn.close()
+        """添加一条聊天记录"""
+        session = self.Session()
+        try:
+            chat = AIChat(role=role, content=content)
+            session.add(chat)
+            session.commit()
+        finally:
+            session.close()
 
     def get_all_chats(self):
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute('''
-            SELECT role, content
-            FROM ai_chat
-            ORDER BY id ASC
-        ''')
-        rows = c.fetchall()
-        conn.close()
-        return [{"role": r, "content": c} for r, c in rows]
+        """获取所有聊天记录（按时间排序）"""
+        session = self.Session()
+        try:
+            chats = session.query(AIChat).order_by(AIChat.id).all()
+            return [{"role": chat.role, "content": chat.content} for chat in chats]
+        finally:
+            session.close()
 
     def clear_chats(self):
-        conn = self._get_connection()
-        c = conn.cursor()
-        c.execute('DELETE FROM ai_chat')
-        conn.commit()
-        conn.close()
+        """清空所有聊天记录"""
+        session = self.Session()
+        try:
+            session.query(AIChat).delete()
+            session.commit()
+        finally:
+            session.close()
 
 
+# ---------------------- 测试代码（与原代码完全一致） ----------------------
 if __name__ == '__main__':
     db = AgentDatabase()
 

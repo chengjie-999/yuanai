@@ -1,5 +1,6 @@
 import time
 
+import pandas as pd
 import streamlit as st
 
 
@@ -20,6 +21,7 @@ def reset_to_initial(init_state):
 
 
 def va(state):
+    """计算当前功能状态的开启数量，并根据数量显示不同的界面内容"""
     open_num = 0
     for k in state:
         if st.session_state[k]:
@@ -61,4 +63,11 @@ def render_toggle_button(state_key, button_text, run_func=None, reset_home=True,
                 st.session_state.app_home = False
             st.rerun()
     return button_text
+
+
+def session_df():
+    """将当前session状态转换为DataFrame格式，便于展示和存储"""
+    session_table = [[key, value] for key, value in st.session_state.items()]
+    df = pd.DataFrame(session_table, columns=["key", "value"])
+    return df
 

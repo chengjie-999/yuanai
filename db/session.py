@@ -1,9 +1,10 @@
 from sqlalchemy import create_engine, Column, Integer, Text, TIMESTAMP
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 import json
 from utils.data_path import root_path
+import pandas as pd
 
 # ---------------------- SQLAlchemy 基础配置 ----------------------
 Base = declarative_base()
@@ -108,6 +109,39 @@ class AgentDatabase:
         finally:
             session.close()
 
+    def update_states_from_df(self, df):
+        """
+        通过 pandas DataFrame 批量更新或插入状态。
+        df 必须包含 'key' 和 'value' 两列。
+        若 key 已存在，则更新其 value；否则插入新记录。
+        如果 value 无法 JSON 序列化，则跳过该行并给出提示。
+        """
+        session = self.Session()
+        skipped = []
+        try:
+            # 验证 DataFrame 必须包含所需列
+            if 'key' not in df.columns or 'value' not in df.columns:
+                raise ValueError("DataFrame 必须包含 'key' 和 'value' 列")
+
+            # 遍历每一行，使用 session.merge 进行 upsert
+            for _, row in df.iterrows():
+                key = row['key']
+                value = row['value']
+                try:
+                    # 尝试序列化 value，若失败则跳过
+                    value_json = json.dumps(value, ensure_ascii=False)
+                    state = StreamlitState(key=key, value=value_json)
+                    session.merge(state)
+                except (TypeError, ValueError) as e:
+                    # 记录跳过的记录
+                    skipped.append((key, value))
+                    print(f"⚠️ 跳过无法序列化的记录: key='{key}', value={value!r}, 错误: {e}")
+            session.commit()
+            if skipped:
+                print(f"📊 共跳过 {len(skipped)} 条无法序列化的记录")
+        finally:
+            session.close()
+
     # --------------------------------------------------------------------------
     # 聊天记录操作（原有功能保留）
     # --------------------------------------------------------------------------
@@ -144,20 +178,6 @@ class AgentDatabase:
 if __name__ == '__main__':
     db = AgentDatabase()
 
-    # 状态示例
-    db.set_state("page", "chat")
-    page = db.get_state("page")
-    print("page state:", page)
-
-    all_states = db.get_all_states()
-    print("all states:", all_states)
-
-    print("exists 'page'?", db.exists_state("page"))
-    db.delete_state("page")
-    print("exists 'page' after delete?", db.exists_state("page"))
-
-    # 聊天示例
-    db.add_chat("user", "你好")
-    history = db.get_all_chats()
-    print("chat history:", history)
-    db.clear_chats()
+    db.set_state("test_key", {"foo": "bar"})
+    db.delete_state("user")
+    print(db.get_all_states())

@@ -2,7 +2,6 @@ import os.path
 import time
 
 import streamlit as st
-import pandas as pd
 
 # 导入功能模块（保持原有导入路径）
 from datanalysis.aicode import headui
@@ -10,8 +9,10 @@ from spiderlx.ui import spider_app
 from datanalysis.ui import core
 from yuanai.ui import ai
 
-from utils.app_core import initializing_state, render_toggle_button
+from webui.app_core import initializing_state, render_toggle_button, session_df
 from utils.data_path import root_path
+
+from db.session import AgentDatabase
 
 # ==============================
 # 页面基础配置 (必须放在最前面)
@@ -90,6 +91,11 @@ with st.sidebar:
     if col1.button('重载', use_container_width=True):
         st.rerun()
     render_toggle_button("auto_refresh", '自动刷新', column=col2)
+    if col3.button('同步数据库状态'):
+        df = session_df()
+        db = AgentDatabase()
+        r = db.get_all_states()
+        st.success(f'✅ 已同步数据库状态:{r}')
 # ==============================
 # 第一步：构建动态标签页列表（核心修改：设置标签永远在最后）
 # ==============================
@@ -126,9 +132,13 @@ for idx, (tab_label, tab_key) in enumerate(all_tabs):
             # 查看Session状态按钮
             if st.button('查看当前session状态', use_container_width=True):
                 st.write('📌【当前session状态】')
-                session_table = [[key, value] for key, value in st.session_state.items()]
-                df = pd.DataFrame(session_table, columns=["Session State 键", "对应值"])
+                df = session_df()
                 st.dataframe(df, use_container_width=True)
+            if st.button('将当前状态存入到数据库', use_container_width=True):
+                df = session_df()
+                db = AgentDatabase()
+                db.update_states_from_df(df)
+                st.write('✅ 当前状态已存入数据库')
             st.write("---")
             st.subheader("已开启的功能")
             # 显示当前开启的功能列表

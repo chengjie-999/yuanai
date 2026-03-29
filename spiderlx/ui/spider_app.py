@@ -4,7 +4,7 @@ import streamlit as st
 
 from spiderlx.ui import playwright
 from spiderlx.ui.selenium import uiselenium
-from utils import initializing_state, render_toggle_button
+from webui.app_core import initializing_state, render_toggle_button
 from utils.data_path import root_path
 
 INITIAL_STATE = {

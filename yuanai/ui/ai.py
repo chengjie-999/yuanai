@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 from yuanai.core.lc import get_llm, get_langgraph_agent
 from yuanai.tools import all_tools as in_tools
-from utils import initializing_state
+from webui.app_core import initializing_state
 from utils.data_path import root_path
 
 INITIAL_STATE = {"messages": []}

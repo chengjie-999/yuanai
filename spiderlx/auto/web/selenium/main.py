@@ -29,7 +29,8 @@ class BrowserInitializer:
 
         # 模拟真实浏览器 UA
         chrome_options.add_argument(
-            'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/120.0.0.0 Safari/537.36 '
         )
 
         # 反爬核心：隐藏 Selenium 自动化特征

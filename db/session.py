@@ -4,7 +4,6 @@ from sqlalchemy.orm import sessionmaker
 import os
 import json
 from utils.data_path import root_path
-import pandas as pd
 
 # ---------------------- SQLAlchemy 基础配置 ----------------------
 Base = declarative_base()

@@ -9,7 +9,7 @@ from spiderlx.ui import spider_app
 from datanalysis.ui import core
 from yuanai.ui import ai
 
-from webui.app_core import initializing_state, render_toggle_button, session_df
+from webui.app_core import initializing_state, render_toggle_button, session_df, reset_to_initial
 from utils.data_path import root_path
 
 from db.session import AgentDatabase
@@ -95,6 +95,7 @@ with st.sidebar:
         df = session_df()
         db = AgentDatabase()
         r = db.get_all_states()
+        reset_to_initial(r)
         st.success(f'✅ 已同步数据库状态:{r}')
 # ==============================
 # 第一步：构建动态标签页列表（核心修改：设置标签永远在最后）

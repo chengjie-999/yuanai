@@ -11,14 +11,23 @@ from webdrivermanager_cn import ChromeDriverManagerAliMirror
 # ====================== 第一类：浏览器底层驱动初始化（底层模块）======================
 class BrowserInitializer:
     """
-    浏览器驱动初始化工具类
+    浏览器驱动初始化工具类（单例模式）
     职责：仅负责 Chrome 驱动创建、反爬配置、接管模式配置
     不包含任何页面操作与业务逻辑，纯底层工具
     """
+    _instance = None      # 单例实例
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
-        self.driver = None
-        self.options = None
+        # 避免重复初始化属性
+        if not hasattr(self, '_initialized'):
+            self.driver = None
+            self.options = None
+            self._initialized = True
 
     def _driver_anti_crawl_options(self):
         """
@@ -42,9 +51,20 @@ class BrowserInitializer:
 
     def create_driver(self):
         """
-        创建【全新启动】的浏览器驱动（带反爬）
+        创建【全新启动】的浏览器驱动（带反爬），单例模式，只创建一次
         :return: Chrome 驱动实例
         """
+        # 如果已有有效驱动，直接复用
+        if self.driver is not None:
+            try:
+                # 尝试获取 session_id，若异常则驱动失效
+                if self.driver.session_id:
+                    print("♻️ 复用已有浏览器驱动")
+                    return self.driver
+            except:
+                self.driver = None
+
+        # 创建新驱动
         self._driver_anti_crawl_options()
 
         try:
@@ -54,6 +74,7 @@ class BrowserInitializer:
             )
             driver.maximize_window()
             print("✅ 浏览器启动完成（反爬已配置）")
+            self.driver = driver
             return driver
         except Exception as e:
             print(f"❌ 浏览器启动失败: {str(e)}")
@@ -161,7 +182,6 @@ class MyWebBrowser:
 
 # ====================== 主程序入口 ======================
 def main():
-    # 使用接管模式
     browser = MyWebBrowser(BrowserInitializer().create_driver())
 
     try:

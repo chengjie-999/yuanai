@@ -12,7 +12,6 @@ INITIAL_STATE = {
     "xiao_yuan_card_selector": "",  # 👈 改这里，存定位符，不存 WebElement
     "xiao_yuan_like": '单题标答-审核',
     "xiao_yuan_auto": False,
-    "xiao_yuan_home_count": 0,
     "xiao_yuan_count": 0,
     "xiao_yuan_step": 1,
     "xiao_yuan_qa": ['https://xyzb.yuanfudao.com/img/task-banner.53406e80.png'],
@@ -106,16 +105,10 @@ def main():
         if st.button('返回首页'):
             xiao_yuan.go_home()
             reset_to_initial(INITIAL_STATE)
-            st.session_state.xiao_yuan_home_count = 1
-            # st.session_state.xiao_yuan_auto = True
             st.rerun()
 
     # 第一步：首页开始任务
     if st.session_state.xiao_yuan_step == 1:
-        if st.session_state.xiao_yuan_home_count <= 0:  # 第一次进入，添加cookie
-            driver.use_cookies()
-            driver.driver.get('https://xyzb.yuanfudao.com/task/main')
-        st.session_state.xiao_yuan_home_count += 1
         go_one(xiao_yuan)
 
     # 第二步：执行任务

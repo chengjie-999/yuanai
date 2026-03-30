@@ -4,7 +4,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.webdriver import WebDriver
 
 from spiderlx.anti.cookie.selenium import get_cookie, use_cookie
-from spiderlx.core.save.urls import web_urls
+from spiderlx.core.save.urls import urls   # 替换为下方 urls
 from webdrivermanager_cn import ChromeDriverManagerAliMirror
 
 
@@ -71,16 +71,12 @@ class MyWebBrowser:
         self.driver = driver  # 已初始化的浏览器驱动
         self.website_info = {}
         self.current_website_name = None
+        self.target_url = None
         self._load_website_info()
 
     def _load_website_info(self):
-        """加载配置文件中的网站信息"""
-        self.website_info = {}
-        code = 0
-        for web in web_urls:
-            for name in web:
-                self.website_info[code] = name
-            code += 1
+        """加载配置文件中的网站信息（基于 urls）"""
+        self.website_info = {code: item['name'] for code, item in enumerate(urls)}
         print('\n📋 支持网站：', self.website_info)
         print("✅ 网站信息加载完成\n")
 
@@ -95,48 +91,36 @@ class MyWebBrowser:
         if not self.driver:
             raise RuntimeError("浏览器未初始化")
 
-        target_url = None
-        self.current_website_name = None
-
         # 根据编号打开
         if code is not None:
             code = int(code)
             if code not in self.website_info:
                 raise ValueError(f"无效网站编号：{code}")
             self.current_website_name = self.website_info[code]
-            target_url = web_urls[code][self.current_website_name][1][0]
+            self.target_url = urls[code]['url'][0]  # 取第一个URL
 
         # 根据名称打开
         elif name:
-            for idx, website in enumerate(web_urls):
-                if name in website:
+            for item in urls:
+                if item['name'] == name:
                     self.current_website_name = name
-                    target_url = website[name][1][0]
+                    self.target_url = item['url'][0]  # 取第一个URL
                     break
-            if not target_url:
+            if not self.target_url:
                 raise ValueError(f"未找到网站：{name}")
 
         # 根据URL打开
         elif url:
             self.current_website_name = "未命名网站"
-            target_url = url
+            self.target_url = url
 
         else:
             raise ValueError("必须传入 code / name / url")
 
-        print(f"🌐 访问：{self.current_website_name} | {target_url}")
+        print(f"🌐 访问：{self.current_website_name} | {self.target_url}")
 
-        self.driver.get(target_url)
-        self._verify_loaded()
-        return self.current_website_name
-
-    def _verify_loaded(self):
-        """验证页面是否正常加载"""
-        title = self.driver.title
-        if self.current_website_name in title:
-            print(f"✅ 【{self.current_website_name}】打开成功")
-        else:
-            print(f"⚠️ 页面标题：{title}，可能加载异常")
+        self.driver.get(self.target_url)
+        return self.current_website_name, self.target_url
 
     def get_current_url(self):
         """获取当前页面URL"""
@@ -144,7 +128,7 @@ class MyWebBrowser:
 
     def use_cookies(self):
         """加载并使用本地Cookie"""
-        return use_cookie(self.driver, self.current_website_name, self.get_current_url())
+        return use_cookie(self.driver, self.current_website_name, self.target_url)
 
     def get_cookies(self):
         """保存当前页面Cookie到本地"""

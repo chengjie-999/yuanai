@@ -73,8 +73,11 @@ def app_main():
             if st.button('打开已解析网站'):
                 with st.spinner(f"正在打开{st.session_state.web_name}..."):
                     # 打开要访问的网站
-                    name = driver.open_website(name=st.session_state.web_name)
-                    if name == st.session_state.web_name:
+                    name, t_url = driver.open_website(name=st.session_state.web_name)
+                    if t_url != driver.get_current_url():
+                        cookie = driver.use_cookies()
+                        st.success(f'正在验证登录状态...{cookie}')
+                    if cookie or t_url == driver.get_current_url():
                         st.success('网站已成功打开！')
                         st.session_state.web_open = True
                         # 进入第二步 —— 自动化解析网站
@@ -90,8 +93,8 @@ def app_main():
             if st.button('打开未解析网站'):
                 with st.spinner(f"正在打开{st.session_state.web_api}..."):
                     # 打开要访问的网站
-                    name = driver.open_website(url=st.session_state.web_api)
-                    if name == st.session_state.web_api:
+                    name, t_url = driver.open_website(url=st.session_state.web_api)
+                    if t_url == st.session_state.web_api:
                         st.success('网站已成功打开！')
                         st.session_state.web_open = True
                         # 进入第二步 —— 自动化解析网站

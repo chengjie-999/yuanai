@@ -63,8 +63,8 @@ def open_website_by_code(code: int) -> str:
     if not _browser_instance:
         return "❌ 请先调用 launch_new_browser 启动浏览器"
     try:
-        name = _browser_instance.open_website(code=code)
-        return f"✅ 已打开网站：{name}"
+        name, target_url = _browser_instance.open_website(code=code)
+        return f"✅ 已打开网站：{name} | {target_url}"
     except Exception as e:
         return f"❌ 打开网站失败：{str(e)}"
 
@@ -85,8 +85,8 @@ def open_website_by_name(name: str) -> str:
     if not _browser_instance:
         return "❌ 请先调用 launch_new_browser 启动浏览器"
     try:
-        _browser_instance.open_website(name=name)
-        return f"✅ 已打开网站：{name}"
+        name, target_url = _browser_instance.open_website(name=name)
+        return f"✅ 已打开网站：{name} | {target_url}"
     except Exception as e:
         return f"❌ 打开网站失败：{str(e)}"
 
@@ -107,8 +107,8 @@ def open_custom_url(url: str) -> str:
     if not _browser_instance:
         return "❌ 请先调用 launch_new_browser 启动浏览器"
     try:
-        _browser_instance.open_website(url=url)
-        return f"✅ 已打开网址：{url}"
+        name, target_url = _browser_instance.open_website(url=url)
+        return f"✅ 已打开网址：{name} | {target_url}"
     except Exception as e:
         return f"❌ 打开网址失败：{str(e)}"
 

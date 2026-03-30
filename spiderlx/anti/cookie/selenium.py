@@ -31,7 +31,7 @@ def get_cookie(web_driver: WebDriver, name):
 
 def use_cookie(web_driver: WebDriver, name, url):
     """
-    从JSON文件加载Cookie并应用到WebDriver
+    从JSON文件加载Cookie并应用到WebDriver，重新访问目标URL以验证登录状态
     :param web_driver: WebDriver实例
     :param name: 站点名称（用于生成Cookie文件名）
     :param url: 目标访问URL
@@ -52,5 +52,4 @@ def use_cookie(web_driver: WebDriver, name, url):
         # 随机等待后重新访问目标URL
         time.sleep(random.randint(3, 5))
         web_driver.get(url)
-        time.sleep(random.randint(3, 5))
         return True

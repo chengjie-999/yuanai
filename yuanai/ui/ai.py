@@ -29,7 +29,9 @@ def main():
     col1, col2 = st.columns([3, 1])
 
     llm = get_llm(
-        col2.selectbox("选择模型", ['deepseek-chat', "deepseek-vl2", "deepseek-coder"], index=0),
+        col2.selectbox("选择模型",
+                       ['deepseek-chat', "doubao-seed-2-0-pro-260215", 'doubao-seed-2-0-lite-260215', "deepseek-coder"],
+                       index=0),
         temperature=col2.slider("生成温度", 0.0, 1.5, 0.7, step=0.1),
         verbose=False,
         streaming=True

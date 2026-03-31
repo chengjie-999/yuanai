@@ -2,7 +2,6 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from yuanai.tools import all_tools as tools
 from utils.sensitive_data import get_api_key
-import sys
 
 
 def get_llm(model='deepseek-chat', **kwargs):

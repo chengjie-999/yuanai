@@ -15,7 +15,7 @@ INITIAL_STATE = {
     "xiao_yuan_count": 0,
     "xiao_yuan_step": 1,
     "xiao_yuan_qa": ['https://xyzb.yuanfudao.com/img/task-banner.53406e80.png'],
-    "xiao_yuan_false_causes": ['格式问题', "举报", '文本压线', '黄框压题干', '最终答案', '不独立', '出框', '少答案', '字太小'],
+    "xiao_yuan_false_causes": ['格式问题', "举报", '文本压线', '黄框压题干', '最终答案', '不独立', '出框', '少答案', '字太小', '答案错'],
     "xiao_yuan_false_cause": '格式问题',
 }
 

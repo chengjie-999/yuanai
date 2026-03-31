@@ -47,7 +47,6 @@ def app_main():
                     if st.session_state.browser_started:
                         get_driver().close_browser()
                         reset_to_initial(INITIAL_STATE)
-                        get_driver.clear()
                         st.rerun()
                     else:
                         st.warning("浏览器未启动！")

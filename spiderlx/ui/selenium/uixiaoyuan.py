@@ -5,7 +5,7 @@ import streamlit as st
 
 from spiderlx.ui.selenium.resource import get_driver
 from webui.app_core import initializing_state, reset_to_initial
-from spiderlx.auto.web.selenium.xiaoyuan.xiaoyuan import SeleniumXiaoYuan
+from spiderlx.auto.web.selenium.xiaoyuan.xiaoyuan import SeleniumXiaoYuan, SingleAuditHandler
 
 INITIAL_STATE = {
     "xiao_yuan_card_name": '',
@@ -55,7 +55,7 @@ def go_one(xiao_yuan):
             st.session_state.xiao_yuan_auto = False
             st.rerun()
 
-    cards = xiao_yuan.home(st.session_state.xiao_yuan_like)
+    cards = xiao_yuan.home_card(st.session_state.xiao_yuan_like)
     cards_name = list(cards.keys())
     st.session_state.xiao_yuan_card_name = st.selectbox('请选择要执行的任务', cards_name, index=len(cards_name) - 1)
     st.session_state.xiao_yuan_like = st.session_state.xiao_yuan_card_name
@@ -79,7 +79,7 @@ def go_one(xiao_yuan):
     while st.session_state.xiao_yuan_auto:
         time.sleep(random.randint(6, 15))
         # 每次循环 重新获取卡片，不使用缓存的 WebElement
-        cards_new = xiao_yuan.home(st.session_state.xiao_yuan_like)
+        cards_new = xiao_yuan.home_card(st.session_state.xiao_yuan_like)
         current_card = cards_new[st.session_state.xiao_yuan_card_name]
         go_on = home_start(xiao_yuan, current_card, output_placeholder)
         if go_on:
@@ -95,6 +95,7 @@ def main():
     driver = get_driver()
 
     xiao_yuan = SeleniumXiaoYuan(driver.driver)
+    sa = SingleAuditHandler(xiao_yuan)
     col1, col2, col3 = st.columns(3)
     with col1:
         st.image("https://xyzb.yuanfudao.com/img/logo.24003130.png", width=150)
@@ -114,7 +115,7 @@ def main():
     # 第二步：执行任务
     if st.session_state.xiao_yuan_step == 2 and '单题标答-审核' in st.session_state.xiao_yuan_card_name:
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：执行{st.session_state.xiao_yuan_card_name}任务')
-        st.session_state.xiao_yuan_qa = xiao_yuan.question_info(screenshot=False)
+        st.session_state.xiao_yuan_qa = sa.question_info(screenshot=False)
         st.image(st.session_state.xiao_yuan_qa[0], caption='界面')
         col1, col2, col3, col4, col5 = st.columns(5)
         if col4.button(f'刷新'):
@@ -122,14 +123,14 @@ def main():
             r = driver.refresh()
             st.write(r)
         if col3.button('缩小'):
-            xiao_yuan.question_resize()
+            sa.question_resize()
 
         if col1.button('审核正确'):
-            xiao_yuan.go_question(st.session_state.xiao_yuan_card_name)
-            xiao_yuan.question_restore()
+            sa.quick_true_handle(False)
+            sa.question_restore()
 
         if col2.button('提交领下一任务'):
-            go_on = xiao_yuan.compete('提交领下一任务')
+            go_on = sa.compete('提交领下一任务')
             if not go_on:
                 reset_to_initial(INITIAL_STATE)
                 st.session_state.xiao_yuan_auto = True
@@ -140,15 +141,15 @@ def main():
         st.session_state.xiao_yuan_false_cause = col5.selectbox('错误原因', st.session_state.xiao_yuan_false_causes)
         if col5.button('整题驳回'):
             st.write('错误理由：', st.session_state.xiao_yuan_false_cause)
-            go_on = xiao_yuan.compete('整题驳回', cause=st.session_state.xiao_yuan_false_cause)
+            go_on = sa.compete('整题驳回', cause=st.session_state.xiao_yuan_false_cause)
             if not go_on:
                 st.session_state.xiao_yuan_step = 1
         if col5.button('确定驳回'):
-            xiao_yuan.rejection_confirmation()
+            sa.rejection_confirmation()
         if st.button('展示标记答案'):
             col1, col2 = st.columns(2)
             with col1:
-                st.session_state.xiao_yuan_qa = xiao_yuan.question_info()
+                st.session_state.xiao_yuan_qa = sa.question_info()
                 s_mark = st.session_state.xiao_yuan_qa[1]
                 st.image(s_mark, caption='独立答案')
                 marks = st.session_state.xiao_yuan_qa[2:]

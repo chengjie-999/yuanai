@@ -3,7 +3,7 @@ from langchain_core.tools import tool
 from spiderlx.auto.web.selenium.main import MyWebBrowser
 from spiderlx.ui.selenium.resource import get_driver
 
-_browser_instance: MyWebBrowser | None = None
+browser_instance: MyWebBrowser | None = None
 
 
 @tool
@@ -16,11 +16,11 @@ def launch_new_browser() -> str:
         成功: "✅ 新浏览器窗口已启动" 或 "✅ 浏览器已启动"
         失败: "❌ 启动新浏览器失败：{错误详情}"
     """
-    global _browser_instance
-    if _browser_instance:
+    global browser_instance
+    if browser_instance:
         return "✅ 浏览器已启动"
     try:
-        _browser_instance = get_driver()
+        browser_instance = get_driver()
         return "✅ 新浏览器窗口已启动"
     except Exception as e:
         import traceback
@@ -38,10 +38,10 @@ def get_website_info() -> str:
         成功: "✅ 网站信息：{网站详情}"
         失败: 提示未启动浏览器或获取失败
     """
-    if not _browser_instance:
+    if not browser_instance:
         return "❌ 请先调用 launch_new_browser 启动浏览器"
     try:
-        info = _browser_instance.website_info
+        info = browser_instance.website_info
         return f"✅ 网站信息：{info}"
     except Exception as e:
         return f"❌ 获取网站信息失败：{str(e)}"
@@ -60,10 +60,10 @@ def open_website_by_code(code: int) -> str:
         成功: "✅ 已打开网站：{网站名称}"
         失败: 提示未启动浏览器或打开失败
     """
-    if not _browser_instance:
+    if not browser_instance:
         return "❌ 请先调用 launch_new_browser 启动浏览器"
     try:
-        name, target_url = _browser_instance.open_website(code=code)
+        name, target_url = browser_instance.open_website(code=code)
         return f"✅ 已打开网站：{name} | {target_url}"
     except Exception as e:
         return f"❌ 打开网站失败：{str(e)}"
@@ -82,10 +82,10 @@ def open_website_by_name(name: str) -> str:
         成功: "✅ 已打开网站：{网站名称}"
         失败: 提示未启动浏览器或打开失败
     """
-    if not _browser_instance:
+    if not browser_instance:
         return "❌ 请先调用 launch_new_browser 启动浏览器"
     try:
-        name, target_url = _browser_instance.open_website(name=name)
+        name, target_url = browser_instance.open_website(name=name)
         return f"✅ 已打开网站：{name} | {target_url}"
     except Exception as e:
         return f"❌ 打开网站失败：{str(e)}"
@@ -104,10 +104,10 @@ def open_custom_url(url: str) -> str:
         成功: "✅ 已打开网址：{url}"
         失败: 提示未启动浏览器或打开失败
     """
-    if not _browser_instance:
+    if not browser_instance:
         return "❌ 请先调用 launch_new_browser 启动浏览器"
     try:
-        name, target_url = _browser_instance.open_website(url=url)
+        name, target_url = browser_instance.open_website(url=url)
         return f"✅ 已打开网址：{name} | {target_url}"
     except Exception as e:
         return f"❌ 打开网址失败：{str(e)}"
@@ -123,10 +123,10 @@ def refresh_page() -> str:
         成功: "✅ 页面已刷新"
         失败: 提示未启动浏览器或刷新失败
     """
-    if not _browser_instance:
+    if not browser_instance:
         return "❌ 请先调用 launch_new_browser 启动浏览器"
     try:
-        _browser_instance.refresh()
+        browser_instance.refresh()
         return "✅ 页面已刷新"
     except Exception as e:
         return f"❌ 刷新失败：{str(e)}"
@@ -142,10 +142,10 @@ def load_cookies() -> str:
         成功: "✅ Cookie 已加载"
         失败: 提示未启动浏览器或加载失败或未找到 Cookie 文件
     """
-    if not _browser_instance:
+    if not browser_instance:
         return "❌ 请先调用 launch_new_browser 启动浏览器并打开网站"
     try:
-        have = _browser_instance.use_cookies()
+        have = browser_instance.use_cookies()
         if have:
             return "✅ Cookie 已加载"
         else:
@@ -164,10 +164,10 @@ def save_cookies() -> str:
         成功: "✅ Cookie 已保存"
         失败: 提示未启动浏览器或保存失败
     """
-    if not _browser_instance:
+    if not browser_instance:
         return "❌ 请先调用 launch_new_browser 启动浏览器并打开网站"
     try:
-        _browser_instance.get_cookies()
+        browser_instance.get_cookies()
         return "✅ Cookie 已保存"
     except Exception as e:
         return f"❌ 保存 Cookie 失败：{str(e)}"
@@ -183,12 +183,12 @@ def close_browser() -> str:
         成功: "✅ 浏览器已关闭"
         失败: 提示未启动浏览器或关闭失败
     """
-    global _browser_instance
-    if not _browser_instance:
+    global browser_instance
+    if not browser_instance:
         return "❌ 浏览器未启动"
     try:
-        _browser_instance.close_browser()
-        _browser_instance = None
+        browser_instance.close_browser()
+        browser_instance = None
         return "✅ 浏览器已关闭"
     except Exception as e:
         return f"❌ 关闭浏览器失败：{str(e)}"

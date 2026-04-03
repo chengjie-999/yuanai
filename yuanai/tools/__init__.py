@@ -26,7 +26,7 @@ def load_all_tools():
                     for attr_name in dir(module):
                         attr = getattr(module, attr_name)
                         if isinstance(attr, BaseTool):
-                            print('AI工具已更新')
+                            print('AI工具已更新', attr_name)
                             tools.append(attr)
                 except Exception as e:
                     # 可选：打印错误便于调试

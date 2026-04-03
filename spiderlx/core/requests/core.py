@@ -62,5 +62,6 @@ if __name__ == '__main__':
         cookie_source=local_cookies('知乎'),
         filter_domain=".zhihu.com"  # 只保留知乎域名的Cookie
     )
-    r = get_response_data('https://www.zhihu.com/', cookies=requests_cookies)
+    # r = get_response_data('https://www.zhihu.com/', cookies=requests_cookies)
+    r = get_response_data('https://my.feishu.cn/docx/KbM2d1cisocZffxmihOcSz9JnVe', cookies=requests_cookies)
     print(r)

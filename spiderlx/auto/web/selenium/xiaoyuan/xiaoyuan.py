@@ -51,7 +51,7 @@ class SeleniumXiaoYuan:
         print(f"原URL：{current_url} | 新URL：{new_url} | 是否跳转：{go_on}")
         return self.box() and go_on
 
-    def home(self, like='单题标答-审核'):
+    def home_card(self, like='单题标答-审核'):
         """
         主页加载任务卡片，筛选目标任务
         :param like: 偏好任务名称关键词
@@ -77,66 +77,11 @@ class SeleniumXiaoYuan:
                 break
         return title_cards
 
-    def go_question(self, name, true='1', up=False):
-        """
-        根据任务类型自动处理题目
-        :param name: 任务名称
-        :param true: 审核结果标记
-        :param up: 是否缩放题目
-        """
-        if '单题标答-审核' in name:
-            self._handle_single_audit(up)
-        elif '3.0改错-补答' in name:
-            self._handle_fix_answer()
-        elif '抄写图形题-补答审核' in name:
-            self._handle_copy_audit(true)
-
-    def _handle_single_audit(self, up):
-        """单题标答-审核 专用处理逻辑"""
-        question = self.wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport')))
-        if up:
-            self.question_resize()
-            time.sleep(1)
-
-        # 处理独立答案
-        try:
-            answer = question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading")
-            ActionChains(self.web_driver).move_to_element(answer).click().perform()
-            time.sleep(0.5)
-            question.find_element(By.CSS_SELECTOR, '.button_gjJ0I').click()
-            print("独立答案判断完成")
-        except NoSuchElementException:
-            print("未找到【独立批改答案】，已跳过")
-        except ElementNotInteractableException:
-            print("【独立批改答案】不可交互")
-
-        # 处理批改答案
-        try:
-            ActionChains(self.web_driver).move_to_element(question).perform()
-            answer = question.find_element(By.CSS_SELECTOR, '.ol-overlay-container')
-            answer.click()
-            time.sleep(0.5)
-
-            true_btn = question.find_element(By.CSS_SELECTOR, '.button_3sIPu')
-            answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
-            for _ in answers:
-                true_btn.click()
-            print("答案判断完成")
-        except NoSuchElementException:
-            print("未找到【批改答案】，已跳过")
-        except ElementNotInteractableException:
-            print("【批改答案】不可交互")
-        except Exception:
-            pass
-
-        if up:
-            self.question_restore()
-
-    def _handle_fix_answer(self):
+    def handle_fix_answer(self):
         """3.0改错-补答 逻辑（可扩展）"""
         pass
 
-    def _handle_copy_audit(self, true):
+    def handle_copy_audit(self, true):
         """抄写图形题-补答审核 逻辑"""
         radios = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-radio-input')
         submit = self.web_driver.find_elements(By.CSS_SELECTOR, '.ant-btn-primary')[-1]
@@ -152,74 +97,6 @@ class SeleniumXiaoYuan:
         self.web_driver.find_element(By.CSS_SELECTOR, '.ant-menu-item').click()
         print("返回首页")
         return True
-
-    def compete(self, status, cause=None):
-        """
-        提交任务/驳回任务
-        :param status: 提交状态
-        :param cause: 驳回原因
-        :return: 是否继续任务
-        """
-        foot = self.web_driver.find_element(By.CSS_SELECTOR, '.container_23Xxj')
-
-        if status == '提交领下一任务':
-            btn = foot.find_elements(By.CSS_SELECTOR, '.ant-btn')[-1]
-        elif status == '提交回首页':
-            btn = foot.find_element(By.CSS_SELECTOR, '.ant-btn')
-        elif status == '整题驳回':
-            btn = foot.find_elements(By.CSS_SELECTOR, '.ant-btn')[1]
-
-            # ✅ 先安全点击 打开驳回弹窗
-            self.safe_click(btn)
-            time.sleep(0.5)
-
-            # 等待并填写驳回原因
-            try:
-                input_box = self.wait.until(
-                    EC.visibility_of_element_located((By.CSS_SELECTOR, '.ant-input'))
-                )
-                input_box.clear()
-                input_box.send_keys(cause)
-            except NoSuchElementException:
-                print("⚠️ 未找到驳回输入框")
-
-            # 找到确认按钮并安全点击
-            confirm_btn = self.wait.until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, '.ant-btn-primary'))
-            )
-            # self.safe_click(confirm_btn)
-            time.sleep(0.5)
-            return self.box()
-        else:
-            btn = foot.find_element(By.CSS_SELECTOR, '.ant-space:nth-child(2) .ant-space-item:nth-child(5) .ant-btn')
-
-        # ✅ 所有按钮都用安全点击
-        self.safe_click(btn)
-        time.sleep(0.5)
-        return self.box()
-
-    def question_resize(self, count=6):
-        """缩小题目视图"""
-        zoom_out = self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-zoom-out')[0]
-        for _ in range(count):
-            zoom_out.click()
-            time.sleep(0.05)
-
-    def question_restore(self):
-        """恢复题目视图"""
-        try:
-            self.web_driver.find_elements(By.CSS_SELECTOR, '.ol-control')[3].click()
-            return True
-        except NoSuchElementException:
-            return False
-
-    def rejection_confirmation(self):
-        """确认驳回弹窗"""
-        modal = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')
-        confirm = modal.find_element(By.CSS_SELECTOR, '.ant-btn-primary')
-        print(f"确认驳回：{confirm.text}")
-        confirm.click()
-        return confirm.text
 
     def box(self, go_on=True):
         """
@@ -257,14 +134,145 @@ class SeleniumXiaoYuan:
             self.web_driver.close()
             self.web_driver.switch_to.window(handles[0])
 
+    def safe_click(self, element):
+        """万能安全点击：解决遮挡、不可点击问题"""
+        try:
+            element.click()
+        except Exception:
+            self.web_driver.execute_script("arguments[0].click();", element)
+
+
+class SingleAuditHandler:
+    """
+    单题标答-审核 专用处理器
+    包含该任务类型的特有交互：独立答案/批改答案点击、视图缩放/恢复、提交/驳回等
+    """
+
+    def __init__(self, xiao_yuan: SeleniumXiaoYuan):
+        """
+        :param xiao_yuan: 已经初始化的 SeleniumXiaoYuan 实例（组合复用）
+        """
+        self.xiao_yuan = xiao_yuan
+        self.driver = xiao_yuan.web_driver
+        self.wait = xiao_yuan.wait
+
+    def quick_true_handle(self, up=True):
+        """
+        单题标答-审核 没有错误，直接点击【独立批改答案】和【批改答案】进行判断
+        :param up: 是否需要先缩小视图，结束后恢复视图
+        """
+        question = self.wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport')))
+
+        if up:
+            self.question_resize()
+            time.sleep(1)
+
+        # 处理独立答案
+        try:
+            answer = question.find_element(By.CSS_SELECTOR, ".yst-mathjax-loading")
+            ActionChains(self.driver).move_to_element(answer).click().perform()
+            time.sleep(0.5)
+            question.find_element(By.CSS_SELECTOR, '.button_gjJ0I').click()
+            print("独立答案判断完成")
+        except NoSuchElementException:
+            print("未找到【独立批改答案】，已跳过")
+        except ElementNotInteractableException:
+            print("【独立批改答案】不可交互")
+
+        # 处理批改答案
+        try:
+            ActionChains(self.driver).move_to_element(question).perform()
+            answer = question.find_element(By.CSS_SELECTOR, '.ol-overlay-container')
+            answer.click()
+            time.sleep(0.5)
+
+            true_btn = question.find_element(By.CSS_SELECTOR, '.button_3sIPu')
+            answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
+            for _ in answers:
+                true_btn.click()
+            print("答案判断完成")
+        except NoSuchElementException:
+            print("未找到【批改答案】，已跳过")
+        except ElementNotInteractableException:
+            print("【批改答案】不可交互")
+        except Exception:
+            pass
+
+        if up:
+            self.question_restore()
+
+    def compete(self, status, cause=None):
+        """
+        提交任务/驳回任务
+        :param status: 提交状态
+        :param cause: 驳回原因
+        :return: 是否继续任务
+        """
+        foot = self.driver.find_element(By.CSS_SELECTOR, '.container_23Xxj')
+
+        if status == '提交领下一任务':
+            btn = foot.find_elements(By.CSS_SELECTOR, '.ant-btn')[-1]
+        elif status == '提交回首页':
+            btn = foot.find_element(By.CSS_SELECTOR, '.ant-btn')
+        elif status == '整题驳回':
+            btn = foot.find_elements(By.CSS_SELECTOR, '.ant-btn')[1]
+
+            # 安全点击打开驳回弹窗
+            self.xiao_yuan.safe_click(btn)
+            time.sleep(0.5)
+
+            # 等待并填写驳回原因
+            try:
+                input_box = self.wait.until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, '.ant-input'))
+                )
+                input_box.clear()
+                input_box.send_keys(cause)
+            except NoSuchElementException:
+                print("⚠️ 未找到驳回输入框")
+
+            # 找到确认按钮并安全点击
+            confirm_btn = self.wait.until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, '.ant-btn-primary'))
+            )
+            time.sleep(0.5)
+            return self.xiao_yuan.box()
+        else:
+            btn = foot.find_element(By.CSS_SELECTOR, '.ant-space:nth-child(2) .ant-space-item:nth-child(5) .ant-btn')
+
+        self.xiao_yuan.safe_click(btn)
+        time.sleep(0.5)
+        return self.xiao_yuan.box()
+
+    def question_resize(self, count=6):
+        """缩小题目视图"""
+        zoom_out = self.driver.find_elements(By.CSS_SELECTOR, '.ol-zoom-out')[0]
+        for _ in range(count):
+            zoom_out.click()
+            time.sleep(0.05)
+
+    def question_restore(self):
+        """恢复题目视图"""
+        try:
+            self.driver.find_elements(By.CSS_SELECTOR, '.ol-control')[3].click()
+            return True
+        except NoSuchElementException:
+            return False
+
+    def rejection_confirmation(self):
+        """确认驳回弹窗"""
+        modal = self.driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')
+        confirm = modal.find_element(By.CSS_SELECTOR, '.ant-btn-primary')
+        print(f"确认驳回：{confirm.text}")
+        confirm.click()
+        return confirm.text
+
     def question_info(self, screenshot=True):
         """
         获取题目截图、参考答案、标记答案截图
         :return: 图片数据列表
         """
-        qa = []
-        # 全局截图
-        qa.append(self.web_driver.get_screenshot_as_png())
+        qa = [self.driver.get_screenshot_as_png()]  # 全局截图
 
         # 参考答案
         refer_img = self.wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, '.ant-image > img')))
@@ -293,13 +301,6 @@ class SeleniumXiaoYuan:
             except WebDriverException:
                 continue
         return qa
-
-    def safe_click(self, element):
-        """万能安全点击：解决遮挡、不可点击问题"""
-        try:
-            element.click()
-        except Exception:
-            self.web_driver.execute_script("arguments[0].click();", element)
 
 
 if __name__ == '__main__':

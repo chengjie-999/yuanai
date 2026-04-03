@@ -7,6 +7,7 @@ from spiderlx.ui.selenium import uixiaoyuan
 INITIAL_STATE = {
     "step": 1,
     "browser_started": False,
+    "browser": None,
     "web_name": "",
     "web_api": "",
     "web_open": False
@@ -56,6 +57,9 @@ def app_main():
         with col3:
             if st.button('返回上一步', use_container_width=True) and st.session_state.step > 1:
                 st.session_state.step -= 1
+                st.rerun()
+            if st.button('直接进入下一步', use_container_width=True) and st.session_state.step < 3:
+                st.session_state.step += 1
                 st.rerun()
 
     # -------- 浏览器打开后，步骤1：打开目标网站 --------

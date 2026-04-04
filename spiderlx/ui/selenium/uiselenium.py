@@ -36,7 +36,7 @@ def app_main():
                 # 唤醒并配置浏览器
                 if st.button('开启浏览器', type='primary', use_container_width=True):
                     if not st.session_state.browser_started:
-                        get_driver()  # 使用浏览器驱动
+                        st.session_state.browser = get_driver()  # 使用浏览器驱动
                         st.session_state.app_home = False
                         st.session_state.browser_started = True  # 标记为已启动
                         # st.success("浏览器首次启动成功！")
@@ -46,7 +46,9 @@ def app_main():
             else:
                 if st.button('关闭浏览器', use_container_width=True):
                     if st.session_state.browser_started:
-                        get_driver().close_browser()
+                        st.session_state.browser.close_browser()
+                        get_driver.clear()  # 清除缓存，确保下次重新创建实例
+                        st.session_state.browser = None
                         reset_to_initial(INITIAL_STATE)
                         st.rerun()
                     else:
@@ -65,7 +67,7 @@ def app_main():
     # -------- 浏览器打开后，步骤1：打开目标网站 --------
     if st.session_state.step == 1 and st.session_state.browser_started:
         st.subheader(f'selenium第{st.session_state.step}步')
-        driver = get_driver()
+        driver = st.session_state.browser
 
         web_info = driver.website_info
         st.session_state.web_name = st.selectbox('请选择想要访问的网站', options=web_info.values())
@@ -77,6 +79,7 @@ def app_main():
                 with st.spinner(f"正在打开{st.session_state.web_name}..."):
                     # 打开要访问的网站
                     name, t_url = driver.open_website(name=st.session_state.web_name)
+                    print(f"目标网站URL：{t_url}，当前页面URL：{driver.get_current_url()}")
                     if t_url != driver.get_current_url():
                         cookie = driver.use_cookies()
                         st.success(f'正在验证登录状态...{cookie}')
@@ -106,7 +109,7 @@ def app_main():
 
     # -------- 浏览器打开后，步骤2：目标网站自动化解析 --------
     if st.session_state.step == 2 and st.session_state.browser_started:
-        driver = get_driver()
+        driver = st.session_state.browser
         st.session_state.url = driver.get_current_url()
         with st.sidebar.container(border=True):
             st.subheader(f'selenium第{st.session_state.step}步，目标网站自动化解析')

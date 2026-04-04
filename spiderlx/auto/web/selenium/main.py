@@ -59,7 +59,7 @@ class BrowserInitializer:
             try:
                 # 尝试获取 session_id，若异常则驱动失效
                 if self.driver.session_id:
-                    print("♻️ 复用已有浏览器驱动")
+                    print("♻️ 使用现有浏览器驱动")
                     return self.driver
             except:
                 self.driver = None

@@ -1,6 +1,6 @@
 from langchain_core.tools import tool
 
-from spiderlx.auto.web.selenium.main import MyWebBrowser
+from spiderlx.auto.web.selenium.main import MyWebBrowser, BrowserInitializer
 from spiderlx.ui.selenium.resource import get_driver
 
 browser_instance: MyWebBrowser | None = None
@@ -17,10 +17,11 @@ def launch_new_browser() -> str:
         失败: "❌ 启动新浏览器失败：{错误详情}"
     """
     global browser_instance
+    print("当前浏览器实例：", browser_instance)
     if browser_instance:
         return "✅ 浏览器已启动"
     try:
-        browser_instance = get_driver()
+        browser_instance = MyWebBrowser(BrowserInitializer().create_driver())
         return "✅ 新浏览器窗口已启动"
     except Exception as e:
         import traceback

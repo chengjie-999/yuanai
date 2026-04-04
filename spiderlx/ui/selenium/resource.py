@@ -8,4 +8,6 @@ def get_driver():
     获取浏览器驱动，并加入缓存
     :return:浏览器驱动
     """
-    return MyWebBrowser(BrowserInitializer().create_driver())
+    b = MyWebBrowser(BrowserInitializer().create_driver())
+    print("正在获取浏览器驱动...", b)
+    return b

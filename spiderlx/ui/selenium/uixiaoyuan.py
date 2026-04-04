@@ -5,7 +5,7 @@ import streamlit as st
 
 from spiderlx.ui.selenium.resource import get_driver
 from webui.app_core import initializing_state, reset_to_initial
-from spiderlx.auto.web.selenium.xiaoyuan.xiaoyuan import SeleniumXiaoYuan, SingleAuditHandler
+from spiderlx.auto.web.selenium.xiaoyuan.xiaoyuan import SeleniumXiaoYuan, SingleAuditHandler, scroll
 
 INITIAL_STATE = {
     "xiao_yuan_card_name": '',
@@ -119,9 +119,12 @@ def main():
         st.image(st.session_state.xiao_yuan_qa[0], caption='界面')
         col1, col2, col3, col4, col5 = st.columns(5)
         if col4.button(f'刷新'):
-            driver = get_driver()
-            r = driver.refresh()
+            r = st.session_state.browser.refresh()
             st.write(r)
+        if col4.button('向下滚动'):
+            scroll()
+        if col4.button('向上滚动'):
+            scroll(scroll_num=1000)
         if col3.button('缩小'):
             sa.question_resize()
 

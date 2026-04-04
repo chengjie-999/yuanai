@@ -14,6 +14,9 @@ from selenium.webdriver.support.wait import WebDriverWait
 from spiderlx.core.save.save_data import SavedData
 from utils.data_path import img_save_path
 
+import pyautogui
+import time
+
 
 class SeleniumXiaoYuan:
     """
@@ -140,6 +143,54 @@ class SeleniumXiaoYuan:
             element.click()
         except Exception:
             self.web_driver.execute_script("arguments[0].click();", element)
+
+
+def scroll(center_x=1000, center_y=600, scroll_num=-1000):
+    """
+    基于你截图的精准坐标，PyAutoGUI 物理操作 canvas
+    100% 模拟真人右键拖动+滚轮滚动，只动 canvas 内部，不滚页面
+    """
+    try:
+        # ======================
+        # 第一步：精准定位 canvas 区域（完全匹配你截图）
+        # ======================
+        # canvas 中心点屏幕坐标（根据你截图精准计算）
+        canvas_center_x = center_x
+        canvas_center_y = center_y
+
+        # 先把鼠标移到 canvas 中心（确保操作目标是 canvas，不是页面其他区域）
+        pyautogui.moveTo(canvas_center_x, canvas_center_y, duration=0.2)
+        time.sleep(0.1)  # 等待鼠标到位，避免操作过快
+
+        # ======================
+        # 第二步：模拟右键拖动（和你手动右键拖完全一致）
+        # ======================
+        # # 按住右键，向下拖动 300px（正数向下，负数向上，可自行调整）
+        # pyautogui.drag(
+        #     xOffset=0,
+        #     yOffset=300,
+        #     duration=0.5,  # 拖动时长，模拟真人节奏，0.5秒拖完
+        #     button='right'  # 右键拖动，完全匹配你的操作习惯
+        # )
+        # time.sleep(0.2)  # 等待拖动完成，让懒加载内容渲染
+
+        # ======================
+        # 第三步：模拟滚轮滚动（双保险，和你手动滚滚轮一致）
+        # ======================
+        # 鼠标保持在 canvas 上，向下滚动 1000px（数值越大滚得越多）
+        pyautogui.scroll(
+            clicks=scroll_num,  # 负数向下滚，正数向上滚，10 对应 1000px 滚动量
+            x=canvas_center_x,
+            y=canvas_center_y
+        )
+        time.sleep(0.2)
+
+        print("✅ canvas 内部右键拖动+滚轮滚动完成，已触发懒加载")
+        return True
+
+    except Exception as e:
+        print(f"❌ 操作失败: {str(e)}")
+        return False
 
 
 class SingleAuditHandler:

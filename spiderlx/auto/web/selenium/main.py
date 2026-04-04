@@ -4,7 +4,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.webdriver import WebDriver
 
 from spiderlx.anti.cookie.selenium import get_cookie, use_cookie
-from spiderlx.core.save.urls import urls   # 替换为下方 urls
+from spiderlx.core.save.urls import urls  # 替换为下方 urls
 from webdrivermanager_cn import ChromeDriverManagerAliMirror
 
 
@@ -15,7 +15,7 @@ class BrowserInitializer:
     职责：仅负责 Chrome 驱动创建、反爬配置、接管模式配置
     不包含任何页面操作与业务逻辑，纯底层工具
     """
-    _instance = None      # 单例实例
+    _instance = None  # 单例实例
 
     def __new__(cls):
         if cls._instance is None:
@@ -79,6 +79,13 @@ class BrowserInitializer:
         except Exception as e:
             print(f"❌ 浏览器启动失败: {str(e)}")
             raise
+
+    def close_driver(self):
+        if self.driver:
+            self.driver.quit()
+            print("🔌 浏览器已关闭")
+            self.driver = None
+            BrowserInitializer._instance = None  # 可选：彻底重置单例实例
 
 
 # ====================== 第二类：页面业务操作类（上层模块）======================
@@ -175,9 +182,7 @@ class MyWebBrowser:
         注意：接管模式下仅断开连接，不会关闭真实浏览器
         """
         if self.driver:
-            self.driver.quit()
-            print("🔌 浏览器连接已关闭")
-            self.driver = None
+            BrowserInitializer().close_driver()
 
 
 # ====================== 主程序入口 ======================

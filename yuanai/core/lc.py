@@ -1,7 +1,41 @@
+from typing import Optional, List, Union
+
+from langchain_core.language_models import BaseLanguageModel
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from yuanai.tools import all_tools as tools
 from utils.sensitive_data import get_api_key
+
+
+# ===================== 核心：通用模型调用（兼容纯文本/多模态） =====================
+def call_llm(
+        messages: List[Union[SystemMessage, HumanMessage]],  # 核心修复：List替代list
+        model_name: str = "deepseek-chat",  # 纯文本模型（无多模态API时用这个）
+        temperature: float = 0.1
+) -> Optional[str]:
+    """
+    调用LLM并返回结果（兼容纯文本/多模态模型）
+    :param messages: 消息列表
+    :param model_name: 模型名称（纯文本：deepseek-chat；多模态：deepseek-vl2）
+    :param base_url: 模型接口地址
+    :param temperature: 生成温度
+    :return: 模型回答文本，失败返回None
+    """
+    # 1. 初始化模型
+    llm: BaseLanguageModel = get_llm(
+        model_name,
+        temperature=temperature,
+        verbose=False
+    )
+
+    # 2. 调用模型（增加异常捕获）
+    try:
+        response = llm.invoke(messages)
+        return response.content if hasattr(response, "content") else str(response)
+    except Exception as e:
+        print(f"❌ 模型调用失败：{str(e)}")
+        return None
 
 
 def get_llm(model='deepseek-chat', **kwargs):

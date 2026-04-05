@@ -1,5 +1,4 @@
 import base64
-import os.path
 from typing import Optional, Union, List  # 核心修复：导入List（替代list）
 from pathlib import Path
 
@@ -8,7 +7,8 @@ from langchain_core.language_models import BaseLanguageModel
 
 # 导入自定义模块（保持原有路径）
 from utils.data_path import root_path
-from yuanai.core.lc import get_llm
+from yuanai.core.build_message import build_message
+from yuanai.core.lc import get_llm, call_llm
 
 
 # ===================== 核心：图片转Base64（保留，为后续扩展） =====================
@@ -51,76 +51,6 @@ def local_img_to_base64(img_path: Union[str, Path]) -> Optional[str]:
         return None
 
 
-# ===================== 核心：兼容纯文本模型的消息构建（修复类型注解） =====================
-def build_message(
-        text: str,
-        img_base64: str = None,
-        is_multimodal: bool = False  # 开关：是否启用多模态
-) -> List[Union[SystemMessage, HumanMessage]]:  # 核心修复：List替代list
-    """
-    构建提示词消息（兼容纯文本/多模态模型）
-    :param text: 用户提问文本
-    :param img_base64: 图片Base64编码字符串（可选）
-    :param is_multimodal: 是否启用多模态（无API时设为False）
-    :return: 可直接传给LLM的消息列表
-    """
-    # 系统提示词：降级处理（纯文本模型时告知用户无法识别图片）
-    system_msg = SystemMessage(content="""
-    如果你是纯文本模型，无法识别图片内容，请友好告知用户，并告知图片是否传递成功；
-    如果你是多模态模型，请正常识别图片并回答问题。
-    """)
-
-    if is_multimodal and img_base64:
-        # 多模态模式：文本+图片（后续接入API后只需打开开关）
-        human_msg = HumanMessage(
-            content=[
-                {"type": "text", "text": text},
-                {"type": "image_url", "image_url": {"url": img_base64}}
-            ]
-        )
-    else:
-        # 纯文本模式：仅文本，忽略图片（无多模态API时用这个）
-        human_msg = HumanMessage(
-            content=[
-                {"type": "text", "text": text}
-            ]
-        )
-
-    return [system_msg, human_msg]
-
-
-# ===================== 核心：通用模型调用（兼容纯文本/多模态） =====================
-def call_llm(
-        messages: List[Union[SystemMessage, HumanMessage]],  # 核心修复：List替代list
-        model_name: str = "deepseek-chat",  # 纯文本模型（无多模态API时用这个）
-        base_url: str = "https://api.deepseek.com/v1",
-        temperature: float = 0.1
-) -> Optional[str]:
-    """
-    调用LLM并返回结果（兼容纯文本/多模态模型）
-    :param messages: 消息列表
-    :param model_name: 模型名称（纯文本：deepseek-chat；多模态：deepseek-vl2）
-    :param base_url: 模型接口地址
-    :param temperature: 生成温度
-    :return: 模型回答文本，失败返回None
-    """
-    # 1. 初始化模型
-    llm: BaseLanguageModel = get_llm(
-        model_name,
-        temperature=temperature,
-        verbose=False
-    )
-
-    # 2. 调用模型（增加异常捕获）
-    try:
-        response = llm.invoke(messages)
-        return response.content if hasattr(response, "content") else str(response)
-    except Exception as e:
-        print(f"❌ 模型调用失败：{str(e)}")
-        return None
-
-
-# ===================== 主函数（无多模态API也能运行） =====================
 if __name__ == '__main__':
     # 配置开关：是否启用多模态（无API时设为False）
     USE_MULTIMODAL = False  # 核心开关：后续有API后改为True即可

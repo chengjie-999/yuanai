@@ -3,6 +3,7 @@ import time
 
 import streamlit as st
 
+from spiderlx.ui.selenium.ai_audit_tools import ai_do_sa
 from spiderlx.ui.selenium.resource import get_driver
 from webui.app_core import initializing_state, reset_to_initial
 from spiderlx.auto.web.selenium.xiaoyuan.xiaoyuan import SeleniumXiaoYuan, SingleAuditHandler, scroll
@@ -12,10 +13,11 @@ INITIAL_STATE = {
     "xiao_yuan_card_selector": "",  # 👈 改这里，存定位符，不存 WebElement
     "xiao_yuan_like": '单题标答-审核',
     "xiao_yuan_auto": False,
+    "xiao_yuan_ai": False,
     "xiao_yuan_count": 0,
     "xiao_yuan_step": 1,
     "xiao_yuan_qa": ['https://xyzb.yuanfudao.com/img/task-banner.53406e80.png'],
-    "xiao_yuan_false_causes": ['格式问题', "举报", '文本压线', '黄框压题干', '最终答案', '不独立', '出框', '少答案', '字太小', '答案错'],
+    "xiao_yuan_false_causes": ['格式问题较多', "举报", '文本压线', '黄框压题干', '最终答案', '不独立', '出框', '少答案', '字太小', '答案错'],
     "xiao_yuan_false_cause": '格式问题',
 }
 
@@ -85,6 +87,16 @@ def go_one(xiao_yuan):
         if go_on:
             break
 
+#
+# def ai_do_sa():
+#     """
+#     AI 审核入口（已独立到 ai_audit_tools.py）
+#     使用方式:
+#         from spiderlx.ui.selenium.ai_audit_tools import ai_do_sa
+#         result = ai_do_sa(sa)
+#     """
+#     pass
+
 
 def main():
     """
@@ -115,8 +127,62 @@ def main():
     # 第二步：执行任务
     if st.session_state.xiao_yuan_step == 2 and '单题标答-审核' in st.session_state.xiao_yuan_card_name:
         st.subheader(f'小猿第{st.session_state.xiao_yuan_step}步：执行{st.session_state.xiao_yuan_card_name}任务')
-        st.session_state.xiao_yuan_qa = sa.question_info(screenshot=False)
-        st.image(st.session_state.xiao_yuan_qa[0], caption='界面')
+        try:
+            st.session_state.xiao_yuan_qa = sa.question_info(screenshot=False)
+            st.image(st.session_state.xiao_yuan_qa[0], caption='界面')
+        except Exception as e:
+            st.write(f"获取题目信息失败：{str(e)}")
+            st.session_state.xiao_yuan_qa = ['https://xyzb.yuanfudao.com/img/task-banner.53406e80.png']
+        
+        # AI 审核按钮 + 人工反馈
+        col_ai_btn, col_show = st.columns([1, 2])
+        
+        with col_ai_btn:
+            if st.button('ai审核', use_container_width=True):
+                # 清除之前的反馈状态
+                for key in list(st.session_state.keys()):
+                    if key.startswith('feedback_') or key.startswith('btn_') or key.startswith('xiao_yuan_audit_'):
+                        del st.session_state[key]
+                
+                from spiderlx.ui.selenium.ai_audit_tools import AIAuditTools
+                
+                audit_tools = AIAuditTools(sa)
+                
+                # 执行审核
+                with st.spinner('🤖 AI 审核中...'):
+                    result = audit_tools.run_audit()
+                
+                # 保存结果
+                if result:
+                    st.session_state.xiao_yuan_audit_result = result
+                    st.session_state.xiao_yuan_audit_done = True
+        
+        # 显示反馈界面（独立区域）
+        if st.session_state.get('xiao_yuan_audit_done') and st.session_state.get('xiao_yuan_audit_result'):
+            result = st.session_state.xiao_yuan_audit_result
+            
+            with st.expander("🤔 人工反馈确认", expanded=True):
+                from spiderlx.ui.selenium.ai_audit_tools import AIAuditTools
+                
+                audit_tools = AIAuditTools(sa)
+                user_confirmed = audit_tools.collect_feedback(result)
+                
+                # 操作按钮
+                col_ok, col_skip = st.columns(2)
+                with col_ok:
+                    if st.button("✅ 确认并处理", use_container_width=True):
+                        st.success("✅ 处理完成")
+                        sa.quick_true_handle()
+                        sa.question_restore()
+                        # 清除状态
+                        st.session_state.xiao_yuan_audit_done = False
+                        st.session_state.xiao_yuan_audit_result = None
+                with col_skip:
+                    if st.button("⚡ 不处理直接下一题", use_container_width=True):
+                        sa.question_restore()
+                        st.session_state.xiao_yuan_audit_done = False
+                        st.session_state.xiao_yuan_audit_result = None
+            
         col1, col2, col3, col4, col5 = st.columns(5)
         if col4.button(f'刷新'):
             r = st.session_state.browser.refresh()
@@ -128,11 +194,11 @@ def main():
         if col3.button('缩小'):
             sa.question_resize()
 
-        if col1.button('审核正确'):
+        if col2.button('审核正确'):
             sa.quick_true_handle(False)
             sa.question_restore()
 
-        if col2.button('提交领下一任务'):
+        if col1.button('提交领下一任务'):
             go_on = sa.compete('提交领下一任务')
             if not go_on:
                 reset_to_initial(INITIAL_STATE)

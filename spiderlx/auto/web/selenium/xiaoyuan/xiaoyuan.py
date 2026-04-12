@@ -66,7 +66,10 @@ class SeleniumXiaoYuan:
         title_cards = {}
 
         for card in cards:
-            title = card.find_element(By.CSS_SELECTOR, '.task-card-title').text.strip()
+            try:
+                title = card.find_element(By.CSS_SELECTOR, '.task-card-title').text.strip()
+            except Exception as e:
+                pass
             try:
                 warn_text = card.find_element(By.CSS_SELECTOR, '.text-warning:nth-child(2)').text
             except:

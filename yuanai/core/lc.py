@@ -7,6 +7,9 @@ from langgraph.prebuilt import create_react_agent
 from yuanai.tools import all_tools as tools
 from utils.sensitive_data import get_api_key
 
+dsllm = ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner', 'deepseek-v4-flash', 'deepseek-v4-pro']
+seed = ['doubao-seed-2-0-pro-260215', 'doubao-seed-2-0-lite-260215']
+
 
 # ===================== 核心：通用模型调用（兼容纯文本/多模态） =====================
 def call_llm(
@@ -39,16 +42,23 @@ def call_llm(
 
 
 def get_llm(model='deepseek-chat', **kwargs):
-    dsllm = ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner']
-    seed = ['doubao-seed-2-0-pro-260215', 'doubao-seed-2-0-lite-260215']
     if model in dsllm:
         model_type = 'dsllm'
         ds_api_key = get_api_key(model_type)
+        
+        extra_params = {}
+        # 对于 deepseek-v4-flash 和 deepseek-v4-pro，使用低推理强度来减少 reasoning_content 生成
+        if model in ['deepseek-v4-flash', 'deepseek-v4-pro']:
+            extra_params["extra_body"] = {"reasoning_effort": "low"}
+        elif model == 'deepseek-reasoner':
+            extra_params["extra_body"] = {"reasoning_effort": "high"}
+        
         return ChatOpenAI(
             api_key=ds_api_key,
-            base_url="https://api.deepseek.com/v1",
+            base_url="https://api.deepseek.com/beta",
             model=model,
             **kwargs,
+            **extra_params,
         )
     elif model in seed:
         model_type = 'seed'

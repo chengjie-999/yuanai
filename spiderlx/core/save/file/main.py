@@ -1,174 +1,136 @@
 import os
-import uuid
 import hashlib
 import requests
-import psycopg2
-from datetime import datetime
-from pathlib import Path
+import pymysql
+from urllib.parse import urlparse
 
-# ====================== 【你只需要改这里】 ======================
-PG_CONFIG = {
+# ==================== 配置区 ====================
+from utils.data_path import root_path
+
+DB_CONFIG = {
     "host": "localhost",
-    "dbname": "spider_data",
-    "user": "postgres",
-    "password": "111111",
-    "port": 5432
+    "port": 3306,
+    "user": "root",
+    "password": "你的MySQL密码",
+    "database": "crawl",
+    "charset": "utf8mb4"
 }
-
-BASE_DIR = Path(__file__).parent
-DATA_DIR = BASE_DIR / "data"
-
-# 文件分类
-TYPE_MAP = {
-    "video": [".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv"],
-    "img": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"],
-    "doc": [".pdf", ".zip", ".rar", ".7z", ".txt", ".md", ".docx", ".xlsx"],
-}
-
+BASE_SAVE_DIR = os.path.join(root_path(), "crawled_files")
+CHUNK_SIZE = 1024 * 1024
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
 }
 
 
-# ====================== PostgreSQL 工具函数 ======================
-def get_conn():
-    return psycopg2.connect(**PG_CONFIG)
+# ================================================
+
+def get_db_conn():
+    """获取MySQL连接"""
+    conn = pymysql.connect(**DB_CONFIG)
+    return conn
 
 
-# 初始化表
-def init_pg_table():
-    conn = get_conn()
+def calc_md5(file_path):
+    md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            md5.update(chunk)
+    return md5.hexdigest()
+
+
+def get_safe_filename(url):
+    """获取默认文件名"""
+    return os.path.basename(urlparse(url).path) or "unknown_file"
+
+
+def is_downloaded(url):
+    """判断url是否已下载成功"""
+    conn = get_db_conn()
     cur = conn.cursor()
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS spider_downloads (
-            id SERIAL PRIMARY KEY,
-            url TEXT UNIQUE NOT NULL,
-            file_type VARCHAR(20),
-            filename TEXT,
-            save_path TEXT,
-            file_size BIGINT,
-            md5 VARCHAR(32),
-            create_time TIMESTAMP DEFAULT NOW()
-        );
-    ''')
+    cur.execute(
+        "SELECT id FROM crawled_files WHERE source_url=%s AND status='success'",
+        (url,)
+    )
+    res = cur.fetchone()
+    cur.close()
+    conn.close()
+    return res is not None
+
+
+def insert_pending_task(url, file_name):
+    """插入待下载记录"""
+    conn = get_db_conn()
+    cur = conn.cursor()
+    sql = """
+    INSERT INTO crawled_files 
+    (source_url, file_name, file_type, save_path, status)
+    VALUES (%s, %s, %s, %s, %s)
+    """
+    cur.execute(sql, (url, file_name, "unknown", "", "pending"))
+    conn.commit()
+    last_id = cur.lastrowid
+    cur.close()
+    conn.close()
+    return last_id
+
+
+def update_file_info(file_id, status, file_size, file_hash, save_path, file_type):
+    """更新下载结果"""
+    conn = get_db_conn()
+    cur = conn.cursor()
+    sql = """
+    UPDATE crawled_files 
+    SET status=%s, file_size=%s, file_hash=%s, save_path=%s, file_type=%s
+    WHERE id=%s
+    """
+    cur.execute(sql, (status, file_size, file_hash, save_path, file_type, file_id))
     conn.commit()
     cur.close()
     conn.close()
 
 
-# 判断 URL 是否已存在
-def is_url_exists(url):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT 1 FROM spider_downloads WHERE url = %s", (url,))
-    exists = cur.fetchone() is not None
-    cur.close()
-    conn.close()
-    return exists
-
-
-# 写入 PG
-def save_to_pg(data):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute('''
-        INSERT INTO spider_downloads 
-        (url, file_type, filename, save_path, file_size, md5)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    ''', (
-        data["url"],
-        data["file_type"],
-        data["filename"],
-        data["save_path"],
-        data["size"],
-        data["md5"]
-    ))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-
-# ====================== 文件工具函数 ======================
-def init_dirs():
-    for t in ["video", "img", "doc", "other"]:
-        (DATA_DIR / t).mkdir(parents=True, exist_ok=True)
-
-
-def get_file_type(ext):
-    ext = ext.lower()
-    for t, exts in TYPE_MAP.items():
-        if ext in exts:
-            return t
-    return "other"
-
-
-def get_md5(content):
-    return hashlib.md5(content).hexdigest()
-
-
-def get_unique_name(ext):
-    ts = int(datetime.now().timestamp())
-    return f"{ts}_{uuid.uuid4()}{ext}"
-
-
-# ====================== 下载核心 ======================
 def download_file(url):
-    if is_url_exists(url):
-        print(f"✅ 已存在: {url}")
+    if is_downloaded(url):
+        print(f"已跳过：{url}")
         return
 
+    os.makedirs(BASE_SAVE_DIR, exist_ok=True)
+    file_name = get_safe_filename(url)
+    task_id = insert_pending_task(url, file_name)
+
     try:
-        print(f"⏬ 下载中: {url}")
-        resp = requests.get(url, headers=HEADERS, timeout=30, stream=True)
+        resp = requests.get(url, stream=True, headers=HEADERS, timeout=30)
         resp.raise_for_status()
+        file_type = resp.headers.get("Content-Type", "application/octet-stream")
 
-        ext = os.path.splitext(url)[1] or ".bin"
-        file_type = get_file_type(ext)
+        # 临时保存路径
+        temp_path = os.path.join(BASE_SAVE_DIR, os.urandom(8).hex() + "_temp")
+        with open(temp_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=CHUNK_SIZE):
+                if chunk:
+                    f.write(chunk)
 
-        # 读取文件
-        content = b""
-        for chunk in resp.iter_content(chunk_size=1024 * 1024):
-            content += chunk
+        # 计算md5、大小
+        file_size = os.path.getsize(temp_path)
+        file_hash = calc_md5(temp_path)
+        suffix = os.path.splitext(file_name)[-1]
+        final_name = file_hash + suffix
+        final_path = os.path.join(BASE_SAVE_DIR, final_name)
+        os.rename(temp_path, final_path)
 
-        md5 = get_md5(content)
-        size = len(content)
-        filename = get_unique_name(ext)
-        save_path = str(DATA_DIR / file_type / filename)
-
-        # 保存到本地
-        with open(save_path, "wb") as f:
-            f.write(content)
-
-        # 保存信息到 PostgreSQL
-        data = {
-            "url": url,
-            "file_type": file_type,
-            "filename": filename,
-            "save_path": save_path,
-            "size": size,
-            "md5": md5
-        }
-        save_to_pg(data)
-        print(f"✅ 已保存: {save_path}\n")
+        # 更新mysql
+        update_file_info(task_id, "success", file_size, file_hash, final_path, file_type)
+        print(f"✅ 下载成功: {final_path}")
 
     except Exception as e:
-        print(f"❌ 失败: {url} | {str(e)}\n")
+        update_file_info(task_id, "failed", 0, "", "", "")
+        print(f"❌ 下载失败 {url}：{str(e)}")
 
 
-def batch_download(url_list):
-    for url in url_list:
-        download_file(url)
-
-
-# ====================== 运行 ======================
 if __name__ == "__main__":
-    init_pg_table()  # 初始化 PG 表
-    init_dirs()  # 创建本地文件夹
-
-    # 你要爬的文件链接
-    test_urls = [
-        "https://www.baidu.com/img/PCtm_d9c8750bed0b3c7d089fa7d5572076dee.gif",
-        # "https://example.com/1.mp4",
-        # "https://example.com/2.pdf"
+    test_list = [
+        "https://www.python.org/static/img/python-logo.png",
+        "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
     ]
-    batch_download(test_urls)
+    for item in test_list:
+        download_file(item)

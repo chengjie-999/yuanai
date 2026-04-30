@@ -1,0 +1,16 @@
+CREATE DATABASE crawl;
+USE crawl;
+
+CREATE TABLE IF NOT EXISTS crawled_files (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    source_url VARCHAR(1024) NOT NULL UNIQUE COMMENT '原始下载链接',
+    file_name VARCHAR(255) NOT NULL COMMENT '原文件名',
+    file_type VARCHAR(100) NOT NULL COMMENT '文件mime类型',
+    file_size BIGINT NOT NULL DEFAULT 0 COMMENT '文件大小(字节)',
+    file_hash VARCHAR(64) UNIQUE COMMENT 'md5哈希',
+    save_path VARCHAR(512) NOT NULL COMMENT '文件存储路径',
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    extra_info JSON COMMENT '扩展信息'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

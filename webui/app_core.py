@@ -51,13 +51,13 @@ def render_toggle_button(state_key, button_text, run_func=None, reset_home=True,
     container = column if column is not None else st.sidebar
 
     if st.session_state[state_key]:
-        if container.button(f'关闭{button_text}', use_container_width=True):
+        if container.button(f'关闭{button_text}', width="stretch"):
             st.session_state[state_key] = False
             st.rerun()
         if run_func:
             run_func()
     else:
-        if container.button(f'开启{button_text}', type='primary', use_container_width=True):
+        if container.button(f'开启{button_text}', type='primary', width="stretch"):
             st.session_state[state_key] = True
             if reset_home:
                 st.session_state.app_home = False

@@ -84,7 +84,7 @@ def t0():
             "年龄": [25, 30, 28],
             "薪资": [8000, 10000, 9000]
         })
-        st.dataframe(data, use_container_width=True)
+        st.dataframe(data, width="stretch")
 
     # 4. 为第三个标签页（可视化）添加内容
     with tab3:
@@ -103,7 +103,7 @@ def t0():
                       title="消费金额 vs 小费（按星期区分）")
 
     # Streamlit 展示 Plotly 图表
-    st.plotly_chart(fig3, use_container_width=True)  # use_container_width 自适应宽度
+    st.plotly_chart(fig3, width="stretch")  # use_container_width 自适应宽度
 
     # 设置页面标题 -------------------------------------------------------------------------------------------
     st.title("Streamlit 展示 Matplotlib 图表")

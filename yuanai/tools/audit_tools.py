@@ -18,22 +18,12 @@ def retrieve_annotation_spec(query: str = "") -> str:
     """
     specs = get_all_specs()
     if not specs:
-        return "规范文件为空，请检查 annotation_spec.txt"
-    
+        return "规范文件为空"
     if not query:
         return specs
-    
-    query_lower = query.lower()
     lines = specs.split('\n')
-    matched = []
-    
-    for line in lines:
-        if query_lower in line.lower():
-            matched.append(line)
-    
-    if matched:
-        return '\n'.join(matched)
-    return specs
+    matched = [l for l in lines if query.lower() in l.lower()]
+    return '\n'.join(matched) if matched else specs
 
 
 @tool

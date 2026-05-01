@@ -35,22 +35,17 @@ class AuditDetailResult:
 
 
 # ==================== 获取标注规范 ====================
-def get_spec_prompt() -> str:
-    """获取标注规范内容，用于构建 prompt"""
-    specs = get_all_specs()
-    if specs:
-        return f"""
+SPEC_TEMPLATE = """
+
 标注规范（请严格遵守）：
 {specs}
 
 ---
 """
-    return ""
 
 
 SYSTEM_PROMPT_TEMPLATE = """你是一个中小学题目标注审核专家。
 请分析以下题目截图，判断标注是否正确。
-
 {specs_content}截图说明：
 - 第1张: 题目全屏截图（由于题干为画布标签，会出现显示不全的情况，可尝试调用滚动工具，若无工具须提醒用户）
 - 第2张: 参考答案图片
@@ -67,8 +62,8 @@ SYSTEM_PROMPT_TEMPLATE = """你是一个中小学题目标注审核专家。
 
 def get_system_prompt() -> str:
     """获取完整的系统提示"""
-    specs_content = get_spec_prompt()
-    # 使用双花括号转义 JSON 中的花括号
+    specs = get_all_specs()
+    specs_content = SPEC_TEMPLATE.format(specs=specs) if specs else ""
     template = SYSTEM_PROMPT_TEMPLATE.replace("{specs_content}", specs_content)
     return template
 
@@ -160,8 +155,9 @@ def call_audit_llm(images: List[str], model: str = "doubao-seed-2-0-lite-260215"
         response = llm.invoke(messages)
         return response.content if hasattr(response, 'content') else str(response)
     except Exception as e:
-        print(f"LLM 调用失败: {e}")
-        return '{"is_correct": false, "error_type": "答案错", "error_count": 1, "reason": "AI 调用失败"}'
+        error_msg = str(e).replace('"', "'").replace('\n', ' ')
+        print(f"LLM 调用失败 ({model}): {error_msg}")
+        return f'{{"is_correct": false, "error_type": "答案错", "error_count": 1, "reason": "AI调用失败: {error_msg}"}}'
 
 
 def call_audit_agent(images: List[str], model: str = "doubao-seed-2-0-lite-260215") -> str:
@@ -197,8 +193,9 @@ def call_audit_agent(images: List[str], model: str = "doubao-seed-2-0-lite-26021
         result = agent.invoke({"messages": messages})
         return result["messages"][-1].content
     except Exception as e:
-        print(f"Agent 调用失败: {e}")
-        return '{"is_correct": false, "error_type": "答案错", "error_count": 1, "reason": "AI 调用失败"}'
+        error_msg = str(e).replace('"', "'").replace('\n', ' ')
+        print(f"Agent 调用失败 ({model}): {error_msg}")
+        return f'{{"is_correct": false, "error_type": "答案错", "error_count": 1, "reason": "Agent调用失败: {error_msg}"}}'
 
 
 def audit_question(images: List, model: str = "doubao-seed-2-0-lite-260215") -> AuditResult:
@@ -300,6 +297,45 @@ def audit_question_detail(
         raw_response=ai_response,
         tool_used=[]
     )
+
+
+def build_audit_prompt(audit_cause: str = "") -> str:
+    """动态构建审核系统提示，只注入相关规范段落"""
+    from yuanai.rag import search_spec_sections
+    specs = search_spec_sections(audit_cause)
+    spec_block = ""
+    if specs:
+        spec_block = f"\n相关标注规范：\n{specs}\n"
+    return f"""你是一个小猿众包题目审核自动化助手。
+当前任务：单题标答-审核{spec_block}
+操作流程：
+1. 如果题目显示不全，先调用 scroll_canvas() 向下滚动查看下方内容
+2. 或调用 zoom_question() 缩小视图看到更多内容
+3. 滚动/缩放后会自动更新截图，多次操作直到看清完整题目
+4. 调用 mark_question_correct() 处理独立答案和批改答案的判定
+5. 说明你的判断结果，包括正确的驳回原因（如有）
+
+注意：
+- 如有驳回需要，用户会在反馈中处理，AI 只需给出正确的驳回原因
+- 如果工具调用失败，请说明失败原因"""
+
+
+def save_feedback(ai_result: str, user_correct: bool, user_note: str = "", image_id: str = ""):
+    """保存用户反馈到数据库"""
+    try:
+        from db.session import AgentDatabase
+        import time
+        db = AgentDatabase()
+        feedback = {
+            "image_id": image_id or f"audit_{int(time.time())}",
+            "ai_result": ai_result,
+            "user_correct": user_correct,
+            "user_note": user_note,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        db.set_state(f"audit_feedback_{feedback['image_id']}", feedback)
+    except Exception as e:
+        print(f"保存反馈失败: {e}")
 
 
 if __name__ == '__main__':

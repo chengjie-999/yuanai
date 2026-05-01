@@ -1,4 +1,5 @@
 import os
+import re
 
 # 👇 修复了新版 LangChain 导入
 from langchain_community.vectorstores import FAISS
@@ -10,7 +11,7 @@ from langchain.tools import tool
 from utils.data_path import root_path
 
 # ====================== 配置 ======================
-SPEC_FILE_PATH = os.path.join(root_path(), "data", "file", "annotation_spec.txt")
+SPEC_FILE_PATH = os.path.join(root_path(), "data", "aiprompt", "annotation_spec.txt")
 VECTOR_STORE_PATH = os.path.join(root_path(), "data", "faiss_spec_db")
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 CHUNK_SIZE = 300
@@ -118,6 +119,41 @@ def get_all_specs() -> str:
     return ""
 
 
+def split_spec_sections() -> list:
+    """将标注规范按一级标题切分为段落列表，返回 [(标题, 内容), ...]"""
+    text = get_all_specs()
+    if not text:
+        return []
+    chunks = re.split(r'\n(?=[一二三四五六七八九十]、)', text)
+    result = []
+    for c in chunks:
+        lines = c.strip().split('\n')
+        title = lines[0].strip() if lines else ""
+        result.append((title, c.strip()))
+    return result
+
+
+def search_spec_sections(keyword: str = "") -> str:
+    """
+    按关键词检索相关规范段落。
+    只返回匹配的标题段落，不返回全文。
+    """
+    sections = split_spec_sections()
+    if not sections:
+        return ""
+    if not keyword:
+        return "\n\n".join(c for _, c in sections)
+
+    keyword_lower = keyword.lower()
+    matched = []
+    for title, content in sections:
+        if keyword_lower in content.lower():
+            matched.append(content)
+    if matched:
+        return "\n\n".join(matched)
+    return sections[0][1] if sections else ""
+
+
 def rebuild_vector_store():
     """强制重建向量库（用于规范文档更新后）"""
     global vector_db
@@ -146,7 +182,7 @@ def update_spec_from_feishu(doc_url: str, cookies: dict = None):
 
 # ====================== Agent 工具 ======================
 @tool
-def retrieve_specification(query: str) -> str:
+def retrieve_specification(query: str = "") -> str:
     """
     检索数据标注规范，需要判断内容是否合规时调用。
     输入：待审核的内容
@@ -159,5 +195,6 @@ def retrieve_specification(query: str) -> str:
 
 __all__ = [
     "retrieve_specification", "search_annotation_spec",
-    "get_all_specs", "rebuild_vector_store", "update_spec_from_feishu"
+    "get_all_specs", "rebuild_vector_store", "update_spec_from_feishu",
+    "search_spec_sections", "split_spec_sections"
 ]

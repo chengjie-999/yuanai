@@ -71,13 +71,13 @@ def render_top_navbar():
     # 直接用Streamlit的列布局渲染导航按钮，去掉多余的div嵌套
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("📊 数据看板", use_container_width=True, key="nav_dashboard", help="核心指标+趋势分析"):
+        if st.button("📊 数据看板", width="stretch", key="nav_dashboard", help="核心指标+趋势分析"):
             st.session_state.active_page = "数据看板"
     with col2:
-        if st.button("📋 数据明细", use_container_width=True, key="nav_detail", help="完整数据列表"):
+        if st.button("📋 数据明细", width="stretch", key="nav_detail", help="完整数据列表"):
             st.session_state.active_page = "数据明细"
     with col3:
-        if st.button("ℹ️ 关于系统", use_container_width=True, key="nav_about", help="系统介绍"):
+        if st.button("ℹ️ 关于系统", width="stretch", key="nav_about", help="系统介绍"):
             st.session_state.active_page = "关于系统"
 
     # 导航栏和指标卡片之间加分割线，优化视觉层次
@@ -107,12 +107,12 @@ def render_page_content(df, total_sales, avg_order, avg_price, growth_rate):
         with chart_col1:
             fig1 = px.line(df, x='日期', y='销售额', title='销售额日趋势', color_discrete_sequence=['#1e3a8a'])
             fig1.update_layout(height=400)
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, width="stretch")
         with chart_col2:
             region_sales = df.groupby('地区')['销售额'].sum().reset_index()
             fig2 = px.pie(region_sales, values='销售额', names='地区', title='各地区销售额占比')
             fig2.update_layout(height=400)
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width="stretch")
 
     elif active_page == "数据明细":
         # 数据明细页面（保留原有逻辑）
@@ -132,7 +132,7 @@ def render_page_content(df, total_sales, avg_order, avg_price, growth_rate):
                 key="download_csv"
             )
         # 数据表格
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
 
     elif active_page == "关于系统":
         # 关于系统页面（保留原有逻辑）

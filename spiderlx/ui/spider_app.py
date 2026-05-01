@@ -36,7 +36,7 @@ def main():
             
             col_api, col_direct = container.columns(2)
             with col_api:
-                if container.button('🔌 API请求', use_container_width=True):
+                if container.button('🔌 API请求', width="stretch"):
                     if st.session_state.url:
                         with container.spinner('正在请求API...'):
                             result = call_spider_api(st.session_state.url, 'text')
@@ -45,7 +45,7 @@ def main():
                         container.error('请输入URL')
             
             with col_direct:
-                if container.button(f'📥 直接获取', use_container_width=True):
+                if container.button(f'📥 直接获取', width="stretch"):
                     pass
 
         if st.session_state.get('api_result'):

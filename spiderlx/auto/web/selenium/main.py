@@ -4,6 +4,8 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.webdriver import WebDriver
 
 from spiderlx.anti.cookie.selenium import get_cookie, use_cookie
+from spiderlx.anti.ua import get_random_ua
+from spiderlx.anti.cdp import get_anti_detect_script
 from spiderlx.core.save.urls import urls  # 替换为下方 urls
 from webdrivermanager_cn import ChromeDriverManagerAliMirror
 
@@ -36,11 +38,10 @@ class BrowserInitializer:
         """
         chrome_options = Options()
 
-        # 模拟真实浏览器 UA
-        chrome_options.add_argument(
-            'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-            'Chrome/120.0.0.0 Safari/537.36 '
-        )
+        # 随机 UA
+        ua = get_random_ua()
+        chrome_options.add_argument(f'user-agent={ua}')
+        print(f"🔀 UA: {ua[:60]}...")
 
         # 反爬核心：隐藏 Selenium 自动化特征
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
@@ -72,6 +73,10 @@ class BrowserInitializer:
                 service=Service(ChromeDriverManagerAliMirror().install()),
                 options=self.options
             )
+            # CDP 反检测注入（导航前）
+            driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                'source': get_anti_detect_script()
+            })
             driver.maximize_window()
             print("✅ 浏览器启动完成（反爬已配置）")
             self.driver = driver

@@ -55,19 +55,3 @@ def format_audit_result(audit_data: dict) -> tuple:
     display_images = [] if is_feedback else images
 
     return content, display_images
-
-
-def check_and_show_pending_audit(session_state) -> bool:
-    """检查并处理待显示的审核结果，返回是否有新消息需要添加"""
-    if PENDING_AUDIT_KEY not in session_state:
-        return False
-
-    audit_data = session_state[PENDING_AUDIT_KEY]
-
-    if audit_data.get("source") == "xiao_yuan":
-        content, display_images = format_audit_result(audit_data)
-        session_state.messages.append(("assistant", content, display_images, ""))
-        del session_state[PENDING_AUDIT_KEY]
-        return True
-
-    return False

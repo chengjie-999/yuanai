@@ -18,7 +18,13 @@ def build_input_messages(
 
     for msg in history:
         if isinstance(msg, HumanMessage):
-            input_messages.append({"role": "user", "content": msg.content})
+            if isinstance(msg.content, list):
+                text = "".join(
+                    c["text"] for c in msg.content if isinstance(c, dict) and c.get("type") == "text"
+                )
+                input_messages.append({"role": "user", "content": text})
+            else:
+                input_messages.append({"role": "user", "content": msg.content})
         elif isinstance(msg, AIMessage):
             input_messages.append({"role": "assistant", "content": msg.content})
 
@@ -139,16 +145,114 @@ def build_chat_history(session_messages: List[tuple]) -> List[BaseMessage]:
     return chat_history
 
 
-async def execute_chat(llm, prompt, images_base64, tools, history, system_message):
-    """执行流式聊天，返回完整响应和推理内容"""
-    input_messages = build_input_messages(prompt, images_base64, history, system_message)
+async def stream_agent_with_messages(
+        llm,
+        messages: List[BaseMessage],
+        tools: List[Any],
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """使用 LangChain Message 对象流式调用 Agent"""
+    agent = get_langgraph_agent(llm, tools)
 
     full_response = ""
-    reasoning_content = ""
+    full_reasoning = ""
 
-    async for event in stream_agent_events(llm, input_messages, tools):
-        if event["type"] == "done":
-            full_response = event["data"]["display_content"]
-            reasoning_content = event["data"].get("reasoning_content", "")
+    try:
+        async for event in agent.astream_events(
+                {"messages": messages},
+                version="v2"
+        ):
+            if event["event"] == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                token = ""
 
-    return full_response, reasoning_content
+                if hasattr(chunk, "content") and chunk.content:
+                    token = chunk.content
+                    full_response += token
+
+                if hasattr(chunk, "reasoning_content") and chunk.reasoning_content:
+                    full_reasoning += chunk.reasoning_content
+                    token = f"💭 {chunk.reasoning_content}"
+                    full_response += token
+
+                if token:
+                    yield {"type": "token", "data": token}
+
+            elif event["event"] == "on_tool_start":
+                yield {
+                    "type": "tool_start",
+                    "data": {"name": event.get("name", "未知工具")}
+                }
+
+            elif event["event"] == "on_tool_end":
+                yield {
+                    "type": "tool_end",
+                    "data": {"name": event.get("name", "未知工具")}
+                }
+
+        yield {
+            "type": "done",
+            "data": {
+                "display_content": full_response,
+                "raw_content": full_response.replace("💭 ", ""),
+                "reasoning_content": full_reasoning
+            }
+        }
+    except Exception as e:
+        yield {"type": "error", "data": str(e)}
+
+
+async def stream_agent_with_inject(
+        llm,
+        initial_messages: List[BaseMessage],
+        tools: List[Any],
+        on_tool_end,
+        max_rounds: int = 3,
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """支持工具调用后注入新截图消息的 Agent 流式调用。"""
+    messages = list(initial_messages)
+
+    for round_idx in range(max_rounds):
+        agent = get_langgraph_agent(llm, tools)
+        full_response = ""
+        full_reasoning = ""
+        tool_names = set()
+
+        try:
+            async for event in agent.astream_events({"messages": messages}, version="v2"):
+                if event["event"] == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+                    token = ""
+                    if hasattr(chunk, "content") and chunk.content:
+                        token = chunk.content
+                        full_response += token
+                    if hasattr(chunk, "reasoning_content") and chunk.reasoning_content:
+                        full_reasoning += chunk.reasoning_content
+                        token = f"💭 {chunk.reasoning_content}"
+                        full_response += token
+                    if token:
+                        yield {"type": "token", "data": token}
+                elif event["event"] == "on_tool_start":
+                    yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具")}}
+                elif event["event"] == "on_tool_end":
+                    name = event.get("name", "未知工具")
+                    tool_names.add(name)
+                    yield {"type": "tool_end", "data": {"name": name}}
+        except Exception as e:
+            yield {"type": "error", "data": str(e)}
+            return
+
+        inject_result = on_tool_end(list(tool_names))
+        if inject_result and round_idx < max_rounds - 1:
+            messages.append(HumanMessage(content="[系统提示] 已滚动并重新截图，这是更新后的内容："))
+            messages.extend(inject_result)
+            yield {"type": "inject", "data": {"round": round_idx + 1, "tool_names": list(tool_names)}}
+            continue
+
+        yield {"type": "done", "data": {
+            "display_content": full_response,
+            "raw_content": full_response.replace("💭 ", ""),
+            "reasoning_content": full_reasoning
+        }}
+        return
+
+    yield {"type": "error", "data": f"已达到最大轮次({max_rounds})，可能仍未获取完整题目"}

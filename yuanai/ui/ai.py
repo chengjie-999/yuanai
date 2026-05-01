@@ -9,7 +9,6 @@ from yuanai.core.chat import stream_agent_events, build_input_messages, build_ch
 from yuanai.tools import all_tools as in_tools
 from yuanai.utils.image import process_uploaded_images
 from yuanai.ui.components import display_message, load_css, show_loading_indicator, show_tool_status
-from yuanai.audit import check_and_show_pending_audit
 from webui.app_core import initializing_state
 from utils.data_path import root_path
 
@@ -21,18 +20,16 @@ def main():
     initializing_state(INITIAL_STATE)
     load_css()
 
-    check_and_show_pending_audit(st.session_state)
-
     col1, col2 = st.columns([3, 1])
 
     llm = get_llm(
-        col2.selectbox("选择模型", dsllm + seed, index=0),
+        col2.selectbox("选择模型", dsllm + seed, index=len(dsllm)),
         temperature=col2.slider("生成温度", 0.0, 1.0, 0.7, step=0.1),
         verbose=False,
         streaming=True
     )
 
-    if col2.button("清空对话历史", type="secondary", use_container_width=True):
+    if col2.button("清空对话历史", type="secondary", width="stretch"):
         st.session_state.messages = []
         st.rerun()
 
@@ -88,6 +85,8 @@ def main():
                             show_tool_status("tool_end", event["data"]["name"])
                         elif event["type"] == "done":
                             reasoning_content = event["data"].get("reasoning_content", "")
+                        elif event["type"] == "error":
+                            full_response = f"❌ 错误: {event['data']}"
 
                 try:
                     asyncio.run(run_stream())

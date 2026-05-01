@@ -34,7 +34,7 @@ def app_main():
         with col1:
             if not st.session_state.browser_started:
                 # 唤醒并配置浏览器
-                if st.button('开启浏览器', type='primary', use_container_width=True):
+                if st.button('开启浏览器', type='primary', width="stretch"):
                     if not st.session_state.browser_started:
                         st.session_state.browser = get_driver()  # 使用浏览器驱动
                         st.session_state.app_home = False
@@ -44,7 +44,7 @@ def app_main():
                     else:
                         st.warning("浏览器已启动，无需重复开启！")
             else:
-                if st.button('关闭浏览器', use_container_width=True):
+                if st.button('关闭浏览器', width="stretch"):
                     if st.session_state.browser_started:
                         st.session_state.browser.close_browser()
                         get_driver.clear()  # 清除缓存，确保下次重新创建实例
@@ -57,10 +57,10 @@ def app_main():
             show_state()
 
         with col3:
-            if st.button('返回上一步', use_container_width=True) and st.session_state.step > 1:
+            if st.button('返回上一步', width="stretch") and st.session_state.step > 1:
                 st.session_state.step -= 1
                 st.rerun()
-            if st.button('直接进入下一步', use_container_width=True) and st.session_state.step < 3:
+            if st.button('直接进入下一步', width="stretch") and st.session_state.step < 3:
                 st.session_state.step += 1
                 st.rerun()
 

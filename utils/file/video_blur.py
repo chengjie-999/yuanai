@@ -244,7 +244,7 @@ if video_file:
             st.rerun()
 
         st.markdown("---")
-        process_btn = st.button("▶️ 开始去水印", type="primary", use_container_width=True)
+        process_btn = st.button("▶️ 开始去水印", type="primary", width="stretch")
 
     st.markdown("### 🖼️ 效果预览与区域选择")
     col_canvas, col_preview = st.columns([1.8, 1], gap="large")
@@ -301,17 +301,17 @@ if video_file:
                         st.image(
                             cv2.cvtColor(preview_display, cv2.COLOR_BGR2RGB),
                             caption=f"处理模式：{mode}",
-                            use_container_width=True
+                            width="stretch"
                         )
                         preview_available = True
                     else:
                         st.info("👆 请先在左侧框选水印区域")
-                        st.image(pil_frame, caption="原始视频帧", use_container_width=True)
+                        st.image(pil_frame, caption="原始视频帧", width="stretch")
                 else:
                     st.info("👆 请先在左侧框选水印区域")
-                    st.image(pil_frame, caption="原始视频帧", use_container_width=True)
+                    st.image(pil_frame, caption="原始视频帧", width="stretch")
             else:
-                st.image(pil_frame, caption="原始视频帧", use_container_width=True)
+                st.image(pil_frame, caption="原始视频帧", width="stretch")
 
         # ========== 左侧：水印区域选择区 ==========
         with col_canvas:
@@ -437,7 +437,7 @@ if video_file:
                         f,
                         file_name="no_watermark.mp4",
                         mime="video/mp4",
-                        use_container_width=True
+                        width="stretch"
                     )
 
             except Exception as e:

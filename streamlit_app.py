@@ -88,7 +88,7 @@ st.markdown("""
 # ==============================
 with st.sidebar:
     col1, col2, col3 = st.columns(3)
-    if col1.button('重载', use_container_width=True):
+    if col1.button('重载', width="stretch"):
         st.rerun()
     render_toggle_button("auto_refresh", '自动刷新', column=col2)
     if col3.button('同步数据库状态'):
@@ -131,11 +131,11 @@ for idx, (tab_label, tab_key) in enumerate(all_tabs):
             st.write("欢迎使用数据可视化平台！")
             ai.main()
             # 查看Session状态按钮
-            if st.button('查看当前session状态', use_container_width=True):
+            if st.button('查看当前session状态', width="stretch"):
                 st.write('📌【当前session状态】')
                 df = session_df()
-                st.dataframe(df, use_container_width=True)
-            if st.button('将当前状态存入到数据库', use_container_width=True):
+                st.dataframe(df, width="stretch")
+            if st.button('将当前状态存入到数据库', width="stretch"):
                 df = session_df()
                 db = AgentDatabase()
                 db.update_states_from_df(df)

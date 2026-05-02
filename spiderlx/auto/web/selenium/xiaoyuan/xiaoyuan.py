@@ -112,8 +112,11 @@ class SeleniumXiaoYuan:
         :return: 是否继续任务
         """
         try:
-            time.sleep(1)
-            modal = self.web_driver.find_element(By.CSS_SELECTOR, '.ant-modal-content')
+            time.sleep(1.5)
+            from selenium.common import TimeoutException, StaleElementReferenceException
+            modal = WebDriverWait(self.web_driver, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, '.ant-modal-content'))
+            )
             msg = modal.find_element(By.CSS_SELECTOR, '.ant-modal-confirm-title').text
             print(f"系统提示：{msg}")
 
@@ -123,10 +126,11 @@ class SeleniumXiaoYuan:
                 primary.click()
                 return True
             else:
-                btns.click()
-                return '知道了' not in btns.text
-        except NoSuchElementException:
-            print("任务充足")
+                btn = btns.find_element(By.CSS_SELECTOR, '.ant-btn')
+                btn.click()
+                return False
+        except (NoSuchElementException, TimeoutException, StaleElementReferenceException):
+            print("任务充足或无弹窗")
         return go_on
 
     def to_detail(self):
@@ -233,9 +237,7 @@ class SingleAuditHandler:
 
             # 安全点击打开驳回弹窗
             self.xiao_yuan.safe_click(btn)
-            time.sleep(0.5)
-
-            # 等待并填写驳回原因
+            time.sleep(2)
             try:
                 input_box = self.wait.until(
                     EC.visibility_of_element_located((By.CSS_SELECTOR, '.ant-input'))
@@ -255,7 +257,7 @@ class SingleAuditHandler:
             btn = foot.find_element(By.CSS_SELECTOR, '.ant-space:nth-child(2) .ant-space-item:nth-child(5) .ant-btn')
 
         self.xiao_yuan.safe_click(btn)
-        time.sleep(0.5)
+        time.sleep(2)
         return self.xiao_yuan.box()
 
     def question_resize(self, count=6):

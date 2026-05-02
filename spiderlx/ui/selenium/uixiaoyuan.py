@@ -1,12 +1,10 @@
 import random
 import time
 import asyncio
-import json
 
 import streamlit as st
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.tools import tool
 
 from spiderlx.ui.selenium.resource import get_driver
 from webui.app_core import initializing_state, reset_to_initial
@@ -287,11 +285,12 @@ def _clear_audit_state():
     st.session_state.pop("_feedback_correcting", None)
 
 
-def render_action_buttons(sa):
-    with st.expander("高级操作", expanded=False):
+def render_action_buttons(sa, driver):
+    with st.expander("手动操作", expanded=False):
         col_ref, col_down, col_up, col_zoom = st.columns(4)
         with col_ref:
             if st.button("🔄 刷新", width="stretch"):
+                driver.refresh()
                 st.rerun()
         with col_down:
             if st.button("⬇ 向下滚动", width="stretch"):
@@ -380,7 +379,7 @@ def main():
         render_ai_audit_chat(qa_images, sa)
 
         st.markdown("---")
-        render_action_buttons(sa)
+        render_action_buttons(sa, driver)
 
     if st.session_state.xiao_yuan_step == 2 and '3.0改错-补答' in st.session_state.xiao_yuan_card_name:
         st.subheader(f'{st.session_state.xiao_yuan_card_name}')

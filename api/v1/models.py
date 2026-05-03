@@ -32,6 +32,7 @@ class ToolInfo(BaseModel):
     name: str
     description: str
     args: dict
+    category: str = Field("其他", description="工具分类")
 
 
 class SaveMessagesRequest(BaseModel):

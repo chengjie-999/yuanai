@@ -6,7 +6,7 @@ from typing import Optional
 from langchain_core.tools import tool
 
 from spiderlx.auto.web.selenium.xiaoyuan.xiaoyuan import SeleniumXiaoYuan, SingleAuditHandler
-import yuanai.tools.selenium_tools.core as core_module
+from spiderlx.core.browser_manager import browser_manager
 
 
 _xiao_yuan: Optional[SeleniumXiaoYuan] = None
@@ -14,12 +14,13 @@ _sa: Optional[SingleAuditHandler] = None
 
 
 def _get_browser_driver():
-    """获取共享浏览器驱动，优先使用 core 模块已启动的浏览器"""
-    if core_module.browser_instance:
-        return core_module.browser_instance.driver
+    """获取共享浏览器驱动，优先使用已启动的浏览器"""
+    driver = browser_manager.get_driver()
+    if driver:
+        return driver.driver
     from spiderlx.auto.web.selenium.main import MyWebBrowser, BrowserInitializer
     browser = MyWebBrowser(BrowserInitializer().create_driver())
-    core_module.browser_instance = browser
+    browser_manager._browser = browser
     atexit.register(lambda: browser.close_browser())
     return browser.driver
 

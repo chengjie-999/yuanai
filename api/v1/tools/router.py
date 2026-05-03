@@ -6,6 +6,27 @@ from yuanai.tools import all_tools
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
+CATEGORIES = {
+    "calculate_sum": "计算", "calculate_multiply": "计算",
+    "get_today_temperature": "天气", "get_tomorrow_forecast": "天气",
+    "retrieve_annotation_spec": "审核", "save_audit_feedback": "审核",
+    "get_important_examples": "审核", "get_audit_feedback": "审核",
+    "get_recent_feedbacks": "审核", "analyze_audit_errors": "审核",
+    "launch_new_browser": "浏览器", "get_website_info": "浏览器",
+    "open_website_by_code": "浏览器", "open_website_by_name": "浏览器",
+    "open_custom_url": "浏览器", "refresh_page": "浏览器",
+    "load_cookies": "浏览器", "save_cookies": "浏览器",
+    "close_browser": "浏览器",
+    "get_task_cards": "小猿任务", "start_task": "小猿任务",
+    "go_home": "小猿任务", "save_page_html": "小猿任务",
+    "get_question_info": "小猿任务", "submit_task": "小猿任务",
+    "zoom_question": "小猿任务", "restore_question_view": "小猿任务",
+    "mark_question_correct": "小猿任务", "confirm_rejection": "小猿任务",
+    "scroll_canvas": "小猿任务", "click_canvas": "小猿任务",
+    "load_page_cookies": "小猿任务", "save_page_cookies": "小猿任务",
+    "get_page_status": "小猿任务",
+}
+
 
 def _find_tool(name: str):
     for t in all_tools:
@@ -20,13 +41,14 @@ async def list_tools():
     result = []
     for t in all_tools:
         try:
-            args_schema = t.args  # 兼容不同版本
+            args_schema = t.args
         except Exception:
             args_schema = {}
         result.append({
             "name": t.name,
             "description": t.description or "",
             "args": args_schema,
+            "category": CATEGORIES.get(t.name, "其他"),
         })
     return result
 

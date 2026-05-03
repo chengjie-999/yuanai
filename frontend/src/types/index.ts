@@ -22,4 +22,5 @@ export interface ToolInfo {
   name: string
   description: string
   args: Record<string, any>
+  category: string
 }

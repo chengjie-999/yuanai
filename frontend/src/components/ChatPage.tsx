@@ -380,7 +380,7 @@ export default function ChatPage() {
               fontSize: 22, fontWeight: 600, color: '#333', marginBottom: 32,
               letterSpacing: -0.5,
             }}>
-              My Spider
+              小元AI
             </h1>
 
             {!sidebarOpen && (

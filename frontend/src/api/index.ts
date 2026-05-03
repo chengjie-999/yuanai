@@ -50,6 +50,33 @@ export async function saveMessages(sessionId: string, messages: { role: string; 
   } catch { /* ignore */ }
 }
 
+// ---- Browser ----
+export async function startBrowser() {
+  const res = await fetch(`${API_BASE}/browser/start`, { method: 'POST' })
+  return res.json()
+}
+
+export async function stopBrowser() {
+  const res = await fetch(`${API_BASE}/browser/stop`, { method: 'POST' })
+  return res.json()
+}
+
+export async function getBrowserStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/browser/status`)
+    return await res.json()
+  } catch { return { running: false, url: '', title: '' } }
+}
+
+export async function getBrowserScreenshot(): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/browser/screenshot`)
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.screenshot || null
+  } catch { return null }
+}
+
 // ---- Stream Chat ----
 export function streamChat(
   params: {

@@ -123,12 +123,9 @@ def render_ai_audit_chat(qa_images, sa):
     audit_tools = [t for t in in_tools if t.name not in ("submit_task", "confirm_rejection")]
 
     # 同步现有浏览器到工具模块，避免新开浏览器
-    import yuanai.tools.selenium_tools.core as core_module
-    import yuanai.tools.selenium_tools.xiaoyuan as xy_tools
+    from spiderlx.core.browser_manager import browser_manager
     browser = get_driver()
-    core_module.browser_instance = browser
-    xy_tools._xiao_yuan = None
-    xy_tools._sa = None
+    browser_manager._browser = browser
 
     chat_container = st.container(border=True)
 

@@ -2,24 +2,27 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.v1 import init_router
+from api.v1.chat.router import router as chat_router
+from api.v1.tools.router import router as tools_router
 
-# 终端1：启动 API 服务
-# uvicorn api.main:app --reload --port 8000
 app = FastAPI(title="Spider API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    # 只允许你自己的前端地址
     allow_origins=[
         "http://localhost:8080",
+        "http://localhost:5173",
         "https://你的正式前端域名.com"
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
 spider_router = init_router()
 app.include_router(spider_router, prefix="/api/v1/spider", tags=["spider"])
+app.include_router(chat_router, prefix="/api/v1", tags=["chat"])
+app.include_router(tools_router, prefix="/api/v1", tags=["tools"])
+
 
 
 @app.get("/")

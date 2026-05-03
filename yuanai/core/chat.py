@@ -60,19 +60,14 @@ async def stream_agent_events(
         ):
             if event["event"] == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
-                token = ""
 
                 if hasattr(chunk, "content") and chunk.content:
-                    token = chunk.content
-                    full_response += token
+                    full_response += chunk.content
+                    yield {"type": "token", "data": chunk.content}
 
                 if hasattr(chunk, "reasoning_content") and chunk.reasoning_content:
                     full_reasoning += chunk.reasoning_content
-                    token = f"💭 {chunk.reasoning_content}"
-                    full_response += token
-
-                if token:
-                    yield {"type": "token", "data": token}
+                    yield {"type": "reasoning", "data": chunk.reasoning_content}
 
             elif event["event"] == "on_tool_start":
                 yield {
@@ -90,13 +85,11 @@ async def stream_agent_events(
             "type": "done",
             "data": {
                 "display_content": full_response,
-                "raw_content": full_response.replace("💭 ", ""),
                 "reasoning_content": full_reasoning
             }
         }
     except Exception as e:
         yield {"type": "error", "data": str(e)}
-
 
 def parse_session_message(msg) -> tuple:
     """解析 session_state 中的消息元组，兼容新旧格式"""
@@ -163,19 +156,14 @@ async def stream_agent_with_messages(
         ):
             if event["event"] == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
-                token = ""
 
                 if hasattr(chunk, "content") and chunk.content:
-                    token = chunk.content
-                    full_response += token
+                    full_response += chunk.content
+                    yield {"type": "token", "data": chunk.content}
 
                 if hasattr(chunk, "reasoning_content") and chunk.reasoning_content:
                     full_reasoning += chunk.reasoning_content
-                    token = f"💭 {chunk.reasoning_content}"
-                    full_response += token
-
-                if token:
-                    yield {"type": "token", "data": token}
+                    yield {"type": "reasoning", "data": chunk.reasoning_content}
 
             elif event["event"] == "on_tool_start":
                 yield {
@@ -193,13 +181,11 @@ async def stream_agent_with_messages(
             "type": "done",
             "data": {
                 "display_content": full_response,
-                "raw_content": full_response.replace("💭 ", ""),
                 "reasoning_content": full_reasoning
             }
         }
     except Exception as e:
         yield {"type": "error", "data": str(e)}
-
 
 async def stream_agent_with_inject(
         llm,
@@ -221,16 +207,12 @@ async def stream_agent_with_inject(
             async for event in agent.astream_events({"messages": messages}, version="v2"):
                 if event["event"] == "on_chat_model_stream":
                     chunk = event["data"]["chunk"]
-                    token = ""
                     if hasattr(chunk, "content") and chunk.content:
-                        token = chunk.content
-                        full_response += token
+                        full_response += chunk.content
+                        yield {"type": "token", "data": chunk.content}
                     if hasattr(chunk, "reasoning_content") and chunk.reasoning_content:
                         full_reasoning += chunk.reasoning_content
-                        token = f"💭 {chunk.reasoning_content}"
-                        full_response += token
-                    if token:
-                        yield {"type": "token", "data": token}
+                        yield {"type": "reasoning", "data": chunk.reasoning_content}
                 elif event["event"] == "on_tool_start":
                     yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具")}}
                 elif event["event"] == "on_tool_end":
@@ -250,7 +232,6 @@ async def stream_agent_with_inject(
 
         yield {"type": "done", "data": {
             "display_content": full_response,
-            "raw_content": full_response.replace("💭 ", ""),
             "reasoning_content": full_reasoning
         }}
         return

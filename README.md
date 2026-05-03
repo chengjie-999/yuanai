@@ -28,30 +28,39 @@
 
 ```bash
 pip install -r requirements.txt
+cd frontend && npm install --registry=https://registry.npmmirror.com
 ```
 
-### 2. 运行
+### 2. 启动
 
-**Web 模式（推荐）**
+需要分别启动 **API 后端** 和 **前端** 两个服务。
+
+**终端1：FastAPI 后端**
+```bash
+uvicorn api.main:app --reload --port 8000
+```
+API 文档：http://localhost:8000/docs
+
+**终端2：React 前端（新）**
+```bash
+cd frontend && npm run dev
+```
+前端页面：http://localhost:5173
+
+**终端3（过渡期）：Streamlit 旧 UI**
 ```bash
 streamlit run streamlit_app.py
 ```
 
-**桌面模式**
-```bash
-python qt_core.py
-```
+> 等前端开发完成后，前端构建产物会嵌入 FastAPI 静态服务，届时只需启动终端1即可。
 
-**独立爬虫**
-```bash
-python main.py
-```
+### 3. 环境说明
 
-### 3. API 服务
+- 建议使用 **Windows PowerShell** 运行所有命令
+- Node.js 版本需 >= 18（推荐 22 LTS）
+- API 端口 8000，前端端口 5173
 
-```bash
-uvicorn api.main:app --reload --port 8000
-```
+---
 
 ---
 

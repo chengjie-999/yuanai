@@ -1,8 +1,11 @@
-from sqlalchemy import create_engine, Column, Integer, Text, TIMESTAMP
+from sqlalchemy import create_engine, Column, Integer, Text, TIMESTAMP, String
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import URL
+from sqlalchemy.sql import func
 import os
 import json
+import uuid
 from utils.data_path import root_path
 
 # ---------------------- SQLAlchemy 基础配置 ----------------------
@@ -17,32 +20,55 @@ class StreamlitState(Base):
     value = Column(Text)
 
 
+class ChatSession(Base):
+    """会话表"""
+    __tablename__ = 'chat_session'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(36), unique=True, nullable=False, index=True)
+    title = Column(String(200), default='新对话')
+    model = Column(String(50), default='doubao-seed-2-0-pro-260215')
+    create_time = Column(TIMESTAMP, server_default=func.now())
+    update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
 class AIChat(Base):
     """AI 聊天记录表模型"""
     __tablename__ = 'ai_chat'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    role = Column(Text, nullable=False)
+    session_id = Column(String(36), nullable=False, index=True)
+    role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
-    create_time = Column(TIMESTAMP, server_default='CURRENT_TIMESTAMP')
+    create_time = Column(TIMESTAMP, server_default=func.now())
 
 
 # ---------------------- 数据库操作类（功能完全对齐原代码） ----------------------
 class AgentDatabase:
-    def __init__(self, db_path=None):
-        if db_path is None:
-            db_path = os.path.join(root_path(), "agent.db")
+    def __init__(self, db_path=None, use_mysql=False, mysql_config: dict = None):
         self.db_path = db_path
-
-        # 1. 创建 SQLAlchemy 引擎
-        self.engine = create_engine(f'sqlite:///{self.db_path}')
-        # 2. 创建会话工厂
+        if use_mysql:
+            cfg = mysql_config or {}
+            conn_url = URL.create(
+                "mysql+pymysql",
+                username=cfg.get("user", "root"),
+                password=cfg.get("password", ""),
+                host=cfg.get("host", "localhost"),
+                port=cfg.get("port", 3306),
+                database=cfg.get("database", "ai_agent"),
+            )
+            self.engine = create_engine(conn_url, pool_size=5, max_overflow=10)
+            ChatSession.__table__.create(self.engine, checkfirst=True)
+            AIChat.__table__.create(self.engine, checkfirst=True)
+        else:
+            if db_path is None:
+                db_path = os.path.join(root_path(), "agent.db")
+            self.db_path = db_path
+            self.engine = create_engine(f'sqlite:///{self.db_path}')
+            Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
-        # 3. 自动建表
-        self._init_tables()
 
     def _init_tables(self):
-        """自动创建所有表（如果不存在）"""
-        Base.metadata.create_all(self.engine)
+        """自动创建表：SQLite 全表创建，MySQL 只建聊天相关表"""
+        pass
 
     # --------------------------------------------------------------------------
     # 状态操作（增删改查）
@@ -142,24 +168,70 @@ class AgentDatabase:
             session.close()
 
     # --------------------------------------------------------------------------
-    # 聊天记录操作（原有功能保留）
+    # 会话操作
     # --------------------------------------------------------------------------
-    def add_chat(self, role, content):
+    def create_session(self, title: str = "新对话", model: str = "doubao-seed-2-0-pro-260215") -> dict:
+        """创建新会话"""
+        session = self.Session()
+        try:
+            sid = str(uuid.uuid4())
+            cs = ChatSession(session_id=sid, title=title, model=model)
+            session.add(cs)
+            session.commit()
+            return {"session_id": sid, "title": title, "model": model}
+        finally:
+            session.close()
+
+    def get_sessions(self, limit: int = 50) -> list:
+        """获取会话列表（按更新时间倒序）"""
+        session = self.Session()
+        try:
+            q = session.query(ChatSession).order_by(ChatSession.update_time.desc()).limit(limit).all()
+            return [{"session_id": s.session_id, "title": s.title, "model": s.model,
+                     "create_time": str(s.create_time), "update_time": str(s.update_time)} for s in q]
+        finally:
+            session.close()
+
+    def delete_session(self, session_id: str):
+        """删除会话及其所有消息"""
+        sess = self.Session()
+        try:
+            sess.query(AIChat).filter_by(session_id=session_id).delete()
+            sess.query(ChatSession).filter_by(session_id=session_id).delete()
+            sess.commit()
+        finally:
+            sess.close()
+
+    # --------------------------------------------------------------------------
+    # 聊天记录操作
+    # --------------------------------------------------------------------------
+    def add_chat(self, session_id: str, role: str, content: str):
         """添加一条聊天记录"""
         session = self.Session()
         try:
-            chat = AIChat(role=role, content=content)
+            chat = AIChat(session_id=session_id, role=role, content=content)
             session.add(chat)
+            session.flush()
+            count = session.query(AIChat).filter_by(session_id=session_id).count()
+            if role == "user" and count == 1:
+                title = content[:80] + ("..." if len(content) > 80 else "")
+                session.query(ChatSession).filter_by(session_id=session_id).update(
+                    {"title": title, "update_time": func.now()}
+                )
+            else:
+                session.query(ChatSession).filter_by(session_id=session_id).update(
+                    {"update_time": func.now()}
+                )
             session.commit()
         finally:
             session.close()
 
-    def get_all_chats(self):
-        """获取所有聊天记录（按时间排序）"""
+    def get_chats(self, session_id: str) -> list:
+        """获取指定会话的消息"""
         session = self.Session()
         try:
-            chats = session.query(AIChat).order_by(AIChat.id).all()
-            return [{"role": chat.role, "content": chat.content} for chat in chats]
+            chats = session.query(AIChat).filter_by(session_id=session_id).order_by(AIChat.id).all()
+            return [{"role": c.role, "content": c.content, "create_time": str(c.create_time)} for c in chats]
         finally:
             session.close()
 
@@ -168,6 +240,7 @@ class AgentDatabase:
         session = self.Session()
         try:
             session.query(AIChat).delete()
+            session.query(ChatSession).delete()
             session.commit()
         finally:
             session.close()

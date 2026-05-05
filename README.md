@@ -1,4 +1,4 @@
-# my_spider — AI 自动化平台
+# yuanai — AI 自动化平台
 
 [![Python](https://img.shields.io/badge/Python-3.10-blue)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb)](https://react.dev/)

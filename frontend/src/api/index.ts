@@ -1,4 +1,4 @@
-const API_BASE = '/api/v1'
+export const API_BASE = '/api/v1'
 
 // ---- Tools ----
 export async function fetchTools() {
@@ -139,4 +139,19 @@ export function streamChat(
     })
 
   return controller
+}
+
+// ---- Monitor (mss) ----
+export async function getMonitorScreenshot(monitor: number = 0): Promise<{ status: string; screenshot?: string; width?: number; height?: number; detail?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/monitor/screenshot?monitor=${monitor}`)
+    return await res.json()
+  } catch { return { status: 'error', detail: '网络请求失败' } }
+}
+
+export async function getMonitors(): Promise<{ status: string; monitors?: { monitor: number; width: number; height: number; label: string }[]; detail?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/monitor/monitors`)
+    return await res.json()
+  } catch { return { status: 'error', detail: '网络请求失败' } }
 }

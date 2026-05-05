@@ -2,13 +2,15 @@ import { useState } from 'react'
 import ChatPage from './components/ChatPage'
 import ToolsPage from './components/ToolsPage'
 import BrowserPage from './components/BrowserPage'
+import MonitorPage from './components/MonitorPage'
 
-type Page = 'chat' | 'browser' | 'tools'
+type Page = 'chat' | 'browser' | 'tools' | 'monitor'
 
 const tabs: { key: Page; label: string; icon: string }[] = [
   { key: 'chat', label: '聊天', icon: '💬' },
   { key: 'browser', label: '自动化', icon: '🕷' },
   { key: 'tools', label: '工具', icon: '🔧' },
+  { key: 'monitor', label: '监控', icon: '📺' },
 ]
 
 function App() {
@@ -47,6 +49,7 @@ function App() {
         {page === 'chat' && <ChatPage />}
         {page === 'browser' && <BrowserPage />}
         {page === 'tools' && <ToolsPage />}
+        {page === 'monitor' && <MonitorPage />}
       </main>
     </div>
   )

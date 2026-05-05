@@ -1,51 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { startBrowser, stopBrowser, getBrowserStatus, getBrowserScreenshot, streamChat } from '../api'
+import { startBrowser, stopBrowser, getBrowserStatus, streamChat, API_BASE } from '../api'
 import ToolCallCard from './ToolCallCard'
 import MarkdownContent from './MarkdownContent'
-
-const API_BASE = '/api/v1'
-
-const WEBSITES = [
-  { name: '小猿众包', url: 'https://xyzb.yuanfudao.com/' },
-  { name: '知乎', url: 'https://www.zhihu.com/' },
-  { name: 'B站', url: 'https://www.bilibili.com/' },
-  { name: 'BOSS直聘', url: 'https://www.zhipin.com/' },
-]
-
-async function executeTool(name: string, args: any = {}): Promise<string> {
-  try {
-    const res = await fetch(`${API_BASE}/tools/execute`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, args }),
-    })
-    const data = await res.json()
-    return data.result || data.detail || '完成'
-  } catch { return '调用失败' }
-}
-
-function StatusDot({ ok }: { ok: boolean }) {
-  return <span style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block', background: ok ? '#4caf50' : '#ccc', marginRight: 6 }} />
-}
-
-function opBtnStyle(): React.CSSProperties {
-  return { padding: '5px 10px', borderRadius: 4, border: '1px solid #ddd', background: '#fff', cursor: 'pointer', fontSize: 11, color: '#333' }
-}
-
-function actionBtnStyle(running: boolean): React.CSSProperties {
-  return { padding: '5px 10px', borderRadius: 5, border: '1px solid #ddd', background: '#fff', cursor: running ? 'pointer' : 'not-allowed', fontSize: 12, color: running ? '#333' : '#ccc' }
-}
-
-function tabBtnStyle(active: boolean): React.CSSProperties {
-  return { padding: '4px 12px', borderRadius: 4, border: 'none', background: active ? '#1976d2' : 'transparent', color: active ? '#fff' : '#666', cursor: 'pointer', fontSize: 12 }
-}
-
-type Step = 1 | 2 | 3
-
-const STEPS = [
-  { n: 1, label: '打开网站', desc: '启动浏览器并导航到目标网站' },
-  { n: 2, label: '开始任务', desc: '选择并开始一个审核任务' },
-  { n: 3, label: '执行任务', desc: 'AI 审核并提交反馈' },
-]
+import { executeTool, StatusDot, opBtnStyle, tabBtnStyle, type Step } from './browser/helpers'
+import StepBar from './browser/StepBar'
+import Step1Content from './browser/Step1Content'
 
 export default function BrowserPage() {
   const [running, setRunning] = useState(false)
@@ -54,7 +13,8 @@ export default function BrowserPage() {
   const [screenshot, setScreenshot] = useState<string | null>(null)
   const [logs, setLogs] = useState<string[]>([])
   const [customUrl, setCustomUrl] = useState('')
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [streamInterval, setStreamInterval] = useState(100)
+  const esRef = useRef<EventSource | null>(null)
   const isXY = url.includes('xyzb.yuanfudao.com')
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [step, setStep] = useState<Step>(1)
@@ -73,7 +33,6 @@ export default function BrowserPage() {
   const [autoFetch, setAutoFetch] = useState(false)
   const [taskStarted, setTaskStarted] = useState(false)
   const [currentTaskName, setCurrentTaskName] = useState('')
-  const [hoveredStep, setHoveredStep] = useState<number | null>(null)
 
   const addLog = useCallback((msg: string) => {
     const t = new Date().toLocaleTimeString()
@@ -85,19 +44,31 @@ export default function BrowserPage() {
     setRunning(status.running)
     setUrl(status.url || '')
     setTitle(status.title || '')
-    if (status.running) {
-      const img = await getBrowserScreenshot()
-      setScreenshot(img)
-    } else {
+    if (!status.running) {
       setScreenshot(null)
     }
   }, [])
 
   useEffect(() => {
     pollStatus()
-    intervalRef.current = setInterval(pollStatus, 3000)
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+    const id = setInterval(pollStatus, 3000)
+    return () => clearInterval(id)
   }, [pollStatus])
+
+  useEffect(() => {
+    if (esRef.current) { esRef.current.close(); esRef.current = null }
+    if (!running) { setScreenshot(null); return }
+
+    const es = new EventSource(`${API_BASE}/browser/stream?interval=${streamInterval / 1000}`)
+    esRef.current = es
+    es.onmessage = (e) => {
+      if (e.data === 'BROWSER_STOPPED') { es.close(); esRef.current = null; setScreenshot(null); return }
+      if (e.data.startsWith('ERROR:')) return
+      setScreenshot(e.data)
+    }
+    es.onerror = () => { es.close(); esRef.current = null }
+    return () => { es.close(); esRef.current = null }
+  }, [running, streamInterval])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -130,16 +101,9 @@ export default function BrowserPage() {
     pollStatus()
   }
 
-  const callTool = async (name: string, args: any = {}) => {
-    await fetch(`${API_BASE}/tools/execute`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, args }),
-    })
-  }
-
   const handleNavigate = async (name: string) => {
     addLog(`正在打开 ${name}...`)
-    await callTool('open_website_by_name', { name })
+    await executeTool('open_website_by_name', { name })
     addLog(`已打开 ${name}`)
     setTimeout(pollStatus, 1000)
   }
@@ -147,7 +111,7 @@ export default function BrowserPage() {
   const handleCustomUrl = async () => {
     if (!customUrl.trim()) return
     addLog(`正在打开 ${customUrl}...`)
-    await callTool('open_custom_url', { url: customUrl })
+    await executeTool('open_custom_url', { url: customUrl })
     addLog(`已打开 ${customUrl}`)
     setCustomUrl('')
     setTimeout(pollStatus, 1000)
@@ -261,46 +225,7 @@ export default function BrowserPage() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '16px 20px 20px', gap: 12, boxSizing: 'border-box' }}>
-      {/* Pipeline steps */}
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        {STEPS.map((s) => {
-          const active = step === s.n
-          const done = s.n < step
-          const showDesc = hoveredStep === s.n
-          return (
-            <div key={s.n} onClick={() => setStep(s.n as Step)}
-              onMouseEnter={() => setHoveredStep(s.n)} onMouseLeave={() => setHoveredStep(null)}
-              style={{
-                flex: 1, padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
-                background: active ? '#1976d2' : done ? '#e8f5e9' : '#f5f5f5',
-                border: active ? '2px solid #1976d2' : done ? '2px solid #4caf50' : '2px solid #e0e0e0',
-                transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 8,
-                height: showDesc ? 48 : 32, overflow: 'hidden',
-              }}
-            >
-              <span style={{
-                width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                background: active ? '#fff' : done ? '#4caf50' : '#e0e0e0',
-                color: active ? '#1976d2' : '#fff', fontWeight: 700, fontSize: 12,
-              }}>{done ? '✓' : s.n}</span>
-              <span style={{
-                fontWeight: 600, fontSize: 13, color: active ? '#fff' : done ? '#2e7d32' : '#999',
-                whiteSpace: 'nowrap',
-              }}>{s.label}</span>
-              {showDesc && (
-                <span style={{
-                  fontSize: 11, color: active ? 'rgba(255,255,255,0.8)' : done ? '#66bb6a' : '#bbb',
-                  marginLeft: 4, whiteSpace: 'nowrap',
-                }}>{s.desc}</span>
-              )}
-            </div>
-          )
-        })}
-        <button onClick={resetStep} style={{
-          padding: '4px 10px', borderRadius: 6, border: '1px solid #e0e0e0',
-          background: '#fff', cursor: 'pointer', fontSize: 11, color: '#999', flexShrink: 0,
-        }}>↺</button>
-      </div>
+      <StepBar step={step} onStep={setStep} onReset={resetStep} />
 
       <div style={{ flex: 1, display: 'flex', gap: 16, minHeight: 0 }}>
         {/* Left panel */}
@@ -309,62 +234,22 @@ export default function BrowserPage() {
 
           {/* Step 1: 打开网站 */}
           {step === 1 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={handleStart} disabled={running} style={{
-                  flex: 1, padding: '9px 0', borderRadius: 6, border: 'none',
-                  background: running ? '#e0e0e0' : '#1976d2', color: running ? '#999' : '#fff',
-                  cursor: running ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 500,
-                }}>{running ? '已启动' : '启动浏览器'}</button>
-                <button onClick={handleStop} disabled={!running} style={{
-                  flex: 1, padding: '9px 0', borderRadius: 6, border: '1px solid #ddd',
-                  background: !running ? '#f5f5f5' : '#fff', color: !running ? '#ccc' : '#e53935',
-                  cursor: !running ? 'not-allowed' : 'pointer', fontSize: 14,
-                }}>关闭</button>
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>快捷网址</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {WEBSITES.map((w) => (
-                    <button key={w.name} onClick={() => handleNavigate(w.name)}
-                      disabled={!running} style={{
-                        padding: '5px 12px', borderRadius: 5, border: '1px solid #ddd',
-                        background: '#fff', cursor: running ? 'pointer' : 'not-allowed',
-                        fontSize: 12, color: running ? '#333' : '#ccc',
-                      }}>{w.name}</button>
-                  ))}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <input value={customUrl} onChange={(e) => setCustomUrl(e.target.value)}
-                  placeholder="网址..." disabled={!running}
-                  onKeyDown={(e) => e.key === 'Enter' && handleCustomUrl()}
-                  style={{ flex: 1, padding: '7px 10px', borderRadius: 5, border: '1px solid #ddd', fontSize: 12, outline: 'none' }} />
-                <button onClick={handleCustomUrl} disabled={!running || !customUrl.trim()} style={{
-                  padding: '7px 12px', borderRadius: 5, border: 'none',
-                  background: !running || !customUrl.trim() ? '#e0e0e0' : '#1976d2', color: '#fff',
-                  cursor: 'pointer', fontSize: 12,
-                }}>打开</button>
-              </div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                <button onClick={async () => { await callTool('refresh_page'); addLog('已刷新') }} disabled={!running} style={actionBtnStyle(running)}>🔄 刷新</button>
-                <button onClick={async () => { await callTool('save_cookies'); addLog('Cookie 已保存') }} disabled={!running} style={actionBtnStyle(running)}>💾 保存Cookie</button>
-                <button onClick={async () => { await callTool('load_cookies'); addLog('Cookie 已加载') }} disabled={!running} style={actionBtnStyle(running)}>📂 加载Cookie</button>
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>网页请求</div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)}
-                    placeholder="目标 URL..." style={{ flex: 1, padding: '5px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12 }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleApiRequest()} />
-                  <button onClick={handleApiRequest} disabled={!apiUrl.trim()} style={{
-                    padding: '5px 10px', borderRadius: 4, border: 'none',
-                    background: !apiUrl.trim() ? '#e0e0e0' : '#1976d2', color: '#fff', cursor: 'pointer', fontSize: 12,
-                  }}>请求</button>
-                </div>
-                {apiResult && <div style={{ padding: '6px 8px', background: '#f9f9f9', borderRadius: 4, fontSize: 11, color: '#333', maxHeight: 80, overflow: 'auto', whiteSpace: 'pre-wrap', border: '1px solid #eee', marginTop: 4 }}>{apiResult.length > 500 ? apiResult.slice(0, 500) + '...' : apiResult}</div>}
-              </div>
-            </div>
+            <Step1Content
+              running={running}
+              customUrl={customUrl}
+              apiUrl={apiUrl}
+              apiResult={apiResult}
+              onStart={handleStart}
+              onStop={handleStop}
+              onNavigate={handleNavigate}
+              onCustomUrl={handleCustomUrl}
+              setCustomUrl={setCustomUrl}
+              onRefresh={async () => { await executeTool('refresh_page'); addLog('已刷新') }}
+              onSaveCookies={async () => { await executeTool('save_cookies'); addLog('Cookie 已保存') }}
+              onLoadCookies={async () => { await executeTool('load_cookies'); addLog('Cookie 已加载') }}
+              onApiRequest={handleApiRequest}
+              setApiUrl={setApiUrl}
+            />
           )}
 
           {/* Step 2: 开始任务 */}
@@ -440,7 +325,17 @@ export default function BrowserPage() {
             <StatusDot ok={running} />
             <span>{running ? '运行中' : '未启动'}</span>
             {url && <span style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{title || url}</span>}
-            <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 11, color: '#999', whiteSpace: 'nowrap' }}>间隔</span>
+              <input
+                type="range" min={10} max={600} step={10}
+                value={streamInterval}
+                onChange={(e) => setStreamInterval(Number(e.target.value))}
+                style={{ width: 50, cursor: 'pointer', margin: 0 }}
+              />
+              <span style={{ fontSize: 11, color: '#666', minWidth: 28 }}>{streamInterval}ms</span>
+            </div>
+            <div style={{ display: 'flex', gap: 2, marginLeft: 4 }}>
               <button onClick={() => setAuditTab('screenshot')} style={tabBtnStyle(auditTab === 'screenshot')}>截图</button>
               <button onClick={() => setAuditTab('audit')} style={tabBtnStyle(auditTab === 'audit')}>AI自动化</button>
               <button onClick={() => setAuditTab('logs')} style={tabBtnStyle(auditTab === 'logs')}>日志</button>
@@ -450,7 +345,7 @@ export default function BrowserPage() {
           <div style={{ flex: 1, border: '1px solid #e0e0e0', borderRadius: 8, overflow: 'hidden', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
             {auditTab === 'screenshot' && (
               screenshot ? (
-                <img src={`data:image/png;base64,${screenshot}`} alt="截图" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                <img src={`data:image/jpeg;base64,${screenshot}`} alt="截图" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               ) : (
                 <span style={{ color: '#ccc', fontSize: 14 }}>{running ? '等待截图...' : '浏览器未启动'}</span>
               )

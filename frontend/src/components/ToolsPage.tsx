@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
-import { fetchTools } from '../api'
+import { fetchTools, API_BASE } from '../api'
 import type { ToolInfo } from '../types'
-
-const API_BASE = '/api/v1'
 
 const CATEGORY_ICONS: Record<string, string> = {
   '计算': '🧮', '天气': '🌤', '审核': '🎯',

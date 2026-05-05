@@ -205,3 +205,12 @@ export async function getMonitors(): Promise<{ status: string; monitors?: { moni
     return await res.json()
   } catch { return { status: 'error', detail: '网络请求失败' } }
 }
+
+// ---- Stats ----
+export async function fetchStats(): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/stats/all`, { headers: authHeaders() })
+    if (!res.ok) return null
+    return await res.json()
+  } catch { return null }
+}

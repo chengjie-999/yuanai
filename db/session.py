@@ -362,6 +362,74 @@ class AgentDatabase:
         finally:
             sess.close()
 
+    # --------------------------------------------------------------------------
+    # 统计
+    # --------------------------------------------------------------------------
+    def get_stats(self) -> dict:
+        """获取系统统计数据"""
+        from sqlalchemy import func as sa_func
+        sess = self.Session()
+        try:
+            # 用户统计
+            user_count = sess.query(sa_func.count(User.id)).scalar() or 0
+
+            # 会话统计
+            session_count = sess.query(sa_func.count(ChatSession.id)).scalar() or 0
+            msg_count = sess.query(sa_func.count(AIChat.id)).scalar() or 0
+            avg_msgs = round(msg_count / session_count, 1) if session_count else 0
+
+            # 每日消息量（近30天）
+            from datetime import datetime, timedelta
+            thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+            daily_rows = sess.query(
+                sa_func.date(AIChat.create_time).label('day'),
+                sa_func.count(AIChat.id).label('cnt'),
+            ).filter(AIChat.create_time >= thirty_days_ago).group_by(sa_func.date(AIChat.create_time)).order_by('day').all()
+            daily_messages = [{"date": str(r.day), "count": r.cnt} for r in daily_rows]
+
+            # 任务图片统计
+            task_image_count = sess.query(sa_func.count(TaskImage.id)).scalar() or 0
+
+            # 扫描 data/ 下的 Excel/CSV 文件
+            import os
+            from utils.data_path import root_path
+            data_dir = os.path.join(root_path(), 'data')
+            excel_files = []
+            for root_dir, dirs, files in os.walk(data_dir):
+                for f in files:
+                    if f.endswith(('.xlsx', '.xls', '.csv')):
+                        fpath = os.path.join(root_dir, f)
+                        rel = os.path.relpath(fpath, data_dir)
+                        excel_files.append({
+                            "name": rel,
+                            "size_kb": round(os.path.getsize(fpath) / 1024, 1),
+                        })
+
+            # 图片缓存大小
+            qimg_dir = os.path.join(root_path(), 'data', 'qimg')
+            cache_size = 0
+            if os.path.exists(qimg_dir):
+                for f in os.listdir(qimg_dir):
+                    fpath = os.path.join(qimg_dir, f)
+                    if os.path.isdir(fpath):
+                        for sub in os.listdir(fpath):
+                            fp = os.path.join(fpath, sub)
+                            if os.path.isfile(fp):
+                                cache_size += os.path.getsize(fp)
+
+            return {
+                "users": user_count,
+                "sessions": session_count,
+                "messages": msg_count,
+                "avg_messages_per_session": avg_msgs,
+                "daily_messages": daily_messages,
+                "task_images": task_image_count,
+                "cache_size_mb": round(cache_size / 1024 / 1024, 2),
+                "excel_files": excel_files,
+            }
+        finally:
+            sess.close()
+
 
 def get_db():
     """获取 MySQL 数据库实例（带配置）"""

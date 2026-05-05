@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { fetchTools, API_BASE } from '../api'
+import { fetchTools, API_BASE, getToken } from '../api'
 import type { ToolInfo } from '../types'
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -37,9 +37,12 @@ function ToolExecutor({ tool }: { tool: ToolInfo }) {
           parsed[key] = val
         }
       }
+      const token = getToken()
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
       const res = await fetch(`${API_BASE}/tools/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ name: tool.name, args: parsed }),
       })
       if (!res.ok) {

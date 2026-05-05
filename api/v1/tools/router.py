@@ -26,6 +26,7 @@ CATEGORIES = {
     "scroll_canvas": "小猿任务", "click_canvas": "小猿任务",
     "load_page_cookies": "小猿任务", "save_page_cookies": "小猿任务",
     "get_page_status": "小猿任务",
+    "get_system_stats": "系统",
 }
 
 

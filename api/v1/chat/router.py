@@ -1,6 +1,6 @@
 import json
 import asyncio
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
@@ -19,9 +19,13 @@ CHAT_TOOLS = [t for t in all_tools if not any(s in t.name for s in _CHAT_SKIP)]
 
 
 def _get_db():
-    from db.session import AgentDatabase
-    from utils.sensitive_data import get_mysql_config
-    return AgentDatabase(use_mysql=True, mysql_config=get_mysql_config())
+    try:
+        from db.session import get_db
+        return get_db()
+    except Exception as e:
+        print(f"⚠️ MySQL 连接失败: {e}")
+        from db.session import AgentDatabase
+        return AgentDatabase()
 
 
 @router.post("/stream")
@@ -59,22 +63,24 @@ async def chat_stream(req: ChatRequest):
 
 
 @router.post("/session/new")
-async def new_session():
+async def new_session(request: Request):
     """创建新会话"""
     try:
         db = _get_db()
-        result = db.create_session()
+        user_id = getattr(request.state, "user_id", None)
+        result = db.create_session(user_id=user_id)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/sessions")
-async def list_sessions():
+async def list_sessions(request: Request):
     """获取会话列表"""
     try:
         db = _get_db()
-        return db.get_sessions()
+        user_id = getattr(request.state, "user_id", None)
+        return db.get_sessions(user_id=user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { startBrowser, stopBrowser, getBrowserStatus, streamChat, API_BASE } from '../api'
+import { startBrowser, stopBrowser, getBrowserStatus, streamChat, createSession, saveMessages, API_BASE } from '../api'
 import ToolCallCard from './ToolCallCard'
 import MarkdownContent from './MarkdownContent'
 import { executeTool, StatusDot, tabBtnStyle, type Step } from './browser/helpers'
@@ -39,6 +39,9 @@ export default function BrowserPage() {
   const [currentTaskName, setCurrentTaskName] = useState('')
   const [startingTask, setStartingTask] = useState('')
   const [taskFailCount, setTaskFailCount] = useState(0)
+  const [questionImages, setQuestionImages] = useState<{ type: string; data: string }[]>([])
+  const [expandedImage, setExpandedImage] = useState<string | null>(null)
+  const [auditSessionId, setAuditSessionId] = useState('')
 
   const ERROR_CAUSES = ['格式问题占比较多', '举报', '文本压线', '黄框压题干', '最终答案', '不独立', '出框', '少答案', '字太小', '答案错']
 
@@ -165,7 +168,15 @@ export default function BrowserPage() {
   const handleGetQuestion = async () => {
     addLog('获取题目信息...')
     const result = await executeTool('get_question_info')
-    addLog(result)
+    try {
+      const data = JSON.parse(result)
+      if (data.images && data.images.length > 0) {
+        setQuestionImages(data.images)
+        addLog(`获取到 ${data.count} 张图片`)
+      }
+    } catch {
+      addLog(result)
+    }
   }
 
   const handleAudit = async () => {
@@ -174,6 +185,12 @@ export default function BrowserPage() {
     setAuditMessages([{ role: 'assistant', content: '⏳ AI 正在审核中...' }])
     const systemPrompt = `你是一个小猿众包题目审核自动化助手。当前任务：单题标答-审核。操作流程：1. 先调用 scroll_canvas() 向下滚动查看完整题目。2. 然后调用 zoom_question() 缩小视图。3. 滚动/缩放后会更新截图。4. 调用 mark_question_correct() 处理判定。5. 说明你的判断结果。注意：不要提交或驳回任务，等待用户确认。`
     let assistantContent = ''
+
+    if (!auditSessionId) {
+      const sid = await createSession()
+      setAuditSessionId(sid)
+    }
+
     streamChat(
       { model: 'doubao-seed-2-0-pro-260215', temperature: 0.1, prompt: '请审核这道题。', history: [], system_prompt: systemPrompt },
       (event) => {
@@ -183,7 +200,16 @@ export default function BrowserPage() {
         else if (event.type === 'error') { setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { ...last[last.length - 1], content: `❌ ${event.data}` }; return last }); setAuditing(false) }
       },
       (error) => { setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setAuditing(false) },
-      () => { setAuditing(false); addLog('AI 审核完成') },
+      async () => {
+        setAuditing(false)
+        addLog('AI 审核完成')
+        const sid = auditSessionId || await createSession()
+        if (!auditSessionId) setAuditSessionId(sid)
+        await saveMessages(sid, [
+          { role: 'user', content: `请审核这道题\n任务: ${currentTaskName}\nURL: ${url}` },
+          { role: 'assistant', content: assistantContent },
+        ])
+      },
     )
   }
 
@@ -288,6 +314,30 @@ export default function BrowserPage() {
           {step === 3 && taskStarted && currentTaskName.includes('单题标答-审核') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#1976d2' }}>📌 {currentTaskName}</div>
+
+              {questionImages.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>参考答案</div>
+                  <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+                    {questionImages.map((img, i) => (
+                      <img key={i} src={img.type === 'base64' ? `data:image/png;base64,${img.data}` : img.data}
+                        onClick={() => setExpandedImage(img.type === 'base64' ? `data:image/png;base64,${img.data}` : img.data)}
+                        style={{ height: 80, borderRadius: 6, border: '1px solid #ddd', cursor: 'pointer', flexShrink: 0, transition: 'opacity 0.12s' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
+                        onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 点击放大模态框 */}
+              {expandedImage && (
+                <div onClick={() => setExpandedImage(null)}
+                  style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <img src={expandedImage} style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 8, boxShadow: '0 4px 40px rgba(0,0,0,0.3)' }} />
+                </div>
+              )}
 
               <div style={{ fontSize: 12, fontWeight: 600, color: '#999', padding: '4px 0', borderBottom: '1px solid #eee' }}>通用</div>
 

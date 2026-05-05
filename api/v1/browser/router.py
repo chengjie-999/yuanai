@@ -2,16 +2,18 @@ import io
 import asyncio
 import base64
 from PIL import Image
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from spiderlx.core.browser_manager import browser_manager
+from api.v1.middleware import require_admin
 
 router = APIRouter(prefix="/browser", tags=["browser"])
 
 
 @router.post("/start")
-async def start_browser():
+async def start_browser(request: Request):
     """启动浏览器"""
+    require_admin(request)
     try:
         result = browser_manager.start()
         return {"status": "ok", "message": result}
@@ -20,8 +22,9 @@ async def start_browser():
 
 
 @router.post("/stop")
-async def stop_browser():
+async def stop_browser(request: Request):
     """关闭浏览器"""
+    require_admin(request)
     try:
         result = browser_manager.stop()
         return {"status": "ok", "message": result}

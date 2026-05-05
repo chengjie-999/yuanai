@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ChatPage from './components/ChatPage'
 import ToolsPage from './components/ToolsPage'
 import BrowserPage from './components/BrowserPage'
 import MonitorPage from './components/MonitorPage'
+import LoginPage from './components/LoginPage'
+import { checkToken } from './api'
 
 type Page = 'chat' | 'browser' | 'tools' | 'monitor'
 
@@ -10,11 +12,46 @@ const tabs: { key: Page; label: string; icon: string }[] = [
   { key: 'chat', label: '聊天', icon: '💬' },
   { key: 'browser', label: 'WEB自动化', icon: '🌐' },
   { key: 'tools', label: '工具', icon: '🔧' },
-  { key: 'monitor', label: '状态监控', icon: '📺' },
+  { key: 'monitor', label: '全局状态实时监控', icon: '📺' },
 ]
 
 function App() {
+  const [token, setToken] = useState<string | null>(null)
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const [page, setPage] = useState<Page>('chat')
+
+  useEffect(() => {
+    const saved = localStorage.getItem('token')
+    if (saved) {
+      checkToken().then((data) => {
+        if (data.valid && data.user) {
+          setToken(saved)
+          setUser(data.user)
+        } else {
+          localStorage.removeItem('token')
+        }
+        setLoading(false)
+      })
+    } else {
+      setLoading(false)
+    }
+  }, [])
+
+  const handleLogin = (newToken: string, newUser: any) => {
+    localStorage.setItem('token', newToken)
+    setToken(newToken)
+    setUser(newUser)
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    setToken(null)
+    setUser(null)
+  }
+
+  if (loading) return null
+  if (!token) return <LoginPage onLogin={handleLogin} />
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -44,6 +81,9 @@ function App() {
             </button>
           ))}
         </nav>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 13, color: '#999', marginRight: 12 }}>{user?.username || user?.display_name}</span>
+        <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 13, padding: 0 }}>退出</button>
       </header>
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {page === 'chat' && <ChatPage />}

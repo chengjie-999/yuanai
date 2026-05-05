@@ -1,8 +1,9 @@
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from api.v1.models import ToolRequest, ToolResponse, ToolInfo
 from yuanai.tools import all_tools
+from api.v1.middleware import require_admin
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
@@ -54,8 +55,9 @@ async def list_tools():
 
 
 @router.post("/execute", response_model=ToolResponse)
-async def execute_tool(req: ToolRequest):
+async def execute_tool(req: ToolRequest, request: Request):
     """执行指定工具"""
+    require_admin(request)
     tool = _find_tool(req.name)
     if not tool:
         raise HTTPException(status_code=404, detail=f"工具 '{req.name}' 不存在，可用工具: {[t.name for t in all_tools]}")

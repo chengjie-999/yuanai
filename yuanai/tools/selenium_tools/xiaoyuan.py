@@ -109,29 +109,66 @@ def save_page_html() -> str:
 def get_question_info() -> str:
     """
     获取当前题目的截图和参考答案信息。
-    返回图片数量及类型分布（截图、URL、本地路径）。
-    图片数据已嵌入在用户消息中，可直接分析。
+    图片保存在本地 data/qimg/ 目录并返回 URL 路径。
     """
+    import json, os, uuid
+    from utils.data_path import root_path
+
     sa = _get_sa()
+    xy = _get_xiao_yuan()
     qa = sa.question_info()
-    count = len(qa)
-    sizes = []
-    for item in qa:
+    current_url = xy.web_driver.current_url
+    task_name = getattr(xy, '_current_task_name', '未知任务')
+
+    img_id = str(uuid.uuid4())
+    img_dir = os.path.join(root_path(), 'data', 'qimg', img_id)
+    os.makedirs(img_dir, exist_ok=True)
+
+    images_meta = []
+    urls = []
+
+    for i, item in enumerate(qa):
+        ext = "png"
+        file_name = f"{i}.{ext}"
+        file_path = os.path.join(img_dir, file_name)
+
         if isinstance(item, bytes):
-            sizes.append(f"{len(item)} bytes")
+            with open(file_path, 'wb') as f:
+                f.write(item)
+            images_meta.append({"index": i, "type": "screenshot" if i == 0 else "reference" if i == 1 else "mark"})
+            urls.append(f"/api/v1/qimg/{img_id}/{file_name}")
         elif isinstance(item, str):
-            if item.startswith("http") or item.startswith("data:"):
-                sizes.append("url")
-            elif item.startswith("/") or item.startswith("C:"):
-                sizes.append("本地路径")
+            if item.startswith("data:image"):
+                import base64
+                b64_data = item.split(",", 1)[-1]
+                with open(file_path, 'wb') as f:
+                    f.write(base64.b64decode(b64_data))
+                images_meta.append({"index": i, "type": "screenshot" if i == 0 else "reference" if i == 1 else "mark"})
+                urls.append(f"/api/v1/qimg/{img_id}/{file_name}")
             else:
-                sizes.append("url")
-        else:
-            sizes.append(str(type(item).__name__))
-    return (
-        f"获取到 {count} 张图片，类型分布：{sizes}\n"
-        f"所有图片数据已嵌入消息中，请直接分析。"
-    )
+                urls.append(item)
+                images_meta.append({"index": i, "type": "url", "url": item})
+
+    # 写 meta.json
+    meta = {
+        "id": img_id,
+        "url": current_url,
+        "task_name": task_name,
+        "create_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "images": images_meta,
+    }
+    with open(os.path.join(img_dir, 'meta.json'), 'w', encoding='utf-8') as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+
+    # 存数据库
+    try:
+        from db.session import get_db
+        db = get_db()
+        db.save_task_images(img_id, task_name, current_url, img_dir, len(qa), images_meta)
+    except Exception as e:
+        print(f"⚠️ 保存图片记录到数据库失败: {e}")
+
+    return json.dumps({"count": len(urls), "images": [{"type": "url", "data": u} for u in urls]}, ensure_ascii=False)
 
 
 @tool

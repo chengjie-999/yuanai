@@ -1,4 +1,4 @@
-import { API_BASE } from '../../api'
+import { API_BASE, getToken } from '../../api'
 export type Step = 1 | 2 | 3
 
 export const WEBSITES = [
@@ -17,9 +17,12 @@ export const STEPS = [
 export const ERROR_CAUSES = ['格式问题占比较多', '举报', '文本压线', '黄框压题干', '最终答案', '不独立', '出框', '少答案', '字太小', '答案错']
 
 export async function executeTool(name: string, args: any = {}): Promise<string> {
+  const token = getToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
   try {
     const res = await fetch(`${API_BASE}/tools/execute`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers,
       body: JSON.stringify({ name, args }),
     })
     const data = await res.json()

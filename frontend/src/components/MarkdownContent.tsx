@@ -30,6 +30,9 @@ function MarkdownContent({ content }: { content: string }) {
         ),
         th: ({ children }) => <th style={{ border: '1px solid #ddd', padding: '6px 10px', background: '#f5f5f5' }}>{children}</th>,
         td: ({ children }) => <td style={{ border: '1px solid #ddd', padding: '6px 10px' }}>{children}</td>,
+        ul: ({ children }) => <ul style={{ paddingLeft: 24, margin: '4px 0' }}>{children}</ul>,
+        ol: ({ children }) => <ol style={{ paddingLeft: 24, margin: '4px 0' }}>{children}</ol>,
+        li: ({ children }) => <li style={{ marginBottom: 2 }}>{children}</li>,
       }}
     >
       {content}

@@ -50,7 +50,7 @@ function LoadingDots() {
   )
 }
 
-type SessionInfo = { session_id: string; title: string; update_time: string }
+type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string }
 
 const SUGGESTIONS = [
   '帮我查询今天的天气',
@@ -58,6 +58,41 @@ const SUGGESTIONS = [
   '请介绍一下你自己',
   '帮我分析一段数据',
 ]
+
+function timeAgo(dateStr: string): string {
+  const now = new Date()
+  const d = new Date(dateStr)
+  const diffMs = now.getTime() - d.getTime()
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffDays < 1) {
+    if (d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) return '今天'
+    return '昨天'
+  }
+  if (diffDays < 2) return '昨天'
+  if (diffDays < 7) return `${diffDays}天前`
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}周前`
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)}月前`
+  return `${Math.floor(diffDays / 365)}年前`
+}
+
+function groupSessions(sessions: SessionInfo[]): { label: string; items: SessionInfo[] }[] {
+  const groups: { label: string; items: SessionInfo[] }[] = []
+  let currentLabel = ''
+  let currentGroup: SessionInfo[] = []
+
+  for (const s of sessions) {
+    const label = timeAgo(s.create_time)
+    if (label !== currentLabel) {
+      if (currentGroup.length > 0) groups.push({ label: currentLabel, items: currentGroup })
+      currentLabel = label
+      currentGroup = []
+    }
+    currentGroup.push(s)
+  }
+  if (currentGroup.length > 0) groups.push({ label: currentLabel, items: currentGroup })
+  return groups
+}
 
 export default function ChatPage() {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
@@ -68,6 +103,8 @@ export default function ChatPage() {
   const [model, setModel] = useState('doubao-seed-2-0-pro-260215')
   const [quickInput, setQuickInput] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [images, setImages] = useState<string[]>([])
+  const fileRef = useRef<HTMLInputElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef(messages)
   messagesRef.current = messages
@@ -107,15 +144,16 @@ export default function ChatPage() {
 
   const handleSend = () => {
     if (!input.trim() || loading || !currentSid) return
-    const userMsg: ChatMessage = { role: 'user', content: input }
+    const userMsg: ChatMessage = { role: 'user', content: input, images: images.length > 0 ? [...images] : undefined }
     setMessages((prev) => [...prev, userMsg])
+    setImages([])
     setInput('')
     setLoading(true)
     const history = messagesRef.current.map((m) => ({ role: m.role, content: m.content }))
     const assistantMsg: ChatMessage = { role: 'assistant', content: '', toolCalls: [] }
     setMessages((prev) => [...prev, assistantMsg])
     streamChat(
-      { model, temperature: 0.7, prompt: input, history, system_prompt: '你是一个能调用工具的助手' },
+      { model, temperature: 0.7, prompt: input, images: images.length > 0 ? [...images] : undefined, history, system_prompt: '你是一个能调用工具的助手' },
       (event) => {
         if (event.type === 'token') {
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data }; return last })
@@ -143,12 +181,14 @@ export default function ChatPage() {
     refreshSessions()
     setInput(text)
     setQuickInput('')
+    const currentImages = [...images]
+    setImages([])
     setTimeout(() => {
-      setMessages([{ role: 'user', content: text }])
+      setMessages([{ role: 'user', content: text, images: currentImages.length > 0 ? currentImages : undefined }])
       setLoading(true)
       setMessages((prev) => [...prev, { role: 'assistant', content: '', toolCalls: [] }])
       streamChat(
-        { model, temperature: 0.7, prompt: text, history: [], system_prompt: '你是一个能调用工具的助手' },
+        { model, temperature: 0.7, prompt: text, images: currentImages.length > 0 ? currentImages : undefined, history: [], system_prompt: '你是一个能调用工具的助手' },
         (event) => {
           if (event.type === 'token') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data }; return last }) }
           else if (event.type === 'tool_start') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
@@ -195,38 +235,43 @@ export default function ChatPage() {
           </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px' }}>
-          {sessions.map((s) => (
-            <div
-              key={s.session_id}
-              onClick={() => handleSelectSession(s.session_id)}
-              style={{
-                padding: '10px 12px',
-                borderRadius: 8,
-                cursor: 'pointer',
-                marginBottom: 2,
-                background: currentSid === s.session_id ? '#e8e8ea' : 'transparent',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                fontSize: 14,
-                color: '#333',
-                transition: 'background 0.1s',
-              }}
-              onMouseEnter={(e) => { if (currentSid !== s.session_id) e.currentTarget.style.background = '#f0f0f0' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = currentSid === s.session_id ? '#e8e8ea' : 'transparent' }}
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                {s.title}
-              </span>
-              <span
-                onClick={(e) => handleDeleteSession(e, s.session_id)}
-                style={{
-                  color: '#bbb', cursor: 'pointer', padding: '2px 4px', fontSize: 13, flexShrink: 0,
-                  opacity: 0.3, transition: 'opacity 0.15s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.3')}
-              >✕</span>
+          {groupSessions(sessions).map((group) => (
+            <div key={group.label}>
+              <div style={{ fontSize: 11, color: '#999', padding: '8px 12px 4px', fontWeight: 600 }}>{group.label}</div>
+              {group.items.map((s) => (
+                <div
+                  key={s.session_id}
+                  onClick={() => handleSelectSession(s.session_id)}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    marginBottom: 2,
+                    background: currentSid === s.session_id ? '#e8e8ea' : 'transparent',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: 14,
+                    color: '#333',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={(e) => { if (currentSid !== s.session_id) e.currentTarget.style.background = '#f0f0f0' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = currentSid === s.session_id ? '#e8e8ea' : 'transparent' }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                    {s.title}
+                  </span>
+                  <span
+                    onClick={(e) => handleDeleteSession(e, s.session_id)}
+                    style={{
+                      color: '#bbb', cursor: 'pointer', padding: '2px 4px', fontSize: 13, flexShrink: 0,
+                      opacity: 0.3, transition: 'opacity 0.15s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.3')}
+                  >✕</span>
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -244,59 +289,59 @@ export default function ChatPage() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {!currentSid ? (
           <div style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '40px 20px',
+            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px',
           }}>
             <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.8 }}>💬</div>
-            <h1 style={{
-              fontSize: 22, fontWeight: 600, color: '#333', marginBottom: 32,
-              letterSpacing: -0.5,
-            }}>
-              小元AI
-            </h1>
+            <h1 style={{ fontSize: 22, fontWeight: 600, color: '#333', marginBottom: 32, letterSpacing: -0.5 }}>小元AI</h1>
 
             {!sidebarOpen && (
-              <button
-                onClick={() => setSidebarOpen(true)}
-                style={{
-                  background: 'none', border: 'none', color: '#999', cursor: 'pointer',
-                  fontSize: 13, marginBottom: 24, padding: 0,
-                }}
-              >
-                ▶ 展开侧栏
-              </button>
+              <button onClick={() => setSidebarOpen(true)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 13, marginBottom: 24, padding: 0 }}>▶ 展开侧栏</button>
             )}
 
-            <div style={{ maxWidth: 560, width: '100%', marginBottom: 12 }}>
-              <input
-                value={quickInput}
-                onChange={(e) => setQuickInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && quickInput.trim()) sendWithNewSession(quickInput.trim()) }}
-                placeholder="输入消息，开始对话..."
-                style={{
-                  width: '100%',
-                  padding: '14px 18px',
-                  borderRadius: 12,
-                  border: '1px solid #ddd',
-                  fontSize: 15,
-                  outline: 'none',
-                  transition: 'border-color 0.15s',
-                  boxSizing: 'border-box',
-                }}
-                onFocus={(e) => (e.target.style.borderColor = '#1976d2')}
-                onBlur={(e) => (e.target.style.borderColor = '#ddd')}
-              />
+            <div style={{ maxWidth: 560, width: '100%' }}>
+              {/* 图片预览 */}
+              {images.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8, overflowX: 'auto' }}>
+                  {images.map((img, i) => (
+                    <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
+                      <img src={img} style={{ height: 50, borderRadius: 6, border: '1px solid #eee' }} />
+                      <span onClick={() => setImages((p) => p.filter((_, j) => j !== i))}
+                        style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', background: '#e53935', color: '#fff', fontSize: 12, lineHeight: '18px', textAlign: 'center', cursor: 'pointer' }}>✕</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* 输入框 + 附件 + 发送 */}
+              <div style={{ border: '1px solid #ddd', borderRadius: 12, background: '#fff' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', padding: '6px 8px 6px 12px' }}>
+                  <input value={quickInput} onChange={(e) => setQuickInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && quickInput.trim()) { const v = quickInput.trim(); setQuickInput(''); sendWithNewSession(v) } }}
+                    placeholder="输入消息，开始对话..." style={{ flex: 1, border: 'none', outline: 'none', fontSize: 15, padding: '8px 0', background: 'transparent' }} />
+                  <input ref={fileRef} type="file" accept="image/*" multiple hidden
+                    onChange={(e) => {
+                      const files = e.target.files
+                      if (files) {
+                        Array.from(files).forEach((f) => {
+                          const reader = new FileReader()
+                          reader.onload = () => setImages((p) => [...p, reader.result as string])
+                          reader.readAsDataURL(f)
+                        })
+                        e.target.value = ''
+                      }
+                    }}
+                  />
+                  <button onClick={() => fileRef.current?.click()} title="上传图片" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#999', padding: '6px', lineHeight: 1 }}>📎</button>
+                  <button onClick={() => { if (quickInput.trim()) { const v = quickInput.trim(); setQuickInput(''); sendWithNewSession(v) } }} disabled={!quickInput.trim()}
+                    style={{ padding: '8px 20px', borderRadius: 8, border: 'none', marginLeft: 4, background: !quickInput.trim() ? '#ccc' : '#1976d2', color: '#fff', cursor: !quickInput.trim() ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 500 }}>发送</button>
+                </div>
+                {/* 底部栏：模型选择 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px 8px' }}>
+                  <ModelSelector model={model} onChange={setModel} />
+                </div>
+              </div>
             </div>
 
-            <div style={{ marginBottom: 20 }}>
-              <ModelSelector model={model} onChange={setModel} />
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 500 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 500, marginTop: 20 }}>
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
@@ -398,7 +443,12 @@ export default function ChatPage() {
                         {loading && isLast && msg.role === 'assistant' && !msg.content ? (
                           <LoadingDots />
                         ) : msg.role === 'user' ? (
-                          msg.content
+                          <>
+                            {msg.content}
+                            {msg.images?.map((img, j) => (
+                              <img key={j} src={img} style={{ maxWidth: 200, maxHeight: 200, borderRadius: 6, marginTop: 6, display: 'block' }} />
+                            ))}
+                          </>
                         ) : (
                           <MarkdownContent content={msg.content} />
                         )}
@@ -414,76 +464,70 @@ export default function ChatPage() {
             </div>
 
             <div style={{
-              padding: '12px 24px 24px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              borderTop: '1px solid #f0f0f0',
+              padding: '12px 24px 24px', borderTop: '1px solid #f0f0f0',
             }}>
-              <div style={{ maxWidth: 720, width: '100%', display: 'flex', gap: 8, marginBottom: 8 }}>
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                  placeholder="输入消息..."
-                  disabled={loading}
-                  style={{
-                    flex: 1,
-                    padding: '11px 16px',
-                    borderRadius: 10,
-                    border: '1px solid #ddd',
-                    fontSize: 14,
-                    outline: 'none',
-                    transition: 'border-color 0.15s',
-                  }}
-                  onFocus={(e) => (e.target.style.borderColor = '#1976d2')}
-                  onBlur={(e) => (e.target.style.borderColor = '#ddd')}
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={loading || !input.trim() || !currentSid}
-                  style={{
-                    padding: '11px 22px',
-                    borderRadius: 10,
-                    border: 'none',
-                    background: loading || !input.trim() || !currentSid ? '#ccc' : '#1976d2',
-                    color: '#fff',
-                    cursor: loading || !input.trim() || !currentSid ? 'not-allowed' : 'pointer',
-                    fontSize: 14,
-                    fontWeight: 500,
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  {loading ? '...' : '发送'}
-                </button>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <ModelSelector model={model} onChange={setModel} />
-                <button
-                  onClick={() => {
+              <div style={{ maxWidth: 720, margin: '0 auto', width: '100%', border: '1px solid #ddd', borderRadius: 12, background: '#fff' }}>
+                {/* 图片预览 */}
+                {images.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, padding: '8px 12px 0', overflowX: 'auto' }}>
+                    {images.map((img, i) => (
+                      <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
+                        <img src={img} style={{ height: 50, borderRadius: 6, border: '1px solid #eee' }} />
+                        <span onClick={() => setImages((p) => p.filter((_, j) => j !== i))}
+                          style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', background: '#e53935', color: '#fff', fontSize: 12, lineHeight: '18px', textAlign: 'center', cursor: 'pointer' }}>✕</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* 输入行 */}
+                <div style={{ display: 'flex', alignItems: 'flex-end', padding: '6px 8px 6px 12px' }}>
+                  <input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                    placeholder="输入消息..."
+                    disabled={loading}
+                    style={{
+                      flex: 1, border: 'none', outline: 'none', fontSize: 14, padding: '8px 0',
+                      background: 'transparent', resize: 'none',
+                    }}
+                  />
+                  {/* 上传图片 */}
+                  <input ref={fileRef} type="file" accept="image/*" multiple hidden
+                    onChange={(e) => {
+                      const files = e.target.files
+                      if (files) {
+                        Array.from(files).forEach((f) => {
+                          const reader = new FileReader()
+                          reader.onload = () => setImages((p) => [...p, reader.result as string])
+                          reader.readAsDataURL(f)
+                        })
+                        e.target.value = ''
+                      }
+                    }}
+                  />
+                  <button onClick={() => fileRef.current?.click()} title="上传图片"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#999', padding: '6px', lineHeight: 1 }}>📎</button>
+                  <button onClick={handleSend} disabled={loading || !input.trim() || !currentSid}
+                    style={{
+                      padding: '8px 20px', borderRadius: 8, border: 'none', marginLeft: 4,
+                      background: loading || !input.trim() || !currentSid ? '#ccc' : '#1976d2',
+                      color: '#fff', cursor: loading || !input.trim() || !currentSid ? 'not-allowed' : 'pointer',
+                      fontSize: 14, fontWeight: 500, transition: 'background 0.15s',
+                    }}
+                  >{loading ? '...' : '发送'}</button>
+                </div>
+                {/* 底部栏：模型选择 + 工具按钮 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px 8px' }}>
+                  <ModelSelector model={model} onChange={setModel} />
+                  <button onClick={() => {
                     const s = sessions.find(s => s.session_id === currentSid)
                     downloadChat(messages, `${s?.title || 'chat'}.txt`)
-                  }}
-                  title="下载聊天记录"
-                  style={{
-                    padding: '4px 8px',
-                    borderRadius: 6,
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    fontSize: 16,
-                    color: '#bbb',
-                    transition: 'color 0.15s',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = '#666')}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = '#bbb')}
-                >📥</button>
-                {!sidebarOpen && (
-                  <button
-                    onClick={() => setSidebarOpen(true)}
-                    style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 13, padding: 0 }}
-                  >▶ 侧栏</button>
-                )}
+                  }} title="下载聊天记录" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#bbb', padding: '2px 4px', lineHeight: 1 }}>📥</button>
+                  {!sidebarOpen && (
+                    <button onClick={() => setSidebarOpen(true)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 12, padding: 0 }}>▶ 侧栏</button>
+                  )}
+                </div>
               </div>
             </div>
           </>

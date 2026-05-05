@@ -2,37 +2,45 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { startBrowser, stopBrowser, getBrowserStatus, streamChat, API_BASE } from '../api'
 import ToolCallCard from './ToolCallCard'
 import MarkdownContent from './MarkdownContent'
-import { executeTool, StatusDot, opBtnStyle, tabBtnStyle, type Step } from './browser/helpers'
+import { executeTool, StatusDot, tabBtnStyle, type Step } from './browser/helpers'
 import StepBar from './browser/StepBar'
 import Step1Content from './browser/Step1Content'
 
 export default function BrowserPage() {
   const [running, setRunning] = useState(false)
   const [url, setUrl] = useState('')
-  const [title, setTitle] = useState('')
+  const [, setTitle] = useState('')
   const [screenshot, setScreenshot] = useState<string | null>(null)
   const [logs, setLogs] = useState<string[]>([])
   const [customUrl, setCustomUrl] = useState('')
   const [streamInterval, setStreamInterval] = useState(100)
+  const [liveMode, setLiveMode] = useState(true)
+  const [browserBusy, setBrowserBusy] = useState(false)
   const esRef = useRef<EventSource | null>(null)
   const isXY = url.includes('xyzb.yuanfudao.com')
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [step, setStep] = useState<Step>(1)
 
   // Audit state
-  const [taskCards, setTaskCards] = useState<string[]>([])
+  const [taskCards, setTaskCards] = useState<string[]>(() => {
+    try { return JSON.parse(sessionStorage.getItem('xy_cards') || '[]') }
+    catch { return [] }
+  })
   const [selectedTask, setSelectedTask] = useState('')
   const [auditMessages, setAuditMessages] = useState<{ role: string; content: string; toolCalls?: any[] }[]>([])
   const [auditing, setAuditing] = useState(false)
   const [auditTab, setAuditTab] = useState<'screenshot' | 'audit' | 'logs'>('screenshot')
   const [rejectMode, setRejectMode] = useState(false)
   const [rejectCause, setRejectCause] = useState('')
+  const [rejectNotes, setRejectNotes] = useState('')
   const [apiUrl, setApiUrl] = useState('')
   const [apiResult, setApiResult] = useState<string | null>(null)
-  const [autoMode, setAutoMode] = useState(false)
-  const [autoFetch, setAutoFetch] = useState(false)
   const [taskStarted, setTaskStarted] = useState(false)
   const [currentTaskName, setCurrentTaskName] = useState('')
+  const [startingTask, setStartingTask] = useState('')
+  const [taskFailCount, setTaskFailCount] = useState(0)
+
+  const ERROR_CAUSES = ['格式问题占比较多', '举报', '文本压线', '黄框压题干', '最终答案', '不独立', '出框', '少答案', '字太小', '答案错']
 
   const addLog = useCallback((msg: string) => {
     const t = new Date().toLocaleTimeString()
@@ -57,7 +65,7 @@ export default function BrowserPage() {
 
   useEffect(() => {
     if (esRef.current) { esRef.current.close(); esRef.current = null }
-    if (!running) { setScreenshot(null); return }
+    if (!running || !liveMode) { setScreenshot(null); return }
 
     const es = new EventSource(`${API_BASE}/browser/stream?interval=${streamInterval / 1000}`)
     esRef.current = es
@@ -68,37 +76,38 @@ export default function BrowserPage() {
     }
     es.onerror = () => { es.close(); esRef.current = null }
     return () => { es.close(); esRef.current = null }
-  }, [running, streamInterval])
+  }, [running, streamInterval, liveMode])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [auditMessages])
 
-  // Auto-fetch tasks when on xiaoyuan
+  // Auto-fetch tasks when entering step 2
   useEffect(() => {
-    if (!isXY || !autoFetch) return
-    handleGetTasks()
-    const t = setInterval(handleGetTasks, 15000)
-    return () => clearInterval(t)
-  }, [isXY, autoFetch])
+    if (step === 2 && isXY) handleGetTasks()
+  }, [step, isXY])
 
   // === Browser Handlers ===
   const handleStart = async () => {
+    setBrowserBusy(true)
     const res = await startBrowser()
     addLog(res.message || '启动中...')
     for (let i = 0; i < 10; i++) {
       await new Promise((r) => setTimeout(r, 1000))
       const status = await getBrowserStatus()
-      if (status.running) { setRunning(true); setUrl(status.url || ''); setTitle(status.title || ''); addLog('浏览器就绪'); return }
+      if (status.running) { setRunning(true); setUrl(status.url || ''); setTitle(status.title || ''); addLog('浏览器就绪'); setBrowserBusy(false); return }
     }
     addLog('浏览器启动超时')
     pollStatus()
+    setBrowserBusy(false)
   }
 
   const handleStop = async () => {
+    setBrowserBusy(true)
     const res = await stopBrowser()
     addLog(res.message || '浏览器已关闭')
     pollStatus()
+    setBrowserBusy(false)
   }
 
   const handleNavigate = async (name: string) => {
@@ -129,6 +138,7 @@ export default function BrowserPage() {
         const arr = JSON.parse(str)
         const sorted = Array.isArray(arr) ? [...arr].reverse() : []
         setTaskCards(sorted)
+        sessionStorage.setItem('xy_cards', JSON.stringify(sorted))
         if (sorted.length > 0) setSelectedTask(sorted[0])
       } catch { setTaskCards([]) }
     }
@@ -137,11 +147,19 @@ export default function BrowserPage() {
   const handleStartTask = async (name?: string) => {
     const taskName = name || selectedTask
     if (!taskName) return
+    setStartingTask(taskName)
     setCurrentTaskName(taskName)
     addLog(`开始任务: ${taskName}...`)
     const result = await executeTool('start_task', { card_title: taskName })
-    setTaskStarted(true)
-    addLog(result)
+    if (result.includes('失败')) {
+      setTaskFailCount((c) => c + 1)
+      addLog(`❌ 任务开始失败 (累计失败 ${taskFailCount + 1} 次)`)
+    } else {
+      setTaskStarted(true)
+      setStep(3)
+      addLog(result)
+    }
+    setStartingTask('')
   }
 
   const handleGetQuestion = async () => {
@@ -174,8 +192,6 @@ export default function BrowserPage() {
     await executeTool('mark_question_correct')
     await executeTool('submit_task', { action: '提交领下一任务' })
     addLog('完成')
-    setTaskStarted(false)
-    if (autoMode) autoContinue()
   }
 
   const handleSubmitReject = async (cause: string) => {
@@ -184,27 +200,6 @@ export default function BrowserPage() {
     await executeTool('confirm_rejection')
     addLog('完成')
     setRejectMode(false); setRejectCause('')
-    setTaskStarted(false)
-    if (autoMode) autoContinue()
-  }
-
-  const autoContinue = async () => {
-    addLog('自动获取下一任务...')
-    const result = await executeTool('get_task_cards')
-    const titles = result.split('\n').find((l: string) => l.includes('所有标题'))
-    if (titles) {
-      try {
-        const str = (titles.split('：')[1] || '[]').replace(/'/g, '"')
-        const arr = JSON.parse(str) as string[]
-        if (arr.length > 0) {
-          setSelectedTask(arr[0]); setCurrentTaskName(arr[0])
-          await executeTool('start_task', { card_title: arr[0] })
-          setTaskStarted(true); addLog(`自动开始: ${arr[0]}`)
-          return
-        }
-      } catch {}
-    }
-    addLog('无可用任务')
   }
 
   const handleApiRequest = async () => {
@@ -221,11 +216,11 @@ export default function BrowserPage() {
     } catch (e: any) { setApiResult(`错误: ${e.message}`); addLog(`请求错误: ${e.message}`) }
   }
 
-  const resetStep = () => { setStep(1); setTaskStarted(false); setCurrentTaskName(''); setAuditMessages([]); setRejectMode(false) }
+  const resetStep = () => { setStep(1); setTaskStarted(false); setCurrentTaskName(''); setAuditMessages([]); setRejectMode(false); setRejectCause(''); setRejectNotes('') }
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '16px 20px 20px', gap: 12, boxSizing: 'border-box' }}>
-      <StepBar step={step} onStep={setStep} onReset={resetStep} />
+      <StepBar step={step} onStep={setStep} onReset={resetStep} taskName={currentTaskName} />
 
       <div style={{ flex: 1, display: 'flex', gap: 16, minHeight: 0 }}>
         {/* Left panel */}
@@ -236,6 +231,7 @@ export default function BrowserPage() {
           {step === 1 && (
             <Step1Content
               running={running}
+              busy={browserBusy}
               customUrl={customUrl}
               apiUrl={apiUrl}
               apiResult={apiResult}
@@ -246,7 +242,7 @@ export default function BrowserPage() {
               setCustomUrl={setCustomUrl}
               onRefresh={async () => { await executeTool('refresh_page'); addLog('已刷新') }}
               onSaveCookies={async () => { await executeTool('save_cookies'); addLog('Cookie 已保存') }}
-              onLoadCookies={async () => { await executeTool('load_cookies'); addLog('Cookie 已加载') }}
+              onLoadCookies={async () => { const r = await executeTool('load_cookies'); addLog(r); if (r.includes('✅')) setStep(2) }}
               onApiRequest={handleApiRequest}
               setApiUrl={setApiUrl}
             />
@@ -255,24 +251,34 @@ export default function BrowserPage() {
           {/* Step 2: 开始任务 */}
           {step === 2 && isXY && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#f5a623' }}>📋 任务列表</div>
-              <button onClick={handleGetTasks} style={{ width: '100%', padding: '8px 0', borderRadius: 5, border: 'none', background: '#1976d2', color: '#fff', cursor: 'pointer', fontSize: 13 }}>刷新任务</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#f5a623' }}>📋 任务列表</span>
+                {taskFailCount > 0 && <span style={{ fontSize: 11, color: '#e53935' }}>失败 {taskFailCount} 次</span>}
+              </div>
+              <button onClick={async () => { await executeTool('go_home'); addLog('已返回首页') }} className="btn btn-outline btn-block">🏠 回首页</button>
               {taskCards.length > 0 && (
                 <div>
-                  {taskCards.map((t) => (
-                    <div key={t} onClick={() => handleStartTask(t)} style={{
-                      padding: '6px 10px', borderRadius: 5, cursor: 'pointer', fontSize: 12,
-                      background: selectedTask === t ? '#fff3e0' : '#f9f9f9',
-                      border: selectedTask === t ? '1px solid #ffb74d' : '1px solid #eee',
-                      marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6,
-                    }}
-                      onMouseEnter={(e) => { if (selectedTask !== t) e.currentTarget.style.background = '#f0f0f0' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = selectedTask === t ? '#fff3e0' : '#f9f9f9' }}
-                    >
-                      <span style={{ fontSize: 11, color: selectedTask === t ? '#f5a623' : '#ccc' }}>▶</span>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t}</span>
-                    </div>
-                  ))}
+                  {taskCards.map((t) => {
+                    const isSelected = selectedTask === t
+                    const isLoading = startingTask === t
+                    return (
+                      <div key={t} onClick={() => !isLoading && handleStartTask(t)} style={{
+                        padding: '6px 10px', borderRadius: 5, cursor: isLoading ? 'wait' : 'pointer', fontSize: 12,
+                        background: isLoading ? '#fff3e0' : isSelected ? '#fff3e0' : '#f9f9f9',
+                        border: isLoading ? '1px solid #ffb74d' : isSelected ? '1px solid #ffb74d' : '1px solid #eee',
+                        marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6,
+                        transition: 'all 0.12s',
+                        opacity: isLoading ? 0.7 : 1,
+                      }}
+                        className="task-item"
+                        onMouseEnter={(e) => { if (!isSelected && !isLoading) e.currentTarget.style.background = '#f0f0f0' }}
+                        onMouseLeave={(e) => { if (!isSelected && !isLoading) e.currentTarget.style.background = '#f9f9f9' }}
+                      >
+                        <span style={{ fontSize: 11, color: isLoading ? '#f5a623' : isSelected ? '#f5a623' : '#ccc' }}>{isLoading ? '⏳' : '▶'}</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{t}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -281,40 +287,52 @@ export default function BrowserPage() {
           {/* Step 3: 执行任务 */}
           {step === 3 && taskStarted && currentTaskName.includes('单题标答-审核') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button onClick={handleGetQuestion} style={{ width: '100%', padding: '8px 0', borderRadius: 5, border: '1px solid #ddd', background: '#fff', cursor: 'pointer', fontSize: 13 }}>🖼 获取题目信息</button>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#666', cursor: 'pointer' }}>
-                <input type="checkbox" checked={autoMode} onChange={(e) => setAutoMode(e.target.checked)} />
-                完成后自动开始下一任务
-              </label>
-              <button onClick={handleAudit} disabled={auditing} style={{
-                width: '100%', padding: '10px 0', borderRadius: 5, border: 'none',
-                background: auditing ? '#ccc' : '#f5a623', color: '#fff',
-                cursor: auditing ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600,
-              }}>{auditing ? '审核中...' : '🤖 AI 审核'}</button>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#1976d2' }}>📌 {currentTaskName}</div>
+
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#999', padding: '4px 0', borderBottom: '1px solid #eee' }}>通用</div>
+
+              <button onClick={handleAudit} disabled={auditing} className={`btn btn-warning btn-block${auditing ? ' btn-loading' : ''}`} style={{ padding: '10px 0', fontSize: 14, fontWeight: 600 }}>{auditing ? '审核中...' : '🤖 AI 审核'}</button>
+
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button onClick={async () => { await executeTool('scroll_canvas', { direction: 'down' }); addLog('已向下滚动') }} disabled={!running} className="btn btn-outline btn-sm" style={{ flex: 1 }}>⬇ 滚动</button>
+                <button onClick={async () => { await executeTool('scroll_canvas', { direction: 'up' }); addLog('已向上滚动') }} disabled={!running} className="btn btn-outline btn-sm" style={{ flex: 1 }}>⬆ 滚动</button>
+              </div>
 
               {!auditing && auditMessages.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <button onClick={handleCorrect} style={{ padding: '8px 0', borderRadius: 5, border: 'none', background: '#4caf50', color: '#fff', cursor: 'pointer', fontSize: 13 }}>✅ 确认正确</button>
-                  <button onClick={() => setRejectMode(!rejectMode)} style={{ padding: '8px 0', borderRadius: 5, border: '1px solid #e53935', background: '#fff', color: '#e53935', cursor: 'pointer', fontSize: 13 }}>❌ 纠正</button>
+                  <button onClick={handleCorrect} className="btn btn-success btn-block">✅ 正确，没问题</button>
+
+                  <button onClick={() => setRejectMode(!rejectMode)} className="btn btn-outline-danger btn-block">
+                    {rejectMode ? '取消纠正' : '❌ 有误，我来纠正'}
+                  </button>
                   {rejectMode && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <input value={rejectCause} onChange={(e) => setRejectCause(e.target.value)} placeholder="驳回原因..." style={{ padding: '6px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12 }} />
-                      <button onClick={() => handleSubmitReject(rejectCause)} disabled={!rejectCause.trim()} style={{ padding: '6px 0', borderRadius: 4, border: 'none', background: !rejectCause.trim() ? '#ccc' : '#e53935', color: '#fff', cursor: 'pointer', fontSize: 12 }}>提交驳回</button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 8, background: '#fff5f5', borderRadius: 6, border: '1px solid #fcc' }}>
+                      <select value={rejectCause} onChange={(e) => setRejectCause(e.target.value)} style={{ padding: '6px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12 }}>
+                        <option value="">选择错误原因...</option>
+                        {ERROR_CAUSES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <textarea value={rejectNotes} onChange={(e) => setRejectNotes(e.target.value)} placeholder="详细说明（可选）..." style={{ padding: '6px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, resize: 'vertical', minHeight: 40 }} />
+                      <button onClick={() => { const fullCause = rejectNotes ? `${rejectCause} - ${rejectNotes}` : rejectCause; handleSubmitReject(fullCause); setRejectNotes('') }} disabled={!rejectCause.trim()} className="btn btn-danger">📤 驳回并提交反馈</button>
                     </div>
                   )}
+
+                  <button onClick={async () => { await executeTool('submit_task', { action: '提交领下一任务' }); addLog('已跳过，下一题') }} className="btn btn-outline btn-block">⏭ 跳过，下一题</button>
                 </div>
               )}
 
-              <details style={{ marginTop: 4 }}>
-                <summary style={{ fontSize: 12, color: '#999', cursor: 'pointer', padding: '4px 0' }}>🔧 高级操作</summary>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
-                  <button onClick={async () => { await executeTool('mark_question_correct'); addLog('已标记正确') }} style={opBtnStyle()}>审核正确</button>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <input id="rej" placeholder="错误原因..." style={{ flex: 1, padding: '5px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 11 }} />
-                    <button onClick={async () => { const el = document.getElementById('rej') as HTMLInputElement; if (el?.value) { await executeTool('submit_task', { action: '整题驳回', reject_reason: el.value }); addLog(`驳回: ${el.value}`); el.value = '' } }} style={opBtnStyle()}>驳回</button>
-                  </div>
-                </div>
-              </details>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#999', padding: '4px 0', borderBottom: '1px solid #eee' }}>本任务特有</div>
+
+              <button onClick={handleGetQuestion} className="btn btn-outline btn-block">🖼 获取题目信息</button>
+              <button onClick={async () => { await executeTool('zoom_question'); addLog('已缩小') }} disabled={!running} className="btn btn-outline btn-block">🔍 缩小视图</button>
+              <button onClick={async () => { await executeTool('mark_question_correct'); addLog('已标记正确') }} className="btn btn-outline btn-block">✅ 审核正确</button>
+              <button onClick={async () => { await executeTool('submit_task', { action: '提交领下一任务' }); addLog('已提交') }} className="btn btn-outline btn-block" style={{ borderColor: '#4caf50', color: '#2e7d32', background: '#e8f5e9' }}>📤 提交领下一任务</button>
+
+              <div style={{ display: 'flex', gap: 4 }}>
+                <input placeholder="错误原因..." style={{ flex: 1, padding: '6px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12 }} onChange={(e) => setRejectCause(e.target.value)} />
+                <button onClick={async () => { if (rejectCause.trim()) { await executeTool('submit_task', { action: '整题驳回', reject_reason: rejectCause }); addLog(`驳回: ${rejectCause}`); setRejectCause('') } }} className="btn btn-outline-danger btn-sm">整题驳回</button>
+              </div>
+              <button onClick={async () => { await executeTool('confirm_rejection'); addLog('已确认驳回') }} className="btn btn-outline btn-block btn-sm">确认驳回弹窗</button>
+
             </div>
             )}
           </div>
@@ -324,7 +342,13 @@ export default function BrowserPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#f9f9f9', borderRadius: 6, fontSize: 13, flexShrink: 0 }}>
             <StatusDot ok={running} />
             <span>{running ? '运行中' : '未启动'}</span>
-            {url && <span style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{title || url}</span>}
+            {running && (
+              <button onClick={async () => { await executeTool('refresh_page'); addLog('已刷新') }} title="刷新页面" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#666', padding: '2px 4px', flexShrink: 0, lineHeight: 1 }}>🔄</button>
+            )}
+            {url && (
+              <span title={url} style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: 12 }}>{url}</span>
+            )}
+            <button onClick={() => setLiveMode(!liveMode)} title={liveMode ? '暂停实时流' : '开启实时流'} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: liveMode ? '#4caf50' : '#ccc', padding: '2px 6px', flexShrink: 0, fontWeight: 600, lineHeight: 1 }}>● {liveMode ? '实时' : '暂停'}</button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ fontSize: 11, color: '#999', whiteSpace: 'nowrap' }}>间隔</span>
               <input
@@ -387,10 +411,6 @@ export default function BrowserPage() {
             )}
           </div>
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#666', cursor: 'pointer', padding: '4px 0' }}>
-          <input type="checkbox" checked={autoFetch} onChange={(e) => setAutoFetch(e.target.checked)} />
-          自动刷新任务列表
-        </label>
       </div>
     </div>
   )

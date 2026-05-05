@@ -2,8 +2,13 @@ import { useState } from 'react'
 import type { Step } from './helpers'
 import { STEPS } from './helpers'
 
-export default function StepBar({ step, onStep, onReset }: { step: Step; onStep: (s: Step) => void; onReset: () => void }) {
+export default function StepBar({ step, onStep, onReset, taskName }: { step: Step; onStep: (s: Step) => void; onReset: () => void; taskName?: string }) {
   const [hovered, setHovered] = useState<number | null>(null)
+
+  const getDesc = (s: typeof STEPS[0]) => {
+    if (s.n === 3 && taskName) return `${taskName} 正在执行中`
+    return s.desc
+  }
 
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -32,7 +37,7 @@ export default function StepBar({ step, onStep, onReset }: { step: Step; onStep:
             </span>
             {showDesc && (
               <span style={{ fontSize: 11, color: active ? 'rgba(255,255,255,0.8)' : done ? '#66bb6a' : '#bbb', marginLeft: 4, whiteSpace: 'nowrap' }}>
-                {s.desc}
+                {getDesc(s)}
               </span>
             )}
           </div>

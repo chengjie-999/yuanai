@@ -10,7 +10,7 @@ export const WEBSITES = [
 
 export const STEPS = [
   { n: 1 as Step, label: '打开网站', desc: '启动浏览器并导航到目标网站' },
-  { n: 2 as Step, label: '开始任务', desc: '选择并开始一个审核任务' },
+  { n: 2 as Step, label: '开始任务', desc: '选择并开启一个任务' },
   { n: 3 as Step, label: '执行任务', desc: 'AI 审核并提交反馈' },
 ]
 

@@ -55,3 +55,144 @@ body {
   0%, 100% { opacity: 0.3; }
   50% { opacity: 1; }
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Button system ---- */
+.btn {
+  cursor: pointer;
+  border-radius: 6px;
+  border: none;
+  font-size: 13px;
+  transition: all 0.12s;
+  user-select: none;
+}
+.btn:hover {
+  filter: brightness(0.94);
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
+.btn-primary {
+  background: #1976d2;
+  color: #fff;
+}
+.btn-danger {
+  background: #e53935;
+  color: #fff;
+}
+.btn-success {
+  background: #4caf50;
+  color: #fff;
+}
+.btn-warning {
+  background: #f5a623;
+  color: #fff;
+}
+.btn-outline {
+  background: #fff;
+  border: 1px solid #ddd;
+  color: #333;
+}
+.btn-outline:hover {
+  border-color: #bbb;
+  background: #fafafa;
+}
+.btn-outline-danger {
+  background: #fff;
+  border: 1px solid #e53935;
+  color: #e53935;
+}
+.btn-outline-danger:hover {
+  background: #fff5f5;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.btn-block {
+  width: 100%;
+  padding: 8px 0;
+  font-size: 13px;
+}
+
+/* Loading spinner */
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.6);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+
+/* Legacy alias used by Step1Content */
+.btn-click {
+  cursor: pointer;
+  border-radius: 6px;
+  border: none;
+  font-size: 13px;
+  transition: all 0.12s;
+  user-select: none;
+}
+.btn-click:hover {
+  filter: brightness(0.94);
+}
+.btn-click:active {
+  transform: scale(0.97);
+}
+.btn-click:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+.btn-click.btn-loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+  opacity: 1 !important;
+}
+.btn-click.btn-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.6);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+
+/* Task list items */
+.task-item {
+  transition: all 0.12s, background 0.15s;
+}
+.task-item:hover {
+  background: #f0f0f0 !important;
+  border-color: #ccc !important;
+}
+.task-item:active {
+  transform: scale(0.98);
+}

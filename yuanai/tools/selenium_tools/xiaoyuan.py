@@ -171,7 +171,7 @@ def mark_question_correct() -> str:
     标记当前题目审核正确。
     处理独立答案和批改答案的判定操作。
     """
-    _get_sa().quick_true_handle()
+    _get_sa().quick_true_handle(up=False)
     return "已标记审核正确"
 
 

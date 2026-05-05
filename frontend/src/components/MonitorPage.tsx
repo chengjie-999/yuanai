@@ -139,21 +139,15 @@ export default function MonitorPage() {
         </div>
         <button
           onClick={toggleLive}
-          style={{
-            padding: '7px 16px', borderRadius: 6, border: 'none',
-            background: liveMode ? '#e53935' : '#1976d2',
-            color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: liveMode ? 600 : 400,
-          }}
+          className={`btn ${liveMode ? 'btn-danger' : 'btn-primary'}`}
+          style={{ fontWeight: liveMode ? 600 : 400 }}
         >
           {liveMode ? '⏹ 停止' : '▶ 实时流'}
         </button>
         {!liveMode && (
           <button
             onClick={fetchScreenshot}
-            style={{
-              padding: '7px 16px', borderRadius: 6, border: 'none',
-              background: '#1976d2', color: '#fff', cursor: 'pointer', fontSize: 13,
-            }}
+            className="btn btn-primary"
           >
             刷新
           </button>

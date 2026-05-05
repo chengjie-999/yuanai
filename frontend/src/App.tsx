@@ -8,9 +8,9 @@ type Page = 'chat' | 'browser' | 'tools' | 'monitor'
 
 const tabs: { key: Page; label: string; icon: string }[] = [
   { key: 'chat', label: '聊天', icon: '💬' },
-  { key: 'browser', label: '自动化', icon: '🕷' },
+  { key: 'browser', label: 'WEB自动化', icon: '🌐' },
   { key: 'tools', label: '工具', icon: '🔧' },
-  { key: 'monitor', label: '监控', icon: '📺' },
+  { key: 'monitor', label: '状态监控', icon: '📺' },
 ]
 
 function App() {

@@ -106,7 +106,7 @@ function App() {
         </div>
       </header>
       <main style={{ flex: 1, overflow: 'hidden' }}>
-        {page === 'chat' && <ChatPage />}
+        {page === 'chat' && <ChatPage user={user} />}
         {page === 'browser' && <BrowserPage />}
         {page === 'tools' && toggles.tools && <ToolsPage />}
         {page === 'monitor' && toggles.monitor && <MonitorPage />}

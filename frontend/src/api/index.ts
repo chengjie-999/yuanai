@@ -4,6 +4,17 @@ export function getToken(): string {
   return localStorage.getItem('token') || ''
 }
 
+const MODEL_KEY = 'selectedModel'
+const DEFAULT_MODEL = 'doubao-seed-2-0-pro-260215'
+
+export function getStoredModel(): string {
+  return localStorage.getItem(MODEL_KEY) || DEFAULT_MODEL
+}
+
+export function setStoredModel(model: string) {
+  localStorage.setItem(MODEL_KEY, model)
+}
+
 function authHeaders(): Record<string, string> {
   const token = getToken()
   return token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -90,12 +101,14 @@ export async function loadMessages(sessionId: string): Promise<{ role: string; c
   } catch { return [] }
 }
 
-export async function saveMessages(sessionId: string, messages: { role: string; content: string }[]) {
+export async function saveMessages(sessionId: string, messages: { role: string; content: string }[], title?: string) {
   try {
+    const body: any = { session_id: sessionId, messages }
+    if (title) body.title = title
     await fetch(`${API_BASE}/chat/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ session_id: sessionId, messages }),
+      body: JSON.stringify(body),
     })
   } catch { /* ignore */ }
 }
@@ -140,10 +153,14 @@ export function streamChat(
   onEvent: (event: any) => void,
   onError: (error: string) => void,
   onDone: () => void,
+  browserContext: boolean = false,
 ): AbortController {
   const controller = new AbortController()
 
-  fetch(`${API_BASE}/chat/stream`, {
+  const url = browserContext
+    ? `${API_BASE}/chat/stream?browser_context=true`
+    : `${API_BASE}/chat/stream`
+  fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(params),

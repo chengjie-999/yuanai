@@ -38,3 +38,4 @@ class ToolInfo(BaseModel):
 class SaveMessagesRequest(BaseModel):
     session_id: str = Field(..., description="会话ID")
     messages: List[dict] = Field(..., description='[{"role": "user/assistant", "content": "..."}]')
+    title: Optional[str] = Field(None, description="会话标题（可选）")

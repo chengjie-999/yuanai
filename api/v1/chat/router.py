@@ -1,6 +1,6 @@
 import json
 import asyncio
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
@@ -11,11 +11,21 @@ from yuanai.tools import all_tools
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-_CHAT_SKIP = {"browser", "website", "cookie", "scroll", "click", "zoom",
-              "restore", "question", "task", "home", "html", "mark_",
-              "submit", "confirm", "page_status", "open_", "refresh",
-              "launch", "save_cookie", "load_cookie"}
-CHAT_TOOLS = [t for t in all_tools if not any(s in t.name for s in _CHAT_SKIP)]
+# 物理操作/小猿专用工具（所有角色都不可在聊天中调用）
+_ADMIN_SKIP = {"scroll", "click", "zoom", "restore", "question", "task",
+               "home", "html", "mark_", "submit", "confirm", "page_status",
+               "save_cookie", "load_cookie", "save_page_cookies", "load_page_cookies"}
+
+# user 额外排除浏览器类工具
+_USER_SKIP = _ADMIN_SKIP | {"browser", "launch", "open_", "website",
+                             "cookie", "refresh"}
+
+
+def get_chat_tools(role: str = "user"):
+    """根据角色获取聊天可用的工具列表"""
+    if role == "admin":
+        return [t for t in all_tools if not any(s in t.name for s in _ADMIN_SKIP)]
+    return [t for t in all_tools if not any(s in t.name for s in _USER_SKIP)]
 
 
 def _get_db():
@@ -29,9 +39,15 @@ def _get_db():
 
 
 @router.post("/stream")
-async def chat_stream(req: ChatRequest):
+async def chat_stream(req: ChatRequest, request: Request, browser_context: bool = Query(False)):
     """SSE 流式聊天"""
     try:
+        role = getattr(request.state, "role", "user")
+        if browser_context and role == "admin":
+            chat_tools = all_tools
+        else:
+            chat_tools = get_chat_tools(role)
+
         llm = get_llm(req.model, temperature=req.temperature, verbose=False, streaming=True)
 
         history = []
@@ -52,7 +68,7 @@ async def chat_stream(req: ChatRequest):
 
         async def event_stream():
             try:
-                async for event in stream_agent_events(llm, input_messages, CHAT_TOOLS):
+                async for event in stream_agent_events(llm, input_messages, chat_tools):
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             except Exception as e:
                 yield f"data: {json.dumps({'type': 'error', 'data': str(e)}, ensure_ascii=False)}\n\n"
@@ -118,6 +134,15 @@ async def save_messages(req: SaveMessagesRequest):
         for msg in req.messages:
             db.add_chat(req.session_id, msg["role"], msg["content"])
             count += 1
+        # 如果传了标题，更新会话标题
+        if req.title:
+            from db.session import ChatSession
+            sess = db.Session()
+            try:
+                sess.query(ChatSession).filter_by(session_id=req.session_id).update({"title": req.title})
+                sess.commit()
+            finally:
+                sess.close()
         return {"saved": count}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

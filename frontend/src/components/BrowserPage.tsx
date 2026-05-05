@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { startBrowser, stopBrowser, getBrowserStatus, streamChat, createSession, saveMessages, API_BASE } from '../api'
+import { startBrowser, stopBrowser, getBrowserStatus, streamChat, createSession, saveMessages, API_BASE, getStoredModel } from '../api'
 import ToolCallCard from './ToolCallCard'
 import MarkdownContent from './MarkdownContent'
 import { executeTool, StatusDot, tabBtnStyle, type Step } from './browser/helpers'
@@ -42,6 +42,7 @@ export default function BrowserPage() {
   const [questionImages, setQuestionImages] = useState<{ type: string; data: string }[]>([])
   const [expandedImage, setExpandedImage] = useState<string | null>(null)
   const [auditSessionId, setAuditSessionId] = useState('')
+  const [auditInput, setAuditInput] = useState('')
 
   const ERROR_CAUSES = ['格式问题占比较多', '举报', '文本压线', '黄框压题干', '最终答案', '不独立', '出框', '少答案', '字太小', '答案错']
 
@@ -192,7 +193,7 @@ export default function BrowserPage() {
     }
 
     streamChat(
-      { model: 'doubao-seed-2-0-pro-260215', temperature: 0.1, prompt: '请审核这道题。', history: [], system_prompt: systemPrompt },
+      { model: getStoredModel(), temperature: 0.1, prompt: '请审核这道题。', history: [], system_prompt: systemPrompt },
       (event) => {
         if (event.type === 'token') { assistantContent += event.data; setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { ...last[last.length - 1], content: assistantContent }; return last }) }
         else if (event.type === 'tool_start') { setAuditMessages((prev) => { const last = [...prev]; const calls = last[last.length - 1].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[last.length - 1] = { ...last[last.length - 1], toolCalls: [...calls] }; return last }); addLog(`工具: ${event.data.name}`) }
@@ -208,9 +209,47 @@ export default function BrowserPage() {
         await saveMessages(sid, [
           { role: 'user', content: `请审核这道题\n任务: ${currentTaskName}\nURL: ${url}` },
           { role: 'assistant', content: assistantContent },
-        ])
+        ], `🔧 审核: ${currentTaskName.slice(0, 30)}`)
       },
-    )
+      true)
+  }
+
+  const handleAuditChat = async (text: string) => {
+    if (!text.trim() || auditing) return
+    const userMsg = { role: 'user', content: text }
+    setAuditMessages((prev) => [...prev, userMsg])
+    setAuditInput('')
+    setAuditing(true)
+    setAuditTab('audit')
+    const systemPrompt = `你是一个自动化助手。当前页面: ${url}\n任务: ${currentTaskName}\n你可以调用工具来帮助用户。`
+    let assistantContent = ''
+
+    if (!auditSessionId) {
+      const sid = await createSession()
+      setAuditSessionId(sid)
+    }
+
+    setAuditMessages((prev) => [...prev, { role: 'assistant', content: '', toolCalls: [] }])
+    streamChat(
+      { model: getStoredModel(), temperature: 0.1, prompt: text, history: [], system_prompt: systemPrompt },
+      (event) => {
+        if (event.type === 'token') { assistantContent += event.data; setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { ...last[last.length - 1], content: assistantContent }; return last }) }
+        else if (event.type === 'tool_start') { setAuditMessages((prev) => { const last = [...prev]; const calls = last[last.length - 1].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[last.length - 1] = { ...last[last.length - 1], toolCalls: [...calls] }; return last }); addLog(`工具: ${event.data.name}`) }
+        else if (event.type === 'tool_end') { setAuditMessages((prev) => { const last = [...prev]; const calls = (last[last.length - 1].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' } : c); last[last.length - 1] = { ...last[last.length - 1], toolCalls: calls }; return last }); addLog(`完成: ${event.data.name}`) }
+        else if (event.type === 'error') { setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { ...last[last.length - 1], content: `❌ ${event.data}` }; return last }); setAuditing(false) }
+      },
+      (error) => { setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setAuditing(false) },
+      async () => {
+        setAuditing(false)
+        addLog('对话完成')
+        const sid = auditSessionId || await createSession()
+        if (!auditSessionId) setAuditSessionId(sid)
+        await saveMessages(sid, [
+          { role: 'user', content: text },
+          { role: 'assistant', content: assistantContent },
+        ], `🔧 指令: ${text.slice(0, 30)}`)
+      },
+      true)
   }
 
   const handleCorrect = async () => {
@@ -425,27 +464,39 @@ export default function BrowserPage() {
               )
             )}
             {auditTab === 'audit' && (
-              <div style={{ width: '100%', height: '100%', overflowY: 'auto', padding: 16, boxSizing: 'border-box' }}>
-                {auditMessages.length === 0 ? (
-                  <div style={{ textAlign: 'center', color: '#ccc', marginTop: 60, fontSize: 14 }}>点击左侧 "🤖 AI 审核" 开始</div>
-                ) : (
-                  auditMessages.map((msg, i) => (
-                    <div key={i} style={{ marginBottom: 10, display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                      <div style={{
-                        padding: '8px 14px', borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
-                        maxWidth: '80%', background: msg.role === 'user' ? '#1976d2' : '#fff',
-                        color: msg.role === 'user' ? '#fff' : '#333',
-                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                        whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6,
-                        overflowWrap: 'break-word', wordBreak: 'break-word',
-                      }}>
-                        {msg.role === 'assistant' ? <MarkdownContent content={msg.content} /> : msg.content}
-                        {msg.toolCalls?.map((tc, j) => <ToolCallCard key={j} call={tc} />)}
+              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+                  {auditMessages.length === 0 ? (
+                    <div style={{ textAlign: 'center', color: '#ccc', marginTop: 60, fontSize: 14 }}>输入消息或点击左侧 "🤖 AI 审核"</div>
+                  ) : (
+                    auditMessages.map((msg, i) => (
+                      <div key={i} style={{ marginBottom: 10, display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                        <div style={{
+                          padding: '8px 14px', borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
+                          maxWidth: '80%', background: msg.role === 'user' ? '#1976d2' : '#fff',
+                          color: msg.role === 'user' ? '#fff' : '#333',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                          whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6,
+                          overflowWrap: 'break-word', wordBreak: 'break-word',
+                        }}>
+                          {msg.role === 'assistant' ? <MarkdownContent content={msg.content} /> : msg.content}
+                          {msg.toolCalls?.map((tc, j) => <ToolCallCard key={j} call={tc} />)}
+                        </div>
                       </div>
-                    </div>
-                  ))
-                )}
-                <div ref={chatEndRef} />
+                    ))
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                <div style={{ display: 'flex', gap: 6, padding: '8px 12px', borderTop: '1px solid #eee', background: '#fff', flexShrink: 0 }}>
+                  <input value={auditInput} onChange={(e) => setAuditInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAuditChat(auditInput)}
+                    placeholder="输入指令，如：向下滚动 / 打开知乎 / 帮我审核"
+                    disabled={auditing}
+                    style={{ flex: 1, padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', fontSize: 13, outline: 'none' }} />
+                  <button onClick={() => handleAuditChat(auditInput)} disabled={auditing || !auditInput.trim()}
+                    className={`btn btn-primary${auditing ? ' btn-loading' : ''}`}
+                    style={{ padding: '8px 14px', fontSize: 13 }}>发送</button>
+                </div>
               </div>
             )}
             {auditTab === 'logs' && (

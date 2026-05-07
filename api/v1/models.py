@@ -33,6 +33,7 @@ class ToolInfo(BaseModel):
     description: str
     args: dict
     category: str = Field("其他", description="工具分类")
+    admin_only: bool = Field(False, description="仅 admin 可用")
 
 
 class SaveMessagesRequest(BaseModel):

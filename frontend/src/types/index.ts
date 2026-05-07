@@ -23,4 +23,5 @@ export interface ToolInfo {
   description: string
   args: Record<string, any>
   category: string
+  admin_only?: boolean
 }

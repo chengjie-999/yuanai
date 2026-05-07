@@ -8,24 +8,15 @@ from api.v1.models import ChatRequest, SaveMessagesRequest
 from yuanai.core.lc import get_llm
 from yuanai.core.chat import build_input_messages, stream_agent_events
 from yuanai.tools import all_tools
+from config.settings import CHAT_TOOLS_ADMIN_SKIP, CHAT_TOOLS_USER_SKIP
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-
-# 物理操作/小猿专用工具（所有角色都不可在聊天中调用）
-_ADMIN_SKIP = {"scroll", "click", "zoom", "restore", "question", "task",
-               "home", "html", "mark_", "submit", "confirm", "page_status",
-               "save_cookie", "load_cookie", "save_page_cookies", "load_page_cookies"}
-
-# user 额外排除浏览器类工具
-_USER_SKIP = _ADMIN_SKIP | {"browser", "launch", "open_", "website",
-                             "cookie", "refresh"}
 
 
 def get_chat_tools(role: str = "user"):
     """根据角色获取聊天可用的工具列表"""
-    if role == "admin":
-        return [t for t in all_tools if not any(s in t.name for s in _ADMIN_SKIP)]
-    return [t for t in all_tools if not any(s in t.name for s in _USER_SKIP)]
+    skip = CHAT_TOOLS_ADMIN_SKIP if role == "admin" else CHAT_TOOLS_USER_SKIP
+    return [t for t in all_tools if not any(s in t.name for s in skip)]
 
 
 def _get_db():
@@ -119,8 +110,19 @@ async def get_messages(req: dict):
         session_id = req.get("session_id", "")
         if not session_id:
             return []
+        # 先查 Redis 缓存
+        from db.cache import get_cached_chat_messages
+        cached = get_cached_chat_messages(session_id)
+        if cached is not None:
+            return cached
+        # 缓存未命中，查数据库
         db = _get_db()
-        return db.get_chats(session_id)
+        messages = db.get_chats(session_id)
+        # 写入缓存
+        if messages:
+            from db.cache import cache_chat_messages
+            cache_chat_messages(session_id, messages)
+        return messages
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -134,6 +136,9 @@ async def save_messages(req: SaveMessagesRequest):
         for msg in req.messages:
             db.add_chat(req.session_id, msg["role"], msg["content"])
             count += 1
+        # 清除 Redis 缓存（下次读取时重新缓存）
+        from db.cache import clear_chat_cache
+        clear_chat_cache(req.session_id)
         # 如果传了标题，更新会话标题
         if req.title:
             from db.session import ChatSession

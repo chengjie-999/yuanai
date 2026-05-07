@@ -24,7 +24,8 @@ export default function MonitorPage() {
 
   const startLive = useCallback(() => {
     if (esRef.current) esRef.current.close()
-    const url = `${API_BASE}/monitor/stream?monitor=${currentMonitor}&interval=${streamInterval / 1000}`
+    const token = localStorage.getItem('token') || ''
+    const url = `${API_BASE}/monitor/stream?monitor=${currentMonitor}&interval=${streamInterval / 1000}&token=${token}`
     const es = new EventSource(url)
     esRef.current = es
     frameCountRef.current = 0

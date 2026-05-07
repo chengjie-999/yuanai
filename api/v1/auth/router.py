@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from db.session import get_db
@@ -34,6 +35,9 @@ def login(req: AuthRequest):
     user = db.authenticate_user(req.username, req.password)
     if not user:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
+    if user.frozen_until and user.frozen_until > datetime.utcnow():
+        days = (user.frozen_until - datetime.utcnow()).days
+        raise HTTPException(status_code=403, detail=f"账号已被冻结，剩余 {days} 天")
     token = create_token(user.id, user.role, user.username)
     return {
         "token": token,
@@ -55,6 +59,8 @@ def check_token(req: TokenCheck):
     user = db.get_user_by_id(payload["user_id"])
     if not user:
         raise HTTPException(status_code=401, detail="用户不存在")
+    if user.frozen_until and user.frozen_until > datetime.utcnow():
+        return {"valid": False, "detail": "账号已被冻结"}
     return {
         "valid": True,
         "user": {"id": user.id, "username": user.username, "role": user.role, "display_name": user.display_name or user.username},

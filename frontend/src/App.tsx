@@ -6,9 +6,11 @@ import MonitorPage from './components/MonitorPage'
 import LoginPage from './components/LoginPage'
 import SettingsPage, { useFeatureToggles } from './components/SettingsPage'
 import DataAnalysisPage from './components/DataAnalysisPage'
-import { checkToken } from './api'
+import AdminPage from './components/AdminPage'
+import DataCollectionPage from './components/DataCollectionPage'
+import { checkToken, setStoredUser } from './api'
 
-type Page = 'chat' | 'browser' | 'tools' | 'monitor' | 'settings' | 'dataAnalysis'
+type Page = 'chat' | 'browser' | 'dataCollection' | 'tools' | 'monitor' | 'dataAnalysis' | 'admin' | 'settings'
 
 const BASE_TABS: { key: Page; label: string; icon: string }[] = [
   { key: 'chat', label: '聊天', icon: '💬' },
@@ -16,9 +18,10 @@ const BASE_TABS: { key: Page; label: string; icon: string }[] = [
 ]
 
 const FEATURE_TABS: { key: Page; label: string; icon: string; toggleKey: string; adminOnly?: boolean }[] = [
-  { key: 'tools', label: '工具', icon: '🔧', toggleKey: 'tools' },
   { key: 'monitor', label: '全局状态实时监控', icon: '📺', toggleKey: 'monitor' },
   { key: 'dataAnalysis', label: '数据分析', icon: '📊', toggleKey: 'dataAnalysis', adminOnly: true },
+  { key: 'dataCollection', label: '数据采集', icon: '📡', toggleKey: 'dataCollection' },
+  { key: 'tools', label: '工具', icon: '🔧', toggleKey: 'tools' },
 ]
 
 function App() {
@@ -36,6 +39,7 @@ function App() {
           setToken(saved)
           setUser(data.user)
         } else {
+          if (data.detail) sessionStorage.setItem('loginError', data.detail)
           localStorage.removeItem('token')
         }
         setLoading(false)
@@ -49,10 +53,12 @@ function App() {
     localStorage.setItem('token', newToken)
     setToken(newToken)
     setUser(newUser)
+    setStoredUser(newUser)
   }
 
   const handleLogout = () => {
     localStorage.removeItem('token')
+    setStoredUser(null)
     setToken(null)
     setUser(null)
   }
@@ -101,6 +107,10 @@ function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 13, color: '#999' }}>{user?.username || user?.display_name}</span>
           <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 13, padding: 0 }}>退出</button>
+          {isAdmin && (
+            <button onClick={() => setPage(page === 'admin' ? 'chat' : 'admin')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: page === 'admin' ? '#1976d2' : '#999', padding: '4px', lineHeight: 1 }}>👤</button>
+          )}
           <button onClick={() => setPage(showSettings ? 'chat' : 'settings')}
             style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: showSettings ? '#1976d2' : '#999', padding: '4px', lineHeight: 1 }}>⚙</button>
         </div>
@@ -108,9 +118,11 @@ function App() {
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {page === 'chat' && <ChatPage user={user} />}
         {page === 'browser' && <BrowserPage />}
+        {page === 'dataCollection' && toggles.dataCollection && <DataCollectionPage />}
         {page === 'tools' && toggles.tools && <ToolsPage />}
         {page === 'monitor' && toggles.monitor && <MonitorPage />}
         {page === 'dataAnalysis' && toggles.dataAnalysis && isAdmin && <DataAnalysisPage />}
+        {page === 'admin' && isAdmin && <AdminPage />}
         {page === 'settings' && <SettingsPage toggles={toggles} onToggle={toggleFeature} />}
       </main>
     </div>

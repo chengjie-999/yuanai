@@ -16,8 +16,10 @@ async def start_browser(request: Request):
     require_admin(request)
     try:
         result = browser_manager.start()
+        print(f"🚀 浏览器启动: {request.state.username} → {result}")
         return {"status": "ok", "message": result}
     except Exception as e:
+        print(f"❌ 浏览器启动失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -27,6 +29,7 @@ async def stop_browser(request: Request):
     require_admin(request)
     try:
         result = browser_manager.stop()
+        print(f"🛑 浏览器关闭: {request.state.username} → {result}")
         return {"status": "ok", "message": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -35,11 +38,9 @@ async def stop_browser(request: Request):
 @router.get("/status")
 async def browser_status():
     """获取浏览器状态"""
-    return {
-        "running": browser_manager.running,
-        "url": browser_manager.current_url,
-        "title": browser_manager.current_title,
-    }
+    s = {"running": browser_manager.running, "url": browser_manager.current_url, "title": browser_manager.current_title}
+    print(f"📡 浏览器状态: running={s['running']}")
+    return s
 
 
 @router.get("/screenshot")
@@ -57,6 +58,7 @@ async def browser_screenshot():
 @router.get("/stream")
 async def browser_stream(interval: float = Query(0.1, ge=0.01, le=0.6, description="帧间隔(秒)")):
     """SSE 浏览器截图实时推流（CDP截图 + JPEG）"""
+    print(f"📺 浏览器截图流已连接, interval={interval}s")
     async def generate():
         try:
             while True:

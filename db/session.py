@@ -63,6 +63,31 @@ class User(Base):
     password_hash = Column(String(200), nullable=False)
     display_name = Column(String(50), default='')
     role = Column(String(20), default='user')
+    frozen_until = Column(TIMESTAMP, nullable=True)
+    create_time = Column(TIMESTAMP, server_default=func.now())
+
+
+class Website(Base):
+    """网站配置表"""
+    __tablename__ = 'websites'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), unique=True, nullable=False)
+    url = Column(Text, nullable=False)
+    remark = Column(Text, default='')
+    sort_order = Column(Integer, default=0)
+    create_time = Column(TIMESTAMP, server_default=func.now())
+
+
+class CrawlRecord(Base):
+    """爬取记录表"""
+    __tablename__ = 'crawl_records'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    url = Column(Text, nullable=False)
+    retype = Column(String(20), default='text')
+    file_path = Column(Text, default='')   # 原始文件保存路径
+    preview = Column(String(2000), default='')  # 预览文本
+    result_length = Column(Integer, default=0)
+    user_id = Column(Integer, nullable=True, index=True)
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -72,6 +97,7 @@ class AgentDatabase:
         self.db_path = db_path
         if use_mysql:
             cfg = mysql_config or {}
+            print(f"📦 连接 MySQL: {cfg.get('host', 'localhost')}:{cfg.get('port', 3306)}/{cfg.get('database', 'ai_agent')}")
             conn_url = URL.create(
                 "mysql+pymysql",
                 username=cfg.get("user", "root"),
@@ -97,6 +123,13 @@ class AgentDatabase:
                     conn.commit()
             except Exception:
                 pass
+            # 迁移：添加 frozen_until 列
+            try:
+                with self.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN frozen_until DATETIME"))
+                    conn.commit()
+            except Exception:
+                pass
         else:
             if db_path is None:
                 db_path = os.path.join(root_path(), "agent.db")
@@ -105,7 +138,6 @@ class AgentDatabase:
             Base.metadata.create_all(self.engine)
             # 迁移：添加 user_id 列（兼容旧数据库）
             try:
-                from sqlalchemy import text
                 with self.engine.connect() as conn:
                     conn.execute(text("ALTER TABLE chat_session ADD COLUMN user_id INTEGER"))
                     conn.commit()
@@ -427,6 +459,140 @@ class AgentDatabase:
                 "cache_size_mb": round(cache_size / 1024 / 1024, 2),
                 "excel_files": excel_files,
             }
+        finally:
+            sess.close()
+
+    # --------------------------------------------------------------------------
+    # 网站管理
+    # --------------------------------------------------------------------------
+    def get_websites(self) -> list:
+        """获取网站列表"""
+        sess = self.Session()
+        try:
+            rows = sess.query(Website).order_by(Website.sort_order, Website.id).all()
+            return [{"id": r.id, "name": r.name, "url": r.url, "remark": r.remark or "", "sort_order": r.sort_order} for r in rows]
+        finally:
+            sess.close()
+
+    def add_website(self, name: str, url: str, remark: str = "", sort_order: int = 0) -> dict:
+        """添加网站"""
+        sess = self.Session()
+        try:
+            existing = sess.query(Website).filter_by(name=name).first()
+            if existing:
+                return {"error": "网站名称已存在"}
+            w = Website(name=name, url=url, remark=remark, sort_order=sort_order)
+            sess.add(w)
+            sess.commit()
+            return {"id": w.id, "name": w.name}
+        finally:
+            sess.close()
+
+    def update_website(self, wid: int, name: str = None, url: str = None, remark: str = None, sort_order: int = None) -> bool:
+        """修改网站"""
+        sess = self.Session()
+        try:
+            w = sess.query(Website).filter_by(id=wid).first()
+            if not w:
+                return False
+            if name is not None:
+                w.name = name
+            if url is not None:
+                w.url = url
+            if remark is not None:
+                w.remark = remark
+            if sort_order is not None:
+                w.sort_order = sort_order
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def delete_website(self, wid: int) -> bool:
+        """删除网站"""
+        sess = self.Session()
+        try:
+            w = sess.query(Website).filter_by(id=wid).first()
+            if not w:
+                return False
+            sess.delete(w)
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    # --------------------------------------------------------------------------
+    # 爬取记录管理
+    # --------------------------------------------------------------------------
+    def save_crawl_record(self, url: str, retype: str, file_path: str, preview: str, result_length: int, user_id: int = None) -> dict:
+        """保存一条爬取记录，自动查重"""
+        sess = self.Session()
+        try:
+            existing = sess.query(CrawlRecord).filter_by(url=url, user_id=user_id).first()
+            if existing:
+                existing.file_path = file_path
+                existing.preview = preview[:2000]
+                existing.result_length = result_length
+                existing.retype = retype
+                sess.commit()
+                return {"id": existing.id, "url": url, "duplicate": True}
+            r = CrawlRecord(url=url, retype=retype, file_path=file_path, preview=preview[:2000], result_length=result_length, user_id=user_id)
+            sess.add(r)
+            sess.commit()
+            return {"id": r.id, "url": url, "duplicate": False}
+        finally:
+            sess.close()
+
+    def get_crawl_records(self, user_id: int = None, page: int = 1, limit: int = 20) -> tuple:
+        """获取爬取记录列表，返回 (records, total)"""
+        sess = self.Session()
+        try:
+            q = sess.query(CrawlRecord)
+            if user_id is not None:
+                q = q.filter(CrawlRecord.user_id == user_id)
+            total = q.count()
+            rows = q.order_by(CrawlRecord.id.desc()).offset((page - 1) * limit).limit(limit).all()
+            records = [{
+                "id": r.id, "url": r.url, "retype": r.retype,
+                "file_path": r.file_path, "preview": r.preview,
+                "result_length": r.result_length,
+                "create_time": str(r.create_time)[:19] if r.create_time else "",
+            } for r in rows]
+            return records, total
+        finally:
+            sess.close()
+
+    def get_crawl_record(self, rid: int) -> dict:
+        """获取单条爬取记录"""
+        sess = self.Session()
+        try:
+            r = sess.query(CrawlRecord).filter_by(id=rid).first()
+            if not r:
+                return None
+            return {"id": r.id, "url": r.url, "retype": r.retype, "file_path": r.file_path,
+                    "preview": r.preview, "result_length": r.result_length,
+                    "create_time": str(r.create_time)[:19] if r.create_time else ""}
+        finally:
+            sess.close()
+
+    def delete_crawl_record(self, rid: int) -> bool:
+        """删除爬取记录及关联文件"""
+        sess = self.Session()
+        try:
+            r = sess.query(CrawlRecord).filter_by(id=rid).first()
+            if not r:
+                return False
+            # 删除关联文件
+            if r.file_path:
+                import os
+                try:
+                    if os.path.exists(r.file_path):
+                        os.remove(r.file_path)
+                except Exception:
+                    pass
+            sess.delete(r)
+            sess.commit()
+            return True
         finally:
             sess.close()
 

@@ -35,3 +35,56 @@ urls = [
     {'name': '豆果美食', 'url': ['https://www.douguo.com/jingxuan/0'], '备注': None},
     {'name': '哔哩哔哩', 'url': ['https://www.bilibili.com'], '备注': None},
 ]
+
+
+def get_urls():
+    """从数据库获取网站列表，数据库为空时自动导入硬编码数据"""
+    try:
+        import json
+        from db.session import get_db
+        db = get_db()
+        websites = db.get_websites()
+        if not websites:
+            for item in urls:
+                urls_json = json.dumps(item['url'], ensure_ascii=False)
+                remark = item.get('备注', '') or ''
+                db.add_website(item['name'], urls_json, remark)
+            websites = db.get_websites()
+        result = []
+        for w in websites:
+            try:
+                url_list = json.loads(w["url"])
+            except (json.JSONDecodeError, TypeError):
+                url_list = [w["url"]]
+            result.append({"name": w["name"], "url": url_list, "备注": w["remark"] or None})
+        return result
+    except Exception:
+        pass
+    return urls
+
+
+def get_web_urls():
+    """Playwright 格式的网站列表（兼容旧代码）"""
+    try:
+        import json
+        from db.session import get_db
+        db = get_db()
+        websites = db.get_websites()
+        if not websites:
+            for item in urls:
+                urls_json = json.dumps(item['url'], ensure_ascii=False)
+                remark = item.get('备注', '') or ''
+                db.add_website(item['name'], urls_json, remark)
+            websites = db.get_websites()
+        if websites:
+            result = []
+            for w in websites:
+                try:
+                    url_list = json.loads(w["url"])
+                except (json.JSONDecodeError, TypeError):
+                    url_list = [w["url"]]
+                result.append({w["name"]: [["url", "备注"], url_list]})
+            return result
+    except Exception:
+        pass
+    return web_urls

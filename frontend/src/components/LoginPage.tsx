@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { login, register } from '../api'
 
 export default function LoginPage({ onLogin }: { onLogin: (token: string, user: any) => void }) {
@@ -9,6 +9,14 @@ export default function LoginPage({ onLogin }: { onLogin: (token: string, user: 
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const msg = sessionStorage.getItem('loginError')
+    if (msg) {
+      setError(msg)
+      sessionStorage.removeItem('loginError')
+    }
+  }, [])
 
   const handleSubmit = async () => {
     if (!username.trim() || !password.trim()) { setError('请填写用户名和密码'); return }

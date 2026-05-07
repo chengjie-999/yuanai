@@ -15,6 +15,18 @@ export function setStoredModel(model: string) {
   localStorage.setItem(MODEL_KEY, model)
 }
 
+const USER_KEY = 'currentUser'
+
+export function getStoredUser(): any {
+  try { return JSON.parse(localStorage.getItem(USER_KEY) || 'null') }
+  catch { return null }
+}
+
+export function setStoredUser(user: any) {
+  if (user) localStorage.setItem(USER_KEY, JSON.stringify(user))
+  else localStorage.removeItem(USER_KEY)
+}
+
 function authHeaders(): Record<string, string> {
   const token = getToken()
   return token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -47,7 +59,7 @@ export async function register(username: string, password: string) {
   return res.json()
 }
 
-export async function checkToken(): Promise<{ valid: boolean; user?: any }> {
+export async function checkToken(): Promise<{ valid: boolean; user?: any; detail?: string }> {
   const token = getToken()
   if (!token) return { valid: false }
   try {
@@ -56,7 +68,10 @@ export async function checkToken(): Promise<{ valid: boolean; user?: any }> {
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ token }),
     })
-    if (!res.ok) return { valid: false }
+    if (!res.ok) {
+      try { const err = await res.json(); return { valid: false, detail: err.detail || '登录已过期' } }
+      catch { return { valid: false } }
+    }
     return await res.json()
   } catch { return { valid: false } }
 }
@@ -230,4 +245,115 @@ export async function fetchStats(): Promise<any> {
     if (!res.ok) return null
     return await res.json()
   } catch { return null }
+}
+
+// ---- Admin ----
+export async function fetchWebsites(): Promise<any[]> {
+  try {
+    const res = await fetch(`${API_BASE}/admin/websites`, { headers: authHeaders() })
+    if (!res.ok) return []
+    return await res.json()
+  } catch { return [] }
+}
+
+export async function addWebsite(name: string, url: string, remark: string = ''): Promise<any> {
+  const res = await fetch(`${API_BASE}/admin/websites`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name, url, remark }),
+  })
+  return res.json()
+}
+
+export async function deleteWebsite(id: number): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/admin/websites/${id}`, { method: 'DELETE', headers: authHeaders() })
+    return res.ok
+  } catch { return false }
+}
+
+export async function fetchFiles(path: string = ''): Promise<{ path: string; items: { name: string; path: string; is_dir: boolean; size_kb: number }[] }> {
+  try {
+    const res = await fetch(`${API_BASE}/admin/files?path=${encodeURIComponent(path)}`, { headers: authHeaders() })
+    if (!res.ok) return { path, items: [] }
+    return await res.json()
+  } catch { return { path, items: [] } }
+}
+
+export async function freezeUser(userId: number, days: number): Promise<any> {
+  const res = await fetch(`${API_BASE}/admin/users/freeze`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ user_id: userId, days }),
+  })
+  return res.json()
+}
+
+export async function readFile(filePath: string): Promise<{ type: string; content?: string; data?: string; ext?: string; detail?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/admin/file/read?path=${encodeURIComponent(filePath)}`, { headers: authHeaders() })
+    if (!res.ok) return { type: 'error', detail: '读取失败' }
+    return await res.json()
+  } catch { return { type: 'error', detail: '网络错误' } }
+}
+
+// ---- Crawl Records ----
+export async function checkCrawlRecord(url: string): Promise<{ exists: boolean; id?: number; create_time?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/spider/save/check?url=${encodeURIComponent(url)}`, { headers: authHeaders() })
+    return await res.json()
+  } catch { return { exists: false } }
+}
+
+export async function saveCrawlRecord(url: string, retype: string, result: string): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/spider/save/record`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ url, retype, result }),
+    })
+    return await res.json()
+  } catch { return { status: 'error' } }
+}
+
+export async function fetchCrawlRecords(page: number = 1, limit: number = 20): Promise<{ records: any[]; total: number; page: number }> {
+  try {
+    const res = await fetch(`${API_BASE}/spider/save/records?page=${page}&limit=${limit}`, { headers: authHeaders() })
+    if (!res.ok) return { records: [], total: 0, page: 1 }
+    return await res.json()
+  } catch { return { records: [], total: 0, page: 1 } }
+}
+
+export async function fetchCrawlRecordDetail(id: number): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/spider/save/record/${id}`, { headers: authHeaders() })
+    if (!res.ok) return null
+    return await res.json()
+  } catch { return null }
+}
+
+export async function readCrawlRecordFile(id: number): Promise<{ type: string; content?: string; data?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/spider/save/record/${id}/file`, { headers: authHeaders() })
+    if (!res.ok) return { type: 'error' }
+    return await res.json()
+  } catch { return { type: 'error' } }
+}
+
+export async function deleteCrawlRecord(id: number): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/spider/save/record/${id}`, { method: 'DELETE', headers: authHeaders() })
+    return res.ok
+  } catch { return false }
+}
+
+// ---- Batch Crawl ----
+export async function batchFetchUrls(params: {
+  urls: string[]; retype?: string; method?: string; data?: any; cookie_site?: string
+}): Promise<{ results: { url: string; status: string; preview?: string; detail?: string }[] }> {
+  try {
+    const res = await fetch(`${API_BASE}/spider/batch`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(params),
+    })
+    if (!res.ok) return { results: [] }
+    return await res.json()
+  } catch { return { results: [] } }
 }

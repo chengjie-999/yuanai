@@ -66,6 +66,7 @@ async def monitor_stream(
     interval: float = Query(0.1, ge=0.01, le=0.6, description="帧间隔(秒)"),
 ):
     """SSE 实时屏幕推流（JPEG + 可调帧率）"""
+    print(f"📺 监控流已连接: monitor={monitor}, interval={interval}s")
     async def generate():
         try:
             with mss.mss() as sct:

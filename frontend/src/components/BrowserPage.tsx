@@ -71,7 +71,8 @@ export default function BrowserPage() {
     if (esRef.current) { esRef.current.close(); esRef.current = null }
     if (!running || !liveMode) { setScreenshot(null); return }
 
-    const es = new EventSource(`${API_BASE}/browser/stream?interval=${streamInterval / 1000}`)
+    const token = localStorage.getItem('token') || ''
+    const es = new EventSource(`${API_BASE}/browser/stream?interval=${streamInterval / 1000}&token=${token}`)
     esRef.current = es
     es.onmessage = (e) => {
       if (e.data === 'BROWSER_STOPPED') { es.close(); esRef.current = null; setScreenshot(null); return }

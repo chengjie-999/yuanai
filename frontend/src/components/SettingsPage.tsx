@@ -1,9 +1,10 @@
 import { useState } from 'react'
 
 const FEATURES: { key: string; label: string; icon: string; desc: string }[] = [
-  { key: 'tools', label: '工具面板', icon: '🔧', desc: '查看和在线执行工具' },
   { key: 'monitor', label: '全局状态实时监控', icon: '📺', desc: '屏幕实时推流监控' },
   { key: 'dataAnalysis', label: '数据分析', icon: '📊', desc: '数据看板和图表分析' },
+  { key: 'dataCollection', label: '数据采集', icon: '📡', desc: '网页内容抓取与保存' },
+  { key: 'tools', label: '工具面板', icon: '🔧', desc: '查看和在线执行工具' },
 ]
 
 function getToggles(): Record<string, boolean> {

@@ -14,22 +14,37 @@ class BrowserManager:
 
     def start(self) -> str:
         if self._browser and self._alive():
+            print("♻️ 浏览器重用现有实例")
             return "✅ 浏览器已启动"
 
         self._browser = None
         BrowserInitializer._instance = None
 
+        print("🔄 创建新浏览器实例...")
         self._browser = MyWebBrowser(BrowserInitializer().create_driver())
+        print("✅ 浏览器创建成功")
         return "✅ 新浏览器窗口已启动"
 
     def stop(self) -> str:
         if self._browser:
             try:
+                print("🔌 正在关闭浏览器...")
                 self._browser.close_browser()
-            except Exception:
-                pass
+                print("✅ 浏览器已关闭")
+            except Exception as e:
+                print(f"⚠️ 关闭浏览器异常: {e}")
             self._browser = None
         return "✅ 浏览器已关闭"
+
+    def _alive(self) -> bool:
+        if not self._browser:
+            return False
+        try:
+            self._browser.driver.current_url
+            return True
+        except Exception as e:
+            print(f"💀 浏览器检测失效: {e}")
+            return False
 
     def get_driver(self):
         if not self._browser:
@@ -38,16 +53,6 @@ class BrowserManager:
             self._browser = None
             return None
         return self._browser
-
-    def _alive(self) -> bool:
-        """轻量检测浏览器是否存活"""
-        if not self._browser:
-            return False
-        try:
-            self._browser.driver.current_url
-            return True
-        except Exception:
-            return False
 
     @property
     def running(self) -> bool:

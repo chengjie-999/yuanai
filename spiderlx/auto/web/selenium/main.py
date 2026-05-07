@@ -6,7 +6,7 @@ from selenium.webdriver.chrome.webdriver import WebDriver
 from spiderlx.anti.cookie.selenium import get_cookie, use_cookie
 from spiderlx.anti.ua import get_random_ua
 from spiderlx.anti.cdp import get_anti_detect_script
-from spiderlx.core.save.urls import urls  # 替换为下方 urls
+from spiderlx.core.save.urls import urls, get_urls
 from webdrivermanager_cn import ChromeDriverManagerAliMirror
 
 
@@ -109,11 +109,13 @@ class MyWebBrowser:
 
     def _load_website_info(self):
         """加载配置文件中的网站信息（基于 urls）"""
-        self.website_info = {code: item['name'] for code, item in enumerate(urls)}
+        _urls = get_urls()
+        self.website_info = {code: item['name'] for code, item in enumerate(_urls)}
         print('\n📋 支持网站：', self.website_info)
         print("✅ 网站信息加载完成\n")
 
     def open_website(self, code=None, name=None, url=None):
+        _urls = get_urls()
         """
         打开指定网站
         :param code: 网站编号
@@ -130,11 +132,11 @@ class MyWebBrowser:
             if code not in self.website_info:
                 raise ValueError(f"无效网站编号：{code}")
             self.current_website_name = self.website_info[code]
-            self.target_url = urls[code]['url'][0]  # 取第一个URL
+            self.target_url = _urls[code]['url'][0]  # 取第一个URL
 
         # 根据名称打开
         elif name:
-            for item in urls:
+            for item in _urls:
                 if item['name'] == name:
                     self.current_website_name = name
                     self.target_url = item['url'][0]  # 取第一个URL

@@ -65,6 +65,7 @@ def get_task_cards(keyword: str = "单题标答-审核") -> str:
     title_cards = xy.home_card(like=keyword)
     titles = list(title_cards.keys())
     target = titles[0] if titles else None
+    print(f"📋 get_task_cards: {len(titles)} 个任务, 目标={target}")
     return f"共获取 {len(titles)} 个任务卡片。\n所有标题：{titles}\n匹配到的目标：{target}"
 
 
@@ -88,6 +89,7 @@ def start_task(card_title: str = None, card_index: int = 0) -> str:
             return f"索引 {card_index} 超出范围，共有 {len(cards)} 个卡片。"
         card = cards[card_index]
     success = xy.start(card)
+    print(f"▶️ start_task: card_index={card_index} → {'成功' if success else '失败'}")
     return f"开始任务{'成功' if success else '失败'}"
 
 
@@ -182,6 +184,7 @@ def submit_task(action: str = "提交领下一任务", reject_reason: str = "") 
     if action == "整题驳回" and not reject_reason:
         return "错误：整题驳回必须提供 reject_reason 参数"
     can_continue = _get_sa().compete(action, cause=reject_reason)
+    print(f"📤 submit_task: action={action} → {'可以继续' if can_continue else '终止'}")
     return f"操作完成，{'可以继续任务' if can_continue else '任务终止或需手动处理'}"
 
 

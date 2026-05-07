@@ -10,6 +10,7 @@ from api.v1.browser.router import router as browser_router
 from api.v1.monitor.router import router as monitor_router
 from api.v1.auth.router import router as auth_router
 from api.v1.stats.router import router as stats_router
+from api.v1.admin.router import router as admin_router
 from api.v1.middleware import auth_middleware
 from utils.data_path import root_path
 
@@ -38,6 +39,7 @@ app.include_router(browser_router, prefix="/api/v1", tags=["browser"])
 app.include_router(monitor_router, prefix="/api/v1", tags=["monitor"])
 app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
 app.include_router(stats_router, prefix="/api/v1", tags=["stats"])
+app.include_router(admin_router, prefix="/api/v1", tags=["admin"])
 
 app.middleware("http")(auth_middleware)
 

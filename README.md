@@ -20,7 +20,8 @@
 
 ```bash
 pip install -r requirements.txt
-cd frontend && npm install && cd ..
+cd frontend
+npm install && cd ..
 ```
 
 ### 初始化数据库
@@ -38,7 +39,8 @@ python -m api.main
 
 **前端**（终端 2）：
 ```bash
-cd frontend && npm run dev
+cd frontend
+npm run dev
 ```
 
 ### 创建管理员

@@ -6,9 +6,10 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from yuanai.tools import all_tools as tools
 from utils.sensitive_data import get_api_key
+from config.settings import MODEL_NAMES
 
-dsllm = ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner', 'deepseek-v4-flash', 'deepseek-v4-pro']
-seed = ['doubao-seed-2-0-pro-260215', 'doubao-seed-2-0-lite-260215']
+dsllm = [m for m in MODEL_NAMES if 'deepseek' in m]
+seed = [m for m in MODEL_NAMES if 'doubao' in m]
 
 
 # ===================== 核心：通用模型调用（兼容纯文本/多模态） =====================

@@ -1,6 +1,6 @@
 """
 JWT 鉴权中间件。
-公开路径：/、/health、/api/v1/qimg、/api/v1/auth/login、/api/v1/auth/check
+公开路径：/、/health、/api/v1/qimg、/api/v1/auth/login、/api/v1/auth/check、/api/v1/auth/register
 其他所有路径需要 Authorization: Bearer <token> 或 ?token=<token>
 """
 from datetime import datetime
@@ -8,7 +8,7 @@ from fastapi import Request, HTTPException
 from starlette.responses import JSONResponse
 from api.v1.auth.utils import verify_token
 
-PUBLIC_PATHS = ["/", "/health", "/api/v1/qimg", "/api/v1/auth/login", "/api/v1/auth/check"]
+PUBLIC_PATHS = ["/", "/health", "/api/v1/qimg", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register"]
 
 
 def is_public(path: str) -> bool:

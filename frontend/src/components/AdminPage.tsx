@@ -18,7 +18,7 @@ function headers() {
 
 function UsersTab() {
   const [users, setUsers] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [newUsername, setNewUsername] = useState('')
@@ -44,7 +44,15 @@ function UsersTab() {
     fetchUsers()
   }
 
-  if (loading) return <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>加载中...</div>
+  const handleDeleteUser = async (userId: number, username: string) => {
+    if (!confirm(`确定删除用户 "${username}"？此操作不可恢复。`)) return
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${userId}`, { method: 'DELETE', headers: headers() })
+      const data = await res.json()
+      if (!res.ok) { setError(data.detail || '删除失败'); return }
+      fetchUsers()
+    } catch { setError('删除失败') }
+  }
 
   const handleCreateUser = async () => {
     if (!newUsername.trim() || !newPassword.trim()) { setError('请填写用户名和密码'); return }
@@ -107,11 +115,16 @@ function UsersTab() {
                   <td style={{ padding: '10px 14px', fontSize: 12, color: '#999' }}>{isFrozen ? `冻结至 ${u.frozen_until?.slice(0, 10)}` : '正常'}</td>
                   <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{u.create_time?.slice(0, 10)}</td>
                   <td style={{ padding: '10px 14px' }}>
-                    {!isAdmin && (isFrozen ? (
-                      <button onClick={() => handleFreeze(u.id, 0)} className="btn btn-outline btn-sm" style={{ fontSize: 11, padding: '4px 10px', color: '#388e3c', borderColor: '#388e3c' }}>解冻</button>
-                    ) : (
-                      <FreezeBtn userId={u.id} onFreeze={handleFreeze} />
-                    ))}
+                    {!isAdmin && (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {isFrozen ? (
+                          <button onClick={() => handleFreeze(u.id, 0)} className="btn btn-outline btn-sm" style={{ fontSize: 11, padding: '4px 10px', color: '#388e3c', borderColor: '#388e3c' }}>解冻</button>
+                        ) : (
+                          <FreezeBtn userId={u.id} onFreeze={handleFreeze} />
+                        )}
+                        <button onClick={() => handleDeleteUser(u.id, u.username)} className="btn btn-outline-danger btn-sm" style={{ fontSize: 11, padding: '4px 8px' }}>删除</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               )

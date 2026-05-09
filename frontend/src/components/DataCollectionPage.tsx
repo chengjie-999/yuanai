@@ -1,20 +1,36 @@
 import { useState, useEffect, useCallback } from 'react'
-import { API_BASE, getToken, batchFetchUrls, saveCrawlRecord, fetchCrawlRecords, readCrawlRecordFile, deleteCrawlRecord } from '../api'
+import { API_BASE, getToken, batchFetchUrls, checkCrawlRecord, fetchCrawlRecords, readCrawlRecordFile, deleteCrawlRecord } from '../api'
+
+function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '80%', maxHeight: '80%', background: '#fff', borderRadius: 12, padding: 20, overflow: 'auto', cursor: 'default', minWidth: 500 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontSize: 15, fontWeight: 600, color: '#333' }}>{title}</span>
+          <span onClick={onClose} style={{ cursor: 'pointer', fontSize: 18, color: '#999', lineHeight: 1 }}>✕</span>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
 
 export default function DataCollectionPage() {
-  const [urlsText, setUrlsText] = useState('https://www.baidu.com/')
+  const [urlsText, setUrlsText] = useState('https://www.baidu.com/\nhttps://www.bilibili.com/')
   const [retype, setRetype] = useState('text')
   const [method, setMethod] = useState('GET')
   const [postBody, setPostBody] = useState('')
   const [cookieSite, setCookieSite] = useState('')
   const [sites, setSites] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
-  const [batchResults, setBatchResults] = useState<{ url: string; status: string; preview?: string; detail?: string }[] | null>(null)
+  const [batchResults, setBatchResults] = useState<{ url: string; status: string; preview?: string; detail?: string; record_id?: number }[] | null>(null)
+  const [showBatchModal, setShowBatchModal] = useState(false)
+  const [parsedData, setParsedData] = useState<{ title?: string; text?: string; links?: { url: string; text: string }[]; error?: string; recordUrl?: string; recordTime?: string; parsed_title?: string; parsed_text?: string; parsed_links?: string } | null>(null)
 
   const [records, setRecords] = useState<any[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [detail, setDetail] = useState<{ content?: string; type: string; url?: string; create_time?: string } | null>(null)
+  const [detail, setDetail] = useState<{ content?: string; type: string; url?: string; create_time?: string; parsed_title?: string; parsed_text?: string; parsed_links?: string } | null>(null)
   const limit = 10
 
   useEffect(() => {
@@ -38,10 +54,20 @@ export default function DataCollectionPage() {
     const urls = urlsText.split('\n').map((u) => u.trim()).filter(Boolean)
     if (urls.length === 0) return
 
+    const toFetch: string[] = []
+    for (const u of urls) {
+      const check = await checkCrawlRecord(u)
+      if (check.exists) {
+        if (!confirm(`"${u}" 已于 ${check.create_time} 爬取过，是否重新抓取？`)) continue
+      }
+      toFetch.push(u)
+    }
+    if (toFetch.length === 0) return
+
     setLoading(true)
     setBatchResults(null)
 
-    const params: any = { urls, retype, method }
+    const params: any = { urls: toFetch, retype, method }
     if (cookieSite) params.cookie_site = cookieSite
     if (method === 'POST' && postBody.trim()) {
       try { params.data = JSON.parse(postBody) }
@@ -50,21 +76,30 @@ export default function DataCollectionPage() {
 
     const data = await batchFetchUrls(params)
     setBatchResults(data.results || [])
-
-    // 自动保存到历史
-    for (const r of data.results || []) {
-      if (r.status === 'success' && r.preview) {
-        await saveCrawlRecord(r.url, retype, r.preview)
-      }
-    }
+    setShowBatchModal(true)
     loadRecords()
     setLoading(false)
   }
 
   const handleViewRecord = async (r: any) => {
     const file = await readCrawlRecordFile(r.id)
-    if (file.type === 'error') { setDetail({ type: 'error', content: '读取失败' }); return }
-    setDetail({ ...file, url: r.url, create_time: r.create_time })
+    if (file.type === 'error') { setDetail({ type: 'error', content: '读取失败', url: r.url }); return }
+    // 获取解析数据
+    let parsed = null
+    if (r.parsed_title) {
+      try {
+        const res = await fetch(`${API_BASE}/spider/save/record/${r.id}`, { headers: { Authorization: `Bearer ${getToken()}` } })
+        parsed = await res.json()
+      } catch {}
+    }
+    setDetail({
+      ...file,
+      url: r.url,
+      create_time: r.create_time,
+      parsed_title: r.parsed_title,
+      parsed_text: parsed?.parsed_text || '',
+      parsed_links: parsed?.parsed_links || '[]',
+    })
   }
 
   const handleDeleteRecord = async (id: number) => {
@@ -109,26 +144,64 @@ export default function DataCollectionPage() {
         )}
       </div>
 
-      {/* 批量结果 */}
-      {batchResults && batchResults.length > 0 && (
-        <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #eee', overflow: 'hidden' }}>
-          <div style={{ padding: '8px 14px', background: '#f5f5f8', fontSize: 13, fontWeight: 600, color: '#333', borderBottom: '1px solid #eee' }}>
-            📋 批量结果（{batchResults.filter((r) => r.status === 'success').length}/{batchResults.length}）
-          </div>
+      {/* 批量结果弹窗 */}
+      {showBatchModal && batchResults && (
+        <Modal title={`📋 批量结果（${batchResults.filter((r) => r.status === 'success').length}/${batchResults.length}）`} onClose={() => setShowBatchModal(false)}>
           {batchResults.map((r, i) => (
-            <div key={i} style={{ padding: '8px 14px', borderBottom: '1px solid #f5f5f5', fontSize: 13, display: 'flex', gap: 8 }}>
+            <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0', fontSize: 13, display: 'flex', gap: 8 }}>
               <span style={{ flexShrink: 0 }}>{r.status === 'success' ? '✅' : '❌'}</span>
               <div style={{ flex: 1, overflow: 'hidden' }}>
                 <div style={{ color: '#1976d2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.url}</div>
                 {r.status === 'success' ? (
-                  <div style={{ color: '#666', fontSize: 12, marginTop: 2, maxHeight: 60, overflow: 'hidden' }}>{r.preview?.slice(0, 300)}</div>
+                  <div style={{ color: '#666', fontSize: 12, marginTop: 2, maxHeight: 60, overflow: 'hidden' }}>{r.preview?.slice(0, 500)}</div>
                 ) : (
                   <div style={{ color: '#e53935', fontSize: 12, marginTop: 2 }}>{r.detail}</div>
                 )}
               </div>
+              {r.status === 'success' && (
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+                  <button onClick={async () => {
+                    try {
+                      const res = await fetch(`${API_BASE}/spider/request/parse?url=${encodeURIComponent(r.url)}&record_id=${r.record_id || 0}`, {
+                        headers: { Authorization: `Bearer ${getToken()}` },
+                      })
+                      const data = await res.json()
+                      data.recordUrl = r.url
+                      data.recordTime = new Date().toISOString().slice(0, 19)
+                      setParsedData(data)
+                    } catch { setParsedData({ error: '解析失败' }) }
+                  }} className="btn btn-outline btn-sm" style={{ fontSize: 10, padding: '4px 8px' }}>解析</button>
+                </div>
+              )}
             </div>
           ))}
-        </div>
+          {batchResults.length === 0 && <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>无结果</div>}
+        </Modal>
+      )}
+
+      {/* 解析结果弹窗 */}
+      {parsedData && (
+        <Modal title="📄 解析结果" onClose={() => setParsedData(null)}>
+          {parsedData.error ? (
+            <div style={{ color: '#e53935' }}>{parsedData.error}</div>
+          ) : (
+            <>
+              {parsedData.recordUrl && <div style={{ fontSize: 12, color: '#1976d2', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{parsedData.recordUrl}</div>}
+              <div style={{ marginBottom: 8 }}><strong>标题：</strong>{parsedData.title}</div>
+              <div style={{ marginBottom: 8, color: '#555', lineHeight: 1.6, whiteSpace: 'pre-wrap', maxHeight: 300, overflow: 'auto' }}>{parsedData.text}</div>
+              {parsedData.links && parsedData.links.length > 0 && (
+                <div>
+                  <strong>链接（{parsedData.links.length} 个）：</strong>
+                  <div style={{ maxHeight: 150, overflow: 'auto', marginTop: 4 }}>
+                    {parsedData.links.map((l: any, i: number) => (
+                      <div key={i} style={{ fontSize: 12, padding: '2px 0', color: '#1976d2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.text || l.url}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </Modal>
       )}
 
       {/* 历史记录 */}
@@ -144,8 +217,21 @@ export default function DataCollectionPage() {
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#1976d2' }}>{r.url}</span>
               <span style={{ fontSize: 11, color: '#999', flexShrink: 0 }}>{r.result_length}字符</span>
+              {r.parsed_title && <span style={{ fontSize: 10, color: '#388e3c', flexShrink: 0 }}>已解析</span>}
               <span style={{ fontSize: 11, color: '#999', flexShrink: 0 }}>{r.create_time?.slice(5, 16)}</span>
               <button onClick={() => handleViewRecord(r)} className="btn btn-outline btn-sm" style={{ fontSize: 10, padding: '2px 6px' }}>查看</button>
+              {!r.parsed_title && (
+                <button onClick={async () => {
+                  try {
+                    const res = await fetch(`${API_BASE}/spider/request/parse?url=${encodeURIComponent(r.url)}&record_id=${r.id}`, {
+                      headers: { Authorization: `Bearer ${getToken()}` },
+                    })
+                    const data = await res.json()
+                    if (!data.error) { loadRecords(); alert('✅ 解析完成') }
+                    else { alert('❌ 解析失败: ' + data.error) }
+                  } catch { alert('❌ 解析失败') }
+                }} className="btn btn-outline btn-sm" style={{ fontSize: 10, padding: '2px 6px' }}>解析</button>
+              )}
               <button onClick={() => handleDeleteRecord(r.id)} className="btn btn-outline-danger btn-sm" style={{ fontSize: 10, padding: '2px 6px' }}>删除</button>
             </div>
           ))}
@@ -159,16 +245,34 @@ export default function DataCollectionPage() {
         )}
       </div>
 
-      {/* 详情弹窗 */}
+      {/* 历史详情弹窗 */}
       {detail && (
         <div onClick={() => setDetail(null)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '80%', maxHeight: '80%', background: '#fff', borderRadius: 12, padding: 20, overflow: 'auto', cursor: 'default', minWidth: 400 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '80%', maxHeight: '80%', background: '#fff', borderRadius: 12, padding: 20, overflow: 'auto', cursor: 'default', minWidth: 500 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#333', maxWidth: '80%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail.url}</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: '#333', maxWidth: '80%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail.url}</span>
               <span onClick={() => setDetail(null)} style={{ cursor: 'pointer', fontSize: 18, color: '#999', lineHeight: 1 }}>✕</span>
             </div>
             <div style={{ fontSize: 12, color: '#999', marginBottom: 8 }}>{detail.create_time}</div>
-            <pre style={{ background: '#f5f5f8', borderRadius: 8, padding: 14, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '60vh', overflow: 'auto' }}>{detail.content || '(无内容)'}</pre>
+            {detail.parsed_title && (
+              <div style={{ marginBottom: 12, padding: 12, background: '#f0faf0', borderRadius: 8, fontSize: 13 }}>
+                <div style={{ fontWeight: 600, color: '#2e7d32', marginBottom: 6 }}>📄 解析结果</div>
+                <div style={{ marginBottom: 4 }}><strong>标题：</strong>{detail.parsed_title}</div>
+                {detail.parsed_text && <div style={{ color: '#555', lineHeight: 1.6, whiteSpace: 'pre-wrap', maxHeight: 150, overflow: 'auto', marginBottom: 4 }}>{detail.parsed_text}</div>}
+                {detail.parsed_links && (() => {
+                  try { const links = JSON.parse(detail.parsed_links); return links.length > 0 ? <div><strong>链接：</strong>{links.map((l: any, i: number) => <div key={i} style={{ fontSize: 12, color: '#1976d2', padding: '1px 0' }}>{l.text || l.url}</div>)}</div> : null
+                  } catch { return null }
+                })()}
+              </div>
+            )}
+            {detail.type === 'html' || detail.type === 'json' ? (
+              <>
+                <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>原始内容：</div>
+                <pre style={{ background: '#f5f5f8', borderRadius: 8, padding: 14, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '60vh', overflow: 'auto' }}>{detail.content || '(无内容)'}</pre>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>二进制文件</div>
+            )}
           </div>
         </div>
       )}

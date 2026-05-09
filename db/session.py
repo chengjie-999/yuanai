@@ -87,6 +87,9 @@ class CrawlRecord(Base):
     file_path = Column(Text, default='')   # 原始文件保存路径
     preview = Column(String(2000), default='')  # 预览文本
     result_length = Column(Integer, default=0)
+    parsed_title = Column(String(500), default='')
+    parsed_text = Column(Text, default='')
+    parsed_links = Column(Text, default='')
     user_id = Column(Integer, nullable=True, index=True)
     create_time = Column(TIMESTAMP, server_default=func.now())
 
@@ -130,6 +133,14 @@ class AgentDatabase:
                     conn.commit()
             except Exception:
                 pass
+            # 迁移：添加 parsed 列
+            for col in ["parsed_title VARCHAR(500) DEFAULT ''", "parsed_text TEXT", "parsed_links TEXT"]:
+                try:
+                    with self.engine.connect() as conn:
+                        conn.execute(text(f"ALTER TABLE crawl_records ADD COLUMN {col}"))
+                        conn.commit()
+                except Exception:
+                    pass
         else:
             if db_path is None:
                 db_path = os.path.join(root_path(), "agent.db")
@@ -530,6 +541,13 @@ class AgentDatabase:
         try:
             existing = sess.query(CrawlRecord).filter_by(url=url, user_id=user_id).first()
             if existing:
+                # 删除旧文件
+                import os
+                if existing.file_path and os.path.exists(existing.file_path):
+                    try:
+                        os.remove(existing.file_path)
+                    except Exception:
+                        pass
                 existing.file_path = file_path
                 existing.preview = preview[:2000]
                 existing.result_length = result_length
@@ -556,6 +574,7 @@ class AgentDatabase:
                 "id": r.id, "url": r.url, "retype": r.retype,
                 "file_path": r.file_path, "preview": r.preview,
                 "result_length": r.result_length,
+                "parsed_title": r.parsed_title,
                 "create_time": str(r.create_time)[:19] if r.create_time else "",
             } for r in rows]
             return records, total
@@ -571,7 +590,24 @@ class AgentDatabase:
                 return None
             return {"id": r.id, "url": r.url, "retype": r.retype, "file_path": r.file_path,
                     "preview": r.preview, "result_length": r.result_length,
+                    "parsed_title": r.parsed_title, "parsed_text": r.parsed_text, "parsed_links": r.parsed_links,
                     "create_time": str(r.create_time)[:19] if r.create_time else ""}
+        finally:
+            sess.close()
+
+    def save_parsed_data(self, rid: int, title: str, text: str, links: list) -> bool:
+        """保存解析结果到爬取记录"""
+        sess = self.Session()
+        try:
+            import json
+            r = sess.query(CrawlRecord).filter_by(id=rid).first()
+            if not r:
+                return False
+            r.parsed_title = title[:500]
+            r.parsed_text = text[:50000]
+            r.parsed_links = json.dumps(links, ensure_ascii=False)[:5000]
+            sess.commit()
+            return True
         finally:
             sess.close()
 

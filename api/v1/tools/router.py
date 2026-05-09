@@ -32,6 +32,7 @@ CATEGORIES = {
     "cookies_to_requests": "Cookie", "cookies_to_header": "Cookie",
     "save_crawl_data": "数据采集", "list_crawl_data": "数据采集", "get_crawl_detail": "数据采集",
     "fetch_url": "数据采集",
+    "parse_html": "数据采集",
 }
 
 # 仅 admin 可用的工具
@@ -47,6 +48,7 @@ ADMIN_TOOLS = {
     "cookies_to_requests", "cookies_to_header",
     "save_crawl_data", "list_crawl_data", "get_crawl_detail",
     "fetch_url",
+    "parse_html",
 }
 
 

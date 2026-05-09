@@ -20,12 +20,7 @@ class RegisterRequest(AuthRequest):
 @router.post("/register")
 def register(req: RegisterRequest):
     """注册新用户"""
-    db = get_db()
-    result = db.register_user(req.username, req.password, req.display_name, req.role)
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    token = create_token(result["id"], result["role"], result["username"])
-    return {"token": token, "user": result}
+    raise HTTPException(status_code=403, detail="注册功能暂不开放，请联系管理员创建账号")
 
 
 @router.post("/login")

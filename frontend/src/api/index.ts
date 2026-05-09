@@ -349,7 +349,7 @@ export async function batchFetchUrls(params: {
   urls: string[]; retype?: string; method?: string; data?: any; cookie_site?: string
 }): Promise<{ results: { url: string; status: string; preview?: string; detail?: string }[] }> {
   try {
-    const res = await fetch(`${API_BASE}/spider/batch`, {
+    const res = await fetch(`${API_BASE}/spider/request/batch`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(params),
     })

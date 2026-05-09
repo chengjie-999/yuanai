@@ -96,6 +96,28 @@ async def admin_create_user(req: AdminCreateUser, request: Request):
     return result
 
 
+@router.delete("/users/{user_id}")
+async def admin_delete_user(user_id: int, request: Request):
+    """删除普通用户（仅 admin，不能删除 admin 和自己）"""
+    require_admin(request)
+    if user_id == getattr(request.state, "user_id", 0):
+        raise HTTPException(status_code=400, detail="不能删除自己")
+    from db.session import User
+    db = get_db()
+    sess = db.Session()
+    try:
+        user = sess.query(User).filter_by(id=user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if user.role == "admin":
+            raise HTTPException(status_code=400, detail="不能删除管理员")
+        sess.delete(user)
+        sess.commit()
+        return {"ok": True, "deleted": user.username}
+    finally:
+        sess.close()
+
+
 # ===================== 网站管理 =====================
 
 

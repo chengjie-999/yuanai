@@ -119,3 +119,32 @@ def get_crawl_detail(record_id: int) -> str:
         )
     except Exception as e:
         return f"❌ 读取失败: {e}"
+
+
+@tool
+def parse_html(html: str) -> str:
+    """
+    解析 HTML 内容，提取页面标题、正文文本和所有链接。
+    参数 html: 原始的 HTML 字符串
+    返回结构化数据：标题、正文摘要、链接列表。
+    """
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, 'html.parser')
+        title = soup.title.string.strip() if soup.title and soup.title.string else "（无标题）"
+        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+            tag.decompose()
+        text = soup.get_text(separator='\n', strip=True)
+        text = text[:3000] + ("\n...(截断)" if len(text) > 3000 else "")
+        links = []
+        for a in soup.find_all('a', href=True)[:30]:
+            href = a['href']
+            txt = a.get_text(strip=True)[:40]
+            if href.startswith('http') or href.startswith('/'):
+                links.append(f"  - {txt or href[:30]}: {href}")
+        result = f"📄 标题: {title}\n\n📝 正文:\n{text}\n"
+        if links:
+            result += f"\n🔗 链接 ({len(links)} 个):\n" + "\n".join(links)
+        return result
+    except Exception as e:
+        return f"❌ 解析失败: {e}"

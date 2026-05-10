@@ -33,3 +33,22 @@ Thumbs.db
 
 # Temp files
 *.tmp
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Virtual environments (besides venv/)
+utils/excel_env/
+
+# Large media files
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.wmv
+
+# Excel/Office temp files
+~$*.xlsx
+~$*.docx

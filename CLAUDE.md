@@ -25,7 +25,11 @@ python qt_core.py
 ```
 api/                FastAPI 后端（8 个子路由）
 spiderlx/           爬虫核心（HTTP / Selenium / Playwright）
-yuanai/             AI 引擎（LangChain + LangGraph Agent + 48 个工具）
+yuanai/
+├── core/           LangChain 适配层（lc.py, chat.py）
+├── pure/           ★ 纯业务逻辑（无框架依赖，任何代码可调用）
+├── tools/          @tool 装饰器（薄壳，调用 pure/）
+└── skills/         独立技能（从 pure/ 重新导出，兼容旧 import）
 config/settings.py  统一配置（模型/JWT/数据库）
 db/session.py       SQLAlchemy ORM（MySQL + SQLite）
 frontend/           React 18 + TypeScript 前端
@@ -52,12 +56,11 @@ DeepSeek API + 豆包 API
 工具在 `yuanai/tools/` 下自动发现（`@tool` 装饰器），48 个工具分 11 个模块。
 工具通过 `api/v1/tools/execute` 端点调用，按角色区分权限。
 
-无状态的纯函数工具已提取到 `yuanai/skills/`，可脱离 LangChain 直接 import：
+**纯业务逻辑在 `yuanai/pure/`**，无框架依赖，任何人可直接调用：
 
 ```python
-from yuanai.skills.calculator import add, multiply
-from yuanai.skills.crawler import fetch_url, parse_html
-from yuanai.skills.stats import get_system_stats
+from yuanai.pure import add, multiply, fetch_url, parse_html
+from yuanai.pure import cookies_to_dict, get_system_stats, list_files
 ```
 
 ## 权限

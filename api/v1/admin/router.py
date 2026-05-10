@@ -170,9 +170,9 @@ async def delete_website(wid: int, request: Request):
 @router.get("/files")
 async def list_files(request: Request, path: str = ""):
     require_admin(request)
-    base = os.path.join(root_path(), "data")
-    target = os.path.normpath(os.path.join(base, path))
-    if not target.startswith(base):
+    base = os.path.realpath(os.path.join(root_path(), "data"))
+    target = os.path.realpath(os.path.join(base, path))
+    if not target.startswith(base + os.sep) and target != base:
         raise HTTPException(status_code=400, detail="路径越权")
     if not os.path.exists(target):
         return {"path": path, "items": []}
@@ -190,9 +190,9 @@ async def list_files(request: Request, path: str = ""):
 async def read_file(request: Request, path: str = ""):
     """读取文件内容（图片返回 base64，文本返回内容）"""
     require_admin(request)
-    base = os.path.join(root_path(), "data")
-    target = os.path.normpath(os.path.join(base, path))
-    if not target.startswith(base):
+    base = os.path.realpath(os.path.join(root_path(), "data"))
+    target = os.path.realpath(os.path.join(base, path))
+    if not target.startswith(base + os.sep) and target != base:
         raise HTTPException(status_code=400, detail="路径越权")
     if not os.path.isfile(target):
         raise HTTPException(status_code=404, detail="文件不存在")

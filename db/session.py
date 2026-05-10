@@ -1,3 +1,4 @@
+import logging
 from sqlalchemy import create_engine, Column, Integer, Text, TIMESTAMP, String, text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -7,6 +8,8 @@ import os
 import json
 import uuid
 from utils.data_path import root_path
+
+logger = logging.getLogger(__name__)
 
 # ---------------------- SQLAlchemy 基础配置 ----------------------
 Base = declarative_base()
@@ -100,7 +103,7 @@ class AgentDatabase:
         self.db_path = db_path
         if use_mysql:
             cfg = mysql_config or {}
-            print(f"📦 连接 MySQL: {cfg.get('host', 'localhost')}:{cfg.get('port', 3306)}/{cfg.get('database', 'ai_agent')}")
+            logger.info("连接 MySQL: %s:%s/%s", cfg.get('host', 'localhost'), cfg.get('port', 3306), cfg.get('database', 'ai_agent'))
             conn_url = URL.create(
                 "mysql+pymysql",
                 username=cfg.get("user", "root"),
@@ -116,23 +119,23 @@ class AgentDatabase:
                 with self.engine.connect() as conn:
                     conn.execute(text("ALTER TABLE chat_session ADD COLUMN user_id INTEGER"))
                     conn.commit()
-                    print("📦 迁移: chat_session 表添加了 user_id 列")
+                    logger.info("迁移: chat_session 表添加了 user_id 列")
             except Exception:
-                pass
+                logger.debug("迁移: user_id 列可能已存在")
             # 迁移：将 NULL 的用户会话归到 admin
             try:
                 with self.engine.connect() as conn:
                     conn.execute(text("UPDATE chat_session SET user_id = 1 WHERE user_id IS NULL"))
                     conn.commit()
             except Exception:
-                pass
+                logger.debug("迁移: 修复 NULL user_id 跳过")
             # 迁移：添加 frozen_until 列
             try:
                 with self.engine.connect() as conn:
                     conn.execute(text("ALTER TABLE users ADD COLUMN frozen_until DATETIME"))
                     conn.commit()
             except Exception:
-                pass
+                logger.debug("迁移: frozen_until 列可能已存在")
             # 迁移：添加 parsed 列
             for col in ["parsed_title VARCHAR(500) DEFAULT ''", "parsed_text TEXT", "parsed_links TEXT"]:
                 try:
@@ -140,21 +143,24 @@ class AgentDatabase:
                         conn.execute(text(f"ALTER TABLE crawl_records ADD COLUMN {col}"))
                         conn.commit()
                 except Exception:
-                    pass
+                    logger.debug("迁移: %s 列可能已存在", col.split()[0])
         else:
             if db_path is None:
                 db_path = os.path.join(root_path(), "agent.db")
             self.db_path = db_path
-            self.engine = create_engine(f'sqlite:///{self.db_path}')
+            self.engine = create_engine(
+                f'sqlite:///{self.db_path}',
+                connect_args={"check_same_thread": False}
+            )
             Base.metadata.create_all(self.engine)
             # 迁移：添加 user_id 列（兼容旧数据库）
             try:
                 with self.engine.connect() as conn:
                     conn.execute(text("ALTER TABLE chat_session ADD COLUMN user_id INTEGER"))
                     conn.commit()
-                    print("📦 迁移: chat_session 表添加了 user_id 列")
+                    logger.info("迁移: chat_session 表添加了 user_id 列")
             except Exception:
-                pass
+                logger.debug("迁移: user_id 列可能已存在")
         self.Session = sessionmaker(bind=self.engine)
 
     def _init_tables(self):

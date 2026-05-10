@@ -1,10 +1,16 @@
 import json
+import logging
+import time
 from fastapi import APIRouter, HTTPException, Request
 
 from api.v1.models import ToolRequest, ToolResponse, ToolInfo
+from api.v1.middleware import require_admin
 from yuanai.tools import all_tools
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tools", tags=["tools"])
+
+_SAFE_ERROR = "工具执行失败"
 
 CATEGORIES = {
     "calculate_sum": "计算", "calculate_multiply": "计算",
@@ -81,23 +87,20 @@ async def list_tools(request: Request):
 @router.post("/execute", response_model=ToolResponse)
 async def execute_tool(req: ToolRequest, request: Request):
     """执行指定工具"""
-    from api.v1.middleware import require_admin
     tool = _find_tool(req.name)
     if not tool:
         raise HTTPException(status_code=404, detail=f"工具 '{req.name}' 不存在")
 
-    role = getattr(request.state, "role", "user")
-    if role != "admin" and req.name not in ADMIN_TOOLS:
-        raise HTTPException(status_code=403, detail="普通用户不能执行此工具")
+    if req.name in ADMIN_TOOLS:
+        require_admin(request)
 
-    import time
     t0 = time.time()
     try:
         result = tool.invoke(req.args)
         elapsed = round(time.time() - t0, 3)
-        print(f"🔧 工具执行: {req.name} args={req.args} → {elapsed}s")
+        logger.info("工具执行: %s args=%s → %.3fs", req.name, req.args, elapsed)
         return {"name": req.name, "result": str(result) if result is not None else ""}
     except Exception as e:
         elapsed = round(time.time() - t0, 3)
-        print(f"❌ 工具失败: {req.name} → {elapsed}s: {e}")
-        raise HTTPException(status_code=400, detail=f"工具 '{req.name}' 执行失败: {str(e)}")
+        logger.exception("工具失败: %s → %.3fs", req.name, elapsed)
+        raise HTTPException(status_code=400, detail=_SAFE_ERROR)

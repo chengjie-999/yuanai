@@ -1,7 +1,15 @@
+import logging
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import os
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 from api.v1 import init_router
 from api.v1.chat.router import router as chat_router
@@ -15,13 +23,14 @@ from api.v1.middleware import auth_middleware
 from utils.data_path import root_path
 
 app = FastAPI(title="Spider API", version="1.0.0")
+
+_CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else [
+    "http://localhost:8080",
+    "http://localhost:5173",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8080",
-        "http://localhost:5173",
-        "https://你的正式前端域名.com"
-    ],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

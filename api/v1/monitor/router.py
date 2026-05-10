@@ -1,12 +1,16 @@
 import io
 import asyncio
 import base64
+import logging
 import mss
 from PIL import Image
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/monitor", tags=["monitor"])
+
+_SAFE_ERROR = "截图请求处理失败"
 
 
 @router.get("/screenshot")
@@ -19,7 +23,7 @@ async def monitor_screenshot(monitor: int = Query(0, description="显示器编�
             elif 1 <= monitor < len(sct.monitors):
                 region = sct.monitors[monitor]
             else:
-                return {"status": "error", "detail": f"无效显示器编号，可用范围: 0-{len(sct.monitors)-1}"}
+                raise HTTPException(status_code=400, detail=f"无效显示器编号，可用范围: 0-{len(sct.monitors)-1}")
 
             raw = sct.grab(region)
             pil_img = Image.frombytes("RGB", raw.size, raw.rgb)
@@ -33,8 +37,11 @@ async def monitor_screenshot(monitor: int = Query(0, description="显示器编�
                 "width": region["width"],
                 "height": region["height"],
             }
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"status": "error", "detail": str(e)}
+        logger.error("屏幕截图失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
 
 
 @router.get("/monitors")
@@ -57,7 +64,8 @@ async def monitor_list():
                     })
             return {"status": "ok", "monitors": monitors}
     except Exception as e:
-        return {"status": "error", "detail": str(e)}
+        logger.error("获取显示器列表失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
 
 
 @router.get("/stream")
@@ -66,7 +74,7 @@ async def monitor_stream(
     interval: float = Query(0.1, ge=0.01, le=0.6, description="帧间隔(秒)"),
 ):
     """SSE 实时屏幕推流（JPEG + 可调帧率）"""
-    print(f"📺 监控流已连接: monitor={monitor}, interval={interval}s")
+    logger.info("监控流已连接: monitor=%s, interval=%s", monitor, interval)
     async def generate():
         try:
             with mss.mss() as sct:
@@ -87,7 +95,8 @@ async def monitor_stream(
 
                         yield f"data: {b64}\n\n"
                     except Exception as e:
-                        yield f"data: ERROR:{str(e)}\n\n"
+                        logger.error("监控流截图失败: %s", e)
+                        yield f"data: ERROR:{_SAFE_ERROR}\n\n"
 
                     await asyncio.sleep(interval)
         except asyncio.CancelledError:

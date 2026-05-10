@@ -62,9 +62,9 @@ def get_llm(model='deepseek-chat', **kwargs):
             **extra_params,
         )
     elif model in seed:
-        model_type = 'seed'
+        seed_api_key = get_api_key('seed')
         return ChatOpenAI(
-            api_key='39d1f61c-6a58-44e4-8d68-51bd4c31185d',
+            api_key=seed_api_key,
             base_url="https://ark.cn-beijing.volces.com/api/v3",
             model=model,
             **kwargs,

@@ -45,13 +45,15 @@ class SavedData:
         wb.save(f'{self.path}\\excel\\{self.name}.xlsx')
 
     def save_data_mysql(self, data_list):
-        # 建立连接
+        # 建立连接（从统一配置获取）
+        from utils.sensitive_data import get_mysql_config
+        config = get_mysql_config()
         db = pymysql.connect(
-            user='root',
-            password='06172014@Lion',
-            host='localhost',
-            port=3306,
-            database='mydb1'
+            user=config["user"],
+            password=config["password"],
+            host=config["host"],
+            port=config["port"],
+            database=config["database"]
         )
         print('数据库连接成功~~~~~')
 

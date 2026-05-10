@@ -1,38 +1,46 @@
+import logging
+import threading
+
 from spiderlx.auto.web.selenium.main import MyWebBrowser, BrowserInitializer
+
+logger = logging.getLogger(__name__)
 
 
 class BrowserManager:
     """浏览器管理器（单例），带健康检查"""
 
     _instance = None
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._browser = None
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._browser = None
         return cls._instance
 
     def start(self) -> str:
         if self._browser and self._alive():
-            print("♻️ 浏览器重用现有实例")
+            logger.info("浏览器重用现有实例")
             return "✅ 浏览器已启动"
 
         self._browser = None
         BrowserInitializer._instance = None
 
-        print("🔄 创建新浏览器实例...")
+        logger.info("创建新浏览器实例...")
         self._browser = MyWebBrowser(BrowserInitializer().create_driver())
-        print("✅ 浏览器创建成功")
+        logger.info("浏览器创建成功")
         return "✅ 新浏览器窗口已启动"
 
     def stop(self) -> str:
         if self._browser:
             try:
-                print("🔌 正在关闭浏览器...")
+                logger.info("正在关闭浏览器...")
                 self._browser.close_browser()
-                print("✅ 浏览器已关闭")
+                logger.info("浏览器已关闭")
             except Exception as e:
-                print(f"⚠️ 关闭浏览器异常: {e}")
+                logger.warning("关闭浏览器异常: %s", e)
             self._browser = None
         return "✅ 浏览器已关闭"
 
@@ -43,7 +51,7 @@ class BrowserManager:
             self._browser.driver.current_url
             return True
         except Exception as e:
-            print(f"💀 浏览器检测失效: {e}")
+            logger.warning("浏览器检测失效: %s", e)
             return False
 
     def get_driver(self):

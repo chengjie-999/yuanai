@@ -1,3 +1,5 @@
+import threading
+
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -17,11 +19,14 @@ class BrowserInitializer:
     职责：仅负责 Chrome 驱动创建、反爬配置、接管模式配置
     不包含任何页面操作与业务逻辑，纯底层工具
     """
-    _instance = None  # 单例实例
+    _instance = None
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
@@ -115,7 +120,6 @@ class MyWebBrowser:
         print("✅ 网站信息加载完成\n")
 
     def open_website(self, code=None, name=None, url=None):
-        _urls = get_urls()
         """
         打开指定网站
         :param code: 网站编号
@@ -123,6 +127,7 @@ class MyWebBrowser:
         :param url: 自定义网址
         :return: 当前网站名称
         """
+        _urls = get_urls()
         if not self.driver:
             raise RuntimeError("浏览器未初始化")
 

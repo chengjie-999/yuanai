@@ -1,3 +1,8 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # ===================== 模型配置 =====================
 
 MODELS = {
@@ -13,7 +18,7 @@ DEFAULT_TEMPERATURE = 0.7
 
 # ===================== 鉴权配置 =====================
 
-JWT_SECRET_KEY = "my-spider-secret-key-2025"
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", os.urandom(32).hex())
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = 7
 

@@ -202,18 +202,23 @@ async def read_record_file(rid: int, request: Request):
         if not record or not record.get("file_path"):
             raise HTTPException(status_code=404, detail="文件不存在")
         path = record["file_path"]
-        if not os.path.isfile(path):
+        # 验证文件路径在允许的数据目录内
+        from utils.data_path import root_path
+        safe_base = os.path.realpath(os.path.join(root_path(), 'data'))
+        real_path = os.path.realpath(path)
+        if not real_path.startswith(safe_base + os.sep) and real_path != safe_base:
+            raise HTTPException(status_code=403, detail="禁止访问")
+        if not os.path.isfile(real_path):
             raise HTTPException(status_code=404, detail="文件已丢失")
-        ext = os.path.splitext(path)[1].lower()
-        if ext == '.html':
-            with open(path, 'r', encoding='utf-8') as f:
-                return {"type": "html", "content": f.read()}
-        elif ext == '.json':
-            with open(path, 'r', encoding='utf-8') as f:
-                return {"type": "json", "content": f.read()}
+        ext = os.path.splitext(real_path)[1].lower()
+        if ext in ('.html', '.json', '.txt', '.csv'):
+            with open(real_path, 'r', encoding='utf-8') as f:
+                return {"type": "text" if ext != '.json' else 'json', "content": f.read()}
         else:
-            with open(path, 'rb') as f:
+            with open(real_path, 'rb') as f:
                 import base64
-                return {"type": "binary", "data": base64.b64encode(f.read()).decode(), "file_path": path}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+                return {"type": "binary", "data": base64.b64encode(f.read()).decode()}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="读取文件失败")

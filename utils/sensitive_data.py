@@ -4,8 +4,10 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
 import base64
 import os
-# 新增：导入兼容低版本Python的类型标注
+import logging
 from typing import Tuple, Dict
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------- 核心加密解密类 ----------------------
@@ -69,14 +71,48 @@ class SensitiveDataEncryptor:
 
 
 # ---------------------- 快捷函数（简化调用） ----------------------
-# 修复：添加兼容低版本的类型标注 Dict[str, str]
+def _get_encryption_password():
+    """从环境变量获取加密密码，未设置则报错"""
+    pwd = os.getenv("ENCRYPTION_PASSWORD")
+    if not pwd:
+        raise RuntimeError("未设置 ENCRYPTION_PASSWORD 环境变量，无法解密敏感数据")
+    return pwd
+
+
+def _get_env_or_decrypt(env_key, encrypted_dict):
+    """优先从环境变量读取，其次解密已存储的加密值"""
+    env_val = os.getenv(env_key)
+    if env_val:
+        return env_val
+    if encrypted_dict and encrypted_dict.get("encrypted_data"):
+        password = _get_encryption_password()
+        return decrypt_sensitive_data(encrypted_dict, password)
+    raise RuntimeError(f"未设置 {env_key} 环境变量，且无已存储的加密数据")
+
+
+def get_api_key(model_type='dsllm'):
+    """获取 API Key，优先从环境变量读取"""
+    env_key_map = {
+        'dsllm': 'DEEPSEEK_API_KEY',
+        'seed': 'DOUBAO_API_KEY',
+    }
+    encrypted_map = {
+        'dsllm': {
+            'encrypted_data': os.getenv("DEEPSEEK_API_KEY_ENCRYPTED", ""),
+            'salt': os.getenv("DEEPSEEK_API_KEY_SALT", ""),
+        },
+        'seed': {
+            'encrypted_data': os.getenv("DOUBAO_API_KEY_ENCRYPTED", ""),
+            'salt': os.getenv("DOUBAO_API_KEY_SALT", ""),
+        },
+    }
+    if model_type not in env_key_map:
+        raise ValueError(f"无效的model_type值：{model_type}，仅支持 {list(env_key_map.keys())}")
+    return _get_env_or_decrypt(env_key_map[model_type], encrypted_map[model_type])
+
+
 def encrypt_sensitive_data(data: str, password: str) -> Dict[str, str]:
-    """
-    快捷加密函数（返回可序列化的结果）
-    :param data: 敏感数据
-    :param password: 加密密码
-    :return: {"encrypted_data": 加密字符串, "salt": 盐值字符串}
-    """
+    """快捷加密函数（返回可序列化的结果）"""
     encryptor = SensitiveDataEncryptor(password)
     encrypted_data, salt = encryptor.encrypt(data)
     return {
@@ -86,55 +122,39 @@ def encrypt_sensitive_data(data: str, password: str) -> Dict[str, str]:
 
 
 def decrypt_sensitive_data(encrypted_dict: Dict[str, str], password: str) -> str:
-    """
-    快捷解密函数
-    :param encrypted_dict: 加密返回的字典
-    :param password: 加密密码
-    :return: 解密后的原始数据
-    """
+    """快捷解密函数"""
     encrypted_data = base64.b64decode(encrypted_dict["encrypted_data"])
     salt = base64.b64decode(encrypted_dict["salt"])
     encryptor = SensitiveDataEncryptor(password, salt)
     return encryptor.decrypt(encrypted_data, salt)
 
 
-# ---------------------- 测试示例 ----------------------
-def get_api_key(model_type='dsllm', password="MySecurePassword123!"):
-    if model_type == 'dsllm':
-        dsllm_encrypted_api = {
-            'encrypted_data': 'Z0FBQUFBQnB1WE5DY1E3aDM1LVFmV25jRUxVZjJVOE5HaGEwRml6ZXR3NzYxRFVNMjFadU8xakY1eXFITVBWdlBuNXdwZWFFSDVsekJ0a1ZibkVWOHF4amlETm51OUc2UV9BU1c2VUFTZ3Fvdm1KT0VNTWM2RTlISHpmYTFMLTIwQUVDdTk2aXBQN2E=',
-            'salt': 'ihuF3qRKQKP6LGJdpc223g=='}
-
-        return decrypt_sensitive_data(dsllm_encrypted_api, password)
-    else:
-        raise ValueError(f"无效的model_type值：{model_type}，仅支持 'dsllm'")
-
-
-def get_mysql_config(password="MySecurePassword123!") -> dict:
-    """获取 MySQL 配置，密码从加密存储中解密"""
-    encrypted = {
-        'encrypted_data': 'Z0FBQUFBQnA5cWNTVjRTeWd3M2JVMzVnTkw0QWxvUDdVTF9DNG1jS1VCV3NiOUVjdjdsVEljckJiTlVUdWo2TW1RZ2gyN2FXMnE1a0hfU2s4bWkwWnViQkFDZ3Z5R1hWRGc9PQ==',
-        'salt': '3LMc/v45ZDNrxe20URQUIg==',
+def get_mysql_config() -> dict:
+    """获取 MySQL 配置，优先从环境变量读取"""
+    password = os.getenv("MYSQL_PASSWORD")
+    if not password:
+        encrypted = {
+            'encrypted_data': os.getenv("MYSQL_PASSWORD_ENCRYPTED", ""),
+            'salt': os.getenv("MYSQL_PASSWORD_SALT", ""),
+        }
+        if encrypted['encrypted_data']:
+            password = decrypt_sensitive_data(encrypted, _get_encryption_password())
+    if not password:
+        raise RuntimeError("未设置 MYSQL_PASSWORD 或 MYSQL_PASSWORD_ENCRYPTED 环境变量")
+    return {
+        "user": os.getenv("MYSQL_USER", "root"),
+        "password": password,
+        "host": os.getenv("MYSQL_HOST", "localhost"),
+        "port": int(os.getenv("MYSQL_PORT", "3306")),
+        "database": os.getenv("MYSQL_DATABASE", "ai_agent"),
     }
-    if not encrypted['encrypted_data']:
-        return {"user": "root", "password": "", "host": "localhost", "port": 3306, "database": "ai_agent"}
-    pwd = decrypt_sensitive_data(encrypted, password)
-    return {"user": "root", "password": pwd, "host": "localhost", "port": 3306, "database": "ai_agent"}
 
 
 if __name__ == "__main__":
-    # # 待加密的敏感数据（如API密钥、数据库密码等）
-    sensitive_data = "sk-d0b3bf178759483e8e40020f5d00ee02"
-    # # 自定义加密密码（建议复杂且保密）
-    password = "MySecurePassword123!"
-    api_key = get_api_key()
-    # 验证解密正确性
-    assert api_key == sensitive_data, "加密失败！"
-    print("✅ 解密验证通过")
-    
-    # 生成 MySQL 密码密文
-    mysql_pwd = input("请输入 MySQL 密码: ")
-    result = encrypt_sensitive_data(mysql_pwd, password)
+    print("=== 敏感数据加密工具 ===")
+    password = input("请输入加密密码: ")
+    data = input("请输入需要加密的数据: ")
+    result = encrypt_sensitive_data(data, password)
     print(f"\nencrypted_data: {result['encrypted_data']}")
     print(f"salt: {result['salt']}")
-    print("复制上述两行到 get_mysql_config() 的 encrypted 字典中")
+    print("\n将上述两行设置为对应的环境变量 _ENCRYPTED 和 _SALT 即可")

@@ -102,16 +102,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================== 配置FFmpeg路径 ====================
-FFMPEG_EXE_PATH = os.path.normpath(r"D:\installed\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe")
+import shutil
+
+# 优先从环境变量获取，其次使用 PATH 中的 ffmpeg，最后回退到默认路径
+FFMPEG_EXE_PATH = os.getenv("FFMPEG_PATH") or shutil.which("ffmpeg") or "ffmpeg"
 
 
 # ==================================================================================
 
 # 检查FFmpeg + subprocess可用性
 def check_env():
-    if not os.path.exists(FFMPEG_EXE_PATH):
-        st.error(f"❌ 未找到ffmpeg.exe！")
-        st.info(f"当前路径：{FFMPEG_EXE_PATH}")
+    if not shutil.which(FFMPEG_EXE_PATH) and not os.path.exists(FFMPEG_EXE_PATH):
+        st.error(f"❌ 未找到ffmpeg！请设置 FFMPEG_PATH 环境变量或将 ffmpeg 加入 PATH")
+        st.info(f"当前搜索路径：{FFMPEG_EXE_PATH}")
         st.markdown("### 请检查：")
         st.markdown("1. 路径是否正确")
         return False

@@ -1,7 +1,10 @@
+import os
 import time
 
 import pandas as pd
 import streamlit as st
+
+from utils.data_path import root_path
 
 
 def initializing_state(init_state):
@@ -26,12 +29,11 @@ def va(state):
     for k in state:
         if st.session_state[k]:
             open_num += 1
-    # print(open_num)
     if not open_num:
-        # st.title('欢迎使用数据可视化工具！！！')
         st.info(f'【{open_num}】')
-        # 本地图片
-        st.image(r'C:\Users\24727\Desktop\Code\my_spider\data\file\img\home.jpg')
+        home_img = os.path.join(root_path(), 'data', 'file', 'img', 'home.jpg')
+        if os.path.exists(home_img):
+            st.image(home_img)
     return open_num
 
 

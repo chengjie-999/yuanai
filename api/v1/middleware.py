@@ -3,12 +3,15 @@ JWT 鉴权中间件。
 公开路径：/、/health、/api/v1/qimg、/api/v1/auth/login、/api/v1/auth/check、/api/v1/auth/register
 其他所有路径需要 Authorization: Bearer <token> 或 ?token=<token>
 """
+import logging
 from datetime import datetime
 from fastapi import Request, HTTPException
 from starlette.responses import JSONResponse
 from api.v1.auth.utils import verify_token
 
-PUBLIC_PATHS = ["/", "/health", "/api/v1/qimg", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register"]
+logger = logging.getLogger(__name__)
+
+PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/qimg", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register"]
 
 
 def is_public(path: str) -> bool:
@@ -47,17 +50,20 @@ async def auth_middleware(request: Request, call_next):
     request.state.role = payload["role"]
     request.state.username = payload.get("username", "")
 
+    # 冻结检查
     from db.session import get_db, User
+    sess = None
     try:
         db = get_db()
         sess = db.Session()
         user = sess.query(User).filter_by(id=payload["user_id"]).first()
         if user and user.frozen_until and user.frozen_until > datetime.utcnow():
-            sess.close()
             return JSONResponse(status_code=403, content={"detail": "账号已被冻结"})
-        sess.close()
     except Exception:
-        pass
+        logger.exception("冻结检查时数据库异常")
+    finally:
+        if sess:
+            sess.close()
 
     return await call_next(request)
 

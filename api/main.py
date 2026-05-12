@@ -38,7 +38,6 @@ app.add_middleware(
 
 qimg_dir = os.path.join(root_path(), 'data', 'qimg')
 os.makedirs(qimg_dir, exist_ok=True)
-app.mount("/api/v1/qimg", StaticFiles(directory=qimg_dir), name="qimg")
 
 spider_router = init_router()
 app.include_router(spider_router, prefix="/api/v1/spider", tags=["spider"])

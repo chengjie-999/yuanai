@@ -1,5 +1,6 @@
 from langchain_core.tools import tool
 from spiderlx.core.browser_manager import browser_manager
+from yuanai.tools.errors import classify_error
 
 
 @tool
@@ -10,7 +11,7 @@ def get_browser_status() -> str:
             return "❌ 浏览器未启动"
         return f"✅ 浏览器运行中\nURL: {browser_manager.current_url}\n标题: {browser_manager.current_title}"
     except Exception as e:
-        return f"❌ 获取状态失败: {e}"
+        return classify_error(e, "获取状态失败")
 
 
 @tool
@@ -22,7 +23,7 @@ def get_current_url() -> str:
             return "❌ 浏览器未启动或无页面"
         return f"当前 URL: {url}"
     except Exception as e:
-        return f"❌ 获取 URL 失败: {e}"
+        return classify_error(e, "获取 URL 失败")
 
 
 @tool
@@ -37,6 +38,6 @@ def take_browser_screenshot() -> str:
         b64 = base64.b64encode(png).decode()
         return f"截图成功，base64 数据已嵌入消息，可直接分析。"
     except RuntimeError as e:
-        return f"❌ {e}"
+        return f"❌ [致命] {e}"
     except Exception as e:
-        return f"❌ 截图失败: {e}"
+        return classify_error(e, "截图失败")

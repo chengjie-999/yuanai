@@ -7,11 +7,11 @@ import logging
 from datetime import datetime
 from fastapi import Request, HTTPException
 from starlette.responses import JSONResponse
-from api.v1.auth.utils import verify_token
+from api.v1.auth.utils import verify_token, verify_sse_token
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/qimg", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register"]
+PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register"]
 
 
 def is_public(path: str) -> bool:
@@ -43,12 +43,19 @@ async def auth_middleware(request: Request, call_next):
         return JSONResponse(status_code=401, content={"detail": "未提供 token"})
 
     payload = verify_token(token)
-    if not payload:
-        return JSONResponse(status_code=401, content={"detail": "token 无效或已过期"})
-
-    request.state.user_id = payload["user_id"]
-    request.state.role = payload["role"]
-    request.state.username = payload.get("username", "")
+    if payload:
+        request.state.user_id = payload["user_id"]
+        request.state.role = payload["role"]
+        request.state.username = payload.get("username", "")
+    else:
+        # 短期 SSE 令牌（避免 JWT 长期暴露在 URL）
+        sse = verify_sse_token(token)
+        if sse:
+            request.state.user_id = sse[0]
+            request.state.role = sse[1]
+            request.state.username = ""
+        else:
+            return JSONResponse(status_code=401, content={"detail": "token 无效或已过期"})
 
     # 冻结检查
     from db.session import get_db, User

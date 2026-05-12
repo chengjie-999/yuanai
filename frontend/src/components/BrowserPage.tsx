@@ -1,50 +1,84 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { startBrowser, stopBrowser, getBrowserStatus, streamChat, createSession, saveMessages, API_BASE, getStoredModel } from '../api'
+import { useState, useEffect, useRef, useCallback, useReducer } from 'react'
+import { startBrowser, stopBrowser, getBrowserStatus, streamChat, createSession, saveMessages, loadMessages, API_BASE, getStoredModel } from '../api'
 import ToolCallCard from './ToolCallCard'
 import MarkdownContent from './MarkdownContent'
 import { executeTool, StatusDot, tabBtnStyle, type Step } from './browser/helpers'
 import StepBar from './browser/StepBar'
 import Step1Content from './browser/Step1Content'
+import {
+  browserReducer, initialBrowserState,
+  workflowReducer, initialWorkflowState,
+} from './browser/reducers'
 
 export default function BrowserPage() {
-  const [running, setRunning] = useState(false)
-  const [url, setUrl] = useState('')
-  const [, setTitle] = useState('')
-  const [screenshot, setScreenshot] = useState<string | null>(null)
+  const [browser, dispatchBrowser] = useReducer(browserReducer, initialBrowserState)
+  const [wf, dispatchWf] = useReducer(workflowReducer, initialWorkflowState)
+
   const [logs, setLogs] = useState<string[]>([])
   const [customUrl, setCustomUrl] = useState('')
-  const [streamInterval, setStreamInterval] = useState(100)
-  const [liveMode, setLiveMode] = useState(true)
-  const [browserBusy, setBrowserBusy] = useState(false)
-  const esRef = useRef<EventSource | null>(null)
-  const isXY = url.includes('xyzb.yuanfudao.com')
-  const chatEndRef = useRef<HTMLDivElement>(null)
-  const [step, setStep] = useState<Step>(1)
-
-  // Audit state
-  const [taskCards, setTaskCards] = useState<string[]>(() => {
-    try { return JSON.parse(sessionStorage.getItem('xy_cards') || '[]') }
-    catch { return [] }
-  })
-  const [selectedTask, setSelectedTask] = useState('')
-  const [auditMessages, setAuditMessages] = useState<{ role: string; content: string; toolCalls?: any[] }[]>([])
-  const [auditing, setAuditing] = useState(false)
-  const [auditTab, setAuditTab] = useState<'screenshot' | 'audit' | 'logs'>('screenshot')
-  const [rejectMode, setRejectMode] = useState(false)
-  const [rejectCause, setRejectCause] = useState('')
-  const [rejectNotes, setRejectNotes] = useState('')
   const [apiUrl, setApiUrl] = useState('')
   const [apiResult, setApiResult] = useState<string | null>(null)
-  const [taskStarted, setTaskStarted] = useState(false)
-  const [currentTaskName, setCurrentTaskName] = useState('')
-  const [startingTask, setStartingTask] = useState('')
-  const [taskFailCount, setTaskFailCount] = useState(0)
-  const [questionImages, setQuestionImages] = useState<{ type: string; data: string }[]>([])
-  const [expandedImage, setExpandedImage] = useState<string | null>(null)
-  const [auditSessionId, setAuditSessionId] = useState('')
-  const [auditInput, setAuditInput] = useState('')
+  const [autoStarting, setAutoStarting] = useState(false)
+  const [auditStats, setAuditStats] = useState({ correct: 0, reject: 0, skip: 0 })
 
+  // 加载今日审核统计
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    const sid = localStorage.getItem(`audit_session_${today}`)
+    if (!sid) return
+    loadMessages(sid).then((msgs) => {
+      if (!msgs) return
+      let correct = 0, reject = 0, skip = 0
+      for (const m of msgs) {
+        if (m.role !== 'user') continue
+        if (m.content.includes('审核正确')) correct++
+        else if (m.content.includes('审核有误')) reject++
+        else if (m.content.includes('已跳过')) skip++
+      }
+      setAuditStats({ correct, reject, skip })
+    }).catch(() => {})
+  }, [wf.step])
+
+  const esRef = useRef<EventSource | null>(null)
+  const autoStartCancelRef = useRef(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  const isXY = browser.url.includes('xyzb.yuanfudao.com')
+  const token = localStorage.getItem('token') || ''
+  const addToken = (url: string) => url.startsWith('/api/v1/') && !url.includes('?token=') ? `${url}?token=${token}` : url
   const ERROR_CAUSES = ['格式问题占比较多', '举报', '文本压线', '黄框压题干', '最终答案', '不独立', '出框', '少答案', '字太小', '答案错']
+
+  const getDailyAuditSessionId = useCallback(async (): Promise<string> => {
+    const today = new Date().toISOString().slice(0, 10)
+    const key = `audit_session_${today}`
+    const cached = localStorage.getItem(key)
+    if (cached) return cached
+    const sid = await createSession()
+    localStorage.setItem(key, sid)
+    return sid
+  }, [])
+
+  // 关键工作流状态持久化到 sessionStorage，切换侧边栏不丢失
+  useEffect(() => {
+    localStorage.setItem('xy_step', JSON.stringify(wf.step))
+    localStorage.setItem('xy_task_started', JSON.stringify(wf.taskStarted))
+    localStorage.setItem('xy_current_task_name', JSON.stringify(wf.currentTaskName))
+    localStorage.setItem('xy_selected_task', JSON.stringify(wf.selectedTask))
+    localStorage.setItem('xy_task_fail_count', JSON.stringify(wf.taskFailCount))
+  }, [wf.step, wf.taskStarted, wf.currentTaskName, wf.selectedTask, wf.taskFailCount])
+
+  // 进入 step 3 或切到 AI自动化 tab 时，同步加载当天审核会话的历史消息
+  useEffect(() => {
+    if (wf.step !== 3 || browser.auditTab !== 'audit' || wf.auditing) return
+    const today = new Date().toISOString().slice(0, 10)
+    const sid = localStorage.getItem(`audit_session_${today}`)
+    if (!sid) return
+    loadMessages(sid).then((msgs) => {
+      if (msgs && msgs.length > 0) {
+        dispatchWf({ type: 'SET_AUDIT_MESSAGES', payload: msgs })
+      }
+    }).catch(() => {})
+  }, [wf.step, browser.auditTab, wf.auditing])
 
   const addLog = useCallback((msg: string) => {
     const t = new Date().toLocaleTimeString()
@@ -53,11 +87,10 @@ export default function BrowserPage() {
 
   const pollStatus = useCallback(async () => {
     const status = await getBrowserStatus()
-    setRunning(status.running)
-    setUrl(status.url || '')
-    setTitle(status.title || '')
+    dispatchBrowser({ type: 'SET_RUNNING', payload: status.running })
+    dispatchBrowser({ type: 'SET_URL', payload: status.url || '' })
     if (!status.running) {
-      setScreenshot(null)
+      dispatchBrowser({ type: 'SET_SCREENSHOT', payload: null })
     }
   }, [])
 
@@ -69,50 +102,57 @@ export default function BrowserPage() {
 
   useEffect(() => {
     if (esRef.current) { esRef.current.close(); esRef.current = null }
-    if (!running || !liveMode) { setScreenshot(null); return }
+    if (!browser.running || !browser.liveMode) { dispatchBrowser({ type: 'SET_SCREENSHOT', payload: null }); return }
 
+    let cancelled = false
     const token = localStorage.getItem('token') || ''
-    const es = new EventSource(`${API_BASE}/browser/stream?interval=${streamInterval / 1000}&token=${token}`)
-    esRef.current = es
-    es.onmessage = (e) => {
-      if (e.data === 'BROWSER_STOPPED') { es.close(); esRef.current = null; setScreenshot(null); return }
-      if (e.data.startsWith('ERROR:')) return
-      setScreenshot(e.data)
-    }
-    es.onerror = () => { es.close(); esRef.current = null }
-    return () => { es.close(); esRef.current = null }
-  }, [running, streamInterval, liveMode])
+    fetch(`${API_BASE}/browser/sse-token`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(({ token: sseToken }) => {
+        if (cancelled) return
+        const es = new EventSource(`${API_BASE}/browser/stream?interval=${browser.streamInterval / 1000}&token=${sseToken}`)
+        esRef.current = es
+        es.onmessage = (e) => {
+          if (e.data === 'BROWSER_STOPPED') { es.close(); esRef.current = null; dispatchBrowser({ type: 'SET_SCREENSHOT', payload: null }); return }
+          if (e.data.startsWith('ERROR:')) return
+          dispatchBrowser({ type: 'SET_SCREENSHOT', payload: e.data })
+        }
+        es.onerror = () => { es.close(); esRef.current = null }
+      })
+      .catch(() => {})
+    return () => { cancelled = true; esRef.current?.close(); esRef.current = null }
+  }, [browser.running, browser.streamInterval, browser.liveMode])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [auditMessages])
+  }, [wf.auditMessages])
 
   // Auto-fetch tasks when entering step 2
   useEffect(() => {
-    if (step === 2 && isXY) handleGetTasks()
-  }, [step, isXY])
+    if (wf.step === 2 && isXY) handleGetTasks()
+  }, [wf.step, isXY])
 
   // === Browser Handlers ===
   const handleStart = async () => {
-    setBrowserBusy(true)
+    dispatchBrowser({ type: 'SET_BROWSER_BUSY', payload: true })
     const res = await startBrowser()
     addLog(res.message || '启动中...')
     for (let i = 0; i < 10; i++) {
       await new Promise((r) => setTimeout(r, 1000))
       const status = await getBrowserStatus()
-      if (status.running) { setRunning(true); setUrl(status.url || ''); setTitle(status.title || ''); addLog('浏览器就绪'); setBrowserBusy(false); return }
+      if (status.running) { dispatchBrowser({ type: 'SET_RUNNING', payload: true }); dispatchBrowser({ type: 'SET_URL', payload: status.url || '' }); addLog('浏览器就绪'); dispatchBrowser({ type: 'SET_BROWSER_BUSY', payload: false }); return }
     }
     addLog('浏览器启动超时')
     pollStatus()
-    setBrowserBusy(false)
+    dispatchBrowser({ type: 'SET_BROWSER_BUSY', payload: false })
   }
 
   const handleStop = async () => {
-    setBrowserBusy(true)
+    dispatchBrowser({ type: 'SET_BROWSER_BUSY', payload: true })
     const res = await stopBrowser()
     addLog(res.message || '浏览器已关闭')
     pollStatus()
-    setBrowserBusy(false)
+    dispatchBrowser({ type: 'SET_BROWSER_BUSY', payload: false })
   }
 
   const handleNavigate = async (name: string) => {
@@ -142,29 +182,59 @@ export default function BrowserPage() {
         const str = (titles.split('：')[1] || '[]').replace(/'/g, '"')
         const arr = JSON.parse(str)
         const sorted = Array.isArray(arr) ? [...arr].reverse() : []
-        setTaskCards(sorted)
-        sessionStorage.setItem('xy_cards', JSON.stringify(sorted))
-        if (sorted.length > 0) setSelectedTask(sorted[0])
-      } catch { setTaskCards([]) }
+        dispatchWf({ type: 'SET_TASK_CARDS', payload: sorted })
+        localStorage.setItem('xy_cards', JSON.stringify(sorted))
+        if (sorted.length > 0) dispatchWf({ type: 'SET_SELECTED_TASK', payload: sorted[0] })
+      } catch { dispatchWf({ type: 'SET_TASK_CARDS', payload: [] }) }
     }
   }
 
   const handleStartTask = async (name?: string) => {
-    const taskName = name || selectedTask
+    const taskName = name || wf.selectedTask
     if (!taskName) return
-    setStartingTask(taskName)
-    setCurrentTaskName(taskName)
+    dispatchWf({ type: 'SET_STARTING_TASK', payload: taskName })
+    dispatchWf({ type: 'SET_CURRENT_TASK_NAME', payload: taskName })
     addLog(`开始任务: ${taskName}...`)
     const result = await executeTool('start_task', { card_title: taskName })
     if (result.includes('失败')) {
-      setTaskFailCount((c) => c + 1)
-      addLog(`❌ 任务开始失败 (累计失败 ${taskFailCount + 1} 次)`)
-    } else {
-      setTaskStarted(true)
-      setStep(3)
-      addLog(result)
+      dispatchWf({ type: 'INCREMENT_TASK_FAIL' })
+      addLog(`❌ 任务开始失败`)
+      dispatchWf({ type: 'SET_STARTING_TASK', payload: '' })
+      return false
     }
-    setStartingTask('')
+    dispatchWf({ type: 'SET_TASK_STARTED', payload: true })
+    dispatchWf({ type: 'SET_STEP', payload: 3 })
+    addLog(result)
+    dispatchWf({ type: 'SET_STARTING_TASK', payload: '' })
+    return true
+  }
+
+  const handleAutoStart = async () => {
+    const taskName = wf.taskCards.find(t => t.includes('单题标答-审核'))
+    if (!taskName) {
+      addLog('⚠️ 未找到单题标答-审核任务')
+      return
+    }
+    setAutoStarting(true)
+    autoStartCancelRef.current = false
+    dispatchWf({ type: 'SET_TASK_FAIL_COUNT', payload: 0 })
+    addLog(`🤖 自动开始: ${taskName}`)
+    for (let i = 0; i < 30; i++) {
+      if (autoStartCancelRef.current) {
+        addLog('⏹ 自动开始已停止')
+        break
+      }
+      const ok = await handleStartTask(taskName)
+      if (ok) break
+      await new Promise(r => setTimeout(r, 2000))
+    }
+    setAutoStarting(false)
+  }
+
+  const handleStopAutoStart = () => {
+    autoStartCancelRef.current = true
+    setAutoStarting(false)
+    addLog('⏹ 已停止自动开始')
   }
 
   const handleGetQuestion = async () => {
@@ -173,7 +243,7 @@ export default function BrowserPage() {
     try {
       const data = JSON.parse(result)
       if (data.images && data.images.length > 0) {
-        setQuestionImages(data.images)
+        dispatchWf({ type: 'SET_QUESTION_IMAGES', payload: data.images })
         addLog(`获取到 ${data.count} 张图片`)
       }
     } catch {
@@ -182,90 +252,139 @@ export default function BrowserPage() {
   }
 
   const handleAudit = async () => {
-    setAuditing(true)
-    setAuditTab('audit')
-    setAuditMessages([{ role: 'assistant', content: '⏳ AI 正在审核中...' }])
-    const systemPrompt = `你是一个小猿众包题目审核自动化助手。当前任务：单题标答-审核。操作流程：1. 先调用 scroll_canvas() 向下滚动查看完整题目。2. 然后调用 zoom_question() 缩小视图。3. 滚动/缩放后会更新截图。4. 调用 mark_question_correct() 处理判定。5. 说明你的判断结果。注意：不要提交或驳回任务，等待用户确认。`
-    let assistantContent = ''
+    dispatchWf({ type: 'SET_AUDITING', payload: true })
+    dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'audit' })
+    dispatchWf({ type: 'SET_AUDIT_MESSAGES', payload: [{ role: 'assistant', content: '⏳ AI 正在审核中...' }] })
+    const systemPrompt = `你是一个小猿众包题目审核自动化助手。当前任务：单题标答-审核。
 
-    if (!auditSessionId) {
-      const sid = await createSession()
-      setAuditSessionId(sid)
-    }
+操作原则：
+- 首先调用 get_question_info() 获取题目截图和参考答案。
+- 根据截图判断题干信息是否完整可见：
+  - 如果题目内容被截断或显示不全，调用 scroll_canvas() 滚动查看。
+  - 如果题目整体过大无法一览，调用 zoom_question() 缩小视图。
+  - 滚动/缩放后需再次调用 get_question_info() 更新截图。
+- 确认能看清完整题目后，对比参考答案判断标注是否正确。
+- 如果正确，调用 mark_question_correct() 标记。
+- 如果错误，指出具体问题（如：格式问题、答案错误、黄框压题干等）。
+
+错误处理：
+- 工具返回包含 [可重试] 的错误（如页面元素暂未加载、请求超时等），请稍等后重新调用该工具，最多尝试 3 次。
+- 工具返回包含 [致命] 的错误（如浏览器崩溃），请停止操作并告知用户。
+
+注意：不要调用 submit_task 或 confirm_rejection，等待用户手动确认。`
+    let assistantContent = ''
+    const sid = await getDailyAuditSessionId()
+
+    let history: { role: string; content: string }[] = []
+    try {
+      const msgs = await loadMessages(sid)
+      if (msgs && msgs.length > 0) {
+        // 取最近 20 条作为上下文，过滤掉太长的内容
+        history = msgs.slice(-20).map((m: any) => ({ role: m.role, content: (m.content || '').slice(0, 2000) }))
+      }
+    } catch {}
 
     streamChat(
-      { model: getStoredModel(), temperature: 0.1, prompt: '请审核这道题。', history: [], system_prompt: systemPrompt },
+      { model: getStoredModel(), temperature: 0.1, prompt: '请审核这道题。', history, system_prompt: systemPrompt },
       (event) => {
-        if (event.type === 'token') { assistantContent += event.data; setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { ...last[last.length - 1], content: assistantContent }; return last }) }
-        else if (event.type === 'tool_start') { setAuditMessages((prev) => { const last = [...prev]; const calls = last[last.length - 1].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[last.length - 1] = { ...last[last.length - 1], toolCalls: [...calls] }; return last }); addLog(`工具: ${event.data.name}`) }
-        else if (event.type === 'tool_end') { setAuditMessages((prev) => { const last = [...prev]; const calls = (last[last.length - 1].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' } : c); last[last.length - 1] = { ...last[last.length - 1], toolCalls: calls }; return last }); addLog(`完成: ${event.data.name}`) }
-        else if (event.type === 'error') { setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { ...last[last.length - 1], content: `❌ ${event.data}` }; return last }); setAuditing(false) }
+        if (event.type === 'token') { assistantContent += event.data; dispatchWf({ type: 'UPDATE_LAST_AUDIT_MESSAGE', payload: { content: assistantContent } }) }
+        else if (event.type === 'tool_start') { dispatchWf({ type: 'APPEND_TOOL_CALL', payload: { name: event.data.name } }); addLog(`工具: ${event.data.name}`) }
+        else if (event.type === 'tool_end') { dispatchWf({ type: 'MARK_TOOL_CALL_DONE', payload: event.data.name }); addLog(`完成: ${event.data.name}`) }
+        else if (event.type === 'error') { dispatchWf({ type: 'UPDATE_LAST_AUDIT_MESSAGE', payload: { content: `❌ ${event.data}` } }); dispatchWf({ type: 'SET_AUDITING', payload: false }) }
       },
-      (error) => { setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setAuditing(false) },
+      (error) => { dispatchWf({ type: 'UPDATE_LAST_AUDIT_MESSAGE', payload: { content: `❌ ${error}` } }); dispatchWf({ type: 'SET_AUDITING', payload: false }) },
       async () => {
-        setAuditing(false)
+        dispatchWf({ type: 'SET_AUDITING', payload: false })
         addLog('AI 审核完成')
-        const sid = auditSessionId || await createSession()
-        if (!auditSessionId) setAuditSessionId(sid)
         await saveMessages(sid, [
-          { role: 'user', content: `请审核这道题\n任务: ${currentTaskName}\nURL: ${url}` },
+          { role: 'user', content: `请审核这道题\n任务: ${wf.currentTaskName}\nURL: ${browser.url}` },
           { role: 'assistant', content: assistantContent },
-        ], `🔧 审核: ${currentTaskName.slice(0, 30)}`)
+        ], `📋 每日审核 ${new Date().toISOString().slice(0, 10)}`)
       },
       true)
   }
 
   const handleAuditChat = async (text: string) => {
-    if (!text.trim() || auditing) return
-    const userMsg = { role: 'user', content: text }
-    setAuditMessages((prev) => [...prev, userMsg])
-    setAuditInput('')
-    setAuditing(true)
-    setAuditTab('audit')
-    const systemPrompt = `你是一个自动化助手。当前页面: ${url}\n任务: ${currentTaskName}\n你可以调用工具来帮助用户。`
+    if (!text.trim() || wf.auditing) return
+    dispatchWf({ type: 'ADD_AUDIT_MESSAGE', payload: { role: 'user', content: text } })
+    dispatchWf({ type: 'SET_AUDIT_INPUT', payload: '' })
+    dispatchWf({ type: 'SET_AUDITING', payload: true })
+    dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'audit' })
+    const systemPrompt = `你是一个自动化助手。当前页面: ${browser.url}\n任务: ${wf.currentTaskName}\n你可以调用工具来帮助用户。工具返回 [可重试] 时请重试最多3次，返回 [致命] 时请停止。`
     let assistantContent = ''
+    const sid = await getDailyAuditSessionId()
 
-    if (!auditSessionId) {
-      const sid = await createSession()
-      setAuditSessionId(sid)
-    }
+    let history: { role: string; content: string }[] = []
+    try {
+      const msgs = await loadMessages(sid)
+      if (msgs && msgs.length > 0) {
+        history = msgs.slice(-20).map((m: any) => ({ role: m.role, content: (m.content || '').slice(0, 2000) }))
+      }
+    } catch {}
 
-    setAuditMessages((prev) => [...prev, { role: 'assistant', content: '', toolCalls: [] }])
+    dispatchWf({ type: 'ADD_AUDIT_MESSAGE', payload: { role: 'assistant', content: '', toolCalls: [] } })
     streamChat(
-      { model: getStoredModel(), temperature: 0.1, prompt: text, history: [], system_prompt: systemPrompt },
+      { model: getStoredModel(), temperature: 0.1, prompt: text, history, system_prompt: systemPrompt },
       (event) => {
-        if (event.type === 'token') { assistantContent += event.data; setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { ...last[last.length - 1], content: assistantContent }; return last }) }
-        else if (event.type === 'tool_start') { setAuditMessages((prev) => { const last = [...prev]; const calls = last[last.length - 1].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[last.length - 1] = { ...last[last.length - 1], toolCalls: [...calls] }; return last }); addLog(`工具: ${event.data.name}`) }
-        else if (event.type === 'tool_end') { setAuditMessages((prev) => { const last = [...prev]; const calls = (last[last.length - 1].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' } : c); last[last.length - 1] = { ...last[last.length - 1], toolCalls: calls }; return last }); addLog(`完成: ${event.data.name}`) }
-        else if (event.type === 'error') { setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { ...last[last.length - 1], content: `❌ ${event.data}` }; return last }); setAuditing(false) }
+        if (event.type === 'token') { assistantContent += event.data; dispatchWf({ type: 'UPDATE_LAST_AUDIT_MESSAGE', payload: { content: assistantContent } }) }
+        else if (event.type === 'tool_start') { dispatchWf({ type: 'APPEND_TOOL_CALL', payload: { name: event.data.name } }); addLog(`工具: ${event.data.name}`) }
+        else if (event.type === 'tool_end') { dispatchWf({ type: 'MARK_TOOL_CALL_DONE', payload: event.data.name }); addLog(`完成: ${event.data.name}`) }
+        else if (event.type === 'error') { dispatchWf({ type: 'UPDATE_LAST_AUDIT_MESSAGE', payload: { content: `❌ ${event.data}` } }); dispatchWf({ type: 'SET_AUDITING', payload: false }) }
       },
-      (error) => { setAuditMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setAuditing(false) },
+      (error) => { dispatchWf({ type: 'UPDATE_LAST_AUDIT_MESSAGE', payload: { content: `❌ ${error}` } }); dispatchWf({ type: 'SET_AUDITING', payload: false }) },
       async () => {
-        setAuditing(false)
+        dispatchWf({ type: 'SET_AUDITING', payload: false })
         addLog('对话完成')
-        const sid = auditSessionId || await createSession()
-        if (!auditSessionId) setAuditSessionId(sid)
         await saveMessages(sid, [
           { role: 'user', content: text },
           { role: 'assistant', content: assistantContent },
-        ], `🔧 指令: ${text.slice(0, 30)}`)
+        ], `📋 每日审核 ${new Date().toISOString().slice(0, 10)}`)
       },
       true)
+  }
+
+  const saveFeedbackToChat = async (feedback: string) => {
+    dispatchWf({ type: 'ADD_AUDIT_MESSAGE', payload: { role: 'user', content: feedback } })
+    try {
+      const sid = await getDailyAuditSessionId()
+      await saveMessages(sid, [{ role: 'user', content: feedback }])
+    } catch {}
+  }
+
+  const handleSubmitTask = async (action: string, rejectReason?: string) => {
+    const result = await executeTool('submit_task', { action, ...(rejectReason ? { reject_reason: rejectReason } : {}) })
+    addLog(result)
+    if (result.includes('任务终止') || result.includes('需手动处理')) {
+      addLog('⚠️ 任务不足，返回任务列表')
+      dispatchWf({ type: 'SET_TASK_STARTED', payload: false })
+      dispatchWf({ type: 'SET_CURRENT_TASK_NAME', payload: '' })
+      dispatchWf({ type: 'SET_AUDIT_MESSAGES', payload: [] })
+      dispatchWf({ type: 'SET_QUESTION_IMAGES', payload: [] })
+      dispatchWf({ type: 'SET_REJECT_MODE', payload: false })
+      dispatchWf({ type: 'SET_REJECT_CAUSE', payload: '' })
+      dispatchWf({ type: 'SET_REJECT_NOTES', payload: '' })
+      dispatchWf({ type: 'SET_AUDIT_INPUT', payload: '' })
+      dispatchWf({ type: 'SET_STEP', payload: 2 })
+      setTimeout(() => handleGetTasks(), 500)
+    }
   }
 
   const handleCorrect = async () => {
     addLog('标记正确...')
     await executeTool('mark_question_correct')
-    await executeTool('submit_task', { action: '提交领下一任务' })
+    await handleSubmitTask('提交领下一任务')
+    await saveFeedbackToChat(`✅ 审核正确，已提交 — 任务: ${wf.currentTaskName}`)
     addLog('完成')
   }
 
   const handleSubmitReject = async (cause: string) => {
     addLog(`驳回: ${cause}...`)
-    await executeTool('submit_task', { action: '整题驳回', reject_reason: cause })
+    await handleSubmitTask('整题驳回', cause)
     await executeTool('confirm_rejection')
+    await saveFeedbackToChat(`❌ 审核有误，已驳回 — 原因: ${cause} — 任务: ${wf.currentTaskName}`)
     addLog('完成')
-    setRejectMode(false); setRejectCause('')
+    dispatchWf({ type: 'SET_REJECT_MODE', payload: false })
+    dispatchWf({ type: 'SET_REJECT_CAUSE', payload: '' })
   }
 
   const handleApiRequest = async () => {
@@ -282,11 +401,11 @@ export default function BrowserPage() {
     } catch (e: any) { setApiResult(`错误: ${e.message}`); addLog(`请求错误: ${e.message}`) }
   }
 
-  const resetStep = () => { setStep(1); setTaskStarted(false); setCurrentTaskName(''); setAuditMessages([]); setRejectMode(false); setRejectCause(''); setRejectNotes('') }
+  const resetStep = () => dispatchWf({ type: 'RESET_WORKFLOW' })
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '16px 20px 20px', gap: 12, boxSizing: 'border-box' }}>
-      <StepBar step={step} onStep={setStep} onReset={resetStep} taskName={currentTaskName} />
+      <StepBar step={wf.step} onStep={(s) => dispatchWf({ type: 'SET_STEP', payload: s })} onReset={resetStep} taskName={wf.currentTaskName} />
 
       <div style={{ flex: 1, display: 'flex', gap: 16, minHeight: 0 }}>
         {/* Left panel */}
@@ -294,10 +413,10 @@ export default function BrowserPage() {
           <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>自动化控制</h2>
 
           {/* Step 1: 打开网站 */}
-          {step === 1 && (
+          {wf.step === 1 && (
             <Step1Content
-              running={running}
-              busy={browserBusy}
+              running={browser.running}
+              busy={browser.browserBusy}
               customUrl={customUrl}
               apiUrl={apiUrl}
               apiResult={apiResult}
@@ -308,25 +427,40 @@ export default function BrowserPage() {
               setCustomUrl={setCustomUrl}
               onRefresh={async () => { await executeTool('refresh_page'); addLog('已刷新') }}
               onSaveCookies={async () => { await executeTool('save_cookies'); addLog('Cookie 已保存') }}
-              onLoadCookies={async () => { const r = await executeTool('load_cookies'); addLog(r); if (r.includes('✅')) setStep(2) }}
+              onLoadCookies={async () => { const r = await executeTool('load_cookies'); addLog(r); if (r.includes('✅')) dispatchWf({ type: 'SET_STEP', payload: 2 }) }}
               onApiRequest={handleApiRequest}
               setApiUrl={setApiUrl}
             />
           )}
 
           {/* Step 2: 开始任务 */}
-          {step === 2 && isXY && (
+          {wf.step === 2 && isXY && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: '#f5a623' }}>📋 任务列表</span>
-                {taskFailCount > 0 && <span style={{ fontSize: 11, color: '#e53935' }}>失败 {taskFailCount} 次</span>}
+                {wf.taskFailCount > 0 && <span style={{ fontSize: 11, color: '#e53935' }}>失败 {wf.taskFailCount} 次</span>}
               </div>
-              <button onClick={async () => { await executeTool('go_home'); addLog('已返回首页') }} className="btn btn-outline btn-block">🏠 回首页</button>
-              {taskCards.length > 0 && (
+              {(auditStats.correct + auditStats.reject + auditStats.skip) > 0 && (
+                <div style={{ display: 'flex', gap: 6, padding: '4px 8px', background: '#f0f7ff', borderRadius: 6, fontSize: 11, flexWrap: 'wrap' }}>
+                  <span style={{ color: '#666' }}>📊 今日：</span>
+                  <span style={{ color: '#2e7d32' }}>✅ {auditStats.correct}</span>
+                  <span style={{ color: '#c62828' }}>❌ {auditStats.reject}</span>
+                  <span style={{ color: '#f57f17' }}>⏭ {auditStats.skip}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 4 }}>
+                {autoStarting ? (
+                  <button onClick={handleStopAutoStart} className="btn btn-danger btn-block" style={{ flex: 1, fontSize: 13 }}>⏹ 停止</button>
+                ) : (
+                  <button onClick={handleAutoStart} className="btn btn-warning btn-block" style={{ flex: 1, fontSize: 13 }}>🤖 自动开始</button>
+                )}
+                <button onClick={async () => { await executeTool('go_home'); addLog('已返回首页') }} className="btn btn-outline btn-sm">🏠</button>
+              </div>
+              {wf.taskCards.length > 0 && (
                 <div>
-                  {taskCards.map((t) => {
-                    const isSelected = selectedTask === t
-                    const isLoading = startingTask === t
+                  {wf.taskCards.map((t) => {
+                    const isSelected = wf.selectedTask === t
+                    const isLoading = wf.startingTask === t
                     return (
                       <div key={t} onClick={() => !isLoading && handleStartTask(t)} style={{
                         padding: '6px 10px', borderRadius: 5, cursor: isLoading ? 'wait' : 'pointer', fontSize: 12,
@@ -351,17 +485,17 @@ export default function BrowserPage() {
           )}
 
           {/* Step 3: 执行任务 */}
-          {step === 3 && taskStarted && currentTaskName.includes('单题标答-审核') && (
+          {wf.step === 3 && wf.taskStarted && wf.currentTaskName.includes('单题标答-审核') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1976d2' }}>📌 {currentTaskName}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#1976d2' }}>📌 {wf.currentTaskName}</div>
 
-              {questionImages.length > 0 && (
+              {wf.questionImages.length > 0 && (
                 <div>
                   <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>参考答案</div>
                   <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
-                    {questionImages.map((img, i) => (
-                      <img key={i} src={img.type === 'base64' ? `data:image/png;base64,${img.data}` : img.data}
-                        onClick={() => setExpandedImage(img.type === 'base64' ? `data:image/png;base64,${img.data}` : img.data)}
+                    {wf.questionImages.map((img, i) => (
+                      <img key={i} src={img.type === 'base64' ? `data:image/png;base64,${img.data}` : addToken(img.data)}
+                        onClick={() => dispatchWf({ type: 'SET_EXPANDED_IMAGE', payload: img.type === 'base64' ? `data:image/png;base64,${img.data}` : addToken(img.data) })}
                         style={{ height: 80, borderRadius: 6, border: '1px solid #ddd', cursor: 'pointer', flexShrink: 0, transition: 'opacity 0.12s' }}
                         onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
                         onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
@@ -372,54 +506,54 @@ export default function BrowserPage() {
               )}
 
               {/* 点击放大模态框 */}
-              {expandedImage && (
-                <div onClick={() => setExpandedImage(null)}
+              {wf.expandedImage && (
+                <div onClick={() => dispatchWf({ type: 'SET_EXPANDED_IMAGE', payload: null })}
                   style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                  <img src={expandedImage} style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 8, boxShadow: '0 4px 40px rgba(0,0,0,0.3)' }} />
+                  <img src={wf.expandedImage} style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 8, boxShadow: '0 4px 40px rgba(0,0,0,0.3)' }} />
                 </div>
               )}
 
               <div style={{ fontSize: 12, fontWeight: 600, color: '#999', padding: '4px 0', borderBottom: '1px solid #eee' }}>通用</div>
 
-              <button onClick={handleAudit} disabled={auditing} className={`btn btn-warning btn-block${auditing ? ' btn-loading' : ''}`} style={{ padding: '10px 0', fontSize: 14, fontWeight: 600 }}>{auditing ? '审核中...' : '🤖 AI 审核'}</button>
+              <button onClick={handleAudit} disabled={wf.auditing} className={`btn btn-warning btn-block${wf.auditing ? ' btn-loading' : ''}`} style={{ padding: '10px 0', fontSize: 14, fontWeight: 600 }}>{wf.auditing ? '审核中...' : '🤖 AI 审核'}</button>
 
               <div style={{ display: 'flex', gap: 4 }}>
-                <button onClick={async () => { await executeTool('scroll_canvas', { direction: 'down' }); addLog('已向下滚动') }} disabled={!running} className="btn btn-outline btn-sm" style={{ flex: 1 }}>⬇ 滚动</button>
-                <button onClick={async () => { await executeTool('scroll_canvas', { direction: 'up' }); addLog('已向上滚动') }} disabled={!running} className="btn btn-outline btn-sm" style={{ flex: 1 }}>⬆ 滚动</button>
+                <button onClick={async () => { await executeTool('scroll_canvas', { direction: 'down' }); addLog('已向下滚动') }} disabled={!browser.running} className="btn btn-outline btn-sm" style={{ flex: 1 }}>⬇ 滚动</button>
+                <button onClick={async () => { await executeTool('scroll_canvas', { direction: 'up' }); addLog('已向上滚动') }} disabled={!browser.running} className="btn btn-outline btn-sm" style={{ flex: 1 }}>⬆ 滚动</button>
               </div>
 
-              {!auditing && auditMessages.length > 0 && (
+              {!wf.auditing && wf.auditMessages.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <button onClick={handleCorrect} className="btn btn-success btn-block">✅ 正确，没问题</button>
 
-                  <button onClick={() => setRejectMode(!rejectMode)} className="btn btn-outline-danger btn-block">
-                    {rejectMode ? '取消纠正' : '❌ 有误，我来纠正'}
+                  <button onClick={() => dispatchWf({ type: 'SET_REJECT_MODE', payload: !wf.rejectMode })} className="btn btn-outline-danger btn-block">
+                    {wf.rejectMode ? '取消纠正' : '❌ 有误，我来纠正'}
                   </button>
-                  {rejectMode && (
+                  {wf.rejectMode && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 8, background: '#fff5f5', borderRadius: 6, border: '1px solid #fcc' }}>
-                      <select value={rejectCause} onChange={(e) => setRejectCause(e.target.value)} style={{ padding: '6px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12 }}>
+                      <select value={wf.rejectCause} onChange={(e) => dispatchWf({ type: 'SET_REJECT_CAUSE', payload: e.target.value })} style={{ padding: '6px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12 }}>
                         <option value="">选择错误原因...</option>
                         {ERROR_CAUSES.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
-                      <textarea value={rejectNotes} onChange={(e) => setRejectNotes(e.target.value)} placeholder="详细说明（可选）..." style={{ padding: '6px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, resize: 'vertical', minHeight: 40 }} />
-                      <button onClick={() => { const fullCause = rejectNotes ? `${rejectCause} - ${rejectNotes}` : rejectCause; handleSubmitReject(fullCause); setRejectNotes('') }} disabled={!rejectCause.trim()} className="btn btn-danger">📤 驳回并提交反馈</button>
+                      <textarea value={wf.rejectNotes} onChange={(e) => dispatchWf({ type: 'SET_REJECT_NOTES', payload: e.target.value })} placeholder="详细说明（可选）..." style={{ padding: '6px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, resize: 'vertical', minHeight: 40 }} />
+                      <button onClick={() => { const fullCause = wf.rejectNotes ? `${wf.rejectCause} - ${wf.rejectNotes}` : wf.rejectCause; handleSubmitReject(fullCause); dispatchWf({ type: 'SET_REJECT_NOTES', payload: '' }) }} disabled={!wf.rejectCause.trim()} className="btn btn-danger">📤 驳回并提交反馈</button>
                     </div>
                   )}
 
-                  <button onClick={async () => { await executeTool('submit_task', { action: '提交领下一任务' }); addLog('已跳过，下一题') }} className="btn btn-outline btn-block">⏭ 跳过，下一题</button>
+                  <button onClick={async () => { await handleSubmitTask('提交领下一任务'); await saveFeedbackToChat(`⏭ 已跳过 — 任务: ${wf.currentTaskName}`) }} className="btn btn-outline btn-block">⏭ 跳过，下一题</button>
                 </div>
               )}
 
               <div style={{ fontSize: 12, fontWeight: 600, color: '#999', padding: '4px 0', borderBottom: '1px solid #eee' }}>本任务特有</div>
 
               <button onClick={handleGetQuestion} className="btn btn-outline btn-block">🖼 获取题目信息</button>
-              <button onClick={async () => { await executeTool('zoom_question'); addLog('已缩小') }} disabled={!running} className="btn btn-outline btn-block">🔍 缩小视图</button>
+              <button onClick={async () => { await executeTool('zoom_question'); addLog('已缩小') }} disabled={!browser.running} className="btn btn-outline btn-block">🔍 缩小视图</button>
               <button onClick={async () => { await executeTool('mark_question_correct'); addLog('已标记正确') }} className="btn btn-outline btn-block">✅ 审核正确</button>
-              <button onClick={async () => { await executeTool('submit_task', { action: '提交领下一任务' }); addLog('已提交') }} className="btn btn-outline btn-block" style={{ borderColor: '#4caf50', color: '#2e7d32', background: '#e8f5e9' }}>📤 提交领下一任务</button>
+              <button onClick={async () => { await handleSubmitTask('提交领下一任务') }} className="btn btn-outline btn-block" style={{ borderColor: '#4caf50', color: '#2e7d32', background: '#e8f5e9' }}>📤 提交领下一任务</button>
 
               <div style={{ display: 'flex', gap: 4 }}>
-                <input placeholder="错误原因..." style={{ flex: 1, padding: '6px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12 }} onChange={(e) => setRejectCause(e.target.value)} />
-                <button onClick={async () => { if (rejectCause.trim()) { await executeTool('submit_task', { action: '整题驳回', reject_reason: rejectCause }); addLog(`驳回: ${rejectCause}`); setRejectCause('') } }} className="btn btn-outline-danger btn-sm">整题驳回</button>
+                <input placeholder="错误原因..." style={{ flex: 1, padding: '6px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12 }} onChange={(e) => dispatchWf({ type: 'SET_REJECT_CAUSE', payload: e.target.value })} />
+                <button onClick={async () => { if (wf.rejectCause.trim()) { await handleSubmitTask('整题驳回', wf.rejectCause); await executeTool('confirm_rejection'); addLog(`驳回: ${wf.rejectCause}`); dispatchWf({ type: 'SET_REJECT_CAUSE', payload: '' }) } }} className="btn btn-outline-danger btn-sm">整题驳回</button>
               </div>
               <button onClick={async () => { await executeTool('confirm_rejection'); addLog('已确认驳回') }} className="btn btn-outline btn-block btn-sm">确认驳回弹窗</button>
 
@@ -430,47 +564,47 @@ export default function BrowserPage() {
         {/* Right panel */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#f9f9f9', borderRadius: 6, fontSize: 13, flexShrink: 0 }}>
-            <StatusDot ok={running} />
-            <span>{running ? '运行中' : '未启动'}</span>
-            {running && (
+            <StatusDot ok={browser.running} />
+            <span>{browser.running ? '运行中' : '未启动'}</span>
+            {browser.running && (
               <button onClick={async () => { await executeTool('refresh_page'); addLog('已刷新') }} title="刷新页面" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#666', padding: '2px 4px', flexShrink: 0, lineHeight: 1 }}>🔄</button>
             )}
-            {url && (
-              <span title={url} style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: 12 }}>{url}</span>
+            {browser.url && (
+              <span title={browser.url} style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: 12 }}>{browser.url}</span>
             )}
-            <button onClick={() => setLiveMode(!liveMode)} title={liveMode ? '暂停实时流' : '开启实时流'} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: liveMode ? '#4caf50' : '#ccc', padding: '2px 6px', flexShrink: 0, fontWeight: 600, lineHeight: 1 }}>● {liveMode ? '实时' : '暂停'}</button>
+            <button onClick={() => dispatchBrowser({ type: 'SET_LIVE_MODE', payload: !browser.liveMode })} title={browser.liveMode ? '暂停实时流' : '开启实时流'} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: browser.liveMode ? '#4caf50' : '#ccc', padding: '2px 6px', flexShrink: 0, fontWeight: 600, lineHeight: 1 }}>● {browser.liveMode ? '实时' : '暂停'}</button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ fontSize: 11, color: '#999', whiteSpace: 'nowrap' }}>间隔</span>
               <input
                 type="range" min={10} max={600} step={10}
-                value={streamInterval}
-                onChange={(e) => setStreamInterval(Number(e.target.value))}
+                value={browser.streamInterval}
+                onChange={(e) => dispatchBrowser({ type: 'SET_STREAM_INTERVAL', payload: Number(e.target.value) })}
                 style={{ width: 50, cursor: 'pointer', margin: 0 }}
               />
-              <span style={{ fontSize: 11, color: '#666', minWidth: 28 }}>{streamInterval}ms</span>
+              <span style={{ fontSize: 11, color: '#666', minWidth: 28 }}>{browser.streamInterval}ms</span>
             </div>
             <div style={{ display: 'flex', gap: 2, marginLeft: 4 }}>
-              <button onClick={() => setAuditTab('screenshot')} style={tabBtnStyle(auditTab === 'screenshot')}>截图</button>
-              <button onClick={() => setAuditTab('audit')} style={tabBtnStyle(auditTab === 'audit')}>AI自动化</button>
-              <button onClick={() => setAuditTab('logs')} style={tabBtnStyle(auditTab === 'logs')}>日志</button>
+              <button onClick={() => dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'screenshot' })} style={tabBtnStyle(browser.auditTab === 'screenshot')}>截图</button>
+              <button onClick={() => dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'audit' })} style={tabBtnStyle(browser.auditTab === 'audit')}>AI自动化</button>
+              <button onClick={() => dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'logs' })} style={tabBtnStyle(browser.auditTab === 'logs')}>日志</button>
             </div>
           </div>
 
           <div style={{ flex: 1, border: '1px solid #e0e0e0', borderRadius: 8, overflow: 'hidden', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
-            {auditTab === 'screenshot' && (
-              screenshot ? (
-                <img src={`data:image/jpeg;base64,${screenshot}`} alt="截图" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            {browser.auditTab === 'screenshot' && (
+              browser.screenshot ? (
+                <img src={`data:image/jpeg;base64,${browser.screenshot}`} alt="截图" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               ) : (
-                <span style={{ color: '#ccc', fontSize: 14 }}>{running ? '等待截图...' : '浏览器未启动'}</span>
+                <span style={{ color: '#ccc', fontSize: 14 }}>{browser.running ? '等待截图...' : '浏览器未启动'}</span>
               )
             )}
-            {auditTab === 'audit' && (
+            {browser.auditTab === 'audit' && (
               <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-                  {auditMessages.length === 0 ? (
+                  {wf.auditMessages.length === 0 ? (
                     <div style={{ textAlign: 'center', color: '#ccc', marginTop: 60, fontSize: 14 }}>输入消息或点击左侧 "🤖 AI 审核"</div>
                   ) : (
-                    auditMessages.map((msg, i) => (
+                    wf.auditMessages.map((msg, i) => (
                       <div key={i} style={{ marginBottom: 10, display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                         <div style={{
                           padding: '8px 14px', borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
@@ -481,7 +615,7 @@ export default function BrowserPage() {
                           overflowWrap: 'break-word', wordBreak: 'break-word',
                         }}>
                           {msg.role === 'assistant' ? <MarkdownContent content={msg.content} /> : msg.content}
-                          {msg.toolCalls?.map((tc, j) => <ToolCallCard key={j} call={tc} />)}
+                          {msg.toolCalls?.map((tc: any, j: number) => <ToolCallCard key={j} call={tc} />)}
                         </div>
                       </div>
                     ))
@@ -489,18 +623,18 @@ export default function BrowserPage() {
                   <div ref={chatEndRef} />
                 </div>
                 <div style={{ display: 'flex', gap: 6, padding: '8px 12px', borderTop: '1px solid #eee', background: '#fff', flexShrink: 0 }}>
-                  <input value={auditInput} onChange={(e) => setAuditInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAuditChat(auditInput)}
+                  <input value={wf.auditInput} onChange={(e) => dispatchWf({ type: 'SET_AUDIT_INPUT', payload: e.target.value })}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAuditChat(wf.auditInput)}
                     placeholder="输入指令，如：向下滚动 / 打开知乎 / 帮我审核"
-                    disabled={auditing}
+                    disabled={wf.auditing}
                     style={{ flex: 1, padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', fontSize: 13, outline: 'none' }} />
-                  <button onClick={() => handleAuditChat(auditInput)} disabled={auditing || !auditInput.trim()}
-                    className={`btn btn-primary${auditing ? ' btn-loading' : ''}`}
+                  <button onClick={() => handleAuditChat(wf.auditInput)} disabled={wf.auditing || !wf.auditInput.trim()}
+                    className={`btn btn-primary${wf.auditing ? ' btn-loading' : ''}`}
                     style={{ padding: '8px 14px', fontSize: 13 }}>发送</button>
                 </div>
               </div>
             )}
-            {auditTab === 'logs' && (
+            {browser.auditTab === 'logs' && (
               <div style={{ width: '100%', height: '100%', overflowY: 'auto', padding: 12, boxSizing: 'border-box' }}>
                 {logs.length === 0 ? (
                   <div style={{ textAlign: 'center', color: '#ccc', marginTop: 60, fontSize: 14 }}>暂无操作记录</div>

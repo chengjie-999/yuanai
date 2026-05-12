@@ -75,11 +75,21 @@ async def chat_stream(req: ChatRequest, request: Request, browser_context: bool 
             elif msg_role == "assistant":
                 history.append(AIMessage(content=content))
 
+        system_prompt = req.system_prompt
+        if any(kw in system_prompt for kw in ["审核", "单题标答"]):
+            try:
+                from yuanai.rag import get_all_specs
+                specs = get_all_specs()
+                if specs:
+                    system_prompt += f"\n\n---\n# 标注规范（请严格遵守以下规范进行审核判断）\n{specs}"
+            except Exception:
+                pass
+
         input_messages = build_input_messages(
             prompt=req.prompt,
             images_base64=req.images,
             history=history,
-            system_message=SystemMessage(content=req.system_prompt),
+            system_message=SystemMessage(content=system_prompt),
         )
 
         async def event_stream():

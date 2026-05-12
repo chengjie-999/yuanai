@@ -125,7 +125,7 @@ def render_ai_audit_chat(qa_images, sa):
     # 同步现有浏览器到工具模块，避免新开浏览器
     from spiderlx.core.browser_manager import browser_manager
     browser = get_driver()
-    browser_manager._browser = browser
+    browser_manager.set_browser(browser)
 
     chat_container = st.container(border=True)
 

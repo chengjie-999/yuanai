@@ -285,17 +285,12 @@ class SingleAuditHandler:
 
     def question_info(self, screenshot=True):
         """
-        获取题目截图、参考答案、标记答案截图
-        :return: 图片数据列表
+        获取题目截图、参考答案、独立答案截图。
+        :return: [全局截图 bytes, 参考答案 url, 独立答案截图路径]
         """
-        qa = [self.driver.get_screenshot_as_png()]  # 全局截图
-
-        # 参考答案
+        qa = [self.driver.get_screenshot_as_png()]
         refer_img = self.wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, '.ant-image > img')))
         qa.append(refer_img.get_attribute('src'))
-
-        if not screenshot:
-            return qa
 
         question = self.wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, '.ol-viewport')))
 
@@ -307,15 +302,6 @@ class SingleAuditHandler:
         except NoSuchElementException:
             qa.append(img_save_path('独立.png'))
 
-        # 标记答案截图
-        answers = question.find_elements(By.CSS_SELECTOR, '.ol-overlay-container')
-        for i, ans in enumerate(answers):
-            try:
-                path = img_save_path(f'答案{i}.png')
-                ans.screenshot(path)
-                qa.append(path)
-            except WebDriverException:
-                continue
         return qa
 
 

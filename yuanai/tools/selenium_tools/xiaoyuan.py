@@ -1,5 +1,5 @@
-import atexit
 import random
+import threading
 import time
 from typing import Optional
 
@@ -7,40 +7,45 @@ from langchain_core.tools import tool
 
 from spiderlx.auto.web.selenium.xiaoyuan.xiaoyuan import SeleniumXiaoYuan, SingleAuditHandler
 from spiderlx.core.browser_manager import browser_manager
+from yuanai.tools.errors import classify_error
 
 
 _xiao_yuan: Optional[SeleniumXiaoYuan] = None
 _sa: Optional[SingleAuditHandler] = None
+_xy_lock = threading.Lock()
+_sa_lock = threading.Lock()
 
 
 def _get_browser_driver():
-    """获取共享浏览器驱动，优先使用已启动的浏览器"""
-    driver = browser_manager.get_driver()
-    if driver:
-        return driver.driver
-    from spiderlx.auto.web.selenium.main import MyWebBrowser, BrowserInitializer
-    browser = MyWebBrowser(BrowserInitializer().create_driver())
-    browser_manager._browser = browser
-    atexit.register(lambda: browser.close_browser())
-    return browser.driver
+    """获取共享浏览器驱动，优先使用已启动的浏览器，必要时自动启动"""
+    bw = browser_manager.get_driver()
+    if bw:
+        return bw.driver
+    browser_manager.start()
+    bw = browser_manager.get_driver()
+    if bw:
+        return bw.driver
+    raise RuntimeError("浏览器启动失败")
 
 
 def _get_xiao_yuan() -> SeleniumXiaoYuan:
     global _xiao_yuan
-    if _xiao_yuan is None:
+    if _xiao_yuan is not None:
+        return _xiao_yuan
+    with _xy_lock:
+        if _xiao_yuan is not None:
+            return _xiao_yuan
         driver = _get_browser_driver()
-        from spiderlx.auto.web.selenium.main import MyWebBrowser
-        if isinstance(driver, MyWebBrowser):
-            driver = driver.driver
         current = driver.current_url
         if 'xyzb.yuanfudao.com' not in current:
             driver.get("https://xyzb.yuanfudao.com/")
             time.sleep(random.randint(2, 5))
             try:
-                from spiderlx.anti.cookie.selenium import use_cookie
+                from spiderlx.anti.cookie.selenium import use_cookie, get_cookie
                 if use_cookie(driver):
                     driver.refresh()
                     time.sleep(2)
+                    get_cookie(driver)  # 自动续期已保存的 Cookie
             except Exception:
                 pass
         _xiao_yuan = SeleniumXiaoYuan(driver)
@@ -49,7 +54,11 @@ def _get_xiao_yuan() -> SeleniumXiaoYuan:
 
 def _get_sa() -> SingleAuditHandler:
     global _sa
-    if _sa is None:
+    if _sa is not None:
+        return _sa
+    with _sa_lock:
+        if _sa is not None:
+            return _sa
         _sa = SingleAuditHandler(_get_xiao_yuan())
     return _sa
 
@@ -138,7 +147,7 @@ def get_question_info() -> str:
             with open(file_path, 'wb') as f:
                 f.write(item)
             images_meta.append({"index": i, "type": "screenshot" if i == 0 else "reference" if i == 1 else "mark"})
-            urls.append(f"/api/v1/qimg/{img_id}/{file_name}")
+            urls.append(f"/api/v1/browser/qimg/{img_id}/{file_name}")
         elif isinstance(item, str):
             if item.startswith("data:image"):
                 import base64
@@ -146,7 +155,7 @@ def get_question_info() -> str:
                 with open(file_path, 'wb') as f:
                     f.write(base64.b64decode(b64_data))
                 images_meta.append({"index": i, "type": "screenshot" if i == 0 else "reference" if i == 1 else "mark"})
-                urls.append(f"/api/v1/qimg/{img_id}/{file_name}")
+                urls.append(f"/api/v1/browser/qimg/{img_id}/{file_name}")
             else:
                 urls.append(item)
                 images_meta.append({"index": i, "type": "url", "url": item})
@@ -228,27 +237,29 @@ def confirm_rejection() -> str:
 @tool
 def scroll_canvas(direction: str = "down", amount: int = 1000) -> str:
     """
-    滚动画布中的题目内容（PyAutoGUI 物理操作）。
+    滚动画布中的题目内容（优先 Selenium ActionChains，支持无头模式）。
     题目在画布中可能显示不全，需要滚动才能查看到完整内容。
     在审核前建议先滚动查看完整题目，再调用 get_question_info 获取截图分析。
     参数 direction: 'down' 向下滚动（显示下方内容）/ 'up' 向上滚动（显示上方内容）
     参数 amount: 滚动量（默认1000，数值越大滚得越多）
     """
     from spiderlx.auto.canvas.core import scroll
-    success = scroll(direction=direction, amount=amount)
+    driver = _get_xiao_yuan().web_driver
+    success = scroll(direction=direction, amount=amount, driver=driver)
     return f"已向{'下' if direction=='down' else '上'}滚动" if success else "滚动失败"
 
 
 @tool
 def click_canvas(x: int, y: int) -> str:
     """
-    点击画布指定坐标（PyAutoGUI 物理操作）。
+    点击画布指定坐标（优先 Selenium ActionChains，支持无头模式）。
     用于点击画布中特定位置，选中某个黄框进行操作。
     参数 x: 屏幕 x 坐标（画布中心约 1000）
     参数 y: 屏幕 y 坐标（画布中心约 600）
     """
     from spiderlx.auto.canvas.core import click
-    success = click(x, y)
+    driver = _get_xiao_yuan().web_driver
+    success = click(x, y, driver=driver)
     return f"已点击坐标 ({x}, {y})" if success else f"点击失败"
 
 
@@ -260,16 +271,17 @@ def load_page_cookies() -> str:
     如有手动输入验证码等需要，会提示用户。
     """
     try:
-        from spiderlx.anti.cookie.selenium import use_cookie
+        from spiderlx.anti.cookie.selenium import use_cookie, get_cookie
         driver = _get_xiao_yuan().web_driver
         have = use_cookie(driver)
         if have:
             driver.refresh()
             time.sleep(2)
+            get_cookie(driver)  # 自动续期
             return "✅ Cookie 已加载，页面已刷新"
         return "⚠️ 未找到 Cookie 文件，请先手动登录后调用 save_page_cookies"
     except Exception as e:
-        return f"❌ 加载 Cookie 失败：{str(e)}"
+        return classify_error(e, "加载 Cookie 失败")
 
 
 @tool
@@ -284,7 +296,7 @@ def save_page_cookies() -> str:
         get_cookie(driver)
         return "✅ Cookie 已保存"
     except Exception as e:
-        return f"❌ 保存 Cookie 失败：{str(e)}"
+        return classify_error(e, "保存 Cookie 失败")
 
 
 @tool
@@ -332,4 +344,4 @@ def get_page_status() -> str:
 
         return '\n'.join(status_parts)
     except Exception as e:
-        return f"❌ 获取页面状态失败：{str(e)}"
+        return classify_error(e, "获取页面状态失败")

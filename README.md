@@ -32,14 +32,24 @@ CREATE DATABASE ai_agent DEFAULT CHARSET utf8mb4;
 
 ### 启动
 
-**后端**：
+**后端 API（端口 8000）**：
 ```bash
 python -m api.main
 ```
 
-**前端**：
+**React 前端（端口 5173）**：
 ```bash
 cd frontend && npm run dev
+```
+
+**Streamlit UI（端口 8501）**：
+```bash
+streamlit run streamlit_app.py
+```
+
+**Qt 桌面客户端**：
+```bash
+python qt_core.py
 ```
 
 ### 创建管理员
@@ -68,7 +78,7 @@ cd frontend && npm run dev
 - **AI 工具**：fetch_url、parse_html、save_crawl_data 等 5 个工具
 
 ### 🔧 工具面板
-35+ 工具分类展示、搜索、在线执行。浏览器类工具灰显为仅 admin 可用。
+48 个工具（11 个模块）分类展示、搜索、在线执行。浏览器类工具灰显为仅 admin 可用。
 
 ### 📺 全局状态实时监控
 mss 屏幕截图，SSE 实时推流，多显示器切换，帧率可调。
@@ -190,7 +200,7 @@ api/                    FastAPI 后端
     ├── middleware.py   JWT 中间件
     └── models.py       数据模型
 
-frontend/               React 前端
+frontend/               React 18 + TypeScript 前端
 ├── src/components/
 │   ├── ChatPage.tsx        聊天
 │   ├── BrowserPage.tsx     WEB自动化
@@ -203,20 +213,22 @@ frontend/               React 前端
 │   ├── LoginPage.tsx       登录
 │   └── browser/            StepBar / Step1Content
 
-spiderlx/               爬虫模块
+spiderlx/               爬虫核心
 ├── core/requests/      HTTP 请求（含反爬）
 ├── core/save/          数据保存
 ├── anti/               Cookie / IP / UA
 └── auto/               Selenium / Playwright
 
-yuanai/                 AI 模块
-├── core/lc.py          LLM 配置
-├── core/chat.py        Agent 流式调用
-├── tools/              35+ 工具（自动发现）
+yuanai/                 AI 模块（三层架构）
+├── core/               LangChain 适配层（lc.py, chat.py）
+├── pure/               ★ 纯业务逻辑（无框架依赖，任何代码可调用）
+├── tools/              @tool 装饰器（薄壳，调用 pure/）
+├── skills/             独立技能（从 pure/ 重新导出，兼容旧 import）
 └── audit/              审核流程
 
+webui/                  Streamlit 状态管理
 config/settings.py      统一配置（模型/JWT/数据库）
-db/session.py           SQLAlchemy ORM
+db/session.py           SQLAlchemy ORM（MySQL + SQLite）
 data/
 ├── crawl/              爬取原始文件
 ├── qimg/               题目截图
@@ -230,9 +242,10 @@ data/
 | 层 | 技术 |
 |----|------|
 | 后端 | Python, FastAPI, Uvicorn, LangChain, LangGraph, SQLAlchemy |
-| 前端 | React 18, TypeScript, Vite, react-markdown |
-| 数据库 | MySQL 8.0, Redis |
+| 前端 | React 18, TypeScript, Vite, Streamlit |
+| 数据库 | MySQL 8.0, SQLite, Redis（可选） |
 | 爬虫 | Selenium, Playwright, BeautifulSoup, requests |
 | AI | DeepSeek API, 豆包 API |
 | 鉴权 | python-jose (JWT), bcrypt |
 | 配置 | `config/settings.py` 统一管理 |
+| 业务层 | `yuanai/pure/` 纯 Python，无框架依赖 |

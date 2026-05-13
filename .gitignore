@@ -16,6 +16,12 @@ venv/
 *.swp
 *.swo
 
+# Claude Code (个人配置，不提交)
+.claude/settings.local.json
+
+# Runtime data (运行时生成)
+data/
+
 # OS
 .DS_Store
 Thumbs.db

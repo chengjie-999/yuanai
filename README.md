@@ -64,7 +64,7 @@ python qt_core.py
 ### 💬 聊天
 - 多模型：豆包 Pro/Lite、DeepSeek V4 Flash/Pro
 - 多会话管理，按天分组
-- Markdown 渲染 + 图片上传
+- Markdown 渲染 + 图片上传/粘贴 + AI 生成图片展示（点击放大）
 - 工具调用可视化（按角色过滤）
 
 ### 🌐 WEB 自动化
@@ -111,6 +111,7 @@ mss 屏幕截图，SSE 实时推流，多显示器切换，帧率可调。
 /                      健康检查
 /health                健康检查
 /api/v1/qimg/*         静态文件
+/api/v1/chat/image/*   聊天图片
 /api/v1/auth/login     登录
 /api/v1/auth/check     Token 验证
 /api/v1/auth/register  注册（返回关闭提示）
@@ -136,6 +137,7 @@ mss 屏幕截图，SSE 实时推流，多显示器切换，帧率可调。
 | DELETE | `/api/v1/chat/session/{id}` | 删除会话 |
 | POST | `/api/v1/chat/messages` | 获取消息 |
 | POST | `/api/v1/chat/save` | 保存消息 |
+| GET | `/api/v1/chat/image/{sid}/{file}` | 聊天图片 |
 
 ### 爬虫
 | 方法 | 路径 | 说明 |
@@ -225,12 +227,13 @@ yuanai/                 AI 模块（三层架构）
 ├── pure/               ★ 纯业务逻辑（无框架依赖，任何代码可调用）
 ├── tools/              @tool 装饰器（薄壳，调用 pure/）
 ├── skills/             独立技能（从 pure/ 重新导出，兼容旧 import）
-└── audit/              审核流程
+└── audit/              审核流程（题目标注审核，豆包 Pro 模型）
 
 webui/                  Streamlit 状态管理
 config/settings.py      统一配置（模型/JWT/数据库）
 db/session.py           SQLAlchemy ORM（MySQL + SQLite）
 data/
+├── chat_images/        聊天图片存储（运行时生成）
 ├── crawl/              爬取原始文件
 ├── qimg/               题目截图
 └── web_cookie/         第三方网站 Cookie

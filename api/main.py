@@ -38,6 +38,8 @@ app.add_middleware(
 
 qimg_dir = os.path.join(root_path(), 'data', 'qimg')
 os.makedirs(qimg_dir, exist_ok=True)
+chat_img_dir = os.path.join(root_path(), 'data', 'chat_images')
+os.makedirs(chat_img_dir, exist_ok=True)
 
 spider_router = init_router()
 app.include_router(spider_router, prefix="/api/v1/spider", tags=["spider"])

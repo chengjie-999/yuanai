@@ -39,7 +39,8 @@ python -m api.main
 
 **React 前端（端口 5173）**：
 ```bash
-cd frontend && npm run dev
+cd frontend
+npm run dev
 ```
 
 **Streamlit UI（端口 8501）**：

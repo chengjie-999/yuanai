@@ -23,7 +23,7 @@ export default function BrowserPage() {
 
   // 加载今日审核统计
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = getLocalDate()
     const sid = localStorage.getItem(`audit_session_${today}`)
     if (!sid) return
     loadMessages(sid).then((msgs) => {
@@ -48,12 +48,17 @@ export default function BrowserPage() {
   const addToken = (url: string) => url.startsWith('/api/v1/') && !url.includes('?token=') ? `${url}?token=${token}` : url
   const ERROR_CAUSES = ['格式问题占比较多', '举报', '文本压线', '黄框压题干', '最终答案', '不独立', '出框', '少答案', '字太小', '答案错']
 
+  function getLocalDate(): string {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
   const getDailyAuditSessionId = useCallback(async (): Promise<string> => {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = getLocalDate()
     const key = `audit_session_${today}`
     const cached = localStorage.getItem(key)
     if (cached) return cached
-    const sid = await createSession()
+    const sid = await createSession(`📋 每日审核 ${getLocalDate()}`)
     localStorage.setItem(key, sid)
     return sid
   }, [])
@@ -70,7 +75,7 @@ export default function BrowserPage() {
   // 进入 step 3 或切到 AI自动化 tab 时，同步加载当天审核会话的历史消息
   useEffect(() => {
     if (wf.step !== 3 || browser.auditTab !== 'audit' || wf.auditing) return
-    const today = new Date().toISOString().slice(0, 10)
+    const today = getLocalDate()
     const sid = localStorage.getItem(`audit_session_${today}`)
     if (!sid) return
     loadMessages(sid).then((msgs) => {
@@ -255,21 +260,35 @@ export default function BrowserPage() {
     dispatchWf({ type: 'SET_AUDITING', payload: true })
     dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'audit' })
     dispatchWf({ type: 'SET_AUDIT_MESSAGES', payload: [{ role: 'assistant', content: '⏳ AI 正在审核中...' }] })
-    const systemPrompt = `你是一个小猿众包题目审核自动化助手。当前任务：单题标答-审核。
+    const systemPrompt = `你是一个中小学题目标注审核专家。当前任务：单题标答-审核。
 
-操作原则：
-- 首先调用 get_question_info() 获取题目截图和参考答案。
-- 根据截图判断题干信息是否完整可见：
-  - 如果题目内容被截断或显示不全，调用 scroll_canvas() 滚动查看。
-  - 如果题目整体过大无法一览，调用 zoom_question() 缩小视图。
-  - 滚动/缩放后需再次调用 get_question_info() 更新截图。
-- 确认能看清完整题目后，对比参考答案判断标注是否正确。
-- 如果正确，调用 mark_question_correct() 标记。
-- 如果错误，指出具体问题（如：格式问题、答案错误、黄框压题干等）。
+审核标准：从严判断。只要有一处不符合规范，就判错误。不要给"勉强可以"的通过，宁可严不可松。
+
+核心审核规则（逐条对照，违反任一条即驳回）：
+- 独立批改答案仅限数学科目，只需补充最终结果，不得复制全部解析文本
+- 黄框批改答案有多结果时，只选其中一个补充，保证答案唯一
+- 长文本（超15字）已填写或未填写均不算错，无需驳回
+- 答案位置居中/居左/居右均为正确，无需驳回
+- 数学选择题无作答区域、语文副科无作答区域 → 应举报
+- 题干显示不全、答案不全 → 应举报
+- 纯画图题 → 应举报
+- 判断结果须给出具体错误类型：格式问题/答案错误/黄框压题干/不独立/出框/少答案/字太小
+
+审核时请逐步推理：
+1. 观察截图 → 题干完整吗？题目是什么科目？有没有作答区域？
+2. 对照规则 → 独立批改答案只适用数学无作答区域题；长文本(超15字)不算错
+3. 逐一挑刺 → 答案唯一吗？独立吗？出框吗？压线吗？字太小吗？多结果只选了一个吗？
+4. 下结论 → 以上任一项不满足即为错误，给出具体错误类型。只有全部通过才算正确。
+
+操作流程：
+1. 调用 get_question_info() 获取题目截图和参考答案
+2. 如题干显示不全，调用 scroll_canvas() 或 zoom_question()，重新获取截图
+3. 看清完整题目后，对比参考答案，按上述规则逐条判断
+4. 正确则调用 mark_question_correct()；错误则指出具体问题和驳回原因
 
 错误处理：
-- 工具返回包含 [可重试] 的错误（如页面元素暂未加载、请求超时等），请稍等后重新调用该工具，最多尝试 3 次。
-- 工具返回包含 [致命] 的错误（如浏览器崩溃），请停止操作并告知用户。
+- [可重试] 错误 → 稍等后重试，最多3次
+- [致命] 错误 → 停止操作并告知用户
 
 注意：不要调用 submit_task 或 confirm_rejection，等待用户手动确认。`
     let assistantContent = ''
@@ -285,7 +304,7 @@ export default function BrowserPage() {
     } catch {}
 
     streamChat(
-      { model: getStoredModel(), temperature: 0.1, prompt: '请审核这道题。', history, system_prompt: systemPrompt },
+      { model: getStoredModel(), temperature: 0.1, prompt: '请严格按照核心审核规则审核这道题，判断标注是否正确，如有错误指出具体驳回原因。', history, system_prompt: systemPrompt },
       (event) => {
         if (event.type === 'token') { assistantContent += event.data; dispatchWf({ type: 'UPDATE_LAST_AUDIT_MESSAGE', payload: { content: assistantContent } }) }
         else if (event.type === 'tool_start') { dispatchWf({ type: 'APPEND_TOOL_CALL', payload: { name: event.data.name } }); addLog(`工具: ${event.data.name}`) }
@@ -299,7 +318,7 @@ export default function BrowserPage() {
         await saveMessages(sid, [
           { role: 'user', content: `请审核这道题\n任务: ${wf.currentTaskName}\nURL: ${browser.url}` },
           { role: 'assistant', content: assistantContent },
-        ], `📋 每日审核 ${new Date().toISOString().slice(0, 10)}`)
+        ], `📋 每日审核 ${getLocalDate()}`)
       },
       true)
   }
@@ -338,7 +357,7 @@ export default function BrowserPage() {
         await saveMessages(sid, [
           { role: 'user', content: text },
           { role: 'assistant', content: assistantContent },
-        ], `📋 每日审核 ${new Date().toISOString().slice(0, 10)}`)
+        ], `📋 每日审核 ${getLocalDate()}`)
       },
       true)
   }

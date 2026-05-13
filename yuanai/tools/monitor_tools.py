@@ -23,7 +23,7 @@ def take_screenshot(monitor: int = 0) -> str:
             buf = io.BytesIO()
             pil_img.save(buf, format="JPEG", quality=70)
             b64 = base64.b64encode(buf.getvalue()).decode()
-        return f"截图成功 {region['width']}x{region['height']}，base64 数据已嵌入消息，可直接分析。"
+        return f"截图成功 {region['width']}x{region['height']}，data:image/jpeg;base64,{b64}"
     except Exception as e:
         return f"截图失败: {e}"
 

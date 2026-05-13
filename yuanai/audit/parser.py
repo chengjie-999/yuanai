@@ -36,22 +36,33 @@ def parse_audit_result(ai_response: str) -> AuditResult:
 
 
 def extract_json(text: str) -> Optional[dict]:
-    """从文本中提取 JSON"""
-    patterns = [
-        r'\{[^{}]*\}',
-        r'```json\s*([^{}]+)\s*```',
-        r'```\s*([^{}]+)\s*```',
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, text, re.DOTALL)
+    """从文本中提取 JSON，支持嵌套对象"""
+    # 先尝试 ```json ... ``` 代码块
+    for pattern in [r'```json\s*([\s\S]*?)\s*```', r'```\s*([\s\S]*?)\s*```']:
+        match = re.search(pattern, text)
         if match:
             try:
-                return json.loads(match.group(1) if match.groups() else match.group(0))
+                return json.loads(match.group(1))
             except json.JSONDecodeError:
                 continue
 
-    # 尝试直接解析整个文本
+    # Brace-matching: 从第一个 { 开始，计数匹配 }
+    start = text.find('{')
+    if start == -1:
+        return None
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(text[start:i + 1])
+                except json.JSONDecodeError:
+                    break
+
+    # 降级：尝试直接解析整个文本
     try:
         return json.loads(text)
     except json.JSONDecodeError:

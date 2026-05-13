@@ -1,3 +1,4 @@
+import re
 from typing import List, AsyncGenerator, Dict, Any
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
@@ -76,9 +77,14 @@ async def stream_agent_events(
                 }
 
             elif event["event"] == "on_tool_end":
+                output = event["data"].get("output", "")
+                img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
+                for img_url in img_urls:
+                    yield {"type": "image", "data": img_url}
+                clean_output = re.sub(r',data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
                 yield {
                     "type": "tool_end",
-                    "data": {"name": event.get("name", "未知工具")}
+                    "data": {"name": event.get("name", "未知工具"), "output": clean_output}
                 }
 
         yield {
@@ -172,9 +178,14 @@ async def stream_agent_with_messages(
                 }
 
             elif event["event"] == "on_tool_end":
+                output = event["data"].get("output", "")
+                img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
+                for img_url in img_urls:
+                    yield {"type": "image", "data": img_url}
+                clean_output = re.sub(r',data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
                 yield {
                     "type": "tool_end",
-                    "data": {"name": event.get("name", "未知工具")}
+                    "data": {"name": event.get("name", "未知工具"), "output": clean_output}
                 }
 
         yield {

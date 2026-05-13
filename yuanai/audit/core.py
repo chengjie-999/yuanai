@@ -44,17 +44,17 @@ SPEC_TEMPLATE = """
 """
 
 
-SYSTEM_PROMPT_TEMPLATE = """你是一个中小学题目标注审核专家。
-请分析以下题目截图，判断标注是否正确。
+SYSTEM_PROMPT_TEMPLATE = """你是一个中小学题目标注审核专家，审核标准从严。
+只要有一处不符合规范，就判错误，不要给"勉强可以"的通过。
 {specs_content}截图说明：
 - 第1张: 题目全屏截图（由于题干为画布标签，会出现显示不全的情况，可尝试调用滚动工具，若无工具须提醒用户）
 - 第2张: 参考答案图片
 - 第3张+: 其他标记答案
 
-请返回严格的 JSON 格式，必须包含以下字段：
+请逐步推理后返回严格的 JSON 格式：
 {
-    "is_correct": true或false,  // 标注是否正确
-    "error_type": "错误原因"或null,  // 错误类型，选择：格式问题较多, 文本压线, 黄框压题干, 最终答案, 不独立, 出框, 少答案, 字太小, 答案错
+    "is_correct": true或false,  // 标注是否正确，任一项不符合规范即为false
+    "error_type": "错误原因"或null,  // 错误类型：格式问题较多, 文本压线, 黄框压题干, 最终答案, 不独立, 出框, 少答案, 字太小, 答案错
     "error_count": 数字,  // 错误标注数量
     "reason": "判断理由"  // 简要说明判断原因
 }"""
@@ -141,7 +141,7 @@ def build_multimodal_message(images: List[str], prompt: str = None) -> List:
     return [SystemMessage(content=get_system_prompt()), HumanMessage(content=user_content)]
 
 
-def call_audit_llm(images: List[str], model: str = "doubao-seed-2-0-lite-260215") -> str:
+def call_audit_llm(images: List[str], model: str = "doubao-seed-2-0-pro-260215") -> str:
     """
     调用 LLM 进行审核（多模态模型）
     :param images: Base64 图片列表
@@ -160,7 +160,7 @@ def call_audit_llm(images: List[str], model: str = "doubao-seed-2-0-lite-260215"
         return f'{{"is_correct": false, "error_type": "答案错", "error_count": 1, "reason": "AI调用失败: {error_msg}"}}'
 
 
-def call_audit_agent(images: List[str], model: str = "doubao-seed-2-0-lite-260215") -> str:
+def call_audit_agent(images: List[str], model: str = "doubao-seed-2-0-pro-260215") -> str:
     """
     调用 LangGraph Agent 进行审核（支持工具调用）
     :param images: Base64 图片列表
@@ -198,7 +198,7 @@ def call_audit_agent(images: List[str], model: str = "doubao-seed-2-0-lite-26021
         return f'{{"is_correct": false, "error_type": "答案错", "error_count": 1, "reason": "Agent调用失败: {error_msg}"}}'
 
 
-def audit_question(images: List, model: str = "doubao-seed-2-0-lite-260215") -> AuditResult:
+def audit_question(images: List, model: str = "doubao-seed-2-0-pro-260215") -> AuditResult:
     """
     审核题目图片（主接口）
     :param images: question_info() 返回的图片列表
@@ -231,7 +231,7 @@ def audit_question(images: List, model: str = "doubao-seed-2-0-lite-260215") -> 
     return parse_audit_result(ai_response)
 
 
-def quick_audit(images: List, model: str = "doubao-seed-2-0-lite-260215") -> bool:
+def quick_audit(images: List, model: str = "doubao-seed-2-0-pro-260215") -> bool:
     """
     快速审核（仅返回是否正确）
     :param images: 图片列表
@@ -244,7 +244,7 @@ def quick_audit(images: List, model: str = "doubao-seed-2-0-lite-260215") -> boo
 
 def audit_question_detail(
         images: List,
-        model: str = "doubao-seed-2-0-lite-260215"
+        model: str = "doubao-seed-2-0-pro-260215"
 ) -> AuditDetailResult:
     """
     审核题目图片（带完整详情版本）

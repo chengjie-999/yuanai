@@ -1,9 +1,16 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, getStoredModel, setStoredModel } from '../api'
+import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, getStoredModel, setStoredModel, getToken } from '../api'
 import type { ChatMessage } from '../types'
 import ToolCallCard from './ToolCallCard'
 import MarkdownContent from './MarkdownContent'
 import { ModelSelector } from './ModelSelector'
+
+function addToken(url: string): string {
+  if (url.startsWith('data:')) return url
+  if (!url.startsWith('/api/v1/')) return url
+  if (url.includes('?token=')) return url
+  return `${url}?token=${getToken()}`
+}
 
 function stripMarkdown(text: string): string {
   return text
@@ -104,6 +111,7 @@ export default function ChatPage({ user }: { user?: any }) {
   const [quickInput, setQuickInput] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [images, setImages] = useState<string[]>([])
+  const [expandedImage, setExpandedImage] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef(messages)
@@ -131,7 +139,7 @@ export default function ChatPage({ user }: { user?: any }) {
     if (history.length === 0) {
       setMessages([{ role: 'assistant', content: '你好！有什么可以帮你的？' }])
     } else {
-      setMessages(history.map((m: any) => ({ role: m.role, content: m.content, toolCalls: [] })))
+      setMessages(history.map((m: any) => ({ role: m.role, content: m.content, images: m.images, toolCalls: [] })))
     }
   }
 
@@ -144,23 +152,34 @@ export default function ChatPage({ user }: { user?: any }) {
 
   const handleSend = () => {
     if (!input.trim() || loading || !currentSid) return
-    const userMsg: ChatMessage = { role: 'user', content: input, images: images.length > 0 ? [...images] : undefined }
+    const sid = currentSid
+    const sentImages = images.length > 0 ? [...images] : undefined
+    const userMsg: ChatMessage = { role: 'user', content: input, images: sentImages }
+    const prevMsgs = [...messages] // 闭包快照，流式过程中会话切换不会影响此值
     setMessages((prev) => [...prev, userMsg])
     setImages([])
     setInput('')
     setLoading(true)
-    const history = messagesRef.current.map((m) => ({ role: m.role, content: m.content }))
+    const history = prevMsgs.map((m) => ({ role: m.role, content: m.content }))
     const assistantMsg: ChatMessage = { role: 'assistant', content: '', toolCalls: [] }
     setMessages((prev) => [...prev, assistantMsg])
+
+    let responseContent = ''
+    let responseImages: string[] = []
+
     streamChat(
-      { model, temperature: 0.7, prompt: input, images: images.length > 0 ? [...images] : undefined, history, system_prompt: '你是一个能调用工具的助手' },
+      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: '你是一个能调用工具的助手' },
       (event) => {
         if (event.type === 'token') {
+          responseContent += event.data
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data }; return last })
         } else if (event.type === 'tool_start') {
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last })
         } else if (event.type === 'tool_end') {
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const } : c) }; return last })
+        } else if (event.type === 'image') {
+          responseImages.push(event.data)
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last })
         } else if (event.type === 'error') {
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `❌ ${event.data}` }; return last }); setLoading(false)
         }
@@ -168,37 +187,55 @@ export default function ChatPage({ user }: { user?: any }) {
       (error) => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setLoading(false) },
       () => {
         setLoading(false)
-        const msgs = messagesRef.current.map((m) => ({ role: m.role, content: m.content }))
-        saveMessages(currentSid, msgs)
+        const msgs = [
+          ...prevMsgs.map((m) => ({ role: m.role, content: m.content, ...(m.images?.length ? { images: m.images } : {}) })),
+          { role: 'user', content: input, ...(sentImages ? { images: sentImages } : {}) },
+          { role: 'assistant', content: responseContent, ...(responseImages.length ? { images: responseImages } : {}) },
+        ]
+        const title = input.length > 50 ? input.slice(0, 50) + '...' : input
+        saveMessages(sid, msgs, title)
         refreshSessions()
       },
     )
   }
 
   const sendWithNewSession = async (text: string) => {
+    setLoading(true) // 立即锁定，防止 setTimeout 窗口内重复发送
     const sid = await createSession()
     setCurrentSid(sid)
     refreshSessions()
     setInput(text)
     setQuickInput('')
-    const currentImages = [...images]
+    const sentImages = [...images]
     setImages([])
-    setTimeout(() => {
-      setMessages([{ role: 'user', content: text, images: currentImages.length > 0 ? currentImages : undefined }])
-      setLoading(true)
-      setMessages((prev) => [...prev, { role: 'assistant', content: '', toolCalls: [] }])
-      streamChat(
-        { model, temperature: 0.7, prompt: text, images: currentImages.length > 0 ? currentImages : undefined, history: [], system_prompt: '你是一个能调用工具的助手' },
-        (event) => {
-          if (event.type === 'token') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data }; return last }) }
-          else if (event.type === 'tool_start') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
-          else if (event.type === 'tool_end') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const } : c) }; return last }) }
-          else if (event.type === 'error') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `❌ ${event.data}` }; return last }); setLoading(false) }
-        },
-        (error) => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setLoading(false) },
-        () => { setLoading(false); const msgs = messagesRef.current.map((m) => ({ role: m.role, content: m.content })); saveMessages(sid, msgs); refreshSessions() },
-      )
-    }, 100)
+    const userMsg: ChatMessage = { role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }
+    setMessages([userMsg])
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', toolCalls: [] }])
+
+    let responseContent = ''
+    let responseImages: string[] = []
+
+    streamChat(
+      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: '你是一个能调用工具的助手' },
+      (event) => {
+        if (event.type === 'token') { responseContent += event.data; setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data }; return last }) }
+        else if (event.type === 'tool_start') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
+        else if (event.type === 'tool_end') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const } : c) }; return last }) }
+        else if (event.type === 'image') { responseImages.push(event.data); setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last }) }
+        else if (event.type === 'error') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `❌ ${event.data}` }; return last }); setLoading(false) }
+      },
+      (error) => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setLoading(false) },
+      () => {
+        setLoading(false)
+        const msgs = [
+          { role: 'user', content: text, ...(sentImages.length > 0 ? { images: sentImages } : {}) },
+          { role: 'assistant', content: responseContent, ...(responseImages.length ? { images: responseImages } : {}) },
+        ]
+        const title = text.length > 50 ? text.slice(0, 50) + '...' : text
+        saveMessages(sid, msgs, title)
+        refreshSessions()
+      },
+    )
   }
 
   return (
@@ -480,12 +517,29 @@ export default function ChatPage({ user }: { user?: any }) {
                         ) : msg.role === 'user' ? (
                           <>
                             {msg.content}
-                            {msg.images?.map((img, j) => (
-                              <img key={j} src={img} style={{ maxWidth: 200, maxHeight: 200, borderRadius: 6, marginTop: 6, display: 'block' }} />
-                            ))}
+                            {msg.images?.length > 0 && (
+                              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>
+                                {msg.images.map((img, j) => (
+                                  <img key={j} src={addToken(img)}
+                                    onClick={() => setExpandedImage(addToken(img))}
+                                    style={{ height: 120, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: '1px solid #e0e0e0' }} />
+                                ))}
+                              </div>
+                            )}
                           </>
                         ) : (
-                          <MarkdownContent content={msg.content} />
+                          <>
+                            <MarkdownContent content={msg.content} />
+                            {msg.images?.length > 0 && (
+                              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>
+                                {msg.images.map((img, j) => (
+                                  <img key={j} src={addToken(img)}
+                                    onClick={() => setExpandedImage(addToken(img))}
+                                    style={{ height: 120, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: '1px solid #e0e0e0' }} />
+                                ))}
+                              </div>
+                            )}
+                          </>
                         )}
                         {msg.toolCalls?.map((tc, j) => (
                           <ToolCallCard key={j} call={tc} />
@@ -569,6 +623,12 @@ export default function ChatPage({ user }: { user?: any }) {
           </>
         )}
       </div>
+      {expandedImage && (
+        <div onClick={() => setExpandedImage(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <img src={expandedImage} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }} />
+        </div>
+      )}
     </div>
   )
 }

@@ -42,6 +42,7 @@ class AIChat(Base):
     session_id = Column(String(36), nullable=False, index=True)
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
+    images = Column(Text, nullable=True)
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -144,6 +145,14 @@ class AgentDatabase:
                         conn.commit()
                 except Exception:
                     logger.debug("迁移: %s 列可能已存在", col.split()[0])
+            # 迁移：添加 images 列
+            try:
+                with self.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE ai_chat ADD COLUMN images TEXT"))
+                    conn.commit()
+                    logger.info("迁移: ai_chat 表添加了 images 列")
+            except Exception:
+                logger.debug("迁移: images 列可能已存在")
         else:
             if db_path is None:
                 db_path = os.path.join(root_path(), "agent.db")
@@ -161,6 +170,14 @@ class AgentDatabase:
                     logger.info("迁移: chat_session 表添加了 user_id 列")
             except Exception:
                 logger.debug("迁移: user_id 列可能已存在")
+            # 迁移：添加 images 列
+            try:
+                with self.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE ai_chat ADD COLUMN images TEXT"))
+                    conn.commit()
+                    logger.info("迁移: ai_chat 表添加了 images 列")
+            except Exception:
+                logger.debug("迁移: images 列可能已存在")
         self.Session = sessionmaker(bind=self.engine)
 
     def _init_tables(self):
@@ -331,7 +348,14 @@ class AgentDatabase:
         session = self.Session()
         try:
             chats = session.query(AIChat).filter_by(session_id=session_id).order_by(AIChat.id).all()
-            return [{"role": c.role, "content": c.content, "create_time": str(c.create_time)} for c in chats]
+            result = [{"role": c.role, "content": c.content, "create_time": str(c.create_time)} for c in chats]
+            for i, c in enumerate(chats):
+                if c.images:
+                    try:
+                        result[i]["images"] = json.loads(c.images)
+                    except Exception:
+                        result[i]["images"] = []
+            return result
         finally:
             session.close()
 

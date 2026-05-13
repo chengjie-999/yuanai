@@ -36,7 +36,7 @@ def take_browser_screenshot() -> str:
         import base64
         png = browser_manager.screenshot()
         b64 = base64.b64encode(png).decode()
-        return f"截图成功，base64 数据已嵌入消息，可直接分析。"
+        return f"截图成功，data:image/png;base64,{b64}"
     except RuntimeError as e:
         return f"❌ [致命] {e}"
     except Exception as e:

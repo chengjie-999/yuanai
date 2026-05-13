@@ -1,10 +1,14 @@
 import json
+import os
+import uuid
+import base64
 import asyncio
 import logging
 from fastapi import APIRouter, HTTPException, Request, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from pydantic import BaseModel, Field
+from utils.data_path import root_path
 
 from api.v1.models import ChatRequest, SaveMessagesRequest
 from yuanai.core.lc import get_llm
@@ -16,6 +20,46 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 _SAFE_ERROR = "请求处理失败，请稍后重试"
+_CHAT_IMG_DIR = os.path.join(root_path(), "data", "chat_images")
+
+
+def _save_chat_image(session_id: str, data_url: str) -> str:
+    """将 base64 data URL 保存为文件，返回访问 URL。非 base64 原样返回。"""
+    if not data_url.startswith("data:"):
+        return data_url
+    try:
+        header, b64 = data_url.split(",", 1)
+        ext = "png"
+        if "image/jpeg" in header:
+            ext = "jpg"
+        elif "image/png" in header:
+            ext = "png"
+        elif "image/gif" in header:
+            ext = "gif"
+        elif "image/webp" in header:
+            ext = "webp"
+        img_bytes = base64.b64decode(b64)
+        sid_dir = os.path.join(_CHAT_IMG_DIR, session_id)
+        os.makedirs(sid_dir, exist_ok=True)
+        fname = f"{uuid.uuid4().hex[:12]}.{ext}"
+        fpath = os.path.join(sid_dir, fname)
+        with open(fpath, "wb") as f:
+            f.write(img_bytes)
+        return f"/api/v1/chat/image/{session_id}/{fname}"
+    except Exception:
+        logger.warning("聊天图片保存失败", exc_info=True)
+        return data_url
+
+
+@router.get("/image/{session_id}/{filename}")
+async def serve_chat_image(session_id: str, filename: str):
+    """提供聊天图片"""
+    if ".." in session_id or ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="非法路径")
+    file_path = os.path.join(_CHAT_IMG_DIR, session_id, filename)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    return FileResponse(file_path)
 
 
 class MessagesRequest(BaseModel):
@@ -84,6 +128,16 @@ async def chat_stream(req: ChatRequest, request: Request, browser_context: bool 
                     system_prompt += f"\n\n---\n# 标注规范（请严格遵守以下规范进行审核判断）\n{specs}"
             except Exception:
                 pass
+            try:
+                from yuanai.tools.audit_tools import get_recent_feedbacks, get_important_examples
+                feedback = get_recent_feedbacks(limit=5)
+                if feedback and "暂无" not in feedback:
+                    system_prompt += f"\n\n---\n# 最近审核反馈（请参考纠错趋势）\n{feedback}"
+                examples = get_important_examples(limit=3)
+                if examples and "暂无" not in examples:
+                    system_prompt += f"\n\n---\n# 重要参考案例\n{examples}"
+            except Exception:
+                pass
 
         input_messages = build_input_messages(
             prompt=req.prompt,
@@ -106,13 +160,17 @@ async def chat_stream(req: ChatRequest, request: Request, browser_context: bool 
         raise HTTPException(status_code=500, detail=_SAFE_ERROR)
 
 
+class NewSessionRequest(BaseModel):
+    title: str = Field("新对话", description="会话标题")
+
+
 @router.post("/session/new")
-async def new_session(request: Request):
+async def new_session(req: NewSessionRequest, request: Request):
     """创建新会话"""
     try:
         db = _get_db()
         user_id = _get_user_id(request)
-        result = db.create_session(user_id=user_id)
+        result = db.create_session(title=req.title, user_id=user_id)
         return result
     except HTTPException:
         raise
@@ -189,6 +247,9 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
         try:
             for msg in req.messages:
                 record = AIChat(session_id=req.session_id, role=msg["role"], content=msg["content"])
+                if msg.get("images"):
+                    saved = [_save_chat_image(req.session_id, img) for img in msg["images"]]
+                    record.images = json.dumps(saved, ensure_ascii=False)
                 sess.add(record)
             if req.title:
                 from db.session import ChatSession

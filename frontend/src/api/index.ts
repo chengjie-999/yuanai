@@ -84,8 +84,12 @@ export async function fetchTools() {
 }
 
 // ---- Sessions ----
-export async function createSession(): Promise<string> {
-  const res = await fetch(`${API_BASE}/chat/session/new`, { method: 'POST', headers: authHeaders() })
+export async function createSession(title?: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/chat/session/new`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ title: title || '新对话' }),
+  })
   const data = await res.json()
   return data.session_id
 }
@@ -104,7 +108,7 @@ export async function deleteSession(sessionId: string) {
 }
 
 // ---- Messages ----
-export async function loadMessages(sessionId: string): Promise<{ role: string; content: string }[]> {
+export async function loadMessages(sessionId: string): Promise<{ role: string; content: string; images?: string[] }[]> {
   try {
     const res = await fetch(`${API_BASE}/chat/messages`, {
       method: 'POST',
@@ -116,7 +120,7 @@ export async function loadMessages(sessionId: string): Promise<{ role: string; c
   } catch { return [] }
 }
 
-export async function saveMessages(sessionId: string, messages: { role: string; content: string }[], title?: string) {
+export async function saveMessages(sessionId: string, messages: { role: string; content: string; images?: string[] }[], title?: string) {
   try {
     const body: any = { session_id: sessionId, messages }
     if (title) body.title = title

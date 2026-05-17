@@ -53,7 +53,7 @@ export function browserReducer(state: BrowserState, action: BrowserAction): Brow
 }
 
 export type WorkflowAction =
-  | { type: 'SET_STEP'; payload: number }
+  | { type: 'SET_STEP'; payload: Step }
   | { type: 'SET_TASK_CARDS'; payload: string[] }
   | { type: 'SET_SELECTED_TASK'; payload: string }
   | { type: 'SET_TASK_STARTED'; payload: boolean }

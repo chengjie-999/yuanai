@@ -39,7 +39,6 @@ export default function BrowserPage() {
     }).catch(() => {})
   }, [wf.step])
 
-  const esRef = useRef<EventSource | null>(null)
   const autoStartCancelRef = useRef(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const prevUrlRef = useRef('')
@@ -104,31 +103,85 @@ export default function BrowserPage() {
 
   useEffect(() => {
     pollStatus()
-    const id = setInterval(pollStatus, 3000)
+    const id = setInterval(pollStatus, 5000)  // 5s 健康检查 + WebSocket 断连兜底
     return () => clearInterval(id)
   }, [pollStatus])
 
+  // WebSocket 浏览器事件推送（CDP 驱动，失败时降级 SSE）
+  const wsRef = useRef<WebSocket | null>(null)
+  const sseFallbackRef = useRef<EventSource | null>(null)
+
   useEffect(() => {
-    if (esRef.current) { esRef.current.close(); esRef.current = null }
+    if (wsRef.current) { wsRef.current.close(); wsRef.current = null }
+    if (sseFallbackRef.current) { sseFallbackRef.current.close(); sseFallbackRef.current = null }
     if (!browser.running || !browser.liveMode) { dispatchBrowser({ type: 'SET_SCREENSHOT', payload: null }); return }
 
     let cancelled = false
     const token = localStorage.getItem('token') || ''
-    fetch(`${API_BASE}/browser/sse-token`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(({ token: sseToken }) => {
-        if (cancelled) return
-        const es = new EventSource(`${API_BASE}/browser/stream?interval=${browser.streamInterval / 1000}&token=${sseToken}`)
-        esRef.current = es
-        es.onmessage = (e) => {
-          if (e.data === 'BROWSER_STOPPED') { es.close(); esRef.current = null; dispatchBrowser({ type: 'SET_SCREENSHOT', payload: null }); return }
-          if (e.data.startsWith('ERROR:')) return
-          dispatchBrowser({ type: 'SET_SCREENSHOT', payload: e.data })
-        }
-        es.onerror = () => { es.close(); esRef.current = null }
-      })
-      .catch(() => {})
-    return () => { cancelled = true; esRef.current?.close(); esRef.current = null }
+
+    const startSseFallback = (sseToken: string) => {
+      if (cancelled) return
+      const es = new EventSource(`${API_BASE}/browser/stream?interval=${browser.streamInterval / 1000}&token=${sseToken}`)
+      sseFallbackRef.current = es
+      es.onmessage = (e) => {
+        if (e.data === 'BROWSER_STOPPED') { es.close(); sseFallbackRef.current = null; dispatchBrowser({ type: 'SET_SCREENSHOT', payload: null }); return }
+        if (e.data.startsWith('ERROR:')) return
+        dispatchBrowser({ type: 'SET_SCREENSHOT', payload: e.data })
+      }
+      es.onerror = () => { es.close(); sseFallbackRef.current = null }
+    }
+
+    const connectWs = async () => {
+      let sseToken = ''
+      try {
+        const res = await fetch(`${API_BASE}/browser/sse-token`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+        const data = await res.json()
+        sseToken = data.token
+      } catch { startSseFallback(sseToken); return }
+
+      if (cancelled) return
+
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsUrl = `${protocol}//${location.host}${API_BASE}/browser/ws?interval=${browser.streamInterval / 1000}&token=${sseToken}`
+
+      // WebSocket 连接超时（3s 没连上就降级）
+      const wsTimeout = setTimeout(() => {
+        ws.close()
+        wsRef.current = null
+        startSseFallback(sseToken)
+      }, 3000)
+
+      const ws = new WebSocket(wsUrl)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        clearTimeout(wsTimeout)
+      }
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data)
+          if (msg.type === 'frame') {
+            dispatchBrowser({ type: 'SET_SCREENSHOT', payload: msg.data })
+          } else if (msg.type === 'url') {
+            dispatchBrowser({ type: 'SET_URL', payload: msg.data })
+          } else if (msg.type === 'stopped') {
+            ws.close(); wsRef.current = null
+            dispatchBrowser({ type: 'SET_SCREENSHOT', payload: null })
+          }
+        } catch {}
+      }
+
+      ws.onerror = () => {
+        clearTimeout(wsTimeout)
+        ws.close(); wsRef.current = null
+        startSseFallback(sseToken)
+      }
+    }
+
+    connectWs()
+
+    return () => { cancelled = true; wsRef.current?.close(); wsRef.current = null; sseFallbackRef.current?.close(); sseFallbackRef.current = null }
   }, [browser.running, browser.streamInterval, browser.liveMode])
 
   useEffect(() => {
@@ -349,16 +402,31 @@ export default function BrowserPage() {
 
     const systemPrompt = `你是一个中小学题目标注审核专家。当前任务：单题标答-审核。
 
-审核标准：从严判断。只要有一处不符合规范，就判错误。
+审核标准：从严判断。只要有一处不符合规范，就判错误。不要给"勉强可以"的通过。
 
-重要：审核前必须先调用工具检索相关知识，不要凭记忆判断：
-1. retrieve_annotation_spec(关键词) — 检索标注规范，根据题目类型传入关键词（如'独立批改''黄框''数学''举报''长文本'）
-2. retrieve_audit_steps(关键词) — 检索操作步骤和工具使用方法
+【第一步：检查题目完整性 ← 最重要，不可跳过】
+1. 先看截图，判断题干是否显示完整
+2. 题干显示不全 → 必须调用 scroll_canvas(direction='down') 向下滚动后重新观察
+3. 题目内容多、看不全所有黄框 → 必须调用 zoom_question() 缩小视图
+4. 反复滚动/缩放直到看清完整题干和所有黄框答案区域
 
-审核流程：
-1. 仔细观察截图，确定题目科目、作答区域类型
-2. 检索相关规范 → 逐条对照判断
-3. 正确则调用 mark_question_correct()；错误则指出具体问题和驳回原因
+【第二步：检索规范】
+调用 retrieve_annotation_spec(关键词) 检索相关规范（如'独立批改''黄框''数学''举报'）
+调用 retrieve_audit_steps('操作流程') 检索操作步骤
+
+【第三步：逐条对照审核】
+看全题目后，对照规范逐条判断：
+- 独立批改答案仅限数学科目，只需补充最终结果，不得复制全部解析
+- 黄框答案有多结果时，只选其一，保证答案唯一
+- 长文本（超15字）不算错
+- 答案位置居中/居左/居右均正确
+- 数学/语文/副科无作答区域 → 举报
+- 题干不全、答案不全 → 举报
+- 纯画图题 → 举报
+
+【第四步：下结论】
+- 全部通过 → 调用 mark_question_correct()
+- 有错误 → 指出具体错误类型（格式问题/答案错误/黄框压题干/不独立/出框/少答案/字太小）和驳回原因
 
 错误处理：[可重试]→重试最多3次，[致命]→停止并告知
 注意：不要调用 submit_task 或 confirm_rejection，等待用户手动确认。`
@@ -684,7 +752,7 @@ export default function BrowserPage() {
               <span style={{ fontSize: 11, color: '#666', minWidth: 28 }}>{browser.streamInterval}ms</span>
             </div>
             <div style={{ display: 'flex', gap: 2, marginLeft: 4 }}>
-              <button onClick={() => dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'screenshot' })} style={tabBtnStyle(browser.auditTab === 'screenshot')}>截图</button>
+              <button onClick={() => dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'screenshot' })} style={tabBtnStyle(browser.auditTab === 'screenshot')}>实时</button>
               <button onClick={() => dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'audit' })} style={tabBtnStyle(browser.auditTab === 'audit')}>AI自动化</button>
               <button onClick={() => dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'logs' })} style={tabBtnStyle(browser.auditTab === 'logs')}>日志</button>
             </div>
@@ -695,7 +763,7 @@ export default function BrowserPage() {
               browser.screenshot ? (
                 <img src={`data:image/jpeg;base64,${browser.screenshot}`} alt="截图" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               ) : (
-                <span style={{ color: '#ccc', fontSize: 14 }}>{browser.running ? '等待截图...' : '浏览器未启动'}</span>
+                <span style={{ color: '#ccc', fontSize: 14 }}>{browser.running ? '等待实时画面...' : '浏览器未启动'}</span>
               )
             )}
             {browser.auditTab === 'audit' && (

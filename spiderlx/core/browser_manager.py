@@ -2,9 +2,20 @@ import atexit
 import logging
 import threading
 
-from spiderlx.auto.web.selenium.main import MyWebBrowser, BrowserInitializer
-
 logger = logging.getLogger(__name__)
+
+try:
+    from spiderlx.auto.web.selenium.main import MyWebBrowser, BrowserInitializer
+except ImportError as e:
+    MyWebBrowser = None
+    BrowserInitializer = None
+    logger.warning("Selenium 浏览器模块不可用: %s", e)
+
+try:
+    from spiderlx.core.cdp_events import CDPScreencast
+except ImportError as e:
+    CDPScreencast = None
+    logger.warning("CDP 事件模块不可用: %s", e)
 
 
 class BrowserManager:
@@ -22,6 +33,7 @@ class BrowserManager:
                     cls._instance._browser = None
                     cls._instance._raw_driver = None
                     cls._instance._op_lock = threading.Lock()
+                    cls._instance._cdp_screencast = None
         return cls._instance
 
     # ———————— 进程清理 ————————
@@ -56,6 +68,8 @@ class BrowserManager:
 
             self._force_cleanup()
 
+            if BrowserInitializer is None:
+                return "❌ 浏览器模块不可用（Selenium/webdriver 未安装）"
             logger.info("创建新浏览器实例...")
             driver = BrowserInitializer().create_driver()
             self._raw_driver = driver
@@ -66,6 +80,7 @@ class BrowserManager:
 
     def stop(self) -> str:
         with self._op_lock:
+            self.stop_cdp_stream()
             if self._browser:
                 try:
                     logger.info("正在关闭浏览器...")
@@ -77,6 +92,22 @@ class BrowserManager:
                     self._raw_driver = None
                     self._browser = None
             return "✅ 浏览器已关闭"
+
+    def start_cdp_stream(self, quality: int = 70, max_width: int = 1280,
+                         max_height: int = 720, every_nth_frame: int = 1):
+        """开启 CDP screencast 帧推送"""
+        if not self._raw_driver:
+            return
+        if self._cdp_screencast is None:
+            self._cdp_screencast = CDPScreencast(self._raw_driver)
+        self._cdp_screencast.start(quality=quality, max_width=max_width,
+                                   max_height=max_height, every_nth_frame=every_nth_frame)
+
+    def stop_cdp_stream(self):
+        """停止 CDP screencast"""
+        if self._cdp_screencast:
+            self._cdp_screencast.stop()
+            self._cdp_screencast = None
 
     def _force_cleanup(self):
         """强制清理旧驱动（包括残留的 Chrome 进程）"""
@@ -137,12 +168,27 @@ class BrowserManager:
             return ""
 
     def screenshot(self) -> bytes:
+        """传统全页 PNG 截图（降级用）"""
         with self._op_lock:
             if not self._browser or not self._raw_driver:
                 raise RuntimeError("浏览器未启动")
             if not self._alive():
                 raise RuntimeError("浏览器已断开")
             return self._raw_driver.get_screenshot_as_png()
+
+    def screenshot_cdp(self, format: str = "jpeg", quality: int = 70) -> str:
+        """CDP 视口截图，直接返回 base64（jpeg 则无需 PIL 转码，快 2-3 倍）"""
+        with self._op_lock:
+            if not self._browser or not self._raw_driver:
+                raise RuntimeError("浏览器未启动")
+            if not self._alive():
+                raise RuntimeError("浏览器已断开")
+            result = self._raw_driver.execute_cdp_cmd("Page.captureScreenshot", {
+                "format": format,
+                "quality": quality,
+                "fromSurface": True,
+            })
+            return result["data"]
 
 
 browser_manager = BrowserManager()

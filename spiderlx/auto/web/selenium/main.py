@@ -9,7 +9,11 @@ from spiderlx.anti.cookie.selenium import get_cookie, use_cookie
 from spiderlx.anti.ua import get_random_ua
 from spiderlx.anti.cdp import get_anti_detect_script
 from spiderlx.core.save.urls import urls, get_urls
-from webdrivermanager_cn import ChromeDriverManagerAliMirror
+from spiderlx.core.cdp_events import register_cdp_listeners, CDPScreencast, cdp_bus
+try:
+    from webdrivermanager_cn import ChromeDriverManagerAliMirror
+except ImportError:
+    ChromeDriverManagerAliMirror = None
 
 
 # ====================== 第一类：浏览器底层驱动初始化（底层模块）======================
@@ -82,8 +86,10 @@ class BrowserInitializer:
             driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
                 'source': get_anti_detect_script()
             })
+            # 注册 CDP 事件监听（URL变化、帧推送）
+            register_cdp_listeners(driver, cdp_bus)
             driver.maximize_window()
-            print("✅ 浏览器启动完成（反爬已配置）")
+            print("✅ 浏览器启动完成（反爬 + CDP事件已配置）")
             self.driver = driver
             return driver
         except Exception as e:

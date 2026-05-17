@@ -6,8 +6,11 @@ ENV APP_HOME=/app
 
 WORKDIR $APP_HOME
 
-# apt 国内镜像加速
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+# apt 国内镜像加速（动态检测 Debian 版本）
+RUN . /etc/os-release && \
+    echo "deb http://mirrors.aliyun.com/debian $VERSION_CODENAME main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
+    echo "deb http://mirrors.aliyun.com/debian $VERSION_CODENAME-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.aliyun.com/debian-security $VERSION_CODENAME-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list
 
 # 系统依赖：Playwright/Selenium 浏览器自动化需要的库
 RUN apt-get update && apt-get install -y --no-install-recommends \

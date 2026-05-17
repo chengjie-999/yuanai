@@ -157,8 +157,10 @@ def get_question_info() -> str:
                 images_meta.append({"index": i, "type": "screenshot" if i == 0 else "reference" if i == 1 else "mark"})
                 urls.append(f"/api/v1/browser/qimg/{img_id}/{file_name}")
             else:
-                urls.append(item)
-                images_meta.append({"index": i, "type": "url", "url": item})
+                # 只保留 HTTP URL（参考答案），跳过本地文件路径（如独立.png）
+                if item.startswith('http'):
+                    urls.append(item)
+                    images_meta.append({"index": i, "type": "url", "url": item})
 
     # 写 meta.json
     meta = {
@@ -175,7 +177,7 @@ def get_question_info() -> str:
     try:
         from db.session import get_db
         db = get_db()
-        db.save_task_images(img_id, task_name, current_url, img_dir, len(qa), images_meta)
+        db.save_task_images(img_id, task_name, current_url, img_dir, len(urls), images_meta)
     except Exception as e:
         print(f"⚠️ 保存图片记录到数据库失败: {e}")
 

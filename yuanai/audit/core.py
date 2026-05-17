@@ -84,7 +84,9 @@ def normalize_to_image(img_data: Union[bytes, str]) -> Optional[str]:
         return f"data:image/png;base64,{base64_str}"
     elif isinstance(img_data, str):
         img_data = img_data.strip()
-        if img_data.startswith('http'):
+        if img_data.startswith('data:image'):
+            return img_data
+        elif img_data.startswith('http'):
             # HTTP URL → 直接返回（节省 token！）
             return img_data
         elif os.path.exists(img_data):
@@ -180,13 +182,13 @@ def call_audit_agent(images: List[str], model: str = "doubao-seed-2-0-pro-260215
         for img_url in images:
             user_content.append({"type": "image_url", "image_url": {"url": img_url}})
         messages = [
-            ("system", get_system_prompt()),
-            ("user", user_content)
+            SystemMessage(content=get_system_prompt()),
+            HumanMessage(content=user_content),
         ]
     else:
         messages = [
-            ("system", get_system_prompt()),
-            ("user", prompt_text)
+            SystemMessage(content=get_system_prompt()),
+            HumanMessage(content=prompt_text),
         ]
     
     try:

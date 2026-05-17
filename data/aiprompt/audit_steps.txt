@@ -1,0 +1,25 @@
+一、审核操作流程
+1. 先仔细观察已提供的浏览器截图和参考答案图片，直接进行审核判断
+2. 如题干显示不全，调用 scroll_canvas() 或 zoom_question() 滚动/缩放后重新观察
+3. 看清完整题目后，对比参考答案，按标注规范逐条判断
+4. 正确则调用 mark_question_correct()；错误则指出具体问题和驳回原因
+
+二、工具使用说明
+- scroll_canvas(direction='up'|'down') — 滚动题目画布，用于题干或答案显示不全时
+- zoom_question() — 缩小视图，用于看到更多内容
+- get_question_info() — 重新获取题目截图，用于页面刷新后
+- mark_question_correct() — 标记当前题目为正确
+- retrieve_annotation_spec(query) — 检索标注规范，传入关键词获取相关规则
+- retrieve_audit_steps(query) — 检索本操作步骤文档
+
+三、错误处理
+- 工具返回 [可重试] 错误 → 稍等后重试，最多3次
+- 工具返回 [致命] 错误 → 停止操作并告知用户
+- 注意：不要调用 submit_task 或 confirm_rejection，等待用户手动确认
+
+四、审核要点提醒
+- 先检索规范再判断，不要凭记忆
+- 独立批改答案仅限数学科目
+- 长文本超15字不算错
+- 黄框多结果选其一
+- 题干/答案不全应举报

@@ -42,6 +42,9 @@ export default function BrowserPage() {
   const esRef = useRef<EventSource | null>(null)
   const autoStartCancelRef = useRef(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const prevUrlRef = useRef('')
+  const lastFetchedUrlRef = useRef('')
+  const loginCookiesRef = useRef(false)
 
   const isXY = browser.url.includes('xyzb.yuanfudao.com')
   const token = localStorage.getItem('token') || ''
@@ -137,6 +140,56 @@ export default function BrowserPage() {
     if (wf.step === 2 && isXY) handleGetTasks()
   }, [wf.step, isXY])
 
+  // URL 驱动：每个新的任务页面 URL 自动获取题目信息，并显示在对话中
+  const isTaskUrl = (url: string) => url.includes('taskId=') || url.includes('mark-qs-flow') || url.includes('answer/audit')
+  useEffect(() => {
+    if (!browser.url || !isXY || browser.url === prevUrlRef.current) return
+    prevUrlRef.current = browser.url
+    if (isTaskUrl(browser.url) && browser.url !== lastFetchedUrlRef.current) {
+      const targetUrl = browser.url
+      lastFetchedUrlRef.current = targetUrl
+      addLog(`📌 检测到任务页面，等待加载...`)
+      setTimeout(async () => {
+        await new Promise(r => setTimeout(r, 3000))
+        const result = await executeTool('get_question_info')
+        addLog(result)
+        try {
+          const data = JSON.parse(result)
+          if (data.images && data.images.length > 0) {
+            dispatchWf({ type: 'SET_QUESTION_IMAGES', payload: data.images })
+            const imgUrls: string[] = data.images.map((img: any) => img.data)
+            dispatchWf({ type: 'ADD_AUDIT_MESSAGE', payload: { role: 'user', content: `📸 题目信息\n${targetUrl}`, images: imgUrls } })
+            // 保存到后端对话
+            try {
+              const sid = await getDailyAuditSessionId()
+              await saveMessages(sid, [{ role: 'user', content: `📸 题目信息\n${targetUrl}`, images: imgUrls }])
+            } catch {}
+          } else {
+            lastFetchedUrlRef.current = ''
+          }
+        } catch {
+          lastFetchedUrlRef.current = ''
+        }
+      }, 2000)
+    }
+  }, [browser.url, isXY])
+
+  // URL 驱动：检测到登录页自动加载 cookies
+  useEffect(() => {
+    if (!browser.url) return
+    if (browser.url.includes('xyzb.yuanfudao.com/new/login')) {
+      if (loginCookiesRef.current) return
+      loginCookiesRef.current = true
+      addLog('🔐 检测到登录页，自动加载 cookies...')
+      executeTool('load_cookies').then(r => {
+        addLog(r)
+        if (r.includes('✅')) dispatchWf({ type: 'SET_STEP', payload: 2 })
+      })
+    } else {
+      loginCookiesRef.current = false
+    }
+  }, [browser.url])
+
   // === Browser Handlers ===
   const handleStart = async () => {
     dispatchBrowser({ type: 'SET_BROWSER_BUSY', payload: true })
@@ -145,7 +198,7 @@ export default function BrowserPage() {
     for (let i = 0; i < 10; i++) {
       await new Promise((r) => setTimeout(r, 1000))
       const status = await getBrowserStatus()
-      if (status.running) { dispatchBrowser({ type: 'SET_RUNNING', payload: true }); dispatchBrowser({ type: 'SET_URL', payload: status.url || '' }); addLog('浏览器就绪'); dispatchBrowser({ type: 'SET_BROWSER_BUSY', payload: false }); return }
+      if (status.running) { dispatchBrowser({ type: 'SET_RUNNING', payload: true }); dispatchBrowser({ type: 'SET_URL', payload: status.url || '' }); addLog('浏览器就绪'); dispatchBrowser({ type: 'SET_BROWSER_BUSY', payload: false }); handleNavigate('小猿众包'); return }
     }
     addLog('浏览器启动超时')
     pollStatus()
@@ -190,8 +243,10 @@ export default function BrowserPage() {
         dispatchWf({ type: 'SET_TASK_CARDS', payload: sorted })
         localStorage.setItem('xy_cards', JSON.stringify(sorted))
         if (sorted.length > 0) dispatchWf({ type: 'SET_SELECTED_TASK', payload: sorted[0] })
+        return sorted
       } catch { dispatchWf({ type: 'SET_TASK_CARDS', payload: [] }) }
     }
+    return [] as string[]
   }
 
   const handleStartTask = async (name?: string) => {
@@ -214,8 +269,9 @@ export default function BrowserPage() {
     return true
   }
 
-  const handleAutoStart = async () => {
-    const taskName = wf.taskCards.find(t => t.includes('单题标答-审核'))
+  const handleAutoStart = async (tasks?: string[]) => {
+    const taskCards = tasks || wf.taskCards
+    const taskName = taskCards.find(t => t.includes('单题标答-审核'))
     if (!taskName) {
       addLog('⚠️ 未找到单题标答-审核任务')
       return
@@ -259,37 +315,52 @@ export default function BrowserPage() {
   const handleAudit = async () => {
     dispatchWf({ type: 'SET_AUDITING', payload: true })
     dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'audit' })
-    dispatchWf({ type: 'SET_AUDIT_MESSAGES', payload: [{ role: 'assistant', content: '⏳ AI 正在审核中...' }] })
+
+    // 构建多模态图片列表：当前浏览器截图 + 已获取的题目图片
+    const images: string[] = []
+    if (browser.screenshot) {
+      images.push(`data:image/jpeg;base64,${browser.screenshot}`)
+    }
+    for (const img of wf.questionImages) {
+      try {
+        if (img.type === 'base64') {
+          images.push(`data:image/png;base64,${img.data}`)
+        } else if (img.data.startsWith('/api/')) {
+          const res = await fetch(addToken(img.data))
+          if (res.ok) {
+            const blob = await res.blob()
+            const b64 = await new Promise<string>((resolve) => {
+              const reader = new FileReader()
+              reader.onloadend = () => resolve((reader.result as string).split(',')[1])
+              reader.readAsDataURL(blob)
+            })
+            images.push(`data:${blob.type || 'image/png'};base64,${b64}`)
+          }
+        } else if (img.data.startsWith('http')) {
+          images.push(img.data)
+        }
+      } catch {}
+    }
+
+    dispatchWf({ type: 'SET_AUDIT_MESSAGES', payload: [
+      { role: 'user', content: '请审核这道题，判断标注是否正确', images: images.length > 0 ? images : undefined },
+      { role: 'assistant', content: '⏳ AI 正在审核中...' }
+    ] })
+
     const systemPrompt = `你是一个中小学题目标注审核专家。当前任务：单题标答-审核。
 
-审核标准：从严判断。只要有一处不符合规范，就判错误。不要给"勉强可以"的通过，宁可严不可松。
+审核标准：从严判断。只要有一处不符合规范，就判错误。
 
-核心审核规则（逐条对照，违反任一条即驳回）：
-- 独立批改答案仅限数学科目，只需补充最终结果，不得复制全部解析文本
-- 黄框批改答案有多结果时，只选其中一个补充，保证答案唯一
-- 长文本（超15字）已填写或未填写均不算错，无需驳回
-- 答案位置居中/居左/居右均为正确，无需驳回
-- 数学选择题无作答区域、语文副科无作答区域 → 应举报
-- 题干显示不全、答案不全 → 应举报
-- 纯画图题 → 应举报
-- 判断结果须给出具体错误类型：格式问题/答案错误/黄框压题干/不独立/出框/少答案/字太小
+重要：审核前必须先调用工具检索相关知识，不要凭记忆判断：
+1. retrieve_annotation_spec(关键词) — 检索标注规范，根据题目类型传入关键词（如'独立批改''黄框''数学''举报''长文本'）
+2. retrieve_audit_steps(关键词) — 检索操作步骤和工具使用方法
 
-审核时请逐步推理：
-1. 观察截图 → 题干完整吗？题目是什么科目？有没有作答区域？
-2. 对照规则 → 独立批改答案只适用数学无作答区域题；长文本(超15字)不算错
-3. 逐一挑刺 → 答案唯一吗？独立吗？出框吗？压线吗？字太小吗？多结果只选了一个吗？
-4. 下结论 → 以上任一项不满足即为错误，给出具体错误类型。只有全部通过才算正确。
+审核流程：
+1. 仔细观察截图，确定题目科目、作答区域类型
+2. 检索相关规范 → 逐条对照判断
+3. 正确则调用 mark_question_correct()；错误则指出具体问题和驳回原因
 
-操作流程：
-1. 调用 get_question_info() 获取题目截图和参考答案
-2. 如题干显示不全，调用 scroll_canvas() 或 zoom_question()，重新获取截图
-3. 看清完整题目后，对比参考答案，按上述规则逐条判断
-4. 正确则调用 mark_question_correct()；错误则指出具体问题和驳回原因
-
-错误处理：
-- [可重试] 错误 → 稍等后重试，最多3次
-- [致命] 错误 → 停止操作并告知用户
-
+错误处理：[可重试]→重试最多3次，[致命]→停止并告知
 注意：不要调用 submit_task 或 confirm_rejection，等待用户手动确认。`
     let assistantContent = ''
     const sid = await getDailyAuditSessionId()
@@ -304,7 +375,7 @@ export default function BrowserPage() {
     } catch {}
 
     streamChat(
-      { model: getStoredModel(), temperature: 0.1, prompt: '请严格按照核心审核规则审核这道题，判断标注是否正确，如有错误指出具体驳回原因。', history, system_prompt: systemPrompt },
+      { model: getStoredModel(), temperature: 0.1, prompt: '请严格按照核心审核规则审核这道题，判断标注是否正确，如有错误指出具体驳回原因。', images, history, system_prompt: systemPrompt },
       (event) => {
         if (event.type === 'token') { assistantContent += event.data; dispatchWf({ type: 'UPDATE_LAST_AUDIT_MESSAGE', payload: { content: assistantContent } }) }
         else if (event.type === 'tool_start') { dispatchWf({ type: 'APPEND_TOOL_CALL', payload: { name: event.data.name } }); addLog(`工具: ${event.data.name}`) }
@@ -325,7 +396,14 @@ export default function BrowserPage() {
 
   const handleAuditChat = async (text: string) => {
     if (!text.trim() || wf.auditing) return
-    dispatchWf({ type: 'ADD_AUDIT_MESSAGE', payload: { role: 'user', content: text } })
+
+    // 包含当前截图，让多模态模型能看到最新页面状态
+    const images: string[] = []
+    if (browser.screenshot) {
+      images.push(`data:image/jpeg;base64,${browser.screenshot}`)
+    }
+
+    dispatchWf({ type: 'ADD_AUDIT_MESSAGE', payload: { role: 'user', content: text, images: images.length > 0 ? images : undefined } })
     dispatchWf({ type: 'SET_AUDIT_INPUT', payload: '' })
     dispatchWf({ type: 'SET_AUDITING', payload: true })
     dispatchBrowser({ type: 'SET_AUDIT_TAB', payload: 'audit' })
@@ -343,7 +421,7 @@ export default function BrowserPage() {
 
     dispatchWf({ type: 'ADD_AUDIT_MESSAGE', payload: { role: 'assistant', content: '', toolCalls: [] } })
     streamChat(
-      { model: getStoredModel(), temperature: 0.1, prompt: text, history, system_prompt: systemPrompt },
+      { model: getStoredModel(), temperature: 0.1, prompt: text, images, history, system_prompt: systemPrompt },
       (event) => {
         if (event.type === 'token') { assistantContent += event.data; dispatchWf({ type: 'UPDATE_LAST_AUDIT_MESSAGE', payload: { content: assistantContent } }) }
         else if (event.type === 'tool_start') { dispatchWf({ type: 'APPEND_TOOL_CALL', payload: { name: event.data.name } }); addLog(`工具: ${event.data.name}`) }
@@ -355,7 +433,7 @@ export default function BrowserPage() {
         dispatchWf({ type: 'SET_AUDITING', payload: false })
         addLog('对话完成')
         await saveMessages(sid, [
-          { role: 'user', content: text },
+          { role: 'user', content: `${text}\n—— 任务: ${wf.currentTaskName}` },
           { role: 'assistant', content: assistantContent },
         ], `📋 每日审核 ${getLocalDate()}`)
       },
@@ -384,7 +462,10 @@ export default function BrowserPage() {
       dispatchWf({ type: 'SET_REJECT_NOTES', payload: '' })
       dispatchWf({ type: 'SET_AUDIT_INPUT', payload: '' })
       dispatchWf({ type: 'SET_STEP', payload: 2 })
-      setTimeout(() => handleGetTasks(), 500)
+      setTimeout(async () => {
+        const tasks = await handleGetTasks()
+        handleAutoStart(tasks)
+      }, 500)
     }
   }
 
@@ -392,7 +473,7 @@ export default function BrowserPage() {
     addLog('标记正确...')
     await executeTool('mark_question_correct')
     await handleSubmitTask('提交领下一任务')
-    await saveFeedbackToChat(`✅ 审核正确，已提交 — 任务: ${wf.currentTaskName}`)
+    await saveFeedbackToChat(`✅ 审核正确，已提交 — 任务: ${wf.currentTaskName} — URL: ${browser.url}`)
     addLog('完成')
   }
 
@@ -400,7 +481,7 @@ export default function BrowserPage() {
     addLog(`驳回: ${cause}...`)
     await handleSubmitTask('整题驳回', cause)
     await executeTool('confirm_rejection')
-    await saveFeedbackToChat(`❌ 审核有误，已驳回 — 原因: ${cause} — 任务: ${wf.currentTaskName}`)
+    await saveFeedbackToChat(`❌ 审核有误，已驳回 — 原因: ${cause} — 任务: ${wf.currentTaskName} — URL: ${browser.url}`)
     addLog('完成')
     dispatchWf({ type: 'SET_REJECT_MODE', payload: false })
     dispatchWf({ type: 'SET_REJECT_CAUSE', payload: '' })
@@ -559,7 +640,7 @@ export default function BrowserPage() {
                     </div>
                   )}
 
-                  <button onClick={async () => { await handleSubmitTask('提交领下一任务'); await saveFeedbackToChat(`⏭ 已跳过 — 任务: ${wf.currentTaskName}`) }} className="btn btn-outline btn-block">⏭ 跳过，下一题</button>
+                  <button onClick={async () => { await handleSubmitTask('提交领下一任务'); await saveFeedbackToChat(`⏭ 已跳过 — 任务: ${wf.currentTaskName} — URL: ${browser.url}`) }} className="btn btn-outline btn-block">⏭ 跳过，下一题</button>
                 </div>
               )}
 
@@ -572,7 +653,7 @@ export default function BrowserPage() {
 
               <div style={{ display: 'flex', gap: 4 }}>
                 <input placeholder="错误原因..." style={{ flex: 1, padding: '6px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12 }} onChange={(e) => dispatchWf({ type: 'SET_REJECT_CAUSE', payload: e.target.value })} />
-                <button onClick={async () => { if (wf.rejectCause.trim()) { await handleSubmitTask('整题驳回', wf.rejectCause); await executeTool('confirm_rejection'); addLog(`驳回: ${wf.rejectCause}`); dispatchWf({ type: 'SET_REJECT_CAUSE', payload: '' }) } }} className="btn btn-outline-danger btn-sm">整题驳回</button>
+                <button onClick={async () => { if (wf.rejectCause.trim()) { await handleSubmitTask('整题驳回', wf.rejectCause); await executeTool('confirm_rejection'); addLog(`驳回: ${wf.rejectCause}`); await saveFeedbackToChat(`❌ 整题驳回 — 原因: ${wf.rejectCause} — 任务: ${wf.currentTaskName} — URL: ${browser.url}`); dispatchWf({ type: 'SET_REJECT_CAUSE', payload: '' }) } }} className="btn btn-outline-danger btn-sm">整题驳回</button>
               </div>
               <button onClick={async () => { await executeTool('confirm_rejection'); addLog('已确认驳回') }} className="btn btn-outline btn-block btn-sm">确认驳回弹窗</button>
 
@@ -634,6 +715,15 @@ export default function BrowserPage() {
                           overflowWrap: 'break-word', wordBreak: 'break-word',
                         }}>
                           {msg.role === 'assistant' ? <MarkdownContent content={msg.content} /> : msg.content}
+                          {msg.images?.length > 0 && (
+                            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginTop: 6 }}>
+                              {msg.images.map((img, j) => (
+                                <img key={j} src={img.startsWith('data:') ? img : addToken(img)}
+                                  onClick={() => dispatchWf({ type: 'SET_EXPANDED_IMAGE', payload: img.startsWith('data:') ? img : addToken(img) })}
+                                  style={{ height: 80, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.3)' }} />
+                              ))}
+                            </div>
+                          )}
                           {msg.toolCalls?.map((tc: any, j: number) => <ToolCallCard key={j} call={tc} />)}
                         </div>
                       </div>

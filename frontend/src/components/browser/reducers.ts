@@ -20,7 +20,7 @@ export interface WorkflowState {
   taskFailCount: number
   questionImages: { type: string; data: string }[]
   expandedImage: string | null
-  auditMessages: { role: string; content: string; toolCalls?: any[] }[]
+  auditMessages: { role: string; content: string; toolCalls?: any[]; images?: string[] }[]
   auditing: boolean
   rejectMode: boolean
   rejectCause: string
@@ -61,9 +61,9 @@ export type WorkflowAction =
   | { type: 'INCREMENT_TASK_FAIL' }
   | { type: 'SET_QUESTION_IMAGES'; payload: { type: string; data: string }[] }
   | { type: 'SET_EXPANDED_IMAGE'; payload: string | null }
-  | { type: 'SET_AUDIT_MESSAGES'; payload: { role: string; content: string; toolCalls?: any[] }[] }
-  | { type: 'ADD_AUDIT_MESSAGE'; payload: { role: string; content: string; toolCalls?: any[] } }
-  | { type: 'UPDATE_LAST_AUDIT_MESSAGE'; payload: Partial<{ role: string; content: string; toolCalls: any[] }> }
+  | { type: 'SET_AUDIT_MESSAGES'; payload: { role: string; content: string; toolCalls?: any[]; images?: string[] }[] }
+  | { type: 'ADD_AUDIT_MESSAGE'; payload: { role: string; content: string; toolCalls?: any[]; images?: string[] } }
+  | { type: 'UPDATE_LAST_AUDIT_MESSAGE'; payload: Partial<{ role: string; content: string; toolCalls: any[]; images: string[] }> }
   | { type: 'APPEND_TOOL_CALL'; payload: { name: string } }
   | { type: 'MARK_TOOL_CALL_DONE'; payload: string }
   | { type: 'SET_AUDITING'; payload: boolean }
@@ -115,7 +115,7 @@ export function workflowReducer(state: WorkflowState, action: WorkflowAction): W
     case 'SET_REJECT_NOTES': return { ...state, rejectNotes: action.payload }
     case 'SET_AUDIT_INPUT': return { ...state, auditInput: action.payload }
     case 'RESET_WORKFLOW':
-      return { ...state, step: 1, taskStarted: false, currentTaskName: '', auditMessages: [], rejectMode: false, rejectCause: '', rejectNotes: '', taskFailCount: 0, questionImages: [], expandedImage: null, auditInput: '' }
+      return { ...state, step: 1, taskStarted: false, currentTaskName: '', auditMessages: [], rejectMode: false, rejectCause: '格式问题占比较多', rejectNotes: '', taskFailCount: 0, questionImages: [], expandedImage: null, auditInput: '' }
     default: return state
   }
 }
@@ -147,7 +147,7 @@ export const initialWorkflowState: WorkflowState = {
   auditMessages: [],
   auditing: false,
   rejectMode: false,
-  rejectCause: '',
+  rejectCause: '格式问题占比较多',
   rejectNotes: '',
   auditInput: '',
 }

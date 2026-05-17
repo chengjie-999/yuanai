@@ -121,13 +121,13 @@ async def chat_stream(req: ChatRequest, request: Request, browser_context: bool 
 
         system_prompt = req.system_prompt
         if any(kw in system_prompt for kw in ["审核", "单题标答"]):
-            try:
-                from yuanai.rag import get_all_specs
-                specs = get_all_specs()
-                if specs:
-                    system_prompt += f"\n\n---\n# 标注规范（请严格遵守以下规范进行审核判断）\n{specs}"
-            except Exception:
-                pass
+            system_prompt += (
+                "\n\n---\n"
+                "# 知识库检索指引\n"
+                "审核前请先按需调用以下工具检索相关知识，不要凭记忆判断：\n"
+                "1. retrieve_annotation_spec(关键词) — 检索标注规范，如'独立批改''黄框''举报''数学'等\n"
+                "2. retrieve_audit_steps(关键词) — 检索操作步骤和工具使用方法\n"
+            )
             try:
                 from yuanai.tools.audit_tools import get_recent_feedbacks, get_important_examples
                 feedback = get_recent_feedbacks(limit=5)

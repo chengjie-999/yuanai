@@ -1,6 +1,6 @@
 from langchain_core.tools import tool
 from db.session import AgentDatabase
-from yuanai.rag import get_all_specs
+from yuanai.rag import get_all_specs, search_spec, search_steps
 import os
 from datetime import datetime
 
@@ -13,17 +13,23 @@ IMPORTANT_EXAMPLES_FILE = "data/file/important_examples.jsonl"
 def retrieve_annotation_spec(query: str = "") -> str:
     """
     检索标注规范，需要判断内容是否合规时调用。
-    输入：待审核的内容关键词（可选，不填则返回全部规范）
-    输出：相关规范内容
+    输入：待审核的内容关键词（必填，如 '独立批改' '黄框' '举报' '数学' '长文本' '答案不全'）
+    输出：相关规范段落（向量检索，按语义匹配）
     """
-    specs = get_all_specs()
-    if not specs:
-        return "规范文件为空"
     if not query:
-        return specs
-    lines = specs.split('\n')
-    matched = [l for l in lines if query.lower() in l.lower()]
-    return '\n'.join(matched) if matched else specs
+        return "请提供关键词进行检索，如：独立批改、黄框、举报、数学、长文本"
+    return search_spec(query) if search_spec(query) else get_all_specs()
+
+
+@tool
+def retrieve_audit_steps(query: str = "") -> str:
+    """
+    检索审核操作步骤和工具使用方法。
+    输入：关键词（可选，如 '操作流程' '错误处理' '工具'）
+    输出：相关操作步骤
+    """
+    result = search_steps(query) if query else search_steps("操作")
+    return result if result else "操作步骤文档为空"
 
 
 @tool

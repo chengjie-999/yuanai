@@ -20,7 +20,8 @@ venv/
 .claude/settings.local.json
 
 # Runtime data (运行时生成)
-data/
+data/*
+!data/aiprompt/
 
 # OS
 .DS_Store

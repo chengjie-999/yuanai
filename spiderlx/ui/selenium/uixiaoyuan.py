@@ -1,3 +1,5 @@
+import base64
+import os
 import random
 import time
 import asyncio
@@ -145,11 +147,17 @@ def render_ai_audit_chat(qa_images, sa):
             normalize_images = []
             for item in qa_images:
                 if isinstance(item, bytes):
-                    import base64
                     b64 = base64.b64encode(item).decode('utf-8')
                     normalize_images.append(f"data:image/png;base64,{b64}")
-                else:
-                    normalize_images.append(item)
+                elif isinstance(item, str):
+                    if item.startswith('data:image'):
+                        normalize_images.append(item)
+                    elif os.path.exists(item):
+                        with open(item, 'rb') as f:
+                            b64 = base64.b64encode(f.read()).decode('utf-8')
+                        normalize_images.append(f"data:image/png;base64,{b64}")
+                    else:
+                        normalize_images.append(item)
 
             user_content = [{"type": "text", "text": "请审核这道题，判断标注是否正确，然后自动处理。"}]
             for img_url in normalize_images:
@@ -165,7 +173,6 @@ def render_ai_audit_chat(qa_images, sa):
 
             def after_tool(names):
                 if any(t in names for t in ("scroll_canvas", "zoom_question", "restore_question_view", "click_canvas")):
-                    import base64
                     time.sleep(0.5)
                     try:
                         img_bytes = sa.driver.get_screenshot_as_png()

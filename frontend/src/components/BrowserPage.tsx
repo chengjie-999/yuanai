@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useReducer } from 'react'
 import { startBrowser, stopBrowser, getBrowserStatus, streamChat, createSession, saveMessages, loadMessages, API_BASE, getStoredModel } from '../api'
 import ToolCallCard from './ToolCallCard'
 import MarkdownContent from './MarkdownContent'
-import { executeTool, StatusDot, tabBtnStyle, type Step } from './browser/helpers'
+import { executeTool, StatusDot, tabBtnStyle } from './browser/helpers'
 import StepBar from './browser/StepBar'
 import Step1Content from './browser/Step1Content'
 import {
@@ -620,7 +620,7 @@ export default function BrowserPage() {
                 {autoStarting ? (
                   <button onClick={handleStopAutoStart} className="btn btn-danger btn-block" style={{ flex: 1, fontSize: 13 }}>⏹ 停止</button>
                 ) : (
-                  <button onClick={handleAutoStart} className="btn btn-warning btn-block" style={{ flex: 1, fontSize: 13 }}>🤖 自动开始</button>
+                  <button onClick={() => handleAutoStart()} className="btn btn-warning btn-block" style={{ flex: 1, fontSize: 13 }}>🤖 自动开始</button>
                 )}
                 <button onClick={async () => { await executeTool('go_home'); addLog('已返回首页') }} className="btn btn-outline btn-sm">🏠</button>
               </div>

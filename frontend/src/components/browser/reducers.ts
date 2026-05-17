@@ -1,5 +1,7 @@
 // Browser + workflow state types for BrowserPage
 
+import type { Step } from './helpers'
+
 export interface BrowserState {
   running: boolean
   url: string
@@ -11,7 +13,7 @@ export interface BrowserState {
 }
 
 export interface WorkflowState {
-  step: number
+  step: Step
   taskCards: string[]
   selectedTask: string
   taskStarted: boolean

@@ -2,12 +2,14 @@ import io
 import asyncio
 import base64
 import hashlib
+import json
 import logging
 import os
 from PIL import Image
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, FileResponse
 from spiderlx.core.browser_manager import browser_manager
+from spiderlx.core.cdp_events import cdp_bus
 from api.v1.middleware import require_admin
 from api.v1.auth.utils import create_sse_token
 from utils.data_path import root_path
@@ -133,3 +135,99 @@ async def browser_stream(request: Request, interval: float = Query(0.1, ge=0.01,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+
+@router.websocket("/ws")
+async def browser_ws(websocket: WebSocket, interval: float = Query(0.1, ge=0.01, le=0.6),
+                     format: str = Query("jpeg")):
+    """
+    WebSocket 浏览器事件推送（CDP 事件驱动 + 传统截图降级）
+
+    推送格式 JSON:
+    - {"type":"frame","data":"<base64>"} — 截图帧
+    - {"type":"url","data":"https://..."} — URL 变化
+    - {"type":"error","data":"..."} — 错误
+    - {"type":"stopped"} — 浏览器停止
+    """
+    await websocket.accept()
+    logger.info("浏览器 WebSocket 已连接, interval=%s", interval)
+
+    # 尝试开启 CDP screencast（非阻塞，失败也无妨）
+    browser_manager.start_cdp_stream()
+
+    last_url = ""
+    last_hash = None
+    idle_count = 0
+    loop = asyncio.get_event_loop()
+
+    async def take_screenshot_cdp() -> str | None:
+        """CDP 视口截图（快），返回 base64 JPEG，失败回退 None"""
+        try:
+            return await loop.run_in_executor(None, browser_manager.screenshot_cdp, "jpeg", 70)
+        except Exception:
+            return None
+
+    async def take_screenshot_fallback() -> str | None:
+        """传统全页截图（慢），返回 base64 JPEG，在线程池中执行"""
+        try:
+            png = await loop.run_in_executor(None, browser_manager.screenshot)
+            pil_img = Image.open(io.BytesIO(png))
+            buf = io.BytesIO()
+            pil_img.save(buf, format="JPEG", quality=60)
+            return base64.b64encode(buf.getvalue()).decode()
+        except RuntimeError:
+            return None
+
+    try:
+        while True:
+            # 1. 消费 CDP screencast 事件（最快路径）
+            cdp_got_frame = False
+            event = await cdp_bus.get(timeout=0.02)
+            while event is not None:
+                if event["type"] == "screencast_frame":
+                    cdp_got_frame = True
+                    await websocket.send_json({"type": "frame", "data": event["data"]["data"]})
+                elif event["type"] == "url_changed":
+                    url = event["data"]["url"]
+                    if url != last_url:
+                        last_url = url
+                        await websocket.send_json({"type": "url", "data": url})
+                event = await cdp_bus.get(timeout=0)
+
+            if cdp_got_frame:
+                await asyncio.sleep(interval)
+                continue
+
+            # 2. CDP 截图（视口 JPEG，快）
+            b64 = await take_screenshot_cdp()
+            if b64 is None:
+                # 3. CDP 截图失败，降级传统截图
+                b64 = await take_screenshot_fallback()
+
+            if b64 is None:
+                await websocket.send_json({"type": "stopped"})
+                break
+
+            # 去重：相同帧跳过
+            raw_hash = hashlib.md5(b64.encode()).digest()
+            if raw_hash == last_hash and idle_count < 5:
+                idle_count += 1
+            else:
+                idle_count = 0
+                last_hash = raw_hash
+                await websocket.send_json({"type": "frame", "data": b64})
+
+            # URL 轮询兜底
+            current_url = browser_manager.current_url
+            if current_url and current_url != last_url:
+                last_url = current_url
+                await websocket.send_json({"type": "url", "data": current_url})
+
+            await asyncio.sleep(interval)
+
+    except WebSocketDisconnect:
+        logger.info("浏览器 WebSocket 客户端断开")
+    except Exception as e:
+        logger.error("浏览器 WebSocket 异常: %s", e)
+    finally:
+        browser_manager.stop_cdp_stream()

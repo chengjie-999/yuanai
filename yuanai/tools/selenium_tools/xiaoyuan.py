@@ -98,6 +98,13 @@ def start_task(card_title: str = None, card_index: int = 0) -> str:
             return f"索引 {card_index} 超出范围，共有 {len(cards)} 个卡片。"
         card = cards[card_index]
     success = xy.start(card)
+    if success and card_title:
+        xy._current_task_name = card_title
+    elif success:
+        # 通过索引启动时，取卡片标题
+        actual_title = next((t for t, c in title_cards.items() if c == card), None)
+        if actual_title:
+            xy._current_task_name = actual_title
     print(f"▶️ start_task: card_index={card_index} → {'成功' if success else '失败'}")
     return f"开始任务{'成功' if success else '失败'}"
 

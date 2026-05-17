@@ -783,7 +783,7 @@ export default function BrowserPage() {
                           overflowWrap: 'break-word', wordBreak: 'break-word',
                         }}>
                           {msg.role === 'assistant' ? <MarkdownContent content={msg.content} /> : msg.content}
-                          {msg.images?.length > 0 && (
+                          {msg.images && msg.images.length > 0 && (
                             <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginTop: 6 }}>
                               {msg.images.map((img, j) => (
                                 <img key={j} src={img.startsWith('data:') ? img : addToken(img)}

@@ -517,7 +517,7 @@ export default function ChatPage({ user }: { user?: any }) {
                         ) : msg.role === 'user' ? (
                           <>
                             {msg.content}
-                            {msg.images?.length > 0 && (
+                            {msg.images && msg.images.length > 0 && (
                               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>
                                 {msg.images.map((img, j) => (
                                   <img key={j} src={addToken(img)}
@@ -530,7 +530,7 @@ export default function ChatPage({ user }: { user?: any }) {
                         ) : (
                           <>
                             <MarkdownContent content={msg.content} />
-                            {msg.images?.length > 0 && (
+                            {msg.images && msg.images.length > 0 && (
                               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>
                                 {msg.images.map((img, j) => (
                                   <img key={j} src={addToken(img)}

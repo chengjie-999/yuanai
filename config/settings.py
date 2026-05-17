@@ -18,7 +18,12 @@ DEFAULT_TEMPERATURE = 0.7
 
 # ===================== 鉴权配置 =====================
 
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", os.urandom(32).hex())
+_jwt = os.getenv("JWT_SECRET_KEY")
+if not _jwt or _jwt == "change-me-to-a-random-secret":
+    if os.getenv("APP_ENV") == "production":
+        raise RuntimeError("JWT_SECRET_KEY 未设置，生产环境必须设置此环境变量")
+    _jwt = os.urandom(32).hex()
+JWT_SECRET_KEY = _jwt
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = 7
 
@@ -32,9 +37,9 @@ MYSQL_CONFIG = {
 }
 
 REDIS_CONFIG = {
-    "host": "localhost",
-    "port": 6379,
-    "db": 0,
+    "host": os.getenv("REDIS_HOST", "localhost"),
+    "port": int(os.getenv("REDIS_PORT", "6379")),
+    "db": int(os.getenv("REDIS_DB", "0")),
 }
 
 # ===================== 系统配置 =====================

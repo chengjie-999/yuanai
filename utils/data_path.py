@@ -22,21 +22,17 @@ def make_init_dir(path):
 
 
 def root_path(project_name="my_spider"):
+    # Docker 容器中直接使用工作目录
+    if os.getenv("APP_HOME"):
+        return os.getenv("APP_HOME")
     script_path = os.getcwd()
-    # print(script_path)
-    # 按系统分隔符拆分路径
     path_parts = script_path.split(os.sep)
-    # print(path_parts)
-
-    # 找到"my_spider"的索引位置
     try:
         target_index = path_parts.index(project_name)
-        # 截取到"spiderlx"的上一级目录
         project_path = os.sep.join(path_parts[:target_index + 1])
-        # print("项目路径：", project_path)
         return project_path
     except ValueError:
-        print(f"路径中未找到'{project_name}'目录")
+        return script_path
 
 
 def save_path(file_name=None, *args):

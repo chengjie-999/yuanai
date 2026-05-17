@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: spider-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_agent}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: spider-redis
+    restart: always
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.backend
+    container_name: spider-backend
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - APP_ENV=production
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - app_data:/app/data
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.frontend
+    container_name: spider-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+  redis_data:
+  app_data:

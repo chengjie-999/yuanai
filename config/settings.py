@@ -43,3 +43,27 @@ REDIS_CONFIG = {
 }
 
 # ===================== 系统配置 =====================
+
+# ===================== 云数据库配置 =====================
+
+CLOUD_MYSQL_CONFIG = {
+    "host": os.getenv("CLOUD_MYSQL_HOST", ""),
+    "port": int(os.getenv("CLOUD_MYSQL_PORT", "3306")),
+    "user": os.getenv("CLOUD_MYSQL_USER", "root"),
+    "database": os.getenv("CLOUD_MYSQL_DATABASE", "ai_agent"),
+}
+
+# ===================== 火山引擎 TOS 配置 =====================
+
+TOS_CONFIG = {
+    "access_key_id": os.getenv("TOS_ACCESS_KEY_ID", ""),
+    "access_key_secret": os.getenv("TOS_ACCESS_KEY_SECRET", ""),
+    "endpoint": os.getenv("TOS_ENDPOINT", ""),
+    "bucket": os.getenv("TOS_BUCKET", ""),
+    "region": os.getenv("TOS_REGION", ""),
+}
+
+# ===================== 备份配置 =====================
+
+BACKUP_DIR = os.getenv("BACKUP_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "backups"))
+BACKUP_RETENTION_COUNT = int(os.getenv("BACKUP_RETENTION_COUNT", "4"))

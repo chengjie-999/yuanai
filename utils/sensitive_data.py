@@ -150,6 +150,27 @@ def get_mysql_config() -> dict:
     }
 
 
+def get_cloud_mysql_config() -> dict:
+    """获取云 MySQL 配置，优先从环境变量读取"""
+    password = os.getenv("CLOUD_MYSQL_PASSWORD")
+    if not password:
+        encrypted = {
+            'encrypted_data': os.getenv("CLOUD_MYSQL_PASSWORD_ENCRYPTED", ""),
+            'salt': os.getenv("CLOUD_MYSQL_PASSWORD_SALT", ""),
+        }
+        if encrypted['encrypted_data']:
+            password = decrypt_sensitive_data(encrypted, _get_encryption_password())
+    if not password:
+        raise RuntimeError("未设置 CLOUD_MYSQL_PASSWORD 或 CLOUD_MYSQL_PASSWORD_ENCRYPTED 环境变量")
+    return {
+        "user": os.getenv("CLOUD_MYSQL_USER", "root"),
+        "password": password,
+        "host": os.getenv("CLOUD_MYSQL_HOST", ""),
+        "port": int(os.getenv("CLOUD_MYSQL_PORT", "3306")),
+        "database": os.getenv("CLOUD_MYSQL_DATABASE", "ai_agent"),
+    }
+
+
 if __name__ == "__main__":
     print("=== 敏感数据加密工具 ===")
     password = input("请输入加密密码: ")

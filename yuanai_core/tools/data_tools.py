@@ -76,126 +76,78 @@ def analyze_dataset(dataset_id: int) -> str:
 
     适用场景：用户说"分析这个数据""看看有什么规律"时调用。
     """
+    import json as _json, os as _os
     from db.session import get_db
+    from concurrent.futures import ProcessPoolExecutor
 
     db = get_db()
     ds = db.get_dataset(dataset_id)
     if not ds:
         return f"数据集 #{dataset_id} 不存在"
 
-    import pandas as pd
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
+    # check Redis cache first
     try:
+        from db.redis_client import get_redis
+        rds = get_redis()
         path = ds["file_path"]
-        ft = ds["file_type"]
-        if ft == "csv":
-            df = pd.read_csv(path)
-        elif ft in ("xlsx", "xls"):
-            df = pd.read_excel(path)
-        elif ft == "json":
-            df = pd.read_json(path)
-        else:
-            return f"不支持的文件类型: {ft}"
-    except Exception as e:
-        return f"读取数据集失败: {e}"
+        file_mtime = _os.path.getmtime(path) if _os.path.exists(path) else 0
+        cached_mtime = rds.get(f"analysis_mtime:{dataset_id}")
+        if cached_mtime and int(cached_mtime) >= file_mtime:
+            cached = rds.get(f"analysis:{dataset_id}")
+            if cached:
+                result = _json.loads(cached)
+                return _format_analysis_result(result)
+    except Exception:
+        pass
 
-    row_count = len(df)
-    col_count = len(df.columns)
-    num_cols = df.select_dtypes(include=["number"]).columns.tolist()
-    cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
-    images = []
+    # run in subprocess to bypass GIL
+    from yuanai_core.pure.analysis import run_analysis
+    with ProcessPoolExecutor(max_workers=1) as pool:
+        result = pool.submit(run_analysis, ds, dataset_id).result(timeout=120)
 
-    # 1. 基本统计
+    # cache to Redis
+    try:
+        from db.redis_client import get_redis
+        rds = get_redis()
+        rds.setex(f"analysis:{dataset_id}", 86400, _json.dumps(result, ensure_ascii=False))
+        rds.setex(f"analysis_mtime:{dataset_id}", 86400, str(int(
+            _os.path.getmtime(ds["file_path"]) if _os.path.exists(ds["file_path"]) else 0
+        )))
+    except Exception:
+        pass
+
+    return _format_analysis_result(result)
+
+
+def _format_analysis_result(result: dict) -> str:
+    """Format analysis result as markdown text for AI chat."""
+    images = [f"data:image/png;base64,{ch['data']}" for ch in result.get("charts", []) if ch.get("data")]
     lines = [
-        f"## 📊 {ds['name']}",
-        f"行数: {row_count}  ·  列数: {col_count}",
-        f"数值列 ({len(num_cols)}): {', '.join(num_cols[:20])}",
-        f"分类列 ({len(cat_cols)}): {', '.join(cat_cols[:20])}",
+        f"## 📊 {result['name']}",
+        f"行数: {result['row_count']}  ·  列数: {len(result.get('columns', []))}",
+        f"数值列 ({len(result.get('num_cols', []))}): {', '.join(result.get('num_cols', [])[:20])}",
     ]
-
-    if num_cols:
-        desc = df[num_cols].describe().round(2)
+    if result.get("describe"):
         lines.append("\n### 数值列统计")
         lines.append("```")
-        lines.append(desc.to_string())
+        import pandas as pd
+        desc_df = pd.DataFrame(result["describe"])
+        lines.append(desc_df.to_string())
         lines.append("```")
-
-    # 2. 缺失值
-    missing = df.isnull().sum()
-    missing = missing[missing > 0]
-    if len(missing) > 0:
+    if result.get("missing"):
         lines.append("\n### 缺失值")
-        for col, cnt in missing.items():
-            pct = round(cnt / row_count * 100, 1)
-            lines.append(f"  {col}: {cnt} ({pct}%)")
+        for col, cnt in result["missing"].items():
+            lines.append(f"  {col}: {cnt}")
     else:
         lines.append("\n### 缺失值: 无")
-
-    # 3. 相关性
-    if len(num_cols) >= 2:
-        corr = df[num_cols].corr().round(2)
+    if result.get("corr") and len(result["corr"]) > 0:
         lines.append("\n### 相关系数矩阵")
         lines.append("```")
-        lines.append(corr.to_string())
+        import pandas as pd
+        corr_df = pd.DataFrame(result["corr"], columns=result.get("corr_labels", []), index=result.get("corr_labels", []))
+        lines.append(corr_df.to_string())
         lines.append("```")
-
-    # 4. 分布直方图
-    if num_cols:
-        try:
-            n = min(len(num_cols), 9)
-            fig, axes = plt.subplots((n + 2) // 3, 3, figsize=(12, 3 * ((n + 2) // 3)))
-            axes = axes.flatten() if n > 1 else [axes]
-            for i, col in enumerate(num_cols[:n]):
-                ax = axes[i]
-                df[col].dropna().hist(bins=30, ax=ax, color="#42a5f5", edgecolor="#fff", alpha=0.8)
-                ax.set_title(col, fontsize=9)
-                ax.tick_params(labelsize=7)
-            for i in range(n, len(axes)):
-                axes[i].set_visible(False)
-            plt.tight_layout()
-            images.append(_fig_to_base64(fig))
-            plt.close(fig)
-        except Exception:
-            pass
-
-    # 5. 相关性热力图
-    if len(num_cols) >= 2:
-        try:
-            fig, ax = plt.subplots(figsize=(8, 6))
-            corr = df[num_cols].corr()
-            im = ax.imshow(corr, cmap="RdYlBu_r", vmin=-1, vmax=1)
-            ax.set_xticks(range(len(num_cols)))
-            ax.set_yticks(range(len(num_cols)))
-            ax.set_xticklabels(num_cols, rotation=45, ha="right", fontsize=8)
-            ax.set_yticklabels(num_cols, fontsize=8)
-            plt.colorbar(im, ax=ax, shrink=0.8)
-            ax.set_title("Correlation Heatmap", fontsize=10)
-            plt.tight_layout()
-            images.append(_fig_to_base64(fig))
-            plt.close(fig)
-        except Exception:
-            pass
-
-    # 6. 箱线图
-    if len(num_cols) >= 1:
-        try:
-            sample = df[num_cols[:min(len(num_cols), 10)]].dropna()
-            if len(sample) > 0:
-                fig, ax = plt.subplots(figsize=(10, 4))
-                sample.boxplot(ax=ax, rot=45)
-                ax.set_title("Boxplot (outlier detection)", fontsize=10)
-                ax.tick_params(labelsize=8)
-                plt.tight_layout()
-                images.append(_fig_to_base64(fig))
-                plt.close(fig)
-        except Exception:
-            pass
-
     if images:
         lines.append("\n---")
         lines.append("".join(f"\n![]({img})" for img in images))
-
     return "\n".join(lines)

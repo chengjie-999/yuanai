@@ -103,41 +103,43 @@ export default function DatasetPage() {
         </div>
       </div>
 
-      {/* right: preview */}
-      <div style={{ width: 480, flexShrink: 0, background: '#fff', borderRadius: 10, border: '1px solid #eee', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-        {preview ? (
-          <>
-            <div style={{ padding: '12px 14px', background: '#f5f5f8', fontSize: 13, fontWeight: 600, color: '#333', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between' }}>
+      {/* full-screen preview modal */}
+      {preview && (
+        <div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '90vh', width: 900, background: '#fff', borderRadius: 12, overflow: 'auto', cursor: 'default', boxShadow: '0 8px 40px rgba(0,0,0,0.3)' }}>
+            <div style={{ padding: '14px 18px', background: '#f5f5f8', fontSize: 14, fontWeight: 600, color: '#333', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 1 }}>
               <span>{preview.name}</span>
-              <span onClick={() => setPreview(null)} style={{ cursor: 'pointer', color: '#999', fontSize: 16, lineHeight: 1 }}>✕</span>
+              <span onClick={() => setPreview(null)} style={{ cursor: 'pointer', color: '#999', fontSize: 18, lineHeight: 1 }}>✕</span>
             </div>
-            <div style={{ padding: 12, fontSize: 12 }}>
-              <div style={{ marginBottom: 8, color: '#666' }}>
-                列数: {preview.columns?.length || 0} · 行数: {preview.row_count} · 大小: {formatSize(preview.file_size)}
+            <div style={{ padding: 16, fontSize: 12 }}>
+              <div style={{ marginBottom: 10, color: '#666', display: 'flex', gap: 16 }}>
+                <span>列数: {preview.columns?.length || 0}</span>
+                <span>行数: {preview.row_count}</span>
+                <span>大小: {formatSize(preview.file_size)}</span>
               </div>
               {preview.columns && (
-                <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <div style={{ marginBottom: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {preview.columns.map((c: any, i: number) => (
-                    <span key={i} style={{ background: '#e3f2fd', color: '#1565c0', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>
+                    <span key={i} style={{ background: '#e3f2fd', color: '#1565c0', padding: '3px 10px', borderRadius: 4, fontSize: 12 }}>
                       {c.name} <span style={{ opacity: 0.5 }}>{c.dtype}</span>
                     </span>
                   ))}
                 </div>
               )}
-              <div style={{ overflow: 'auto', maxHeight: 500 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <div style={{ overflow: 'auto', maxHeight: '60vh' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr>
                       {preview.columns?.map((c: any, i: number) => (
-                        <th key={i} style={{ padding: '6px 8px', borderBottom: '2px solid #e0e0e0', color: '#333', textAlign: 'left', whiteSpace: 'nowrap' }}>{c.name}</th>
+                        <th key={i} style={{ padding: '8px 10px', borderBottom: '2px solid #e0e0e0', color: '#333', textAlign: 'left', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#fff' }}>{c.name}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {preview.preview_rows?.map((row: any, ri: number) => (
-                      <tr key={ri}>
+                      <tr key={ri} style={{ background: ri % 2 === 0 ? '#fafbfc' : '#fff' }}>
                         {preview.columns?.map((c: any, ci: number) => (
-                          <td key={ci} style={{ padding: '4px 8px', borderBottom: '1px solid #f5f5f5', color: '#555', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <td key={ci} style={{ padding: '5px 10px', borderBottom: '1px solid #f0f0f0', color: '#555', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {String(row[c.name] ?? '')}
                           </td>
                         ))}
@@ -147,11 +149,9 @@ export default function DatasetPage() {
                 </table>
               </div>
             </div>
-          </>
-        ) : (
-          <div style={{ padding: 40, textAlign: 'center', color: '#999', fontSize: 13 }}>点击左侧数据集查看预览</div>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

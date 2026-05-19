@@ -104,6 +104,8 @@ class Dataset(Base):
     preview_rows = Column(Text, default='')
     source = Column(String(20), default='upload')
     user_id = Column(Integer, nullable=True, index=True)
+    analysis_json = Column(Text, default='')
+    analyzed_at = Column(TIMESTAMP, nullable=True)
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -133,6 +135,8 @@ class AgentDatabase:
             ("users", "frozen_until DATETIME"),
             ("ai_chat", "images TEXT"),
             ("datasets", "user_id INTEGER"),
+            ("datasets", "analysis_json TEXT DEFAULT ''"),
+            ("datasets", "analyzed_at DATETIME"),
         ]
         for table, col in migrations:
             try:
@@ -608,7 +612,8 @@ class AgentDatabase:
                 preview_rows = []
             return {
                 "id": r.id, "name": r.name, "file_type": r.file_type,
-                "file_size": r.file_size, "row_count": r.row_count,
+                "file_path": r.file_path, "file_size": r.file_size,
+                "row_count": r.row_count,
                 "columns": columns_info, "preview_rows": preview_rows,
                 "source": r.source,
                 "create_time": str(r.create_time)[:19] if r.create_time else "",
@@ -639,9 +644,15 @@ class AgentDatabase:
             sess.close()
 
 
+_db_instance = None
+
+
 def get_db():
-    """获取 MySQL 数据库实例"""
-    return AgentDatabase()
+    """获取 MySQL 数据库实例（单例）"""
+    global _db_instance
+    if _db_instance is None:
+        _db_instance = AgentDatabase()
+    return _db_instance
 
 
 # ---------------------- 测试代码 ----------------------

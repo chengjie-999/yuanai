@@ -1,15 +1,25 @@
 import os
+import io
 import json
+import asyncio
+import base64
 import logging
+from concurrent.futures import ProcessPoolExecutor
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File
+from fastapi.responses import FileResponse
 from db.session import get_db
 from utils.data_path import root_path
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/data", tags=["data"])
 
+_process_pool = ProcessPoolExecutor(max_workers=1)
+
 DATASETS_DIR = os.path.join(root_path(), "data", "datasets")
+ANALYSIS_DIR = os.path.join(root_path(), "data", "analysis")
 os.makedirs(DATASETS_DIR, exist_ok=True)
+os.makedirs(ANALYSIS_DIR, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".json"}
 
@@ -30,19 +40,58 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)):
 
     user_id = _get_user_id(request)
     db = get_db()
-    ds_id = db.add_dataset(
-        name=file.filename, file_path="", file_type=ext.lstrip("."),
-        file_size=0, row_count=0, columns_info=[], preview_rows=[],
-        user_id=user_id,
-    )
-
-    fname = f"{ds_id}_{file.filename}"
-    fpath = os.path.join(DATASETS_DIR, fname)
     content = await file.read()
-    with open(fpath, "wb") as f:
-        f.write(content)
-
     file_size = len(content)
+
+    # dedup: same name + same size → update existing
+    from db.session import Dataset
+    sess = db.Session()
+    existing = None
+    try:
+        existing = sess.query(Dataset).filter_by(
+            name=file.filename, file_size=file_size, user_id=user_id,
+        ).first()
+    finally:
+        sess.close()
+
+    if existing:
+        ds_id = existing.id
+        fpath = existing.file_path
+        with open(fpath, "wb") as f:
+            f.write(content)
+        # update create_time
+        from sqlalchemy.sql import func
+        sess2 = db.Session()
+        try:
+            r = sess2.query(Dataset).filter_by(id=ds_id).first()
+            if r:
+                r.create_time = func.now()
+                sess2.commit()
+        finally:
+            sess2.close()
+        # clear stale analysis cache
+        try:
+            from db.redis_client import get_redis
+            rds = get_redis()
+            rds.delete(f"analysis:{ds_id}:basic")
+            rds.delete(f"analysis:{ds_id}:full")
+            rds.delete(f"analysis_mtime:{ds_id}")
+        except Exception:
+            pass
+        for fn in ("result_basic.json", "result_full.json"):
+            cf = os.path.join(ANALYSIS_DIR, str(ds_id), fn)
+            if os.path.exists(cf):
+                os.remove(cf)
+    else:
+        ds_id = db.add_dataset(
+            name=file.filename, file_path="", file_type=ext.lstrip("."),
+            file_size=0, row_count=0, columns_info=[], preview_rows=[],
+            user_id=user_id,
+        )
+        fname = f"{ds_id}_{file.filename}"
+        fpath = os.path.join(DATASETS_DIR, fname)
+        with open(fpath, "wb") as f:
+            f.write(content)
     row_count = 0
     columns_info = []
     preview_rows = []
@@ -112,108 +161,96 @@ async def get_dataset(ds_id: int, request: Request):
     return ds
 
 
+
+
 @router.get("/analyze/{ds_id}")
-async def analyze_dataset_api(ds_id: int, request: Request):
+async def analyze_dataset_api(ds_id: int, request: Request, force: bool = False, charts: bool = False, cache_only: bool = False):
     db = get_db()
     ds = db.get_dataset(ds_id)
     if not ds:
         raise HTTPException(status_code=404, detail="not found")
 
-    import pandas as pd
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
     path = ds["file_path"]
-    ft = ds["file_type"]
+    file_mtime = os.path.getmtime(path) if os.path.exists(path) else 0
+
+    KEY_BASIC = f"analysis:{ds_id}:basic"
+    KEY_FULL = f"analysis:{ds_id}:full"
+    KEY_MTIME = f"analysis_mtime:{ds_id}"
+    FILE_BASIC = os.path.join(ANALYSIS_DIR, str(ds_id), "result_basic.json")
+    FILE_FULL = os.path.join(ANALYSIS_DIR, str(ds_id), "result_full.json")
+
+    if charts:
+        search_keys = [(KEY_FULL, FILE_FULL)]
+    else:
+        # basic first, then try full (has superset of data)
+        search_keys = [(KEY_BASIC, FILE_BASIC), (KEY_FULL, FILE_FULL)]
+
+    if not force:
+        for rkey, fkey in search_keys:
+            try:
+                from db.redis_client import get_redis
+                rds = get_redis()
+                cached_mtime = rds.get(KEY_MTIME)
+                if cached_mtime and int(cached_mtime) >= file_mtime:
+                    cached = rds.get(rkey)
+                    if cached:
+                        return json.loads(cached)
+            except Exception:
+                pass
+            if os.path.exists(fkey) and os.path.getmtime(fkey) >= file_mtime:
+                try:
+                    with open(fkey, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except Exception:
+                    pass
+
+    if cache_only:
+        return JSONResponse(content={"cached": False}, status_code=204)
+
+    # run analysis in process pool
+    global _process_pool
     try:
-        if ft == "csv":
-            df = pd.read_csv(path)
-        elif ft in ("xlsx", "xls"):
-            df = pd.read_excel(path)
-        elif ft == "json":
-            df = pd.read_json(path)
-        else:
-            raise HTTPException(status_code=400, detail=f"unsupported type: {ft}")
+        from yuanai_core.pure.analysis import run_analysis
+        loop = asyncio.get_running_loop()
+        result = await asyncio.shield(
+            loop.run_in_executor(_process_pool, run_analysis, ds, ds_id, charts)
+        )
+    except Exception:
+        _process_pool = ProcessPoolExecutor(max_workers=1)
+        result = await asyncio.shield(
+            loop.run_in_executor(_process_pool, run_analysis, ds, ds_id, charts)
+        )
+
+    # cache
+    result_json = json.dumps(result, ensure_ascii=False)
+    cache_rkey = KEY_FULL if charts else KEY_BASIC
+    cache_fkey = FILE_FULL if charts else FILE_BASIC
+    try:
+        from db.redis_client import get_redis
+        rds = get_redis()
+        rds.setex(cache_rkey, 86400, result_json)
+        rds.setex(KEY_MTIME, 86400, str(int(file_mtime)))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning("redis cache failed for #%d: %s", ds_id, e)
+    try:
+        os.makedirs(os.path.dirname(cache_fkey), exist_ok=True)
+        with open(cache_fkey, "w", encoding="utf-8") as f:
+            f.write(result_json)
+        logger.info("analysis cached for dataset #%d (%s)", ds_id, "full" if charts else "basic")
+    except Exception as e:
+        logger.warning("file cache failed for #%d: %s", ds_id, e)
 
-    num_cols = df.select_dtypes(include=["number"]).columns.tolist()
-    charts = []
+    return result
 
-    def _fig_to_b64(fig):
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
-        buf.seek(0)
-        b64 = base64.b64encode(buf.read()).decode()
-        buf.close()
-        return b64
 
-    # histogram
-    if num_cols:
-        try:
-            n = min(len(num_cols), 9)
-            fig, axes = plt.subplots((n + 2) // 3, 3, figsize=(12, 3 * ((n + 2) // 3)))
-            axes = axes.flatten() if n > 1 else [axes]
-            for i, col in enumerate(num_cols[:n]):
-                df[col].dropna().hist(bins=30, ax=axes[i], color="#42a5f5", edgecolor="#fff", alpha=0.8)
-                axes[i].set_title(col, fontsize=9)
-                axes[i].tick_params(labelsize=7)
-            for i in range(n, len(axes)):
-                axes[i].set_visible(False)
-            plt.tight_layout()
-            charts.append({"name": "distribution", "data": _fig_to_b64(fig)})
-            plt.close(fig)
-        except Exception:
-            pass
-
-    # heatmap
-    if len(num_cols) >= 2:
-        try:
-            fig, ax = plt.subplots(figsize=(8, 6))
-            corr = df[num_cols].corr()
-            im = ax.imshow(corr, cmap="RdYlBu_r", vmin=-1, vmax=1)
-            ax.set_xticks(range(len(num_cols)))
-            ax.set_yticks(range(len(num_cols)))
-            ax.set_xticklabels(num_cols, rotation=45, ha="right", fontsize=8)
-            ax.set_yticklabels(num_cols, fontsize=8)
-            plt.colorbar(im, ax=ax, shrink=0.8)
-            ax.set_title("Correlation Heatmap", fontsize=10)
-            plt.tight_layout()
-            charts.append({"name": "heatmap", "data": _fig_to_b64(fig)})
-            plt.close(fig)
-        except Exception:
-            pass
-
-    # boxplot
-    if num_cols:
-        try:
-            sample = df[num_cols[:min(len(num_cols), 10)]].dropna()
-            if len(sample) > 0:
-                fig, ax = plt.subplots(figsize=(10, 4))
-                sample.boxplot(ax=ax, rot=45)
-                ax.set_title("Boxplot", fontsize=10)
-                ax.tick_params(labelsize=8)
-                plt.tight_layout()
-                charts.append({"name": "boxplot", "data": _fig_to_b64(fig)})
-                plt.close(fig)
-        except Exception:
-            pass
-
-    import io, base64 as _b64
-    desc = df[num_cols].describe().round(2).to_dict() if num_cols else {}
-    missing = {k: int(v) for k, v in df.isnull().sum().to_dict().items() if v > 0}
-    corr_data = df[num_cols].corr().round(2).values.tolist() if len(num_cols) >= 2 else []
-    col_info = [{"name": str(c), "dtype": str(df[c].dtype)} for c in df.columns]
-
-    return {
-        "id": ds_id, "name": ds["name"], "row_count": len(df),
-        "columns": col_info, "num_cols": num_cols,
-        "describe": desc, "missing": missing,
-        "corr_labels": num_cols,
-        "corr": corr_data,
-        "charts": charts,
-    }
+@router.get("/analysis-image/{ds_id}/{name}")
+async def serve_analysis_image(ds_id: int, name: str):
+    from yuanai_core.pure.analysis import ANALYSIS_DIR
+    fpath = os.path.join(ANALYSIS_DIR, str(ds_id), f"{name}.png")
+    if not os.path.isfile(fpath):
+        raise HTTPException(status_code=404, detail="not found")
+    from fastapi.responses import FileResponse
+    return FileResponse(fpath, media_type="image/png")
 
 
 @router.delete("/dataset/{ds_id}")

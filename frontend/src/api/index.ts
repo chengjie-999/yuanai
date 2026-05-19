@@ -342,9 +342,13 @@ export async function deleteDataset(id: number): Promise<boolean> {
   } catch { return false }
 }
 
-export async function fetchDatasetAnalysis(id: number): Promise<any> {
+export async function fetchDatasetAnalysis(id: number, charts = false, force = false): Promise<any> {
   try {
-    const res = await fetch(`${API_BASE}/data/analyze/${id}`, { headers: authHeaders() })
+    const params = new URLSearchParams()
+    if (charts) params.set('charts', '1')
+    if (force) params.set('force', '1')
+    const qs = params.toString()
+    const res = await fetch(`${API_BASE}/data/analyze/${id}${qs ? '?' + qs : ''}`, { headers: authHeaders() })
     if (!res.ok) return null
     return await res.json()
   } catch { return null }

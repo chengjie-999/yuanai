@@ -16,8 +16,8 @@ const BASE_TABS: { key: Page; label: string; icon: string }[] = [
 ]
 
 const FEATURE_TABS: { key: Page; label: string; icon: string; toggleKey: string; adminOnly?: boolean }[] = [
-  { key: 'dataAnalysis', label: '数据分析', icon: '📊', toggleKey: 'dataAnalysis' },
   { key: 'datasets', label: '数据工作台', icon: '📂', toggleKey: 'datasets' },
+  { key: 'dataAnalysis', label: '数据分析', icon: '📊', toggleKey: 'dataAnalysis' },
   { key: 'dataCollection', label: '数据采集', icon: '📡', toggleKey: 'dataCollection', adminOnly: true },
   { key: 'tools', label: '工具', icon: '🔧', toggleKey: 'tools' },
 ]

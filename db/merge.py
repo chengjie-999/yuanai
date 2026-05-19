@@ -128,10 +128,21 @@ def _dedup_ai_chat(local_rows: list, cloud_rows: list) -> tuple:
     return local_set - cloud_set, cloud_set - local_set
 
 
+_columns_cache = {}
+
+def _get_columns(session, table: str) -> set:
+    if table not in _columns_cache:
+        from sqlalchemy import text
+        rows = session.execute(text(f"SHOW COLUMNS FROM `{table}`")).mappings().all()
+        _columns_cache[table] = {r["Field"] for r in rows}
+    return _columns_cache[table]
+
+
 def _insert_row(session, table: str, row: dict):
-    """插入一行记录"""
+    """插入一行记录，自动过滤目标表不存在的列"""
     from sqlalchemy import text
-    cols = [k for k in row if k != "id"]
+    valid = _get_columns(session, table)
+    cols = [k for k in row if k != "id" and k in valid]
     placeholders = ", ".join([f":{c}" for c in cols])
     col_names = ", ".join([f"`{c}`" for c in cols])
     sql = f"INSERT INTO `{table}` ({col_names}) VALUES ({placeholders})"
@@ -366,13 +377,15 @@ def _merge_ai_chat(local_sess, cloud_sess, local_rows, cloud_rows, dry_run, stat
 
 def _update_row(session, table: str, row: dict, merge_keys: list):
     from sqlalchemy import text
-    set_cols = [k for k in row if k not in merge_keys and k != "id"]
+    valid = _get_columns(session, table)
+    set_cols = [k for k in row if k not in merge_keys and k != "id" and k in valid]
     set_clause = ", ".join([f"`{c}` = :{c}" for c in set_cols])
     where_clause = " AND ".join([f"`{c}` = :where_{c}" for c in merge_keys])
     sql = f"UPDATE `{table}` SET {set_clause} WHERE {where_clause}"
     params = {c: row[c] for c in set_cols}
     params.update({f"where_{c}": row[c] for c in merge_keys})
-    session.execute(text(sql), params)
+    if set_cols:
+        session.execute(text(sql), params)
 
 
 def _load_config_local():

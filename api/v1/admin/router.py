@@ -127,10 +127,13 @@ async def list_websites(request: Request):
     db = get_db()
     websites = db.get_websites()
     if not websites:
-        # 数据库为空时触发自动导入
-        from spiderlx.core.save.urls import get_urls
-        get_urls()
-        websites = db.get_websites()
+        # 数据库为空时，从 spiderlx 注册表自动导入
+        try:
+            from spiderlx.core.save.urls import get_urls
+            get_urls()
+            websites = db.get_websites()
+        except ImportError:
+            pass
     return websites
 
 

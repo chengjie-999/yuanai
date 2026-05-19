@@ -43,10 +43,3 @@ REDIS_CONFIG = {
 }
 
 # ===================== 系统配置 =====================
-
-CHAT_TOOLS_ADMIN_SKIP = {"scroll", "click", "zoom", "restore", "question", "task",
-                         "home", "html", "mark_", "submit", "confirm", "page_status",
-                         "save_cookie", "load_cookie", "save_page_cookies", "load_page_cookies"}
-
-CHAT_TOOLS_USER_SKIP = CHAT_TOOLS_ADMIN_SKIP | {"browser", "launch", "open_", "website",
-                                                  "cookie", "refresh"}

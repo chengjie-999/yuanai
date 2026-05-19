@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import ChatPage from './components/ChatPage'
 import ToolsPage from './components/ToolsPage'
-import BrowserPage from './components/BrowserPage'
-import MonitorPage from './components/MonitorPage'
 import LoginPage from './components/LoginPage'
 import SettingsPage, { useFeatureToggles } from './components/SettingsPage'
 import DataAnalysisPage from './components/DataAnalysisPage'
@@ -10,15 +8,13 @@ import AdminPage from './components/AdminPage'
 import DataCollectionPage from './components/DataCollectionPage'
 import { checkToken, setStoredUser } from './api'
 
-type Page = 'chat' | 'browser' | 'dataCollection' | 'tools' | 'monitor' | 'dataAnalysis' | 'admin' | 'settings'
+type Page = 'chat' | 'dataCollection' | 'tools' | 'dataAnalysis' | 'admin' | 'settings'
 
 const BASE_TABS: { key: Page; label: string; icon: string }[] = [
   { key: 'chat', label: '聊天', icon: '💬' },
-  { key: 'browser', label: 'WEB自动化', icon: '🌐' },
 ]
 
 const FEATURE_TABS: { key: Page; label: string; icon: string; toggleKey: string; adminOnly?: boolean }[] = [
-  { key: 'monitor', label: '全局状态实时监控', icon: '📺', toggleKey: 'monitor' },
   { key: 'dataAnalysis', label: '数据分析', icon: '📊', toggleKey: 'dataAnalysis', adminOnly: true },
   { key: 'dataCollection', label: '数据采集', icon: '📡', toggleKey: 'dataCollection' },
   { key: 'tools', label: '工具', icon: '🔧', toggleKey: 'tools' },
@@ -117,10 +113,8 @@ function App() {
       </header>
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {page === 'chat' && <ChatPage user={user} />}
-        {page === 'browser' && <BrowserPage />}
         {page === 'dataCollection' && toggles.dataCollection && <DataCollectionPage />}
         {page === 'tools' && toggles.tools && <ToolsPage />}
-        {page === 'monitor' && toggles.monitor && <MonitorPage />}
         {page === 'dataAnalysis' && toggles.dataAnalysis && isAdmin && <DataAnalysisPage />}
         {page === 'admin' && isAdmin && <AdminPage />}
         {page === 'settings' && <SettingsPage toggles={toggles} onToggle={toggleFeature} />}

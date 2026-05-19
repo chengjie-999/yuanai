@@ -11,10 +11,9 @@ from pydantic import BaseModel, Field
 from utils.data_path import root_path
 
 from api.v1.models import ChatRequest, SaveMessagesRequest
-from yuanai.core.lc import get_llm
-from yuanai.core.chat import build_input_messages, stream_agent_events
-from yuanai.tools import all_tools
-from config.settings import CHAT_TOOLS_ADMIN_SKIP, CHAT_TOOLS_USER_SKIP
+from yuanai_core.core.lc import get_llm
+from yuanai_core.core.chat import build_input_messages, stream_agent_events
+from yuanai_core.tools import all_tools
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -66,10 +65,6 @@ class MessagesRequest(BaseModel):
     session_id: str = Field(..., min_length=1, description="会话 ID")
 
 
-def get_chat_tools(role: str = "user"):
-    """根据角色获取聊天可用的工具列表"""
-    skip = CHAT_TOOLS_ADMIN_SKIP if role == "admin" else CHAT_TOOLS_USER_SKIP
-    return [t for t in all_tools if not any(s in t.name for s in skip)]
 
 
 def _get_db():
@@ -99,15 +94,9 @@ def _verify_session_owner(db, session_id: str, user_id: int):
 
 
 @router.post("/stream")
-async def chat_stream(req: ChatRequest, request: Request, browser_context: bool = Query(False)):
+async def chat_stream(req: ChatRequest, request: Request):
     """SSE 流式聊天"""
     try:
-        role = getattr(request.state, "role", "user")
-        if browser_context and role == "admin":
-            chat_tools = all_tools
-        else:
-            chat_tools = get_chat_tools(role)
-
         llm = get_llm(req.model, temperature=req.temperature, verbose=False, streaming=True)
 
         history = []
@@ -120,24 +109,6 @@ async def chat_stream(req: ChatRequest, request: Request, browser_context: bool 
                 history.append(AIMessage(content=content))
 
         system_prompt = req.system_prompt
-        if any(kw in system_prompt for kw in ["审核", "单题标答"]):
-            system_prompt += (
-                "\n\n---\n"
-                "# 知识库检索指引\n"
-                "审核前请先按需调用以下工具检索相关知识，不要凭记忆判断：\n"
-                "1. retrieve_annotation_spec(关键词) — 检索标注规范，如'独立批改''黄框''举报''数学'等\n"
-                "2. retrieve_audit_steps(关键词) — 检索操作步骤和工具使用方法\n"
-            )
-            try:
-                from yuanai.tools.audit_tools import get_recent_feedbacks, get_important_examples
-                feedback = get_recent_feedbacks(limit=5)
-                if feedback and "暂无" not in feedback:
-                    system_prompt += f"\n\n---\n# 最近审核反馈（请参考纠错趋势）\n{feedback}"
-                examples = get_important_examples(limit=3)
-                if examples and "暂无" not in examples:
-                    system_prompt += f"\n\n---\n# 重要参考案例\n{examples}"
-            except Exception:
-                pass
 
         input_messages = build_input_messages(
             prompt=req.prompt,
@@ -148,7 +119,7 @@ async def chat_stream(req: ChatRequest, request: Request, browser_context: bool 
 
         async def event_stream():
             try:
-                async for event in stream_agent_events(llm, input_messages, chat_tools):
+                async for event in stream_agent_events(llm, input_messages, all_tools):
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             except Exception as e:
                 logger.error("SSE 流式聊天异常: %s", e)

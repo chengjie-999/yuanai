@@ -43,16 +43,6 @@ cd frontend
 npm run dev
 ```
 
-**Streamlit UI（端口 8501）**：
-```bash
-streamlit run streamlit_app.py
-```
-
-**Qt 桌面客户端**：
-```bash
-python qt_core.py
-```
-
 ### 创建管理员
 
 启动后用 admin 账号登录后台管理页（右上角 👤）→ 用户管理 → **创建用户**，设置角色为 admin。
@@ -209,33 +199,31 @@ frontend/               React 18 + TypeScript 前端
 │   ├── BrowserPage.tsx     WEB自动化
 │   ├── DataCollectionPage.tsx  数据采集
 │   ├── ToolsPage.tsx       工具面板
-│   ├── MonitorPage.tsx     屏幕监控
 │   ├── DataAnalysisPage.tsx 数据分析
 │   ├── AdminPage.tsx       后台管理
 │   ├── SettingsPage.tsx    系统设置
-│   ├── LoginPage.tsx       登录
-│   └── browser/            StepBar / Step1Content
+│   └── LoginPage.tsx       登录
 
 spiderlx/               爬虫核心
 ├── core/requests/      HTTP 请求（含反爬）
 ├── core/save/          数据保存
-├── anti/               Cookie / IP / UA
-└── auto/               Selenium / Playwright
+└── anti/               Cookie / UA
 
-yuanai/                 AI 模块（三层架构）
+yuanai_core/            核心业务逻辑
 ├── core/               LangChain 适配层（lc.py, chat.py）
 ├── pure/               ★ 纯业务逻辑（无框架依赖，任何代码可调用）
-├── tools/              @tool 装饰器（薄壳，调用 pure/）
-├── skills/             独立技能（从 pure/ 重新导出，兼容旧 import）
-└── audit/              审核流程（题目标注审核，豆包 Pro 模型）
+├── tools/              @tool 装饰器（自动发现，薄壳调用 pure/）
+├── skills/             独立技能（从 pure/ 重新导出）
+├── rag.py              向量知识库（Milvus + Embedding，待启用）
+└── utils/              工具函数（图片处理等）
 
-webui/                  Streamlit 状态管理
 config/settings.py      统一配置（模型/JWT/数据库）
 db/session.py           SQLAlchemy ORM（MySQL + SQLite）
 data/
 ├── chat_images/        聊天图片存储（运行时生成）
 ├── crawl/              爬取原始文件
 ├── qimg/               题目截图
+├── aiprompt/           知识库文档（待启用）
 └── web_cookie/         第三方网站 Cookie
 ```
 
@@ -246,10 +234,10 @@ data/
 | 层 | 技术 |
 |----|------|
 | 后端 | Python, FastAPI, Uvicorn, LangChain, LangGraph, SQLAlchemy |
-| 前端 | React 18, TypeScript, Vite, Streamlit |
+| 前端 | React 18, TypeScript, Vite |
 | 数据库 | MySQL 8.0, SQLite, Redis（可选） |
-| 爬虫 | Selenium, Playwright, BeautifulSoup, requests |
+| 爬虫 | requests, BeautifulSoup |
 | AI | DeepSeek API, 豆包 API |
 | 鉴权 | python-jose (JWT), bcrypt |
 | 配置 | `config/settings.py` 统一管理 |
-| 业务层 | `yuanai/pure/` 纯 Python，无框架依赖 |
+| 业务层 | `yuanai_core/pure/` 纯 Python，无框架依赖 |

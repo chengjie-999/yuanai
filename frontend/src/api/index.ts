@@ -132,33 +132,6 @@ export async function saveMessages(sessionId: string, messages: { role: string; 
   } catch { /* ignore */ }
 }
 
-// ---- Browser ----
-export async function startBrowser() {
-  const res = await fetch(`${API_BASE}/browser/start`, { method: 'POST', headers: authHeaders() })
-  return res.json()
-}
-
-export async function stopBrowser() {
-  const res = await fetch(`${API_BASE}/browser/stop`, { method: 'POST', headers: authHeaders() })
-  return res.json()
-}
-
-export async function getBrowserStatus() {
-  try {
-    const res = await fetch(`${API_BASE}/browser/status`, { headers: authHeaders() })
-    return await res.json()
-  } catch { return { running: false, url: '', title: '' } }
-}
-
-export async function getBrowserScreenshot(): Promise<string | null> {
-  try {
-    const res = await fetch(`${API_BASE}/browser/screenshot`, { headers: authHeaders() })
-    if (!res.ok) return null
-    const data = await res.json()
-    return data.screenshot || null
-  } catch { return null }
-}
-
 // ---- Stream Chat ----
 export function streamChat(
   params: {
@@ -225,21 +198,6 @@ export function streamChat(
     })
 
   return controller
-}
-
-// ---- Monitor (mss) ----
-export async function getMonitorScreenshot(monitor: number = 0): Promise<{ status: string; screenshot?: string; width?: number; height?: number; detail?: string }> {
-  try {
-    const res = await fetch(`${API_BASE}/monitor/screenshot?monitor=${monitor}`, { headers: authHeaders() })
-    return await res.json()
-  } catch { return { status: 'error', detail: '网络请求失败' } }
-}
-
-export async function getMonitors(): Promise<{ status: string; monitors?: { monitor: number; width: number; height: number; label: string }[]; detail?: string }> {
-  try {
-    const res = await fetch(`${API_BASE}/monitor/monitors`, { headers: authHeaders() })
-    return await res.json()
-  } catch { return { status: 'error', detail: '网络请求失败' } }
 }
 
 // ---- Stats ----
@@ -348,16 +306,3 @@ export async function deleteCrawlRecord(id: number): Promise<boolean> {
   } catch { return false }
 }
 
-// ---- Batch Crawl ----
-export async function batchFetchUrls(params: {
-  urls: string[]; retype?: string; method?: string; data?: any; cookie_site?: string
-}): Promise<{ results: { url: string; status: string; preview?: string; detail?: string }[] }> {
-  try {
-    const res = await fetch(`${API_BASE}/spider/request/batch`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify(params),
-    })
-    if (!res.ok) return { results: [] }
-    return await res.json()
-  } catch { return { results: [] } }
-}

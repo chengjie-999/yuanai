@@ -13,6 +13,9 @@ import subprocess
 import argparse
 from datetime import datetime
 
+from dotenv import load_dotenv
+load_dotenv()
+
 logger = logging.getLogger(__name__)
 
 ROOT = os.path.dirname(os.path.dirname(__file__))

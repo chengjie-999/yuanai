@@ -166,7 +166,7 @@ def merge_all(local_config: dict, cloud_config: dict, dry_run: bool = False):
 
             # 特殊处理：users 表先建立映射
             if table == "users":
-                _merge_users(local_sess, cloud_sess, local_rows, cloud_rows, dry_run, stats)
+                _merge_users(local_sess, cloud_sess, local_rows, cloud_rows, meta, dry_run, stats)
                 # 重建映射
                 local_users = _get_all(local_sess, "users")
                 cloud_users = _get_all(cloud_sess, "users")

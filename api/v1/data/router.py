@@ -65,7 +65,9 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)):
         if df is not None:
             row_count = len(df) if ext != ".json" else sum(1 for _ in open(fpath, encoding="utf-8"))
             columns_info = [{"name": str(c), "dtype": str(df[c].dtype)} for c in df.columns]
-            preview_rows = df.head(100).fillna("").to_dict(orient="records")
+            for c in df.select_dtypes(include=["datetime64", "datetimetz"]).columns:
+                df[c] = df[c].astype(str)
+            preview_rows = json.loads(df.head(100).fillna("").to_json(orient="records", date_format="iso"))
     except Exception as e:
         logger.warning("parse failed: %s", e)
 

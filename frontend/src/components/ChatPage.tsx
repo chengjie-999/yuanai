@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, getStoredModel, setStoredModel, getToken } from '../api'
+import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, getStoredModel, setStoredModel, getToken, uploadDataset } from '../api'
 import type { ChatMessage } from '../types'
 import ToolCallCard from './ToolCallCard'
 import MarkdownContent from './MarkdownContent'
@@ -384,20 +384,27 @@ export default function ChatPage({ user }: { user?: any }) {
                   <input value={quickInput} onChange={(e) => setQuickInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && quickInput.trim()) { const v = quickInput.trim(); setQuickInput(''); sendWithNewSession(v) } }}
                     placeholder="输入消息，开始对话..." style={{ flex: 1, border: 'none', outline: 'none', fontSize: 15, padding: '12px 0', background: 'transparent' }} />
-                  <input ref={fileRef} type="file" accept="image/*" multiple hidden
-                    onChange={(e) => {
+                  <input ref={fileRef} type="file" accept="image/*,.csv,.xlsx,.xls,.json" multiple hidden
+                    onChange={async (e) => {
                       const files = e.target.files
-                      if (files) {
-                        Array.from(files).forEach((f) => {
+                      if (!files) return
+                      for (const f of Array.from(files)) {
+                        const ext = f.name.split('.').pop()?.toLowerCase()
+                        if (['csv','xlsx','xls','json'].includes(ext || '')) {
+                          try {
+                            const result = await uploadDataset(f)
+                            setQuickInput((p) => p + ` [数据集 #${result.id}: ${result.name}]`)
+                          } catch { /* ignore */ }
+                        } else {
                           const reader = new FileReader()
                           reader.onload = () => setImages((p) => [...p, reader.result as string])
                           reader.readAsDataURL(f)
-                        })
-                        e.target.value = ''
+                        }
                       }
+                      e.target.value = ''
                     }}
                   />
-                  <button onClick={() => fileRef.current?.click()} title="上传图片"
+                  <button onClick={() => fileRef.current?.click()} title="上传文件/图片"
                     style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#999', padding: '8px', lineHeight: 1, opacity: 0.5, transition: 'opacity 0.15s' }}
                     onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                     onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}

@@ -18,7 +18,7 @@ const BASE_TABS: { key: Page; label: string; icon: string }[] = [
 const FEATURE_TABS: { key: Page; label: string; icon: string; toggleKey: string; adminOnly?: boolean }[] = [
   { key: 'dataAnalysis', label: '数据分析', icon: '📊', toggleKey: 'dataAnalysis', adminOnly: true },
   { key: 'datasets', label: '数据工作台', icon: '📂', toggleKey: 'datasets' },
-  { key: 'dataCollection', label: '数据采集', icon: '📡', toggleKey: 'dataCollection' },
+  { key: 'dataCollection', label: '数据采集', icon: '📡', toggleKey: 'dataCollection', adminOnly: true },
   { key: 'tools', label: '工具', icon: '🔧', toggleKey: 'tools' },
 ]
 
@@ -116,7 +116,7 @@ function App() {
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {page === 'chat' && <ChatPage user={user} />}
         {page === 'datasets' && toggles.datasets && <DatasetPage />}
-        {page === 'dataCollection' && toggles.dataCollection && <DataCollectionPage />}
+        {page === 'dataCollection' && toggles.dataCollection && isAdmin && <DataCollectionPage />}
         {page === 'tools' && toggles.tools && <ToolsPage />}
         {page === 'dataAnalysis' && toggles.dataAnalysis && isAdmin && <DataAnalysisPage />}
         {page === 'admin' && isAdmin && <AdminPage />}

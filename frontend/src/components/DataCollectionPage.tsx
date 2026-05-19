@@ -1,19 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { API_BASE, getToken, fetchCrawlRecords, readCrawlRecordFile, deleteCrawlRecord } from '../api'
 
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '80%', maxHeight: '80%', background: '#fff', borderRadius: 12, padding: 20, overflow: 'auto', cursor: 'default', minWidth: 500 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: '#333' }}>{title}</span>
-          <span onClick={onClose} style={{ cursor: 'pointer', fontSize: 18, color: '#999', lineHeight: 1 }}>✕</span>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
 
 export default function DataCollectionPage() {
   const [records, setRecords] = useState<any[]>([])
@@ -137,5 +124,3 @@ export default function DataCollectionPage() {
     </div>
   )
 }
-
-const selStyle: React.CSSProperties = { padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', fontSize: 13, outline: 'none', background: '#fff' }

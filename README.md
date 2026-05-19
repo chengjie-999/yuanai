@@ -1,10 +1,10 @@
-# 小元AI — AI 自动化平台
+# 小元AI — AI 数据分析平台
 
 [![Python](https://img.shields.io/badge/Python-3.10-blue)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb)](https://react.dev/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688)](https://fastapi.tiangolo.com/)
 
-前后端分离的 AI 自动化平台。以 AI 对话为统一入口，集成 WEB 自动化、数据采集、屏幕监控、工具执行等功能。
+前后端分离的 AI 数据分析平台。以 AI 对话为统一入口，支持数据集上传、自动分析、可视化图表生成、AI Agent 工具调用。
 
 ---
 
@@ -57,39 +57,43 @@ npm run dev
 - Markdown 渲染 + 图片上传/粘贴 + AI 生成图片展示（点击放大）
 - 工具调用可视化（按角色过滤）
 
-### 🌐 WEB 自动化
-三步流程：打开网站 → 选择任务 → AI 自动审核。支持小猿众包审核工作流、参考答案展示、自然语言指令控制。
+### 📊 数据分析（核心）
+- 上传 CSV/Excel/JSON → 自动解析列信息 → 数据集管理
+- **基础分析**：describe 统计、缺失值检测、相关性矩阵（秒级）
+- **图表生成**：分布直方图、热力图、箱线图（matplotlib）
+- Redis + 文件双缓存，分析结果持久化
+- 图表放大/滚轮缩放/拖动平移
+- **AI 聊天分析**：对话中直接说"分析数据集 #1"
 
-### 📡 数据采集
-- HTTP GET/POST 请求，支持 Cookie 登录态
-- **批量爬取**：多 URL 同时请求，自动查重
-- **反爬**：随机 UA、请求延迟 1-3s、失败重试
-- **HTML 解析**：BeautifulSoup 提取标题/正文/链接，结果持久化
-- **历史记录**：分页查看、重新解析、原始文件预览
-- **AI 工具**：fetch_url、parse_html、save_crawl_data 等 5 个工具
+### 📂 数据工作台
+- 上传/删除数据集，全屏预览
+- 同名+同大小文件自动查重替换
+
+### 📡 数据采集（仅 admin）
+- HTTP 批量请求 + HTML 解析
+- 爬取记录管理，结果预览
 
 ### 🔧 工具面板
-48 个工具（11 个模块）分类展示、搜索、在线执行。浏览器类工具灰显为仅 admin 可用。
+16 个 AI 工具分类展示、在线执行
 
-### 📺 全局状态实时监控
-mss 屏幕截图，SSE 实时推流，多显示器切换，帧率可调。
+### 💬 AI 聊天
+- 多模型：豆包 / DeepSeek
+- SSE 流式输出 + Markdown 渲染
+- 图片上传/粘贴 + 工具调用可视化
 
-### 📊 数据分析
-系统真实数据统计：用户数、会话数、消息趋势、审核记录、缓存占用。
-
-### ⚙ 后台管理
-- **用户管理**：创建/冻结/删除用户（仅 admin）
-- **网站管理**：添加/删除爬取目标网站
-- **文件管理**：浏览 data/ 目录，双击预览文件
+### ⚙ 后台管理（仅 admin）
+- 用户管理：创建/冻结/删除
+- 网站管理 + 文件管理
+- 系统统计：用户数、会话数、消息趋势
 
 ---
 
 ## 权限系统
 
-| 角色 | 聊天 | 工具查看 | 工具执行 | 浏览器控制 | 监控 |
-|------|------|---------|---------|-----------|------|
-| admin | ✅ | ✅ | ✅ | ✅ | ✅ |
-| user | ✅ | ✅ | ❌ | ❌ | ✅ |
+| 角色  | 聊天 | 数据分析 | 数据工作台 | 数据采集 | 后台管理 |
+|-------|------|---------|-----------|---------|---------|
+| admin | ✅   | ✅      | ✅        | ✅      | ✅      |
+| user  | ✅   | ✅      | ✅        | ❌      | ❌      |
 
 - JWT Token 存储在 localStorage，有效期 7 天
 - 注册功能已关闭，仅 admin 可创建用户
@@ -129,14 +133,20 @@ mss 屏幕截图，SSE 实时推流，多显示器切换，帧率可调。
 | POST | `/api/v1/chat/save` | 保存消息 |
 | GET | `/api/v1/chat/image/{sid}/{file}` | 聊天图片 |
 
-### 爬虫
+### 数据管理
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v1/spider/request/request` | 单条请求 |
-| POST | `/api/v1/spider/request/batch` | 批量请求 |
-| GET | `/api/v1/spider/request/parse` | HTML 解析 |
-| GET | `/api/v1/spider/request/cookies` | Cookie 文件列表 |
-| POST | `/api/v1/spider/save/record` | 保存记录 |
+| POST | `/api/v1/data/upload` | 上传数据集 |
+| GET | `/api/v1/data/datasets` | 数据集列表 |
+| GET | `/api/v1/data/dataset/{id}` | 数据集详情 |
+| GET | `/api/v1/data/analyze/{id}` | 分析数据集 |
+| GET | `/api/v1/data/analysis-image/{id}/{name}` | 图表图片 |
+| DELETE | `/api/v1/data/dataset/{id}` | 删除数据集 |
+
+### 爬虫（仅 admin）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v1/spider/save/record` | 保存采集记录 |
 | GET | `/api/v1/spider/save/records` | 记录列表 |
 | DELETE | `/api/v1/spider/save/record/{id}` | 删除记录 |
 | GET | `/api/v1/spider/save/record/{id}/file` | 读取原始文件 |

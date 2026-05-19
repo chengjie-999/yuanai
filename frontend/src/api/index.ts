@@ -342,3 +342,11 @@ export async function deleteDataset(id: number): Promise<boolean> {
   } catch { return false }
 }
 
+export async function fetchDatasetAnalysis(id: number): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/data/analyze/${id}`, { headers: authHeaders() })
+    if (!res.ok) return null
+    return await res.json()
+  } catch { return null }
+}
+

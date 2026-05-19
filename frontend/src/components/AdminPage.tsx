@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { API_BASE, getToken, fetchWebsites, addWebsite, deleteWebsite, fetchFiles, freezeUser, readFile } from '../api'
+import { API_BASE, getToken, fetchWebsites, addWebsite, deleteWebsite, fetchFiles, freezeUser, readFile, fetchStats } from '../api'
 
 const TABS = [
   { key: 'users', label: '👤 用户管理' },
   { key: 'websites', label: '🌐 网站管理' },
   { key: 'files', label: '📁 文件管理' },
+  { key: 'stats', label: '📊 系统统计' },
 ]
 
 function headers() {
@@ -367,6 +368,65 @@ function FilesTab() {
 
 // ==================== 主组件 ====================
 
+function StatsTab() {
+  const [stats, setStats] = useState<any>(null)
+  useEffect(() => { fetchStats().then(setStats) }, [])
+  if (!stats) return <div style={{ padding: 20, color: '#999' }}>加载中...</div>
+
+  const cards = [
+    { label: '用户数', value: stats.users, color: '#42a5f5' },
+    { label: '会话数', value: stats.sessions, color: '#66bb6a' },
+    { label: '消息数', value: stats.messages, color: '#ffa726' },
+    { label: '均消息/会话', value: stats.avg_messages_per_session, color: '#ab47bc' },
+    { label: '审核记录', value: stats.task_images, color: '#ef5350' },
+    { label: '缓存(MB)', value: stats.cache_size_mb, color: '#78909c' },
+  ]
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: 12, marginBottom: 20 }}>
+        {cards.map((c) => (
+          <div key={c.label} style={{ background: '#fff', borderRadius: 10, border: '1px solid #eee', padding: '14px 16px', textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: c.color }}>{c.value}</div>
+            <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+      {stats.daily_messages?.length > 0 && (
+        <div>
+          <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>近30天消息量</h3>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 100, background: '#fff', borderRadius: 8, padding: 12 }}>
+            {stats.daily_messages.map((d: any, i: number) => {
+              const max = Math.max(...stats.daily_messages.map((x: any) => x.count), 1)
+              const h = (d.count / max) * 80
+              return (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
+                  <div style={{ width: '100%', maxWidth: 20, height: h, background: '#42a5f5', borderRadius: '2px 2px 0 0', opacity: 0.7 }} title={`${d.date}: ${d.count}`} />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      {stats.excel_files?.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>数据文件 ({stats.excel_files.length})</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, background: '#fff', borderRadius: 8 }}>
+            <tbody>
+              {stats.excel_files.map((f: any, i: number) => (
+                <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                  <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12 }}>{f.name}</td>
+                  <td style={{ padding: '8px 12px', color: '#999', textAlign: 'right' }}>{f.size_kb} KB</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const [tab, setTab] = useState('users')
 
@@ -391,6 +451,7 @@ export default function AdminPage() {
       {tab === 'users' && <UsersTab />}
       {tab === 'websites' && <WebsitesTab />}
       {tab === 'files' && <FilesTab />}
+      {tab === 'stats' && <StatsTab />}
     </div>
   )
 }

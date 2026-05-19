@@ -112,6 +112,110 @@ async def get_dataset(ds_id: int, request: Request):
     return ds
 
 
+@router.get("/analyze/{ds_id}")
+async def analyze_dataset_api(ds_id: int, request: Request):
+    db = get_db()
+    ds = db.get_dataset(ds_id)
+    if not ds:
+        raise HTTPException(status_code=404, detail="not found")
+
+    import pandas as pd
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    path = ds["file_path"]
+    ft = ds["file_type"]
+    try:
+        if ft == "csv":
+            df = pd.read_csv(path)
+        elif ft in ("xlsx", "xls"):
+            df = pd.read_excel(path)
+        elif ft == "json":
+            df = pd.read_json(path)
+        else:
+            raise HTTPException(status_code=400, detail=f"unsupported type: {ft}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    num_cols = df.select_dtypes(include=["number"]).columns.tolist()
+    charts = []
+
+    def _fig_to_b64(fig):
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
+        buf.seek(0)
+        b64 = base64.b64encode(buf.read()).decode()
+        buf.close()
+        return b64
+
+    # histogram
+    if num_cols:
+        try:
+            n = min(len(num_cols), 9)
+            fig, axes = plt.subplots((n + 2) // 3, 3, figsize=(12, 3 * ((n + 2) // 3)))
+            axes = axes.flatten() if n > 1 else [axes]
+            for i, col in enumerate(num_cols[:n]):
+                df[col].dropna().hist(bins=30, ax=axes[i], color="#42a5f5", edgecolor="#fff", alpha=0.8)
+                axes[i].set_title(col, fontsize=9)
+                axes[i].tick_params(labelsize=7)
+            for i in range(n, len(axes)):
+                axes[i].set_visible(False)
+            plt.tight_layout()
+            charts.append({"name": "distribution", "data": _fig_to_b64(fig)})
+            plt.close(fig)
+        except Exception:
+            pass
+
+    # heatmap
+    if len(num_cols) >= 2:
+        try:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            corr = df[num_cols].corr()
+            im = ax.imshow(corr, cmap="RdYlBu_r", vmin=-1, vmax=1)
+            ax.set_xticks(range(len(num_cols)))
+            ax.set_yticks(range(len(num_cols)))
+            ax.set_xticklabels(num_cols, rotation=45, ha="right", fontsize=8)
+            ax.set_yticklabels(num_cols, fontsize=8)
+            plt.colorbar(im, ax=ax, shrink=0.8)
+            ax.set_title("Correlation Heatmap", fontsize=10)
+            plt.tight_layout()
+            charts.append({"name": "heatmap", "data": _fig_to_b64(fig)})
+            plt.close(fig)
+        except Exception:
+            pass
+
+    # boxplot
+    if num_cols:
+        try:
+            sample = df[num_cols[:min(len(num_cols), 10)]].dropna()
+            if len(sample) > 0:
+                fig, ax = plt.subplots(figsize=(10, 4))
+                sample.boxplot(ax=ax, rot=45)
+                ax.set_title("Boxplot", fontsize=10)
+                ax.tick_params(labelsize=8)
+                plt.tight_layout()
+                charts.append({"name": "boxplot", "data": _fig_to_b64(fig)})
+                plt.close(fig)
+        except Exception:
+            pass
+
+    import io, base64 as _b64
+    desc = df[num_cols].describe().round(2).to_dict() if num_cols else {}
+    missing = {k: int(v) for k, v in df.isnull().sum().to_dict().items() if v > 0}
+    corr_data = df[num_cols].corr().round(2).values.tolist() if len(num_cols) >= 2 else []
+    col_info = [{"name": str(c), "dtype": str(df[c].dtype)} for c in df.columns]
+
+    return {
+        "id": ds_id, "name": ds["name"], "row_count": len(df),
+        "columns": col_info, "num_cols": num_cols,
+        "describe": desc, "missing": missing,
+        "corr_labels": num_cols,
+        "corr": corr_data,
+        "charts": charts,
+    }
+
+
 @router.delete("/dataset/{ds_id}")
 async def delete_dataset(ds_id: int, request: Request):
     db = get_db()

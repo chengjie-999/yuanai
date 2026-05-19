@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 const FEATURES: { key: string; label: string; icon: string; desc: string }[] = [
   { key: 'dataAnalysis', label: '数据分析', icon: '📊', desc: '数据看板和图表分析' },
+  { key: 'datasets', label: '数据工作台', icon: '📂', desc: '上传和管理数据集' },
   { key: 'dataCollection', label: '数据采集', icon: '📡', desc: '网页内容抓取与保存' },
   { key: 'tools', label: '工具面板', icon: '🔧', desc: '查看和在线执行工具' },
 ]

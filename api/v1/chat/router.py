@@ -68,13 +68,8 @@ class MessagesRequest(BaseModel):
 
 
 def _get_db():
-    try:
-        from db.session import get_db
-        return get_db()
-    except Exception as e:
-        logger.warning("MySQL 连接失败，降级到 SQLite: %s", e)
-        from db.session import AgentDatabase
-        return AgentDatabase()
+    from db.session import get_db
+    return get_db()
 
 
 def _get_user_id(request: Request) -> int:

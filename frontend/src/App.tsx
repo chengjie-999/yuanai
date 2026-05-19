@@ -6,9 +6,10 @@ import SettingsPage, { useFeatureToggles } from './components/SettingsPage'
 import DataAnalysisPage from './components/DataAnalysisPage'
 import AdminPage from './components/AdminPage'
 import DataCollectionPage from './components/DataCollectionPage'
+import DatasetPage from './components/DatasetPage'
 import { checkToken, setStoredUser } from './api'
 
-type Page = 'chat' | 'dataCollection' | 'tools' | 'dataAnalysis' | 'admin' | 'settings'
+type Page = 'chat' | 'datasets' | 'dataCollection' | 'tools' | 'dataAnalysis' | 'admin' | 'settings'
 
 const BASE_TABS: { key: Page; label: string; icon: string }[] = [
   { key: 'chat', label: '聊天', icon: '💬' },
@@ -16,6 +17,7 @@ const BASE_TABS: { key: Page; label: string; icon: string }[] = [
 
 const FEATURE_TABS: { key: Page; label: string; icon: string; toggleKey: string; adminOnly?: boolean }[] = [
   { key: 'dataAnalysis', label: '数据分析', icon: '📊', toggleKey: 'dataAnalysis', adminOnly: true },
+  { key: 'datasets', label: '数据工作台', icon: '📂', toggleKey: 'datasets' },
   { key: 'dataCollection', label: '数据采集', icon: '📡', toggleKey: 'dataCollection' },
   { key: 'tools', label: '工具', icon: '🔧', toggleKey: 'tools' },
 ]
@@ -113,6 +115,7 @@ function App() {
       </header>
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {page === 'chat' && <ChatPage user={user} />}
+        {page === 'datasets' && toggles.datasets && <DatasetPage />}
         {page === 'dataCollection' && toggles.dataCollection && <DataCollectionPage />}
         {page === 'tools' && toggles.tools && <ToolsPage />}
         {page === 'dataAnalysis' && toggles.dataAnalysis && isAdmin && <DataAnalysisPage />}

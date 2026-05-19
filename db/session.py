@@ -91,87 +91,70 @@ class CrawlRecord(Base):
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
+class Dataset(Base):
+    """数据集表"""
+    __tablename__ = 'datasets'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False)
+    file_path = Column(Text, nullable=False)
+    file_type = Column(String(10), default='csv')
+    file_size = Column(Integer, default=0)
+    row_count = Column(Integer, default=0)
+    columns_info = Column(Text, default='')
+    preview_rows = Column(Text, default='')
+    source = Column(String(20), default='upload')
+    user_id = Column(Integer, nullable=True, index=True)
+    create_time = Column(TIMESTAMP, server_default=func.now())
+
+
 # ---------------------- 数据库操作类（功能完全对齐原代码） ----------------------
 class AgentDatabase:
-    def __init__(self, db_path=None, use_mysql=False, mysql_config: dict = None):
-        self.db_path = db_path
-        if use_mysql:
-            cfg = mysql_config or {}
-            logger.info("连接 MySQL: %s:%s/%s", cfg.get('host', 'localhost'), cfg.get('port', 3306), cfg.get('database', 'ai_agent'))
-            conn_url = URL.create(
-                "mysql+pymysql",
-                username=cfg.get("user", "root"),
-                password=cfg.get("password", ""),
-                host=cfg.get("host", "localhost"),
-                port=cfg.get("port", 3306),
-                database=cfg.get("database", "ai_agent"),
-            )
-            self.engine = create_engine(conn_url, pool_size=5, max_overflow=10)
-            Base.metadata.create_all(self.engine)
-            # 迁移：添加 user_id 列（兼容旧数据库）
-            try:
-                with self.engine.connect() as conn:
-                    conn.execute(text("ALTER TABLE chat_session ADD COLUMN user_id INTEGER"))
-                    conn.commit()
-                    logger.info("迁移: chat_session 表添加了 user_id 列")
-            except Exception:
-                logger.debug("迁移: user_id 列可能已存在")
-            # 迁移：将 NULL 的用户会话归到 admin
-            try:
-                with self.engine.connect() as conn:
-                    conn.execute(text("UPDATE chat_session SET user_id = 1 WHERE user_id IS NULL"))
-                    conn.commit()
-            except Exception:
-                logger.debug("迁移: 修复 NULL user_id 跳过")
-            # 迁移：添加 frozen_until 列
-            try:
-                with self.engine.connect() as conn:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN frozen_until DATETIME"))
-                    conn.commit()
-            except Exception:
-                logger.debug("迁移: frozen_until 列可能已存在")
-            # 迁移：添加 parsed 列
-            for col in ["parsed_title VARCHAR(500) DEFAULT ''", "parsed_text TEXT", "parsed_links TEXT"]:
-                try:
-                    with self.engine.connect() as conn:
-                        conn.execute(text(f"ALTER TABLE crawl_records ADD COLUMN {col}"))
-                        conn.commit()
-                except Exception:
-                    logger.debug("迁移: %s 列可能已存在", col.split()[0])
-            # 迁移：添加 images 列
-            try:
-                with self.engine.connect() as conn:
-                    conn.execute(text("ALTER TABLE ai_chat ADD COLUMN images TEXT"))
-                    conn.commit()
-                    logger.info("迁移: ai_chat 表添加了 images 列")
-            except Exception:
-                logger.debug("迁移: images 列可能已存在")
-        else:
-            if db_path is None:
-                db_path = os.path.join(root_path(), "agent.db")
-            self.db_path = db_path
-            self.engine = create_engine(
-                f'sqlite:///{self.db_path}',
-                connect_args={"check_same_thread": False}
-            )
-            Base.metadata.create_all(self.engine)
-            # 迁移：添加 user_id 列（兼容旧数据库）
-            try:
-                with self.engine.connect() as conn:
-                    conn.execute(text("ALTER TABLE chat_session ADD COLUMN user_id INTEGER"))
-                    conn.commit()
-                    logger.info("迁移: chat_session 表添加了 user_id 列")
-            except Exception:
-                logger.debug("迁移: user_id 列可能已存在")
-            # 迁移：添加 images 列
-            try:
-                with self.engine.connect() as conn:
-                    conn.execute(text("ALTER TABLE ai_chat ADD COLUMN images TEXT"))
-                    conn.commit()
-                    logger.info("迁移: ai_chat 表添加了 images 列")
-            except Exception:
-                logger.debug("迁移: images 列可能已存在")
+    def __init__(self, mysql_config: dict = None):
+        from utils.sensitive_data import get_mysql_config
+        cfg = mysql_config or get_mysql_config()
+        logger.info("连接 MySQL: %s:%s/%s", cfg.get('host', 'localhost'), cfg.get('port', 3306), cfg.get('database', 'ai_agent'))
+        conn_url = URL.create(
+            "mysql+pymysql",
+            username=cfg.get("user", "root"),
+            password=cfg.get("password", ""),
+            host=cfg.get("host", "localhost"),
+            port=cfg.get("port", 3306),
+            database=cfg.get("database", "ai_agent"),
+        )
+        self.engine = create_engine(conn_url, pool_size=5, max_overflow=10)
+        Base.metadata.create_all(self.engine)
+        self._run_migrations()
         self.Session = sessionmaker(bind=self.engine)
+
+    def _run_migrations(self):
+        """兼容旧数据库的列迁移"""
+        migrations = [
+            ("chat_session", "user_id INTEGER"),
+            ("users", "frozen_until DATETIME"),
+            ("ai_chat", "images TEXT"),
+            ("datasets", "user_id INTEGER"),
+        ]
+        for table, col in migrations:
+            try:
+                with self.engine.connect() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col}"))
+                    conn.commit()
+                    logger.info("迁移: %s 表添加了 %s 列", table, col.split()[0])
+            except Exception:
+                logger.debug("迁移: %s.%s 可能已存在", table, col.split()[0])
+        for col in ["parsed_title VARCHAR(500) DEFAULT ''", "parsed_text TEXT", "parsed_links TEXT"]:
+            try:
+                with self.engine.connect() as conn:
+                    conn.execute(text(f"ALTER TABLE crawl_records ADD COLUMN {col}"))
+                    conn.commit()
+            except Exception:
+                logger.debug("迁移: crawl_records.%s 可能已存在", col.split()[0])
+        try:
+            with self.engine.connect() as conn:
+                conn.execute(text("UPDATE chat_session SET user_id = 1 WHERE user_id IS NULL"))
+                conn.commit()
+        except Exception:
+            pass
 
     def _init_tables(self):
         """自动创建表：SQLite 全表创建，MySQL 只建聊天相关表"""
@@ -559,10 +542,106 @@ class AgentDatabase:
             sess.close()
 
 
+    # --------------------------------------------------------------------------
+    # 数据集管理
+    # --------------------------------------------------------------------------
+    def add_dataset(self, name: str, file_path: str, file_type: str, file_size: int,
+                    row_count: int, columns_info: list, preview_rows: list, source: str = 'upload',
+                    user_id: int = None) -> int:
+        """添加数据集记录，返回 id"""
+        import json
+        sess = self.Session()
+        try:
+            ds = Dataset(
+                name=name, file_path=file_path, file_type=file_type,
+                file_size=file_size, row_count=row_count,
+                columns_info=json.dumps(columns_info, ensure_ascii=False),
+                preview_rows=json.dumps(preview_rows, ensure_ascii=False),
+                source=source, user_id=user_id,
+            )
+            sess.add(ds)
+            sess.commit()
+            return ds.id
+        finally:
+            sess.close()
+
+    def get_datasets(self, user_id: int = None) -> list:
+        """获取数据集列表，user_id=None 则返回全部（admin）"""
+        sess = self.Session()
+        try:
+            q = sess.query(Dataset)
+            if user_id is not None:
+                q = q.filter(Dataset.user_id == user_id)
+            rows = q.order_by(Dataset.create_time.desc()).all()
+            datasets = []
+            for r in rows:
+                try:
+                    columns_info = json.loads(r.columns_info) if r.columns_info else []
+                except Exception:
+                    columns_info = []
+                datasets.append({
+                    "id": r.id, "name": r.name, "file_type": r.file_type,
+                    "file_size": r.file_size, "row_count": r.row_count,
+                    "columns": columns_info,
+                    "source": r.source,
+                    "create_time": str(r.create_time)[:19] if r.create_time else "",
+                })
+            return datasets
+        finally:
+            sess.close()
+
+    def get_dataset(self, ds_id: int) -> dict:
+        """获取单个数据集详情（含预览数据）"""
+        import json
+        sess = self.Session()
+        try:
+            r = sess.query(Dataset).filter_by(id=ds_id).first()
+            if not r:
+                return None
+            try:
+                columns_info = json.loads(r.columns_info) if r.columns_info else []
+            except Exception:
+                columns_info = []
+            try:
+                preview_rows = json.loads(r.preview_rows) if r.preview_rows else []
+            except Exception:
+                preview_rows = []
+            return {
+                "id": r.id, "name": r.name, "file_type": r.file_type,
+                "file_size": r.file_size, "row_count": r.row_count,
+                "columns": columns_info, "preview_rows": preview_rows,
+                "source": r.source,
+                "create_time": str(r.create_time)[:19] if r.create_time else "",
+            }
+        finally:
+            sess.close()
+
+    def delete_dataset(self, ds_id: int, user_id: int = None) -> bool:
+        """删除数据集记录及文件，user_id 非 None 时校验所有权"""
+        import os
+        sess = self.Session()
+        try:
+            q = sess.query(Dataset).filter_by(id=ds_id)
+            if user_id is not None:
+                q = q.filter(Dataset.user_id == user_id)
+            r = q.first()
+            if not r:
+                return False
+            if r.file_path and os.path.exists(r.file_path):
+                try:
+                    os.remove(r.file_path)
+                except Exception:
+                    pass
+            sess.delete(r)
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+
 def get_db():
-    """获取 MySQL 数据库实例（带配置）"""
-    from utils.sensitive_data import get_mysql_config
-    return AgentDatabase(use_mysql=True, mysql_config=get_mysql_config())
+    """获取 MySQL 数据库实例"""
+    return AgentDatabase()
 
 
 # ---------------------- 测试代码 ----------------------

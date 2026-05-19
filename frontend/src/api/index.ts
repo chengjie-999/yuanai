@@ -306,3 +306,39 @@ export async function deleteCrawlRecord(id: number): Promise<boolean> {
   } catch { return false }
 }
 
+// ---- Datasets ----
+export async function uploadDataset(file: File): Promise<any> {
+  const form = new FormData()
+  form.append('file', file)
+  try {
+    const res = await fetch(`${API_BASE}/data/upload`, {
+      method: 'POST', headers: authHeaders(), body: form,
+    })
+    if (!res.ok) throw new Error((await res.json()).detail || 'upload failed')
+    return await res.json()
+  } catch (e: any) { throw e }
+}
+
+export async function fetchDatasets(): Promise<any[]> {
+  try {
+    const res = await fetch(`${API_BASE}/data/datasets`, { headers: authHeaders() })
+    if (!res.ok) return []
+    return await res.json()
+  } catch { return [] }
+}
+
+export async function fetchDatasetPreview(id: number): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/data/dataset/${id}`, { headers: authHeaders() })
+    if (!res.ok) return null
+    return await res.json()
+  } catch { return null }
+}
+
+export async function deleteDataset(id: number): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/data/dataset/${id}`, { method: 'DELETE', headers: authHeaders() })
+    return res.ok
+  } catch { return false }
+}
+

@@ -134,7 +134,7 @@ class AgentDatabase:
         migrations = [
             ("chat_session", "user_id INTEGER"),
             ("users", "frozen_until DATETIME"),
-            ("users", "memory TEXT DEFAULT ''"),
+            ("users", "memory TEXT"),
             ("ai_chat", "images TEXT"),
             ("datasets", "user_id INTEGER"),
             ("datasets", "analysis_json TEXT DEFAULT ''"),

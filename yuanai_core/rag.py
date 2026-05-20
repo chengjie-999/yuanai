@@ -31,7 +31,7 @@ MILVUS_PORT = os.getenv("MILVUS_PORT", "19530")
 COLLECTION_NAME = "knowledge_base"
 CHUNK_SIZE = 300
 CHUNK_OVERLAP = 50
-TOP_K = 5
+TOP_K = 10
 
 EMBEDDING_DIM = 1024
 
@@ -143,9 +143,10 @@ def _flatten_tree(nodes: list[dict], folder: str, path: str = "", user_id: int =
     for node in nodes:
         current_path = f"{path} > {node['title']}" if path else node["title"]
 
-        text_parts = [current_path]
+        text_parts = [node["title"]]
         if node["content"]:
             text_parts.append(node["content"].strip())
+        text_parts.append(f"({current_path})")
         if node["images"]:
             imgs = ", ".join(img["src"] for img in node["images"])
             text_parts.append(f"[图片: {imgs}]")

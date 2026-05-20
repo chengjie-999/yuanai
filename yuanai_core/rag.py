@@ -318,7 +318,7 @@ def _get_max_id() -> int:
             COLLECTION_NAME,
             filter="id >= 0",
             output_fields=["id"],
-            limit=50000,
+            limit=16384,
         )
         if not results:
             return 0
@@ -340,7 +340,7 @@ def remove_source(source: str, user_id: int | None = None) -> int:
             COLLECTION_NAME,
             filter=" and ".join(filter_parts),
             output_fields=["id"],
-            limit=50000,
+            limit=16384,
         )
     except Exception:
         return 0
@@ -395,7 +395,7 @@ def get_source_stats() -> list[dict]:
             COLLECTION_NAME,
             filter="id >= 0",
             output_fields=["source", "level", "images", "user_id"],
-            limit=50000,
+            limit=16384,
         )
     except Exception:
         return []

@@ -52,7 +52,7 @@ function LoadingDots() {
   }, [])
   return (
     <span style={{ color: '#999', fontStyle: 'italic', fontSize: 14 }}>
-      正在输入<span style={{ letterSpacing: 1 }}>{dots}</span>
+      正在思考<span style={{ letterSpacing: 1 }}>{dots}</span>
     </span>
   )
 }

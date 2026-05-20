@@ -30,5 +30,5 @@ export function LoadingDots() {
     const t = setInterval(() => setDots((p) => (p.length >= 3 ? '' : p + '.')), 400)
     return () => clearInterval(t)
   }, [])
-  return <span style={{ color: '#999', fontStyle: 'italic', fontSize: 14 }}>正在输入<span style={{ letterSpacing: 1 }}>{dots}</span></span>
+  return <span style={{ color: '#999', fontStyle: 'italic', fontSize: 14 }}>正在思考<span style={{ letterSpacing: 1 }}>{dots}</span></span>
 }

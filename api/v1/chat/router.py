@@ -106,6 +106,16 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         system_prompt = req.system_prompt
 
+        # 获取当前用户 ID
+        user_id = _get_user_id(request)
+
+        # 注入用户记忆到 system prompt
+        if user_id:
+            from db.session import get_db
+            memory = get_db().get_user_memory(user_id)
+            if memory:
+                system_prompt = f"关于当前用户的已知信息（请用它来个性化回复）：\n{memory}\n\n{system_prompt}"
+
         input_messages = build_input_messages(
             prompt=req.prompt,
             images_base64=req.images,
@@ -114,7 +124,6 @@ async def chat_stream(req: ChatRequest, request: Request):
         )
 
         # 设置当前用户上下文，知识库检索时自动过滤私有/共享
-        user_id = _get_user_id(request)
         current_user_id.set(user_id if user_id else 0)
 
         async def event_stream():

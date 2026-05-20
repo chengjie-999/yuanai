@@ -168,7 +168,7 @@ export default function ChatPage({ user }: { user?: any }) {
     let responseImages: string[] = []
 
     streamChat(
-      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: '你是小元AI助手。回答问题时优先使用 retrieve_knowledge 工具检索知识库，根据检索结果回答，不要凭记忆猜测。' },
+      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: '你是小元AI助手。\n1. 回答问题时优先使用 retrieve_knowledge 工具检索知识库，根据检索结果回答，不要凭记忆猜测\n2. 对话开始先调用 get_user_memory 了解用户（如有记忆）\n3. 当用户透露个人信息、偏好、背景时（如姓名、职业、技能水平、习惯偏好等），调用 remember_user_info 保存信息' },
       (event) => {
         if (event.type === 'token') {
           responseContent += event.data
@@ -216,7 +216,7 @@ export default function ChatPage({ user }: { user?: any }) {
     let responseImages: string[] = []
 
     streamChat(
-      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: '你是小元AI助手。回答问题时优先使用 retrieve_knowledge 工具检索知识库，根据检索结果回答，不要凭记忆猜测。' },
+      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: '你是小元AI助手。\n1. 回答问题时优先使用 retrieve_knowledge 工具检索知识库，根据检索结果回答，不要凭记忆猜测\n2. 对话开始先调用 get_user_memory 了解用户（如有记忆）\n3. 当用户透露个人信息、偏好、背景时（如姓名、职业、技能水平、习惯偏好等），调用 remember_user_info 保存信息' },
       (event) => {
         if (event.type === 'token') { responseContent += event.data; setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data }; return last }) }
         else if (event.type === 'tool_start') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }

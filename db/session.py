@@ -60,6 +60,7 @@ class User(Base):
     password_hash = Column(String(200), nullable=False)
     display_name = Column(String(50), default='')
     role = Column(String(20), default='user')
+    memory = Column(Text, default='')
     frozen_until = Column(TIMESTAMP, nullable=True)
     create_time = Column(TIMESTAMP, server_default=func.now())
 
@@ -133,6 +134,7 @@ class AgentDatabase:
         migrations = [
             ("chat_session", "user_id INTEGER"),
             ("users", "frozen_until DATETIME"),
+            ("users", "memory TEXT DEFAULT ''"),
             ("ai_chat", "images TEXT"),
             ("datasets", "user_id INTEGER"),
             ("datasets", "analysis_json TEXT DEFAULT ''"),
@@ -315,6 +317,32 @@ class AgentDatabase:
         sess = self.Session()
         try:
             return sess.query(User).filter_by(id=user_id).first()
+        finally:
+            sess.close()
+
+    def get_user_memory(self, user_id: int) -> str:
+        """获取用户记忆"""
+        sess = self.Session()
+        try:
+            user = sess.query(User).filter_by(id=user_id).first()
+            return user.memory if user and user.memory else ""
+        finally:
+            sess.close()
+
+    def update_user_memory(self, user_id: int, memory: str) -> bool:
+        """更新用户记忆（追加模式，用换行分隔）"""
+        sess = self.Session()
+        try:
+            user = sess.query(User).filter_by(id=user_id).first()
+            if not user:
+                return False
+            current = user.memory if user.memory else ""
+            if current:
+                user.memory = current.strip() + "\n" + memory.strip()
+            else:
+                user.memory = memory.strip()
+            sess.commit()
+            return True
         finally:
             sess.close()
 

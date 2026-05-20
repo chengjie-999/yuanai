@@ -13,6 +13,7 @@ import re
 import time
 import json
 import hashlib
+import threading
 import numpy as np
 from openai import OpenAI
 from pymilvus import MilvusClient
@@ -34,6 +35,7 @@ EMBEDDING_DIM = 1024
 
 _client: OpenAI | None = None
 _db: MilvusClient | None = None
+_db_lock = threading.RLock()  # 保护集合创建/写入并发（可重入）
 
 
 # ====================== Embedding ======================
@@ -261,10 +263,7 @@ def build_knowledge_base(force_rebuild: bool = False) -> bool:
     embeddings = get_embeddings(texts)
     print(f"   向量生成完成，耗时 {time.time() - start:.1f}s")
 
-    # 重建集合
-    if db.has_collection(COLLECTION_NAME):
-        db.drop_collection(COLLECTION_NAME)
-
+    # 重建集合（加锁保护）
     data = []
     for i, chunk in enumerate(all_chunks):
         data.append({
@@ -279,8 +278,11 @@ def build_knowledge_base(force_rebuild: bool = False) -> bool:
             "user_id": chunk.get("user_id", 0),
         })
 
-    _ensure_collection()
-    db.insert(COLLECTION_NAME, data)
+    with _db_lock:
+        if db.has_collection(COLLECTION_NAME):
+            db.drop_collection(COLLECTION_NAME)
+        db.create_collection(COLLECTION_NAME, dimension=EMBEDDING_DIM)
+        db.insert(COLLECTION_NAME, data)
 
     # 统计
     sources = {}
@@ -296,10 +298,11 @@ def build_knowledge_base(force_rebuild: bool = False) -> bool:
 
 # ====================== 增量操作 ======================
 def _ensure_collection():
-    """确保集合存在，不存在则创建"""
+    """确保集合存在，不存在则创建（线程安全）"""
     db = _get_db()
-    if not db.has_collection(COLLECTION_NAME):
-        db.create_collection(COLLECTION_NAME, dimension=EMBEDDING_DIM)
+    with _db_lock:
+        if not db.has_collection(COLLECTION_NAME):
+            db.create_collection(COLLECTION_NAME, dimension=EMBEDDING_DIM)
 
 
 def _get_max_id() -> int:
@@ -374,7 +377,8 @@ def add_source_chunks(chunks: list[dict]) -> int:
             "user_id": chunk.get("user_id", 0),
         })
 
-    db.insert(COLLECTION_NAME, data)
+    with _db_lock:
+        db.insert(COLLECTION_NAME, data)
     return len(data)
 
 

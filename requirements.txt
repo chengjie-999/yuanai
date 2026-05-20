@@ -175,7 +175,7 @@ openpyxl~=3.1.5
 pymysql~=1.1.2
 python-jose~=3.4.0
 bcrypt~=4.3.0
-# pymilvus 需从官方 PyPI 安装（依赖 milvus-lite，清华未同步），见 Dockerfile
+pymilvus~=2.6.0
 
 cryptography~=46.0.6
 

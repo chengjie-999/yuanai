@@ -26,7 +26,8 @@ from utils.sensitive_data import get_api_key
 AIPROMPT_DIR = os.path.join(root_path(), "data", "aiprompt")
 SPEC_FILE_PATH = os.path.join(AIPROMPT_DIR, "annotation_spec.txt")
 STEPS_FILE_PATH = os.path.join(AIPROMPT_DIR, "audit_steps.txt")
-MILVUS_DB_PATH = os.path.join(root_path(), "data", "milvus_knowledge.db")
+MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
+MILVUS_PORT = os.getenv("MILVUS_PORT", "19530")
 COLLECTION_NAME = "knowledge_base"
 CHUNK_SIZE = 300
 CHUNK_OVERLAP = 50
@@ -75,8 +76,8 @@ def _get_db() -> MilvusClient:
     global _db
     if _db is not None:
         return _db
-    os.makedirs(os.path.dirname(MILVUS_DB_PATH), exist_ok=True)
-    _db = MilvusClient(MILVUS_DB_PATH)
+    uri = f"http://{MILVUS_HOST}:{MILVUS_PORT}"
+    _db = MilvusClient(uri=uri)
     return _db
 
 

@@ -28,6 +28,22 @@ services:
       timeout: 5s
       retries: 5
 
+  milvus:
+    image: milvusdb/milvus:v2.4.0
+    container_name: spider-milvus
+    restart: always
+    environment:
+      COMMON_STORAGETYPE: local
+    ports:
+      - "19530:19530"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: .
@@ -39,11 +55,14 @@ services:
     environment:
       - MYSQL_HOST=mysql
       - REDIS_HOST=redis
+      - MILVUS_HOST=milvus
       - APP_ENV=production
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      milvus:
         condition: service_healthy
     volumes:
       - app_data:/app/data
@@ -67,4 +86,5 @@ services:
 volumes:
   mysql_data:
   redis_data:
+  milvus_data:
   app_data:

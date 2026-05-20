@@ -13,6 +13,7 @@ from utils.data_path import root_path
 from api.v1.models import ChatRequest, SaveMessagesRequest
 from yuanai_core.core.lc import get_llm
 from yuanai_core.core.chat import build_input_messages, stream_agent_events
+from yuanai_core.rag import current_user_id
 from yuanai_core.tools import all_tools
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,10 @@ async def chat_stream(req: ChatRequest, request: Request):
             history=history,
             system_message=SystemMessage(content=system_prompt),
         )
+
+        # 设置当前用户上下文，知识库检索时自动过滤私有/共享
+        user_id = _get_user_id(request)
+        current_user_id.set(user_id if user_id else 0)
 
         async def event_stream():
             try:

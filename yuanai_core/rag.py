@@ -14,6 +14,7 @@ import time
 import json
 import hashlib
 import threading
+from contextvars import ContextVar
 import numpy as np
 from openai import OpenAI
 from pymilvus import MilvusClient
@@ -36,6 +37,7 @@ EMBEDDING_DIM = 1024
 _client: OpenAI | None = None
 _db: MilvusClient | None = None
 _db_lock = threading.RLock()  # 保护集合创建/写入并发（可重入）
+current_user_id: ContextVar[int] = ContextVar("kb_user_id", default=0)  # 当前检索用户上下文
 
 
 # ====================== Embedding ======================

@@ -19,6 +19,7 @@ export default function KnowledgePage() {
   const [visibility, setVisibility] = useState<'shared' | 'private'>('shared')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const loadSources = useCallback(async () => {
@@ -32,9 +33,7 @@ export default function KnowledgePage() {
 
   useEffect(() => { loadSources() }, [loadSources])
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const doUpload = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.zip')) {
       setError('仅支持 .zip 压缩包')
       return
@@ -58,6 +57,32 @@ export default function KnowledgePage() {
     }
     setUploading(false)
     if (fileRef.current) fileRef.current.value = ''
+  }
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await doUpload(file)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(false)
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) await doUpload(file)
   }
 
   const handleDelete = async (source: string) => {
@@ -108,9 +133,17 @@ export default function KnowledgePage() {
         </div>
 
         {/* Upload area */}
-        <div style={{
-          background: '#fff', borderRadius: 10, border: '1px solid #eee', padding: 20,
-        }}>
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          style={{
+            background: dragOver ? '#f0f4ff' : '#fff',
+            borderRadius: 10,
+            border: dragOver ? '2px dashed #1976d2' : '1px solid #eee',
+            padding: 20,
+            transition: 'all 0.2s',
+          }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <input ref={fileRef} type="file" accept=".zip" hidden onChange={handleUpload} />
             <button

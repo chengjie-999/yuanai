@@ -34,6 +34,8 @@ services:
     restart: always
     command: ["milvus", "run", "standalone"]
     environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
       COMMON_STORAGETYPE: local
     ports:
       - "19530:19530"

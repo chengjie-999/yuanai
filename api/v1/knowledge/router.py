@@ -13,6 +13,7 @@ import tempfile
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Request, UploadFile, File, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from yuanai_core.rag import (
@@ -231,6 +232,15 @@ async def rebuild(request: Request):
     except Exception as e:
         logger.exception("知识库重建失败")
         raise HTTPException(status_code=500, detail=f"重建失败: {str(e)}")
+
+
+@router.get("/img/{source}/{filename:path}")
+async def serve_kb_image(source: str, filename: str):
+    """提供知识库图片（公开访问）"""
+    img_path = os.path.join(AIPROMPT_DIR, source, filename)
+    if not os.path.isfile(img_path):
+        raise HTTPException(status_code=404, detail="图片不存在")
+    return FileResponse(img_path)
 
 
 @router.get("/search")

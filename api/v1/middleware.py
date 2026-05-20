@@ -11,7 +11,7 @@ from api.v1.auth.utils import verify_token, verify_sse_token
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register"]
+PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register", "/api/v1/knowledge/img"]
 
 
 def is_public(path: str) -> bool:

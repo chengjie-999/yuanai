@@ -481,11 +481,10 @@ def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None,
         if images and images != "[]":
             try:
                 imgs = json.loads(images)
-                img_dir = os.path.join(AIPROMPT_DIR, src)
                 for img in imgs:
-                    img_path = os.path.join(img_dir, img)
-                    if os.path.exists(img_path):
-                        chunks.append(f"  📷 图片: {img_path}")
+                    # 返回可访问的 URL，前端 Markdown 渲染器可直接显示
+                    img_url = f"/api/v1/knowledge/img/{src}/{img}"
+                    chunks.append(f"  ![图片]({img_url})")
             except (json.JSONDecodeError, Exception):
                 pass
 

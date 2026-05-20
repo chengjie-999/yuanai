@@ -48,10 +48,7 @@ def get_llm(model='deepseek-chat', **kwargs):
         ds_api_key = get_api_key(model_type)
         
         extra_params = {}
-        # DeepSeek V4 关掉思考模式（reasoning_content 需原样回传，ReAct Agent 不兼容）
-        if model in ['deepseek-v4-flash', 'deepseek-v4-pro']:
-            extra_params["extra_body"] = {"reasoning_effort": "none"}
-        elif model == 'deepseek-reasoner':
+        if model == 'deepseek-reasoner':
             extra_params["extra_body"] = {"reasoning_effort": "high"}
         
         return ChatOpenAI(

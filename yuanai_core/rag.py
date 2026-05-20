@@ -63,8 +63,12 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     client = _get_openai_client()
+    model = os.getenv("EMBEDDING_MODEL", "")
+    if not model:
+        print("⚠️ 未配置 EMBEDDING_MODEL 环境变量")
+        return [[0.0] * EMBEDDING_DIM for _ in texts]
     try:
-        resp = client.embeddings.create(model=DEFAULT_MODEL, input=texts)
+        resp = client.embeddings.create(model=model, input=texts)
         return [d.embedding for d in resp.data]
     except Exception as e:
         print(f"⚠️ Embedding API 调用失败: {e}")

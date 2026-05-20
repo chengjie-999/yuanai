@@ -2,10 +2,17 @@
 向量知识库 — Milvus + OpenAI 兼容 Embedding API
 开发模式: Milvus Lite (嵌入式，免 Docker)
 生产模式: Milvus Standalone/Cluster (改连接地址即可，API 不变)
+
+支持数据源:
+  - data/aiprompt/*.txt         纯文本规范文档
+  - data/aiprompt/**/*.md       思维导图 Markdown 导出（支持嵌套文件夹）
 """
+from __future__ import annotations
 import os
 import re
 import time
+import json
+import hashlib
 import numpy as np
 from openai import OpenAI
 from pymilvus import MilvusClient
@@ -14,16 +21,16 @@ from utils.data_path import root_path
 from utils.sensitive_data import get_api_key
 
 # ====================== 配置 ======================
-SPEC_FILE_PATH = os.path.join(root_path(), "data", "aiprompt", "annotation_spec.txt")
-STEPS_FILE_PATH = os.path.join(root_path(), "data", "aiprompt", "audit_steps.txt")
+AIPROMPT_DIR = os.path.join(root_path(), "data", "aiprompt")
+SPEC_FILE_PATH = os.path.join(AIPROMPT_DIR, "annotation_spec.txt")
+STEPS_FILE_PATH = os.path.join(AIPROMPT_DIR, "audit_steps.txt")
 MILVUS_DB_PATH = os.path.join(root_path(), "data", "milvus_knowledge.db")
-COLLECTION_NAME = "audit_knowledge"
+COLLECTION_NAME = "knowledge_base"
 CHUNK_SIZE = 300
 CHUNK_OVERLAP = 50
-TOP_K = 3
+TOP_K = 5
 
-# Embedding 配置：优先用默认模型对应的 API
-EMBEDDING_DIM = 1024  # 通用维度，豆包/DeepSeek 都支持
+EMBEDDING_DIM = 1024
 
 _client: OpenAI | None = None
 _db: MilvusClient | None = None
@@ -31,7 +38,6 @@ _db: MilvusClient | None = None
 
 # ====================== Embedding ======================
 def _get_openai_client() -> OpenAI:
-    """获取 OpenAI 兼容客户端（复用项目已有的 API 配置）"""
     global _client
     if _client is not None:
         return _client
@@ -49,25 +55,19 @@ def _get_openai_client() -> OpenAI:
 
 
 def get_embeddings(texts: list[str]) -> list[list[float]]:
-    """批量获取文本向量"""
     if not texts:
         return []
     client = _get_openai_client()
     try:
-        resp = client.embeddings.create(
-            model=DEFAULT_MODEL,
-            input=texts,
-        )
+        resp = client.embeddings.create(model=DEFAULT_MODEL, input=texts)
         return [d.embedding for d in resp.data]
     except Exception as e:
         print(f"⚠️ Embedding API 调用失败: {e}")
-        # 回退：零向量（检索时会降级为全量返回）
         return [[0.0] * EMBEDDING_DIM for _ in texts]
 
 
 # ====================== Milvus ======================
 def _get_db() -> MilvusClient:
-    """获取 Milvus 客户端（Lite 模式）"""
     global _db
     if _db is not None:
         return _db
@@ -76,10 +76,133 @@ def _get_db() -> MilvusClient:
     return _db
 
 
+# ====================== Markdown 思维导图解析 ======================
+def _parse_mindmap_md(filepath: str) -> list[dict]:
+    """解析 Markdown 文件：heading (#) + 列表项 (-) 共同构成树形结构"""
+    with open(filepath, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    root = {"level": 0, "title": "ROOT", "children": [], "content": "", "images": []}
+    stack = [root]
+    # 记录当前 heading 的层级，用于计算列表项的有效层级
+    current_heading_level = 0
+
+    for line in lines:
+        h_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+        list_match = re.match(r'^(\s*)[-*+]\s+(.+)$', line)
+
+        if h_match:
+            level = len(h_match.group(1))
+            title = h_match.group(2).strip()
+            current_heading_level = level
+
+            while stack and stack[-1]["level"] >= level:
+                stack.pop()
+            if not stack:
+                stack = [root]
+
+            parent = stack[-1]
+            node = {"level": level, "title": title, "children": [], "content": "", "images": []}
+            parent["children"].append(node)
+            stack.append(node)
+
+        elif list_match:
+            indent = len(list_match.group(1))
+            title = list_match.group(2).strip()
+            # 列表项层级 = 当前 heading 层级 + 缩进层级（每 2 空格 = 1 级，最小 +1）
+            list_level = current_heading_level + max(1, indent // 2 + 1)
+
+            while stack and stack[-1]["level"] >= list_level:
+                stack.pop()
+            if not stack:
+                stack = [root]
+
+            parent = stack[-1]
+            node = {"level": list_level, "title": title, "children": [], "content": "", "images": []}
+            parent["children"].append(node)
+            stack.append(node)
+
+        else:
+            stripped = line.strip()
+            if stripped and stack and stack[-1]["level"] > 0:
+                stack[-1]["content"] += stripped + "\n"
+                for m in re.finditer(r'!\[([^\]]*)\]\(([^)]+)\)', stripped):
+                    stack[-1]["images"].append({"alt": m.group(1), "src": m.group(2)})
+
+    return root["children"]
+
+
+def _flatten_tree(nodes: list[dict], folder: str, path: str = "", user_id: int = 0) -> list[dict]:
+    """将树形节点拍平为知识块"""
+    results = []
+    for node in nodes:
+        current_path = f"{path} > {node['title']}" if path else node["title"]
+
+        text_parts = [current_path]
+        if node["content"]:
+            text_parts.append(node["content"].strip())
+        if node["images"]:
+            imgs = ", ".join(img["src"] for img in node["images"])
+            text_parts.append(f"[图片: {imgs}]")
+
+        results.append({
+            "text": "\n".join(text_parts),
+            "title": node["title"],
+            "path": current_path,
+            "level": node["level"],
+            "source": folder,
+            "user_id": user_id,
+            "images": json.dumps([i["src"] for i in node["images"]], ensure_ascii=False),
+        })
+        results.extend(_flatten_tree(node["children"], folder, current_path, user_id))
+    return results
+
+
+def _scan_mindmap_folders() -> dict[str, list[dict]]:
+    """递归扫描 aiprompt 目录下所有 Markdown 文件，支持嵌套文件夹"""
+    if not os.path.isdir(AIPROMPT_DIR):
+        return {}
+
+    seen_hashes = {}
+    sources = {}
+
+    for dirpath, dirnames, filenames in os.walk(AIPROMPT_DIR):
+        md_files = [f for f in filenames if f.endswith(".md")]
+        if not md_files:
+            continue
+
+        for md_file in md_files:
+            md_path = os.path.join(dirpath, md_file)
+            content_hash = hashlib.md5(open(md_path, "rb").read()).hexdigest()
+
+            # source 命名：去除冗余（文件夹名 = md 名时只用文件夹名）
+            rel_dir = os.path.relpath(dirpath, AIPROMPT_DIR).replace("\\", "/")
+            md_stem = os.path.splitext(md_file)[0]
+            folder_name = os.path.basename(dirpath)
+            if folder_name == md_stem:
+                source = (rel_dir + "/").replace("./", "") if rel_dir != "." else md_stem
+                source = source.rstrip("/")
+            else:
+                source = f"{rel_dir}/{md_stem}" if rel_dir != "." else md_stem
+
+            if content_hash in seen_hashes:
+                print(f"  ⏭️  {source}  内容与 {seen_hashes[content_hash]} 相同，已跳过")
+                continue
+            seen_hashes[content_hash] = source
+
+            tree = _parse_mindmap_md(md_path)
+            chunks = _flatten_tree(tree, folder=source)
+            if chunks:
+                sources[source] = chunks
+                img_count = len([f for f in filenames if f.endswith(".png")])
+                print(f"  📄 {source}  → {len(chunks)} chunks (图片 {img_count} 张)")
+
+    return sources
+
+
+# ====================== 文本切分 ======================
 def _chunk_text(text: str, source: str) -> list[dict]:
-    """将文本切分为带元数据的 chunk"""
     chunks = []
-    # 按一级标题切分（中文数字 + 、 开头）
     sections = re.split(r'\n(?=[一二三四五六七八九十]、)', text)
     for section in sections:
         section = section.strip()
@@ -88,61 +211,60 @@ def _chunk_text(text: str, source: str) -> list[dict]:
         lines = section.split('\n')
         title = lines[0].strip()
         body = '\n'.join(lines)
-
-        # 按 CHUNK_SIZE 切分长段落
+        base = {"source": source, "path": f"{source} > {title}", "level": 2, "images": "[]", "user_id": 0}
         if len(body) > CHUNK_SIZE:
             for i in range(0, len(body), CHUNK_SIZE - CHUNK_OVERLAP):
                 chunk = body[i:i + CHUNK_SIZE]
                 if chunk.strip():
-                    chunks.append({"text": chunk, "title": title, "source": source})
+                    chunks.append({"text": chunk, "title": title, **base})
         else:
-            chunks.append({"text": body, "title": title, "source": source})
+            chunks.append({"text": body, "title": title, **base})
     return chunks
 
 
+# ====================== 知识库构建 ======================
 def build_knowledge_base(force_rebuild: bool = False) -> bool:
-    """构建知识库：索引 annotation_spec.txt + audit_steps.txt"""
     db = _get_db()
 
-    # 检查集合是否已存在
     if db.has_collection(COLLECTION_NAME) and not force_rebuild:
         print("✅ 知识库已存在")
         return True
 
-    # 读取知识文档
-    sources = {}
+    print("🔍 扫描知识文档...")
+
+    all_chunks: list[dict] = []
+
+    # 1. 纯文本文档
     if os.path.exists(SPEC_FILE_PATH):
         with open(SPEC_FILE_PATH, "r", encoding="utf-8") as f:
-            sources["annotation_spec"] = f.read()
+            all_chunks.extend(_chunk_text(f.read(), "annotation_spec"))
+        print(f"  📝 annotation_spec.txt")
+
     if os.path.exists(STEPS_FILE_PATH):
         with open(STEPS_FILE_PATH, "r", encoding="utf-8") as f:
-            sources["audit_steps"] = f.read()
+            all_chunks.extend(_chunk_text(f.read(), "audit_steps"))
+        print(f"  📝 audit_steps.txt")
 
-    if not sources:
-        print("⚠️ 无知识文档可索引")
-        return False
-
-    # 切分
-    all_chunks = []
-    for source_name, text in sources.items():
-        all_chunks.extend(_chunk_text(text, source_name))
+    # 2. 思维导图 Markdown 文件夹
+    mindmap_sources = _scan_mindmap_folders()
+    for chunks in mindmap_sources.values():
+        all_chunks.extend(chunks)
 
     if not all_chunks:
-        print("⚠️ 文档切分后为空")
+        print("⚠️ 无知识文档可索引")
         return False
 
     # 获取向量
     texts = [c["text"] for c in all_chunks]
-    print(f"🔨 正在为 {len(texts)} 个文本块生成向量...")
+    print(f"\n🔨 正在为 {len(texts)} 个文本块生成向量...")
     start = time.time()
     embeddings = get_embeddings(texts)
     print(f"   向量生成完成，耗时 {time.time() - start:.1f}s")
 
-    # 删除旧集合后重建
+    # 重建集合
     if db.has_collection(COLLECTION_NAME):
         db.drop_collection(COLLECTION_NAME)
 
-    # 准备插入数据
     data = []
     for i, chunk in enumerate(all_chunks):
         data.append({
@@ -151,39 +273,189 @@ def build_knowledge_base(force_rebuild: bool = False) -> bool:
             "text": chunk["text"],
             "title": chunk["title"],
             "source": chunk["source"],
+            "path": chunk.get("path", ""),
+            "level": chunk.get("level", 0),
+            "images": chunk.get("images", "[]"),
+            "user_id": chunk.get("user_id", 0),
         })
 
-    db.create_collection(COLLECTION_NAME, dimension=EMBEDDING_DIM)
+    _ensure_collection()
     db.insert(COLLECTION_NAME, data)
-    print(f"✅ 知识库构建完成，共 {len(data)} 条")
+
+    # 统计
+    sources = {}
+    for c in all_chunks:
+        src = c["source"]
+        sources[src] = sources.get(src, 0) + 1
+
+    print(f"\n✅ 知识库构建完成，共 {len(data)} 条")
+    for src, count in sorted(sources.items()):
+        print(f"   {src}: {count} chunks")
     return True
 
 
+# ====================== 增量操作 ======================
+def _ensure_collection():
+    """确保集合存在，不存在则创建"""
+    db = _get_db()
+    if not db.has_collection(COLLECTION_NAME):
+        db.create_collection(COLLECTION_NAME, dimension=EMBEDDING_DIM)
+
+
+def _get_max_id() -> int:
+    """获取集合中最大的 ID"""
+    db = _get_db()
+    if not db.has_collection(COLLECTION_NAME):
+        return 0
+    try:
+        results = db.query(
+            COLLECTION_NAME,
+            filter="id >= 0",
+            output_fields=["id"],
+            limit=50000,
+        )
+        if not results:
+            return 0
+        return max(r["id"] for r in results)
+    except Exception:
+        return 0
+
+
+def remove_source(source: str, user_id: int | None = None) -> int:
+    """删除指定来源的所有 chunk（可选按 user_id 限定），返回删除数"""
+    db = _get_db()
+    if not db.has_collection(COLLECTION_NAME):
+        return 0
+    filter_parts = [f'source == "{source}"']
+    if user_id is not None:
+        filter_parts.append(f'user_id == {user_id}')
+    try:
+        results = db.query(
+            COLLECTION_NAME,
+            filter=" and ".join(filter_parts),
+            output_fields=["id"],
+            limit=50000,
+        )
+    except Exception:
+        return 0
+    if not results:
+        return 0
+    ids = [r["id"] for r in results]
+    db.delete(COLLECTION_NAME, ids=ids)
+    return len(ids)
+
+
+def add_source_chunks(chunks: list[dict]) -> int:
+    """将 chunk 列表生成向量并插入集合，返回插入数"""
+    if not chunks:
+        return 0
+
+    db = _get_db()
+    _ensure_collection()
+
+    texts = [c["text"] for c in chunks]
+    print(f"  🔨 生成 {len(texts)} 条向量...")
+    start = time.time()
+    embeddings = get_embeddings(texts)
+    print(f"     耗时 {time.time() - start:.1f}s")
+
+    next_id = _get_max_id() + 1
+    data = []
+    for i, chunk in enumerate(chunks):
+        data.append({
+            "id": next_id + i,
+            "vector": embeddings[i],
+            "text": chunk["text"],
+            "title": chunk["title"],
+            "source": chunk["source"],
+            "path": chunk.get("path", ""),
+            "level": chunk.get("level", 0),
+            "images": chunk.get("images", "[]"),
+            "user_id": chunk.get("user_id", 0),
+        })
+
+    db.insert(COLLECTION_NAME, data)
+    return len(data)
+
+
+def get_source_stats() -> list[dict]:
+    """获取各来源的统计信息"""
+    db = _get_db()
+    if not db.has_collection(COLLECTION_NAME):
+        return []
+    try:
+        results = db.query(
+            COLLECTION_NAME,
+            filter="id >= 0",
+            output_fields=["source", "level", "images", "user_id"],
+            limit=50000,
+        )
+    except Exception:
+        return []
+
+    stats: dict[str, dict] = {}
+    for r in results:
+        src = r.get("source", "")
+        if src not in stats:
+            stats[src] = {"source": src, "chunks": 0, "images": 0, "user_id": r.get("user_id", 0)}
+        stats[src]["chunks"] += 1
+        imgs = r.get("images", "[]")
+        if imgs and imgs != "[]":
+            try:
+                stats[src]["images"] += len(json.loads(imgs))
+            except (json.JSONDecodeError, Exception):
+                pass
+
+    return sorted(stats.values(), key=lambda x: x["chunks"], reverse=True)
+
+
 # ====================== 检索 ======================
-def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None) -> str:
-    """向量检索知识库，返回相关段落"""
+def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None,
+                     user_id: int | None = None) -> str:
+    """
+    向量检索知识库。
+    user_id=None   → 仅检索共享知识（user_id=0）
+    user_id=123    → 检索共享 + 该用户的私有知识
+    """
     if not query.strip():
         return ""
 
     db = _get_db()
     if not db.has_collection(COLLECTION_NAME):
-        # 首次调用时自动构建
         if not build_knowledge_base():
             return _get_all_raw_text()
 
     embeddings = get_embeddings([query])
     if not embeddings or all(v == 0 for v in embeddings[0]):
-        # Embedding 不可用时返回原始文本的子集
         return _get_all_raw_text()[:2000]
 
-    filter_expr = f'source == "{source}"' if source else None
-    results = db.search(
-        COLLECTION_NAME,
-        data=[embeddings[0]],
-        limit=top_k,
-        output_fields=["text", "title", "source"],
-        filter=filter_expr,
-    )
+    # 构建过滤条件
+    filters = []
+    if source:
+        filters.append(f'source == "{source}"')
+    if user_id is not None:
+        filters.append(f'(user_id == 0 or user_id == {user_id})')
+
+    filter_expr = " and ".join(filters) if filters else None
+    output_fields = ["text", "title", "source", "path", "images", "user_id"]
+
+    try:
+        results = db.search(
+            COLLECTION_NAME,
+            data=[embeddings[0]],
+            limit=top_k,
+            output_fields=output_fields,
+            filter=filter_expr,
+        )
+    except Exception:
+        # 旧集合缺少 path/level/images 字段时回退
+        results = db.search(
+            COLLECTION_NAME,
+            data=[embeddings[0]],
+            limit=top_k,
+            output_fields=["text", "title", "source"],
+            filter=filter_expr,
+        )
 
     if not results or not results[0]:
         return _get_all_raw_text()[:2000]
@@ -194,23 +466,35 @@ def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None) 
         src = entity.get("source", "")
         title = entity.get("title", "")
         text = entity.get("text", "")
-        chunks.append(f"[{src}] {title}\n{text}")
+        path = entity.get("path", "")
+        images = entity.get("images", "[]")
+
+        header = f"[{src}] {path or title}"
+        chunks.append(header + "\n" + text)
+
+        if images and images != "[]":
+            try:
+                imgs = json.loads(images)
+                img_dir = os.path.join(AIPROMPT_DIR, src)
+                for img in imgs:
+                    img_path = os.path.join(img_dir, img)
+                    if os.path.exists(img_path):
+                        chunks.append(f"  📷 图片: {img_path}")
+            except (json.JSONDecodeError, Exception):
+                pass
 
     return "\n---\n".join(chunks)
 
 
 def search_spec(query: str) -> str:
-    """检索标注规范（仅 annotation_spec 来源）"""
     return search_knowledge(query, source="annotation_spec")
 
 
 def search_steps(query: str) -> str:
-    """检索操作步骤（仅 audit_steps 来源）"""
     return search_knowledge(query, source="audit_steps")
 
 
 def _get_all_raw_text() -> str:
-    """无向量库时直接返回原始文本（降级方案）"""
     parts = []
     if os.path.exists(SPEC_FILE_PATH):
         with open(SPEC_FILE_PATH, "r", encoding="utf-8") as f:
@@ -221,9 +505,29 @@ def _get_all_raw_text() -> str:
     return "\n\n".join(parts)
 
 
+def list_knowledge_sources() -> list[str]:
+    """列出所有已索引的知识库来源"""
+    db = _get_db()
+    if not db.has_collection(COLLECTION_NAME):
+        return []
+    sources = set()
+    # 简单查询所有数据
+    try:
+        results = db.query(
+            COLLECTION_NAME,
+            filter='id >= 0',
+            output_fields=["source"],
+            limit=10000,
+        )
+    except Exception:
+        return []
+    for r in results:
+        sources.add(r.get("source", ""))
+    return sorted(sources)
+
+
 # ====================== 兼容旧接口 ======================
 def get_all_specs() -> str:
-    """获取全部规范（兼容旧接口）"""
     if os.path.exists(SPEC_FILE_PATH):
         with open(SPEC_FILE_PATH, "r", encoding="utf-8") as f:
             return f.read()
@@ -231,12 +535,10 @@ def get_all_specs() -> str:
 
 
 def search_annotation_spec(query: str) -> str:
-    """按关键词检索规范（兼容旧接口，现在走向量检索）"""
     return search_spec(query)
 
 
 def split_spec_sections() -> list:
-    """将标注规范按一级标题切分为段落列表（兼容旧接口）"""
     text = get_all_specs()
     if not text:
         return []
@@ -250,28 +552,35 @@ def split_spec_sections() -> list:
 
 
 def search_spec_sections(keyword: str = "") -> str:
-    """按关键词检索规范段落（兼容旧接口，降级为非向量匹配）"""
     sections = split_spec_sections()
     if not sections:
         return ""
     if not keyword:
         return "\n\n".join(c for _, c in sections)
     keyword_lower = keyword.lower()
-    matched = []
-    for title, content in sections:
-        if keyword_lower in content.lower():
-            matched.append(content)
+    matched = [c for t, c in sections if keyword_lower in c.lower()]
     return "\n\n".join(matched) if matched else (sections[0][1] if sections else "")
 
 
 def rebuild_vector_store():
-    """强制重建知识库"""
     build_knowledge_base(force_rebuild=True)
 
 
 # ====================== LangChain Tool ======================
 try:
     from langchain_core.tools import tool
+
+    @tool
+    def retrieve_knowledge(query: str) -> str:
+        """
+        从知识库中检索相关内容，包括 Python 笔记、标注规范、操作步骤等。
+        当用户询问技术知识、编程问题、标注规范时调用。
+        输入：查询关键词或问题（如 'Python for循环' '数据标注规范'）
+        输出：知识库中语义最相关的段落及其路径
+        """
+        if not query:
+            return "知识库包含: " + ", ".join(list_knowledge_sources())
+        return search_knowledge(query)
 
     @tool
     def retrieve_specification(query: str = "") -> str:
@@ -285,15 +594,18 @@ try:
         return search_spec(query)
 
     __all__ = [
-        "retrieve_specification", "search_knowledge", "search_spec", "search_steps",
+        "retrieve_knowledge", "retrieve_specification",
+        "search_knowledge", "search_spec", "search_steps",
         "search_annotation_spec", "get_all_specs", "search_spec_sections",
         "split_spec_sections", "get_embeddings",
-        "build_knowledge_base", "rebuild_vector_store",
+        "build_knowledge_base", "rebuild_vector_store", "list_knowledge_sources",
+        "add_source_chunks", "remove_source", "get_source_stats",
     ]
 except ImportError:
     __all__ = [
         "search_knowledge", "search_spec", "search_steps",
         "search_annotation_spec", "get_all_specs", "search_spec_sections",
         "split_spec_sections", "get_embeddings",
-        "build_knowledge_base", "rebuild_vector_store",
+        "build_knowledge_base", "rebuild_vector_store", "list_knowledge_sources",
+        "add_source_chunks", "remove_source", "get_source_stats",
     ]

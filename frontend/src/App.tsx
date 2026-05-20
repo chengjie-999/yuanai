@@ -7,9 +7,10 @@ import DataAnalysisPage from './components/DataAnalysisPage'
 import AdminPage from './components/AdminPage'
 import DataCollectionPage from './components/DataCollectionPage'
 import DatasetPage from './components/DatasetPage'
+import KnowledgePage from './components/KnowledgePage'
 import { checkToken, setStoredUser } from './api'
 
-type Page = 'chat' | 'datasets' | 'dataCollection' | 'tools' | 'dataAnalysis' | 'admin' | 'settings'
+type Page = 'chat' | 'datasets' | 'dataCollection' | 'tools' | 'dataAnalysis' | 'admin' | 'settings' | 'knowledge'
 
 const BASE_TABS: { key: Page; label: string; icon: string }[] = [
   { key: 'chat', label: '聊天', icon: '💬' },
@@ -19,6 +20,7 @@ const FEATURE_TABS: { key: Page; label: string; icon: string; toggleKey: string;
   { key: 'datasets', label: '数据工作台', icon: '📂', toggleKey: 'datasets' },
   { key: 'dataAnalysis', label: '数据分析', icon: '📊', toggleKey: 'dataAnalysis' },
   { key: 'dataCollection', label: '数据采集', icon: '📡', toggleKey: 'dataCollection', adminOnly: true },
+  { key: 'knowledge', label: '知识库', icon: '📚', toggleKey: 'knowledge', adminOnly: true },
   { key: 'tools', label: '工具', icon: '🔧', toggleKey: 'tools' },
 ]
 
@@ -120,6 +122,7 @@ function App() {
         {page === 'tools' && toggles.tools && <ToolsPage />}
         {page === 'dataAnalysis' && toggles.dataAnalysis && <DataAnalysisPage />}
         {page === 'admin' && isAdmin && <AdminPage />}
+        {page === 'knowledge' && toggles.knowledge && isAdmin && <KnowledgePage />}
         {page === 'settings' && <SettingsPage toggles={toggles} onToggle={toggleFeature} />}
       </main>
     </div>

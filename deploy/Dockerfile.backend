@@ -39,7 +39,8 @@ COPY requirements.txt .
 
 RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir pymilvus~=2.6.0 -i https://pypi.org/simple/
+    (pip install --no-cache-dir --default-timeout=120 pymilvus~=2.6.0 -i https://mirrors.cloud.tencent.com/pypi/simple/ || \
+     pip install --no-cache-dir --default-timeout=120 pymilvus~=2.6.0 -i https://pypi.org/simple/)
 
 COPY . .
 

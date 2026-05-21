@@ -131,12 +131,11 @@ async def _deepseek_agent_stream(
 
                 if delta.content:
                     round_content += delta.content
+                    yield {"type": "token", "data": delta.content}
 
             # 合并 tool_call chunks 为完整 tool_calls
             if tool_call_chunks:
-                # 从 delta chunks 重建完整 tool_calls
                 merged_calls = []
-                current_call = None
                 for tc_delta in tool_call_chunks:
                     idx = getattr(tc_delta, 'index', 0)
                     while len(merged_calls) <= idx:
@@ -154,11 +153,9 @@ async def _deepseek_agent_stream(
                             merged_calls[idx]["function"]["arguments"] += fn.arguments
 
                 assistant["tool_calls"] = merged_calls
-                assistant["content"] = None  # tool_calls 时 content 必须为 null
-            elif round_content:
+                assistant["content"] = None
+            else:
                 assistant["content"] = round_content
-                # 没有工具调用的纯文本回复 — 流式输出 content
-                yield {"type": "token", "data": round_content}
 
             if round_reasoning:
                 assistant["reasoning_content"] = round_reasoning

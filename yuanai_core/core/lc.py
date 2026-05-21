@@ -1,7 +1,7 @@
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Any
 
 from langchain_core.language_models import BaseLanguageModel
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from yuanai_core.tools import all_tools as tools
@@ -12,28 +12,29 @@ dsllm = [m for m in MODEL_NAMES if 'deepseek' in m]
 seed = [m for m in MODEL_NAMES if 'doubao' in m]
 
 
+class ChatDeepSeek(ChatOpenAI):
+    """DeepSeek V4 适配器：消息序列化时保留 reasoning_content，确保工具调用多轮回传不丢失"""
+
+    def _convert_message_to_dict(self, message: BaseMessage) -> dict:
+        msg_dict = super()._convert_message_to_dict(message)
+        if isinstance(message, AIMessage):
+            reasoning = message.additional_kwargs.get("reasoning_content")
+            if reasoning:
+                msg_dict["reasoning_content"] = reasoning
+        return msg_dict
+
+
 # ===================== 核心：通用模型调用（兼容纯文本/多模态） =====================
 def call_llm(
-        messages: List[Union[SystemMessage, HumanMessage]],  # 核心修复：List替代list
-        model_name: str = "deepseek-chat",  # 纯文本模型（无多模态API时用这个）
+        messages: List[Union[SystemMessage, HumanMessage]],
+        model_name: str = "deepseek-chat",
         temperature: float = 0.1
 ) -> Optional[str]:
-    """
-    调用LLM并返回结果（兼容纯文本/多模态模型）
-    :param messages: 消息列表
-    :param model_name: 模型名称（纯文本：deepseek-chat；多模态：deepseek-vl2）
-    :param base_url: 模型接口地址
-    :param temperature: 生成温度
-    :return: 模型回答文本，失败返回None
-    """
-    # 1. 初始化模型
     llm: BaseLanguageModel = get_llm(
         model_name,
         temperature=temperature,
         verbose=False
     )
-
-    # 2. 调用模型（增加异常捕获）
     try:
         response = llm.invoke(messages)
         return response.content if hasattr(response, "content") else str(response)
@@ -44,14 +45,13 @@ def call_llm(
 
 def get_llm(model='deepseek-chat', **kwargs):
     if model in dsllm:
-        model_type = 'dsllm'
-        ds_api_key = get_api_key(model_type)
-        
+        ds_api_key = get_api_key('dsllm')
         extra_params = {}
-        if model == 'deepseek-reasoner':
+        if model in ['deepseek-v4-flash', 'deepseek-v4-pro']:
+            extra_params["extra_body"] = {"reasoning_effort": "low"}
+        elif model == 'deepseek-reasoner':
             extra_params["extra_body"] = {"reasoning_effort": "high"}
-        
-        return ChatOpenAI(
+        return ChatDeepSeek(
             api_key=ds_api_key,
             base_url="https://api.deepseek.com/beta",
             model=model,

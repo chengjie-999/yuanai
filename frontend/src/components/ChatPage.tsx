@@ -166,6 +166,7 @@ export default function ChatPage({ user }: { user?: any }) {
 
     let responseContent = ''
     let responseImages: string[] = []
+    let responseReasoning = ''
 
     streamChat(
       { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: '你是小元AI助手。\n1. 回答问题时优先使用 retrieve_knowledge 工具检索知识库，根据检索结果回答，不要凭记忆猜测\n2. 对话开始先调用 get_user_memory 了解用户（如有记忆）\n3. 当用户透露个人信息、偏好、背景时（如姓名、职业、技能水平、习惯偏好等），调用 remember_user_info 保存信息' },
@@ -173,6 +174,9 @@ export default function ChatPage({ user }: { user?: any }) {
         if (event.type === 'token') {
           responseContent += event.data
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data }; return last })
+        } else if (event.type === 'reasoning') {
+          responseReasoning += event.data
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
         } else if (event.type === 'tool_start') {
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last })
         } else if (event.type === 'tool_end') {
@@ -190,7 +194,7 @@ export default function ChatPage({ user }: { user?: any }) {
         const msgs = [
           ...prevMsgs.map((m) => ({ role: m.role, content: m.content, ...(m.images?.length ? { images: m.images } : {}) })),
           { role: 'user', content: input, ...(sentImages ? { images: sentImages } : {}) },
-          { role: 'assistant', content: responseContent, ...(responseImages.length ? { images: responseImages } : {}) },
+          { role: 'assistant', content: responseContent, ...(responseReasoning ? { reasoning: responseReasoning } : {}), ...(responseImages.length ? { images: responseImages } : {}) },
         ]
         const title = input.length > 50 ? input.slice(0, 50) + '...' : input
         saveMessages(sid, msgs, title)
@@ -214,11 +218,13 @@ export default function ChatPage({ user }: { user?: any }) {
 
     let responseContent = ''
     let responseImages: string[] = []
+    let responseReasoning = ''
 
     streamChat(
       { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: '你是小元AI助手。\n1. 回答问题时优先使用 retrieve_knowledge 工具检索知识库，根据检索结果回答，不要凭记忆猜测\n2. 对话开始先调用 get_user_memory 了解用户（如有记忆）\n3. 当用户透露个人信息、偏好、背景时（如姓名、职业、技能水平、习惯偏好等），调用 remember_user_info 保存信息' },
       (event) => {
         if (event.type === 'token') { responseContent += event.data; setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data }; return last }) }
+        else if (event.type === 'reasoning') { responseReasoning += event.data; setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last }) }
         else if (event.type === 'tool_start') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
         else if (event.type === 'tool_end') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const } : c) }; return last }) }
         else if (event.type === 'image') { responseImages.push(event.data); setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last }) }
@@ -229,7 +235,7 @@ export default function ChatPage({ user }: { user?: any }) {
         setLoading(false)
         const msgs = [
           { role: 'user', content: text, ...(sentImages.length > 0 ? { images: sentImages } : {}) },
-          { role: 'assistant', content: responseContent, ...(responseImages.length ? { images: responseImages } : {}) },
+          { role: 'assistant', content: responseContent, ...(responseReasoning ? { reasoning: responseReasoning } : {}), ...(responseImages.length ? { images: responseImages } : {}) },
         ]
         const title = text.length > 50 ? text.slice(0, 50) + '...' : text
         saveMessages(sid, msgs, title)
@@ -536,6 +542,16 @@ export default function ChatPage({ user }: { user?: any }) {
                           </>
                         ) : (
                           <>
+                            {msg.reasoning && (
+                              <details open={loading && isLast && !msg.content} style={{ marginBottom: 8 }}>
+                                <summary style={{ cursor: 'pointer', fontSize: 12, color: '#888', userSelect: 'none', outline: 'none' }}>
+                                  {loading && isLast && !msg.content ? '🔄 思考中...' : `✓ 思考完成 (${msg.reasoning.length}字)`}
+                                </summary>
+                                <div style={{ marginTop: 6, padding: '8px 12px', background: '#f5f5f5', borderRadius: 6, fontSize: 12, color: '#777', lineHeight: 1.6, maxHeight: 200, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+                                  {msg.reasoning}
+                                </div>
+                              </details>
+                            )}
                             <MarkdownContent content={msg.content} />
                             {msg.images && msg.images.length > 0 && (
                               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>

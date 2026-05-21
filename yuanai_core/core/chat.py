@@ -121,10 +121,12 @@ async def _deepseek_agent_stream(
                 if not delta:
                     continue
 
-                if delta.reasoning_content:
-                    round_reasoning += delta.reasoning_content
-                    full_reasoning += delta.reasoning_content
-                    yield {"type": "reasoning", "data": delta.reasoning_content}
+                # DeepSeek V4 特有字段，openai SDK ChoiceDelta 未定义该属性
+                reasoning = getattr(delta, 'reasoning_content', None)
+                if reasoning:
+                    round_reasoning += reasoning
+                    full_reasoning += reasoning
+                    yield {"type": "reasoning", "data": reasoning}
 
                 if delta.tool_calls:
                     tool_call_chunks.append(delta.tool_calls[0])

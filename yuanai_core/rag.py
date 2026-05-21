@@ -47,13 +47,9 @@ def _get_openai_client() -> OpenAI:
     if _client is not None:
         return _client
 
-    provider = MODELS.get(DEFAULT_MODEL, {}).get("provider", "Doubao")
-    if provider == "DeepSeek":
-        api_key = get_api_key("dsllm")
-        base_url = "https://api.deepseek.com/beta"
-    else:
-        api_key = get_api_key("seed")
-        base_url = "https://ark.cn-beijing.volces.com/api/v3"
+    # Embedding 模型始终用火山引擎 Ark（与对话模型无关）
+    api_key = get_api_key("seed")
+    base_url = "https://ark.cn-beijing.volces.com/api/v3"
 
     _client = OpenAI(api_key=api_key, base_url=base_url)
     return _client

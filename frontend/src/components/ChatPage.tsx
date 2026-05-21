@@ -167,18 +167,27 @@ export default function ChatPage({ user }: { user?: any }) {
     let responseContent = ''
     let responseImages: string[] = []
     let responseReasoning = ''
+    let reasoningStart = 0
+
+    const finishReasoning = (msg: ChatMessage): ChatMessage => {
+      if (reasoningStart && !msg.reasoningTime) {
+        return { ...msg, reasoningTime: Math.round((Date.now() - reasoningStart) / 100) / 10 }
+      }
+      return msg
+    }
 
     streamChat(
       { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: '你是小元AI助手。\n1. 涉及编程、技术、标注规范等问题时，用 retrieve_knowledge 检索知识库；简单闲聊、自我介绍、计算等不需要检索\n2. 首次对话或涉及用户个人信息/偏好时，用 get_user_memory 查看记忆；无关话题跳过\n3. 当用户透露个人信息或偏好时：先读取已有记忆，合并去重后，用 remember_user_info 一次性写入完整文本（该工具会覆盖全部记忆）' },
       (event) => {
         if (event.type === 'token') {
           responseContent += event.data
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data }; return last })
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = finishReasoning({ ...last[i], content: last[i].content + event.data }); return last })
         } else if (event.type === 'reasoning') {
+          if (!reasoningStart) reasoningStart = Date.now()
           responseReasoning += event.data
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
         } else if (event.type === 'tool_start') {
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last })
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = finishReasoning({ ...last[i], toolCalls: [...calls] }) }; return last })
         } else if (event.type === 'tool_end') {
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const } : c) }; return last })
         } else if (event.type === 'image') {
@@ -194,7 +203,7 @@ export default function ChatPage({ user }: { user?: any }) {
         const msgs = [
           ...prevMsgs.map((m) => ({ role: m.role, content: m.content, ...(m.images?.length ? { images: m.images } : {}) })),
           { role: 'user', content: input, ...(sentImages ? { images: sentImages } : {}) },
-          { role: 'assistant', content: responseContent, ...(responseReasoning ? { reasoning: responseReasoning } : {}), ...(responseImages.length ? { images: responseImages } : {}) },
+          { role: 'assistant', content: responseContent, ...(responseReasoning ? { reasoning: responseReasoning, reasoningTime: Math.round((reasoningStart ? Date.now() - reasoningStart : 0) / 100) / 10 } : {}), ...(responseImages.length ? { images: responseImages } : {}) },
         ]
         const title = input.length > 50 ? input.slice(0, 50) + '...' : input
         saveMessages(sid, msgs, title)
@@ -245,9 +254,26 @@ export default function ChatPage({ user }: { user?: any }) {
   }
 
   return (
+    <>
+    <style>{`
+      @media (max-width: 768px) {
+        .chat-sidebar { position: fixed !important; z-index: 1000 !important; left: 0 !important; top: 0 !important; height: 100% !important; width: 280px !important; box-shadow: 2px 0 12px rgba(0,0,0,0.15) !important; }
+        .chat-sidebar + div[style] { left: 0 !important; }
+        .chat-main { padding: 16px 8px !important; }
+        .chat-welcome { padding: 24px 12px !important; padding-top: 12vh !important; }
+        .chat-welcome h1 { font-size: 24px !important; }
+        .chat-welcome > div:last-child { max-width: 100% !important; padding: 0 12px !important; }
+        .chat-msg-bubble { max-width: 85% !important; }
+        .chat-input-area { padding: 8px 12px 16px !important; }
+        .chat-input-inner { max-width: 100% !important; }
+      }
+      @media (max-width: 480px) {
+        .chat-msg-bubble { max-width: 90% !important; font-size: 13px !important; }
+      }
+    `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       {/* Sidebar */}
-      <div style={{
+      <div className="chat-sidebar" style={{
         width: sidebarOpen ? 260 : 0,
         overflow: 'hidden',
         background: '#f8f9fb',
@@ -318,7 +344,7 @@ export default function ChatPage({ user }: { user?: any }) {
       {/* Main */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {!currentSid ? (
-          <div style={{
+          <div className="chat-welcome" style={{
             flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             padding: '40px 20px', paddingTop: '16vh',
             background: '#fff',
@@ -462,7 +488,7 @@ export default function ChatPage({ user }: { user?: any }) {
           </div>
         ) : (
           <>
-            <div style={{
+            <div className="chat-main" style={{
               flex: 1,
               overflowY: 'auto',
               padding: '32px 16px 16px',
@@ -510,7 +536,7 @@ export default function ChatPage({ user }: { user?: any }) {
                           )}
                         </div>
                       )}
-                      <div style={{
+                      <div className="chat-msg-bubble" style={{
                         padding: '10px 16px',
                         borderRadius: msg.role === 'user'
                           ? '18px 18px 4px 18px'
@@ -547,7 +573,7 @@ export default function ChatPage({ user }: { user?: any }) {
                             {msg.reasoning && (
                               <details open={loading && isLast && !msg.content} style={{ marginBottom: 8 }}>
                                 <summary style={{ cursor: 'pointer', fontSize: 12, color: '#888', userSelect: 'none', outline: 'none' }}>
-                                  {loading && isLast && !msg.content ? '🔄 思考中...' : `✓ 思考完成 (${msg.reasoning.length}字)`}
+                                  {loading && isLast && !msg.content ? '🔄 思考中...' : `✓ 思考完成${msg.reasoningTime ? ` (${msg.reasoningTime}秒)` : ''}`}
                                 </summary>
                                 <div style={{ marginTop: 6, padding: '8px 12px', background: '#f5f5f5', borderRadius: 6, fontSize: 12, color: '#777', lineHeight: 1.6, maxHeight: 200, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
                                   {msg.reasoning}
@@ -577,11 +603,11 @@ export default function ChatPage({ user }: { user?: any }) {
               </div>
             </div>
 
-            <div style={{
+            <div className="chat-input-area" style={{
               padding: '12px 24px 20px', borderTop: '1px solid #eee',
               background: '#fafafa',
             }}>
-              <div style={{ maxWidth: 720, margin: '0 auto', width: '100%', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
+              <div className="chat-input-inner" style={{ maxWidth: 720, margin: '0 auto', width: '100%', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
                 <div style={{ border: '1px solid #e0e0e0', borderRadius: 14, background: '#fff', transition: 'box-shadow 0.2s' }}
                   onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 2px 16px rgba(0,0,0,0.06)'}
                   onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}
@@ -656,5 +682,6 @@ export default function ChatPage({ user }: { user?: any }) {
         </div>
       )}
     </div>
+    </>
   )
 }

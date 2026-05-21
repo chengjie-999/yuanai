@@ -4,6 +4,7 @@ export interface ChatMessage {
   images?: string[]
   toolCalls?: ToolCall[]
   reasoning?: string
+  reasoningTime?: number
 }
 
 export interface ToolCall {

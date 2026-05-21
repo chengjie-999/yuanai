@@ -33,6 +33,8 @@ CHUNK_SIZE = 300
 CHUNK_OVERLAP = 50
 TOP_K = 10
 
+# TODO: 本地 fallback 模型 dim=384，API 模型 dim=1024，需运行时动态适配
+# 当前用 1024，API 成功后没有问题；本地模型 fallback 时需先删旧 collection 重建
 EMBEDDING_DIM = 1024
 
 _client: OpenAI | None = None

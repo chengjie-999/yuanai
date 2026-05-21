@@ -101,64 +101,87 @@ async def _deepseek_agent_stream(
         for round_idx in range(5):
             extra_body = {"reasoning_effort": "low"}
 
-            response = await client.chat.completions.create(
+            # 流式调用，逐 token 输出思考过程
+            stream = await client.chat.completions.create(
                 model=model_name,
                 messages=messages,
                 tools=openai_tools or None,
                 temperature=temperature,
                 extra_body=extra_body,
+                stream=True,
             )
 
-            choice = response.choices[0]
-            msg = choice.message
+            assistant: dict = {"role": "assistant", "content": ""}
+            round_reasoning = ""
+            round_content = ""
+            tool_call_chunks: list = []
 
-            # 构建 assistant 消息 — reasoning_content 是顶层字段
-            assistant: dict = {"role": "assistant"}
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if not delta:
+                    continue
 
-            # content: tool_calls 存在时必须为 None
-            assistant["content"] = msg.content or "" if not msg.tool_calls else None
+                if delta.reasoning_content:
+                    round_reasoning += delta.reasoning_content
+                    full_reasoning += delta.reasoning_content
+                    yield {"type": "reasoning", "data": delta.reasoning_content}
 
-            # 保活 reasoning_content（顶层字段，不是 nested）
-            reasoning = getattr(msg, "reasoning_content", None) or ""
-            if reasoning:
-                assistant["reasoning_content"] = reasoning
-                full_reasoning += reasoning
-                yield {"type": "reasoning", "data": reasoning}
+                if delta.tool_calls:
+                    tool_call_chunks.append(delta.tool_calls[0])
 
-            # 处理 tool_calls
-            if msg.tool_calls:
-                assistant["tool_calls"] = [_tc_to_dict(tc) for tc in msg.tool_calls]
+                if delta.content:
+                    round_content += delta.content
+
+            # 合并 tool_call chunks 为完整 tool_calls
+            if tool_call_chunks:
+                # 从 delta chunks 重建完整 tool_calls
+                merged_calls = []
+                current_call = None
+                for tc_delta in tool_call_chunks:
+                    idx = getattr(tc_delta, 'index', 0)
+                    while len(merged_calls) <= idx:
+                        merged_calls.append({
+                            "id": "", "type": "function",
+                            "function": {"name": "", "arguments": ""},
+                        })
+                    if getattr(tc_delta, 'id', None):
+                        merged_calls[idx]["id"] = tc_delta.id
+                    fn = getattr(tc_delta, 'function', None)
+                    if fn:
+                        if getattr(fn, 'name', None):
+                            merged_calls[idx]["function"]["name"] = fn.name
+                        if getattr(fn, 'arguments', None):
+                            merged_calls[idx]["function"]["arguments"] += fn.arguments
+
+                assistant["tool_calls"] = merged_calls
+                assistant["content"] = None  # tool_calls 时 content 必须为 null
+            elif round_content:
+                assistant["content"] = round_content
+                # 没有工具调用的纯文本回复 — 流式输出 content
+                yield {"type": "token", "data": round_content}
+
+            if round_reasoning:
+                assistant["reasoning_content"] = round_reasoning
 
             messages.append(assistant)
 
-            if not msg.tool_calls:
-                # 最终回复 → 流式输出
-                full_response = ""
-                stream = await client.chat.completions.create(
-                    model=model_name,
-                    messages=messages,
-                    temperature=temperature,
-                    stream=True,
-                )
-                async for chunk in stream:
-                    delta = chunk.choices[0].delta if chunk.choices else None
-                    if delta and delta.content:
-                        full_response += delta.content
-                        yield {"type": "token", "data": delta.content}
+            if not tool_call_chunks:
+                # 没有工具调用，最终回复已流式输出完毕
                 yield {
                     "type": "done",
                     "data": {
-                        "display_content": full_response,
+                        "display_content": round_content,
                         "reasoning_content": full_reasoning,
                     },
                 }
                 return
 
             # 执行工具
-            for tc in msg.tool_calls:
-                tc_name = tc.function.name if hasattr(tc.function, 'name') else tc.get("function", {}).get("name", "")
-                tc_args_raw = tc.function.arguments if hasattr(tc.function, 'arguments') else tc.get("function", {}).get("arguments", "{}")
-                tc_id = tc.id if hasattr(tc, 'id') else tc.get("id", "")
+            for tc in assistant["tool_calls"]:
+                fn = tc.get("function", tc) if isinstance(tc, dict) else getattr(tc, "function", tc)
+                tc_name = fn.get("name", "") if isinstance(fn, dict) else getattr(fn, "name", "")
+                tc_args_raw = fn.get("arguments", "{}") if isinstance(fn, dict) else getattr(fn, "arguments", "{}")
+                tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
 
                 if isinstance(tc_args_raw, str):
                     try:

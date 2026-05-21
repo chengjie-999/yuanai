@@ -64,8 +64,13 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
         print("⚠️ 未配置 EMBEDDING_MODEL 环境变量")
         return [[0.0] * EMBEDDING_DIM for _ in texts]
     try:
-        resp = client.embeddings.create(model=model, input=texts)
-        return [d.embedding for d in resp.data]
+        all_embeddings = []
+        batch_size = 256  # Ark API 单次最多 256 条
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            resp = client.embeddings.create(model=model, input=batch)
+            all_embeddings.extend([d.embedding for d in resp.data])
+        return all_embeddings
     except Exception as e:
         print(f"⚠️ Embedding API 调用失败: {e}")
         return [[0.0] * EMBEDDING_DIM for _ in texts]

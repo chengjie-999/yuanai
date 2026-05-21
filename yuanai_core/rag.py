@@ -55,39 +55,38 @@ def _get_openai_client() -> OpenAI:
     return _client
 
 
+_local_model = None
+
+def _get_local_embedding_model():
+    global _local_model
+    if _local_model is None:
+        from sentence_transformers import SentenceTransformer
+        _local_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+    return _local_model
+
+
 def get_embeddings(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     client = _get_openai_client()
     model = os.getenv("EMBEDDING_MODEL", "")
     if not model:
-        print("⚠️ 未配置 EMBEDDING_MODEL 环境变量")
-        return [[0.0] * EMBEDDING_DIM for _ in texts]
+        print("⚠️ 未配置 EMBEDDING_MODEL 环境变量，使用本地模型")
+        m = _get_local_embedding_model()
+        return m.encode(texts, normalize_embeddings=True).tolist()
 
-    is_multimodal = "vision" in model.lower()
     try:
         all_embeddings = []
         batch_size = 256
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
-            if is_multimodal:
-                # multimodal 接口：input 需指定 type
-                resp = client._client.post(
-                    "/embeddings/multimodal",
-                    json={
-                        "model": model,
-                        "input": [{"type": "text", "text": t} for t in batch],
-                    },
-                )
-                data = resp.json()
-                all_embeddings.extend([d["embedding"] for d in data["data"]])
-            else:
-                resp = client.embeddings.create(model=model, input=batch)
-                all_embeddings.extend([d.embedding for d in resp.data])
+            resp = client.embeddings.create(model=model, input=batch)
+            all_embeddings.extend([d.embedding for d in resp.data])
         return all_embeddings
     except Exception as e:
-        print(f"⚠️ Embedding API 调用失败: {e}")
-        return [[0.0] * EMBEDDING_DIM for _ in texts]
+        print(f"⚠️ API embedding 失败: {e}，fallback 到本地模型")
+        m = _get_local_embedding_model()
+        return m.encode(texts, normalize_embeddings=True).tolist()
 
 
 # ====================== Milvus ======================

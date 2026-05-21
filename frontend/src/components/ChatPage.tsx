@@ -387,9 +387,11 @@ export default function ChatPage({ user }: { user?: any }) {
                 onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}
               >
                 <div style={{ display: 'flex', alignItems: 'flex-end', padding: '4px 4px 4px 16px' }}>
-                  <input value={quickInput} onChange={(e) => setQuickInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && quickInput.trim()) { const v = quickInput.trim(); setQuickInput(''); sendWithNewSession(v) } }}
-                    placeholder="输入消息，开始对话..." style={{ flex: 1, border: 'none', outline: 'none', fontSize: 15, padding: '12px 0', background: 'transparent' }} />
+                  <textarea value={quickInput} onChange={(e) => { setQuickInput(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px' }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && quickInput.trim()) { e.preventDefault(); const v = quickInput.trim(); setQuickInput(''); sendWithNewSession(v) } }}
+                    placeholder="输入消息，开始对话... (Enter 发送，Shift+Enter 换行)"
+                    rows={1}
+                    style={{ flex: 1, border: 'none', outline: 'none', fontSize: 15, padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflowY: 'auto' }} />
                   <input ref={fileRef} type="file" accept="image/*,.csv,.xlsx,.xls,.json" multiple hidden
                     onChange={async (e) => {
                       const files = e.target.files
@@ -598,10 +600,11 @@ export default function ChatPage({ user }: { user?: any }) {
                   )}
                   {/* 输入行 */}
                   <div style={{ display: 'flex', alignItems: 'flex-end', padding: '4px 4px 4px 16px' }}>
-                    <input value={input} onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                      placeholder="输入消息..." disabled={loading}
-                      style={{ flex: 1, border: 'none', outline: 'none', fontSize: 15, padding: '12px 0', background: 'transparent' }}
+                    <textarea value={input} onChange={(e) => { setInput(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px' }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+                      placeholder="输入消息... (Enter 发送，Shift+Enter 换行)" disabled={loading}
+                      rows={1}
+                      style={{ flex: 1, border: 'none', outline: 'none', fontSize: 15, padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflowY: 'auto' }}
                     />
                     <input ref={fileRef} type="file" accept="image/*" multiple hidden
                       onChange={(e) => {

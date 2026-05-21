@@ -93,7 +93,12 @@ def _verify_session_owner(db, session_id: str, user_id: int):
 async def chat_stream(req: ChatRequest, request: Request):
     """SSE 流式聊天"""
     try:
-        llm = get_llm(req.model, temperature=req.temperature, verbose=False, streaming=True)
+        model = req.model
+        # DeepSeek V4 不支持图片 → 自动切到豆包多模态
+        if req.images and 'deepseek' in model:
+            from config.settings import VISION_MODEL
+            model = VISION_MODEL
+        llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True)
 
         history = []
         for m in req.history:

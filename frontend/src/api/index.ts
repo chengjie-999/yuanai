@@ -5,7 +5,7 @@ export function getToken(): string {
 }
 
 const MODEL_KEY = 'selectedModel'
-const DEFAULT_MODEL = 'doubao-seed-2-0-pro-260215'
+const DEFAULT_MODEL = 'deepseek-v4-flash'
 
 export function getStoredModel(): string {
   return localStorage.getItem(MODEL_KEY) || DEFAULT_MODEL

@@ -13,7 +13,8 @@ MODELS = {
 }
 
 MODEL_NAMES = list(MODELS.keys())
-DEFAULT_MODEL = "doubao-seed-2-0-pro-260215"
+DEFAULT_MODEL = "deepseek-v4-flash"
+VISION_MODEL = "doubao-seed-2-0-pro-260215"  # DeepSeek V4 不支持图片，识图自动切豆包
 DEFAULT_TEMPERATURE = 0.7
 
 # ===================== 鉴权配置 =====================

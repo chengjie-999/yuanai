@@ -169,7 +169,7 @@ export default function ChatPage({ user }: { user?: any }) {
     let responseReasoning = ''
 
     streamChat(
-      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: '你是小元AI助手。\n1. 回答问题时优先使用 retrieve_knowledge 工具检索知识库，根据检索结果回答，不要凭记忆猜测\n2. 对话开始先调用 get_user_memory 了解用户（如有记忆）\n3. 当用户透露个人信息、偏好、背景时（如姓名、职业、技能水平、习惯偏好等），调用 remember_user_info 保存信息' },
+      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: '你是小元AI助手。\n1. 回答问题时优先使用 retrieve_knowledge 工具检索知识库，根据检索结果回答，不要凭记忆猜测\n2. 对话开始先调用 get_user_memory 了解用户（如有记忆）\n3. 当用户透露个人信息、偏好、背景时：先调用 get_user_memory 读取已有记忆，合并去重后，用 remember_user_info 一次性写入完整文本（注意该工具会覆盖全部记忆，不是追加）' },
       (event) => {
         if (event.type === 'token') {
           responseContent += event.data
@@ -221,7 +221,7 @@ export default function ChatPage({ user }: { user?: any }) {
     let responseReasoning = ''
 
     streamChat(
-      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: '你是小元AI助手。\n1. 回答问题时优先使用 retrieve_knowledge 工具检索知识库，根据检索结果回答，不要凭记忆猜测\n2. 对话开始先调用 get_user_memory 了解用户（如有记忆）\n3. 当用户透露个人信息、偏好、背景时（如姓名、职业、技能水平、习惯偏好等），调用 remember_user_info 保存信息' },
+      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: '你是小元AI助手。\n1. 回答问题时优先使用 retrieve_knowledge 工具检索知识库，根据检索结果回答，不要凭记忆猜测\n2. 对话开始先调用 get_user_memory 了解用户（如有记忆）\n3. 当用户透露个人信息、偏好、背景时：先调用 get_user_memory 读取已有记忆，合并去重后，用 remember_user_info 一次性写入完整文本（注意该工具会覆盖全部记忆，不是追加）' },
       (event) => {
         if (event.type === 'token') { responseContent += event.data; setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data }; return last }) }
         else if (event.type === 'reasoning') { responseReasoning += event.data; setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last }) }

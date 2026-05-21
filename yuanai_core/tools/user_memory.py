@@ -6,8 +6,12 @@ from yuanai_core.rag import current_user_id
 @tool
 def remember_user_info(info: str) -> str:
     """
-    记住用户个人信息、偏好、背景。当用户主动告知个人信息时调用（如"我叫张三"、"我是Python初学者"、"我讨厌饼图"）。
-    输入：需要记住的信息片段（简短一句话概括）
+    保存/更新用户个人信息。**会替换全部记忆，不是追加**。
+    使用流程：
+    1. 先调用 get_user_memory 读取现有记忆
+    2. 将新信息与旧信息合并去重，整理成完整列表
+    3. 调用本工具一次性写入完整的合并文本
+    输入：完整的用户信息文本（多行用换行分隔）
     输出：保存结果
     """
     if not info or not info.strip():
@@ -17,7 +21,7 @@ def remember_user_info(info: str) -> str:
         return "无法确定当前用户"
     from db.session import get_db
     ok = get_db().update_user_memory(uid, info.strip())
-    return "已记住" if ok else "保存失败"
+    return "已更新" if ok else "保存失败"
 
 
 @tool

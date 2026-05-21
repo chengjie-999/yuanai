@@ -330,17 +330,13 @@ class AgentDatabase:
             sess.close()
 
     def update_user_memory(self, user_id: int, memory: str) -> bool:
-        """更新用户记忆（追加模式，用换行分隔）"""
+        """替换用户记忆（全量覆盖，防止重复记录）"""
         sess = self.Session()
         try:
             user = sess.query(User).filter_by(id=user_id).first()
             if not user:
                 return False
-            current = user.memory if user.memory else ""
-            if current:
-                user.memory = current.strip() + "\n" + memory.strip()
-            else:
-                user.memory = memory.strip()
+            user.memory = memory.strip()
             sess.commit()
             return True
         finally:

@@ -63,13 +63,27 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
     if not model:
         print("⚠️ 未配置 EMBEDDING_MODEL 环境变量")
         return [[0.0] * EMBEDDING_DIM for _ in texts]
+
+    is_multimodal = "vision" in model.lower()
     try:
         all_embeddings = []
-        batch_size = 256  # Ark API 单次最多 256 条
+        batch_size = 256
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
-            resp = client.embeddings.create(model=model, input=batch)
-            all_embeddings.extend([d.embedding for d in resp.data])
+            if is_multimodal:
+                # multimodal 接口：input 需指定 type
+                resp = client._client.post(
+                    "/embeddings/multimodal",
+                    json={
+                        "model": model,
+                        "input": [{"type": "text", "text": t} for t in batch],
+                    },
+                )
+                data = resp.json()
+                all_embeddings.extend([d["embedding"] for d in data["data"]])
+            else:
+                resp = client.embeddings.create(model=model, input=batch)
+                all_embeddings.extend([d.embedding for d in resp.data])
         return all_embeddings
     except Exception as e:
         print(f"⚠️ Embedding API 调用失败: {e}")

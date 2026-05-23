@@ -77,6 +77,9 @@ export default function AgentPage({ userId }: { userId?: number }) {
           )}
         </div>
 
+        {/* 模型配置 */}
+        <ModelsCard />
+
         {/* 子 Agent 团队 */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #eee', overflow: 'hidden' }}>
           <div style={{ padding: '14px 24px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, fontSize: 14, color: '#333', background: '#fafafa' }}>
@@ -102,9 +105,6 @@ export default function AgentPage({ userId }: { userId?: number }) {
             </div>
           ))}
         </div>
-
-        {/* 模型配置 */}
-        <ModelsCard />
 
         {/* 活动记录 */}
         {myAgents.map((a, i) => {

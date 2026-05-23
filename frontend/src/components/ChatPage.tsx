@@ -44,6 +44,30 @@ function downloadChat(messages: ChatMessage[], filename: string) {
   URL.revokeObjectURL(url)
 }
 
+function encodeMsg(m: any) {
+  const meta: any = {}
+  if (m.sender && m.sender !== 'orchestrator') meta.s = m.sender
+  if (m.toolCalls?.length) meta.t = m.toolCalls
+  const content = Object.keys(meta).length > 0
+    ? `\x00META\x00${JSON.stringify(meta)}\x00${m.content || ''}`
+    : (m.content || '')
+  return { role: m.role, content, ...(m.images?.length ? { images: m.images } : {}) }
+}
+
+const AGENT_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  orchestrator: { label: '小元AI', color: '#1976d2', bg: '#f0f5ff' },
+  analysis: { label: '数据分析 Agent', color: '#7b1fa2', bg: '#faf5ff' },
+  collection: { label: '数据采集 Agent', color: '#00695c', bg: '#f0faf9' },
+  automation: { label: '自动化 Agent', color: '#e65100', bg: '#fff8f0' },
+}
+
+function senderFromTool(name: string): string | null {
+  if (name.startsWith('delegate_to_analysis')) return 'analysis'
+  if (name.startsWith('delegate_to_collection')) return 'collection'
+  if (name.startsWith('delegate_to_automation')) return 'automation'
+  return null
+}
+
 function LoadingDots() {
   const [dots, setDots] = useState('')
   useEffect(() => {
@@ -59,11 +83,11 @@ function LoadingDots() {
 
 type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string }
 
-const SUGGESTIONS = [
-  '帮我查询今天的天气',
-  '帮我计算 1234 × 5678',
-  '查看系统数据统计',
-  '打开知乎网站',
+const SUGGESTIONS: { text: string; desc: string }[] = [
+  { text: '帮我分析一下数据集', desc: '数据分析' },
+  { text: '抓取这个网页的内容', desc: '数据采集' },
+  { text: '帮我审核小猿众包题目', desc: '自动化' },
+  { text: '列出当前所有数据集', desc: '数据管理' },
 ]
 
 function timeAgo(dateStr: string): string {
@@ -139,7 +163,18 @@ export default function ChatPage({ user }: { user?: any }) {
     if (history.length === 0) {
       setMessages([{ role: 'assistant', content: '你好！有什么可以帮你的？' }])
     } else {
-      setMessages(history.map((m: any) => ({ role: m.role, content: m.content, images: m.images, toolCalls: [] })))
+      setMessages(history.map((m: any) => {
+        let sender: any = undefined
+        let toolCalls: any = undefined
+        let content = m.content || ''
+        if (typeof content === 'string' && content.startsWith('\x00META\x00')) {
+          const end = content.indexOf('\x00', 6)
+          if (end > 6) {
+            try { const meta = JSON.parse(content.substring(6, end)); sender = meta.s; toolCalls = meta.t; content = content.substring(end + 1) } catch {}
+          }
+        }
+        return { role: m.role, content, images: m.images, sender, toolCalls }
+      }))
     }
   }
 
@@ -176,35 +211,45 @@ export default function ChatPage({ user }: { user?: any }) {
       return msg
     }
 
+    let currentSender: string = 'orchestrator'
     streamChat(
-      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: '你是小元AI助手。\n1. 涉及编程、技术、标注规范等问题时，用 retrieve_knowledge 检索知识库；简单闲聊、自我介绍、计算等不需要检索\n2. 首次对话或涉及用户个人信息/偏好时，用 get_user_memory 查看记忆；无关话题跳过\n3. 当用户透露个人信息或偏好时：先读取已有记忆，合并去重后，用 remember_user_info 一次性写入完整文本（该工具会覆盖全部记忆）' },
+      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: '你是小元AI的统筹助手，管理着数据分析、数据采集、自动化三个专业Agent团队。\n\n你可以委派的Agent：\n- delegate_to_analysis_agent：数据分析\n- delegate_to_collection_agent：数据采集\n- delegate_to_automation_agent：自动化\n\n工作原则：\n1. 判断意图，用一句话告诉用户将调用哪个Agent，然后立刻调用\n2. 子Agent返回结果后，如果结果已经清晰完整，只做简短确认如"以上是结果"，不要再复述\n3. 只有当结果需要解读、比较或给出建议时，才补充分析\n4. 用户能看到子Agent的输出，重复内容只会让对话冗余' },
       (event) => {
         if (event.type === 'token') {
           responseContent += event.data
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = finishReasoning({ ...last[i], content: last[i].content + event.data }); return last })
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender) as any }; return last })
         } else if (event.type === 'reasoning') {
           if (!reasoningStart) reasoningStart = Date.now()
           responseReasoning += event.data
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
         } else if (event.type === 'tool_start') {
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = finishReasoning({ ...last[i], toolCalls: [...calls] }) }; return last })
+          const newSender = senderFromTool(event.data.name)
+          if (newSender) {
+            currentSender = newSender
+            // 为子 Agent 创建新气泡
+            setMessages((prev) => { const nxt = [...prev, { role: 'assistant' as const, content: '', sender: newSender as any, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]; return nxt })
+          } else {
+            setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last })
+          }
         } else if (event.type === 'tool_end') {
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const } : c) }; return last })
+          const isDelegate = !!senderFromTool(event.data.name)
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const, result: event.data.output || '' } : c) }; return last })
+          if (isDelegate) {
+            currentSender = 'orchestrator'
+            // 子 Agent 完成后，为统筹创建新气泡
+            setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }])
+          }
         } else if (event.type === 'image') {
           responseImages.push(event.data)
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last })
         } else if (event.type === 'error') {
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `❌ ${event.data}` }; return last }); setLoading(false)
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `${event.data}` }; return last }); setLoading(false)
         }
       },
       (error) => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setLoading(false) },
       () => {
         setLoading(false)
-        const msgs = [
-          ...prevMsgs.map((m) => ({ role: m.role, content: m.content, ...(m.images?.length ? { images: m.images } : {}) })),
-          { role: 'user', content: input, ...(sentImages ? { images: sentImages } : {}) },
-          { role: 'assistant', content: responseContent, ...(responseReasoning ? { reasoning: responseReasoning, reasoningTime: Math.round((reasoningStart ? Date.now() - reasoningStart : 0) / 100) / 10 } : {}), ...(responseImages.length ? { images: responseImages } : {}) },
-        ]
+        const msgs = messagesRef.current.map(encodeMsg)
         const title = input.length > 50 ? input.slice(0, 50) + '...' : input
         saveMessages(sid, msgs, title)
         refreshSessions()
@@ -223,31 +268,37 @@ export default function ChatPage({ user }: { user?: any }) {
     setImages([])
     const userMsg: ChatMessage = { role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }
     setMessages([userMsg])
-    setMessages((prev) => [...prev, { role: 'assistant', content: '', toolCalls: [] }])
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: 'orchestrator', toolCalls: [] }])
 
     let responseContent = ''
     let responseImages: string[] = []
     let responseReasoning = ''
+    let currentSender2: string = 'orchestrator'
 
     streamChat(
-      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: '你是小元AI助手。\n1. 涉及编程、技术、标注规范等问题时，用 retrieve_knowledge 检索知识库；简单闲聊、自我介绍、计算等不需要检索\n2. 首次对话或涉及用户个人信息/偏好时，用 get_user_memory 查看记忆；无关话题跳过\n3. 当用户透露个人信息或偏好时：先读取已有记忆，合并去重后，用 remember_user_info 一次性写入完整文本（该工具会覆盖全部记忆）' },
+      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: '你是小元AI的统筹助手，管理着数据分析、数据采集、自动化三个专业Agent团队。\n\n你可以委派的Agent：\n- delegate_to_analysis_agent：数据分析\n- delegate_to_collection_agent：数据采集\n- delegate_to_automation_agent：自动化\n\n工作原则：\n1. 判断意图，用一句话告诉用户将调用哪个Agent，然后立刻调用\n2. 子Agent返回结果后，如果结果已经清晰完整，只做简短确认如"以上是结果"，不要再复述\n3. 只有当结果需要解读、比较或给出建议时，才补充分析\n4. 用户能看到子Agent的输出，重复内容只会让对话冗余' },
       (event) => {
-        if (event.type === 'token') { responseContent += event.data; setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data }; return last }) }
+        if (event.type === 'token') { responseContent += event.data; setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender2) as any }; return last }) }
         else if (event.type === 'reasoning') { responseReasoning += event.data; setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last }) }
-        else if (event.type === 'tool_start') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
-        else if (event.type === 'tool_end') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const } : c) }; return last }) }
+        else if (event.type === 'tool_start') {
+          const ns2 = senderFromTool(event.data.name)
+          if (ns2) { currentSender2 = ns2; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns2 as any, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
+          else { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
+        }
+        else if (event.type === 'tool_end') {
+          const isD2 = !!senderFromTool(event.data.name)
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const, result: event.data.output || '' } : c) }; return last })
+          if (isD2) { currentSender2 = 'orchestrator'; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }]) }
+        }
         else if (event.type === 'image') { responseImages.push(event.data); setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last }) }
-        else if (event.type === 'error') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `❌ ${event.data}` }; return last }); setLoading(false) }
+        else if (event.type === 'error') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `${event.data}` }; return last }); setLoading(false) }
       },
       (error) => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setLoading(false) },
       () => {
         setLoading(false)
-        const msgs = [
-          { role: 'user', content: text, ...(sentImages.length > 0 ? { images: sentImages } : {}) },
-          { role: 'assistant', content: responseContent, ...(responseReasoning ? { reasoning: responseReasoning } : {}), ...(responseImages.length ? { images: responseImages } : {}) },
-        ]
+        const msgs2 = messagesRef.current.map(encodeMsg)
         const title = text.length > 50 ? text.slice(0, 50) + '...' : text
-        saveMessages(sid, msgs, title)
+        saveMessages(sid, msgs2, title)
         refreshSessions()
       },
     )
@@ -260,7 +311,7 @@ export default function ChatPage({ user }: { user?: any }) {
         .chat-sidebar { position: fixed !important; z-index: 1000 !important; left: 0 !important; top: 0 !important; height: 100% !important; width: 280px !important; box-shadow: 2px 0 12px rgba(0,0,0,0.15) !important; }
         .chat-sidebar + div[style] { left: 0 !important; }
         .chat-main { padding: 16px 8px !important; }
-        .chat-welcome { padding: 24px 12px !important; padding-top: 12vh !important; }
+        .chat-welcome { padding: 24px 12px !important; }
         .chat-welcome h1 { font-size: 24px !important; }
         .chat-welcome > div:last-child { max-width: 100% !important; padding: 0 12px !important; }
         .chat-msg-bubble { max-width: 85% !important; }
@@ -345,33 +396,30 @@ export default function ChatPage({ user }: { user?: any }) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {!currentSid ? (
           <div className="chat-welcome" style={{
-            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            padding: '40px 20px', paddingTop: '16vh',
+            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+            padding: '20px', minHeight: 0, overflowY: 'auto',
             background: '#fff',
-            position: 'relative', overflow: 'hidden',
+            position: 'relative',
           }}>
             {/* 装饰圆点 */}
             <div style={{ position: 'absolute', width: 300, height: 300, borderRadius: '50%', background: 'radial-gradient(circle, rgba(179,157,219,0.08) 0%, transparent 70%)', top: -80, right: -60 }} />
             <div style={{ position: 'absolute', width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(144,202,249,0.06) 0%, transparent 70%)', bottom: 40, left: -40 }} />
 
-            <div style={{ position: 'relative', width: 110, height: 110, marginBottom: 12, animation: 'float 3s ease-in-out infinite' }}>
-              <svg viewBox="0 0 100 100" width={110} height={110}>
-                {/* 光晕 */}
+            <div style={{ marginTop: 'auto', marginBottom: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: 560 }}>
+            <div style={{ position: 'relative', width: 80, height: 80, marginBottom: 16, animation: 'float 3s ease-in-out infinite' }}>
+              <svg viewBox="0 0 100 100" width={80} height={80}>
                 <circle cx="50" cy="50" r="42" fill="#42a5f5" opacity="0.08" />
                 <circle cx="50" cy="52" r="32" fill="#1976d2" />
                 <circle cx="50" cy="52" r="27" fill="#42a5f5" />
-                {/* 小手小脚 */}
                 {[[12,30],[88,30],[20,76],[80,76]].map(([x,y],i)=>(
                   <g key={i}>
                     <line x1={i<2?26:34} y1={i<2?40:62} x2={x} y2={y} stroke="#1976d2" strokeWidth="5" strokeLinecap="round" />
                     <circle cx={x} cy={y} r="6" fill="#90caf9" />
                   </g>
                 ))}
-                {/* 左眼（圆圆的大眼睛） */}
                 <ellipse cx="38" cy="44" rx="7" ry="8" fill="#fff" />
                 <ellipse cx="38" cy="44" rx="4" ry="5" fill="#311b92" />
                 <circle cx="40" cy="42" r="2" fill="#fff" opacity="0.9" />
-                {/* 右眼（wink 动画 — 优化版） */}
                 <path d="M53 44 Q59 38 65 44" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" opacity="0">
                   <animate attributeName="opacity" values="0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;1;1;0" dur="4s" repeatCount="indefinite" />
                 </path>
@@ -384,15 +432,13 @@ export default function ChatPage({ user }: { user?: any }) {
                 <circle cx="61" cy="42" r="2" fill="#fff" opacity="0.9">
                   <animate attributeName="opacity" values="0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0.9;0;0;0.9" dur="4s" repeatCount="indefinite" />
                 </circle>
-                {/* 微笑 */}
                 <path d="M42 60 Q50 70 58 60" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" opacity="0.85" />
-                {/* 腮红 */}
                 <ellipse cx="30" cy="55" rx="6" ry="4" fill="#f8bbd0" opacity="0.4" />
                 <ellipse cx="70" cy="55" rx="6" ry="4" fill="#f8bbd0" opacity="0.4" />
               </svg>
             </div>
-            <h1 style={{ fontSize: 28, fontWeight: 700, color: '#2c2c54', marginBottom: 4, letterSpacing: -0.5 }}>小元AI</h1>
-            <p style={{ fontSize: 14, color: '#9ea7b8', marginBottom: 36, fontWeight: 400, letterSpacing: 0.3 }}>智能助手 · 聊天 · 自动化 · 数据分析</p>
+            <h1 style={{ fontSize: 26, fontWeight: 700, color: '#2c2c54', marginBottom: 4, letterSpacing: -0.5 }}>小元AI</h1>
+            <p style={{ fontSize: 14, color: '#9ea7b8', marginBottom: 28, fontWeight: 400, letterSpacing: 0.3 }}>数据分析 / 数据采集 / 自动化 / 多智能体协作</p>
 
             <div style={{ maxWidth: 560, width: '100%', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
               {/* 图片预览 */}
@@ -417,7 +463,7 @@ export default function ChatPage({ user }: { user?: any }) {
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && quickInput.trim()) { e.preventDefault(); const v = quickInput.trim(); setQuickInput(''); sendWithNewSession(v) } }}
                     placeholder="输入消息，开始对话... (Enter 发送，Shift+Enter 换行)"
                     rows={1}
-                    style={{ flex: 1, border: 'none', outline: 'none', fontSize: 15, padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflowY: 'auto' }} />
+                    style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflowY: 'auto' }} />
                   <input ref={fileRef} type="file" accept="image/*,.csv,.xlsx,.xls,.json" multiple hidden
                     onChange={async (e) => {
                       const files = e.target.files
@@ -452,23 +498,26 @@ export default function ChatPage({ user }: { user?: any }) {
                 </div>
               </div>
             </div>
+            </div>
 
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 500, marginTop: 28 }}>
-              {SUGGESTIONS.map((s) => {
-                const icon = s.includes('天气') ? '🌤' : s.includes('计算') ? '🧮' : s.includes('统计') ? '📊' : '🌐'
-                return (
-                  <button key={s} onClick={() => sendWithNewSession(s)}
-                    style={{
-                      padding: '8px 18px', borderRadius: 20, border: '1px solid #e0e0e0',
-                      background: '#fff', cursor: 'pointer', fontSize: 13, color: '#555',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', gap: 6,
-                      transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#b39ddb'; e.currentTarget.style.color = '#7e57c2'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(126,87,194,0.1)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e0e0e0'; e.currentTarget.style.color = '#555'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)' }}
-                  ><span>{icon}</span>{s}</button>
-                )
-              })}
+            <div style={{ marginTop: 32, width: '100%', maxWidth: 520 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))', gap: 10 }}>
+              {SUGGESTIONS.map((s) => (
+                <button key={s.text} onClick={() => sendWithNewSession(s.text)}
+                  style={{
+                    padding: '12px 16px', borderRadius: 12, border: '1px solid #e8e8ec',
+                    background: '#fff', cursor: 'pointer', fontSize: 13, color: '#333',
+                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#1976d2'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(25,118,210,0.1)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e8e8ec'; e.currentTarget.style.boxShadow = 'none' }}
+                >
+                  <div style={{ fontWeight: 500, fontSize: 13 }}>{s.text}</div>
+                  <div style={{ fontSize: 11, color: '#999' }}>{s.desc}</div>
+                </button>
+              ))}
+            </div>
             </div>
 
             {sessions.length > 0 && (
@@ -499,52 +548,44 @@ export default function ChatPage({ user }: { user?: any }) {
               <div style={{ maxWidth: 720, width: '100%' }}>
                 {messages.map((msg, i) => {
                   const isLast = i === messages.length - 1
-                  const prev = messages[i - 1]
-                  const sameAsPrev = prev && prev.role === msg.role
+                  const isUser = msg.role === 'user'
+                  const sender = !isUser ? (msg.sender || 'orchestrator') : null
+                  const agent = sender ? AGENT_CONFIG[sender] : null
+
                   return (
                     <div key={i} style={{
-                      marginBottom: sameAsPrev ? 2 : 18,
+                      marginBottom: 14,
                       display: 'flex',
                       flexDirection: 'column',
-                      alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                      alignItems: isUser ? 'flex-end' : 'flex-start',
                     }}>
-                      {!sameAsPrev && (
+                      {/* Sender label */}
+                      {agent && (
                         <div style={{
-                          fontSize: 11, color: '#b0b8c8', marginBottom: 4,
-                          marginLeft: msg.role === 'user' ? 0 : 4,
-                          marginRight: msg.role === 'user' ? 4 : 0,
-                          fontWeight: 500,
+                          fontSize: 12, fontWeight: 600, marginBottom: 3, marginLeft: 2,
+                          color: agent.color, display: 'flex', alignItems: 'center', gap: 6,
                         }}>
-                          {msg.role === 'user' ? (user?.display_name || user?.username || '你') : (
-                            <svg viewBox="0 0 100 100" width={18} height={18} style={{ verticalAlign: 'middle', marginTop: -2 }}>
-                              <circle cx="50" cy="52" r="28" fill="#1976d2" />
-                              <circle cx="50" cy="52" r="23" fill="#42a5f5" />
-                              {[[12,30],[88,30],[20,76],[80,76]].map(([x,y],i)=>(
-                                <g key={i}>
-                                  <line x1={i<2?26:34} y1={i<2?40:62} x2={x} y2={y} stroke="#1976d2" strokeWidth="4" strokeLinecap="round" />
-                                  <circle cx={x} cy={y} r="5" fill="#90caf9" />
-                                </g>
-                              ))}
-                              <ellipse cx="38" cy="44" rx="6" ry="7" fill="#fff" />
-                              <ellipse cx="38" cy="44" rx="3.5" ry="4.5" fill="#0d47a1" />
-                              <circle cx="40" cy="42" r="1.5" fill="#fff" opacity="0.9" />
-                              <path d="M54 44 Q59 38 64 44" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
-                              <path d="M42 60 Q50 68 58 60" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" opacity="0.85" />
-                              <ellipse cx="30" cy="54" rx="5" ry="3.5" fill="#f8bbd0" opacity="0.35" />
-                              <ellipse cx="70" cy="54" rx="5" ry="3.5" fill="#f8bbd0" opacity="0.35" />
-                            </svg>
-                          )}
+                          <span style={{
+                            width: 6, height: 6, borderRadius: '50%', background: agent.color,
+                            display: 'inline-block', flexShrink: 0,
+                          }} />
+                          {agent.label}
                         </div>
                       )}
+                      {isUser && (
+                        <div style={{ fontSize: 11, color: '#b0b8c8', marginBottom: 3, marginRight: 4, fontWeight: 500 }}>
+                          {user?.display_name || user?.username || '我'}
+                        </div>
+                      )}
+
                       <div className="chat-msg-bubble" style={{
                         padding: '10px 16px',
-                        borderRadius: msg.role === 'user'
-                          ? '18px 18px 4px 18px'
-                          : '4px 18px 18px 18px',
+                        borderRadius: isUser ? '18px 18px 4px 18px' : '4px 14px 14px 14px',
                         maxWidth: '75%',
-                        background: msg.role === 'user' ? '#1976d2' : '#f5f5f8',
-                        color: msg.role === 'user' ? '#fff' : '#333',
-                        boxShadow: msg.role === 'user'
+                        background: isUser ? '#1976d2' : (agent?.bg || '#f5f5f8'),
+                        color: isUser ? '#fff' : '#333',
+                        borderLeft: agent ? `3px solid ${agent.color}` : undefined,
+                        boxShadow: isUser
                           ? '0 1px 3px rgba(25,118,210,0.15)'
                           : '0 1px 2px rgba(0,0,0,0.04)',
                         whiteSpace: 'pre-wrap',
@@ -553,9 +594,9 @@ export default function ChatPage({ user }: { user?: any }) {
                         overflowWrap: 'break-word',
                         wordBreak: 'break-word',
                       }}>
-                        {loading && isLast && msg.role === 'assistant' && !msg.content ? (
+                        {loading && isLast && msg.role === 'assistant' && !msg.content && (!msg.toolCalls || msg.toolCalls.length === 0) ? (
                           <LoadingDots />
-                        ) : msg.role === 'user' ? (
+                        ) : isUser ? (
                           <>
                             {msg.content}
                             {msg.images && msg.images.length > 0 && (
@@ -573,7 +614,7 @@ export default function ChatPage({ user }: { user?: any }) {
                             {msg.reasoning && (
                               <details open={loading && isLast && !msg.content} style={{ marginBottom: 8 }}>
                                 <summary style={{ cursor: 'pointer', fontSize: 12, color: '#888', userSelect: 'none', outline: 'none' }}>
-                                  {loading && isLast && !msg.content ? '🔄 思考中...' : `✓ 思考完成${msg.reasoningTime ? ` (${msg.reasoningTime}秒)` : ''}`}
+                                  {loading && isLast && !msg.content ? '思考中...' : `思考完成${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''}`}
                                 </summary>
                                 <div style={{ marginTop: 6, padding: '8px 12px', background: '#f5f5f5', borderRadius: 6, fontSize: 12, color: '#777', lineHeight: 1.6, maxHeight: 200, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
                                   {msg.reasoning}
@@ -630,7 +671,7 @@ export default function ChatPage({ user }: { user?: any }) {
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
                       placeholder="输入消息... (Enter 发送，Shift+Enter 换行)" disabled={loading}
                       rows={1}
-                      style={{ flex: 1, border: 'none', outline: 'none', fontSize: 15, padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflowY: 'auto' }}
+                      style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflowY: 'auto' }}
                     />
                     <input ref={fileRef} type="file" accept="image/*" multiple hidden
                       onChange={(e) => {

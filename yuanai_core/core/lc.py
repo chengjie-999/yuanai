@@ -25,13 +25,13 @@ def call_llm(
         return None
 
 
-def get_llm(model='deepseek-chat', **kwargs):
+def get_llm(model='deepseek-chat', reasoning=True, **kwargs):
     if model in dsllm:
         ds_api_key = get_api_key('dsllm')
         extra_params = {}
-        if model in ['deepseek-v4-flash', 'deepseek-v4-pro']:
+        if reasoning and model in ['deepseek-v4-flash', 'deepseek-v4-pro']:
             extra_params["extra_body"] = {"reasoning_effort": "low"}
-        elif model == 'deepseek-reasoner':
+        elif reasoning and model == 'deepseek-reasoner':
             extra_params["extra_body"] = {"reasoning_effort": "high"}
         return ChatOpenAI(
             api_key=ds_api_key,

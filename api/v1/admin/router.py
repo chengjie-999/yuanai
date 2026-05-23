@@ -212,3 +212,97 @@ async def read_file(request: Request, path: str = ""):
         except UnicodeDecodeError:
             return {"type": "binary", "detail": "无法解码为文本"}
     return {"type": "unsupported", "detail": f"暂不支持预览 {ext} 文件"}
+
+
+# ===================== 仪表盘 =====================
+
+
+@router.get("/dashboard")
+async def admin_dashboard(request: Request):
+    require_admin(request)
+    db = get_db()
+    sess = db.Session()
+    try:
+        from db.session import User, ChatSession, AIChat
+        from sqlalchemy import func
+
+        user_count = sess.query(func.count(User.id)).scalar() or 0
+        session_count = sess.query(func.count(ChatSession.id)).scalar() or 0
+        message_count = sess.query(func.count(AIChat.id)).scalar() or 0
+
+        # 最近30天消息数
+        from datetime import datetime as dt, timedelta
+        thirty_days_ago = dt.utcnow() - timedelta(days=30)
+        daily = (
+            sess.query(
+                func.date(AIChat.create_time).label("date"),
+                func.count(AIChat.id).label("count"),
+            )
+            .filter(AIChat.create_time >= thirty_days_ago)
+            .group_by(func.date(AIChat.create_time))
+            .order_by(func.date(AIChat.create_time))
+            .all()
+        )
+        daily_messages = [{"date": str(d), "count": c} for d, c in daily]
+
+        return {
+            "users": user_count,
+            "sessions": session_count,
+            "messages": message_count,
+            "daily_messages": daily_messages,
+        }
+    finally:
+        sess.close()
+
+
+# ===================== Agent 状态摘要 =====================
+
+
+@router.get("/agent-summary")
+async def admin_agent_summary(request: Request):
+    require_admin(request)
+    from api.v1.agent.router import _agents, _agent_info
+
+    result = []
+    for agent_id, ws in _agents.items():
+        info = _agent_info.get(agent_id, {})
+        online = ws.client_state.name == "CONNECTED" if hasattr(ws, 'client_state') else False
+        result.append({
+            "agent_id": agent_id,
+            "agent_name": info.get("agent_name", agent_id),
+            "capabilities": info.get("capabilities", []),
+            "online": online,
+            "last_heartbeat": info.get("last_heartbeat", ""),
+        })
+    return result
+
+
+# ===================== 模型配置 =====================
+
+
+@router.get("/models")
+async def list_models(request: Request):
+    require_admin(request)
+    from config.settings import MODELS
+    return MODELS
+
+
+# ===================== Agent 状态（代理到 agent router 内部数据）=====================
+
+
+@router.get("/agent-status")
+async def admin_agent_status_v2(request: Request):
+    """返回在线 Agent 列表（admin 可见，从 agent WebSocket Hub 读取）"""
+    from api.v1.agent.router import _agents, _agent_info
+    result = []
+    for agent_id, ws in list(_agents.items()):
+        info = _agent_info.get(agent_id, {})
+        result.append({
+            "agent_id": agent_id,
+            "agent_name": info.get("agent_name", agent_id),
+            "capabilities": info.get("capabilities", []),
+            "online": True,
+            "last_heartbeat": info.get("last_heartbeat", ""),
+            "activities": list(reversed(info.get("activities", [])[-10:])),
+        })
+    return result

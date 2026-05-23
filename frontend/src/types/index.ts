@@ -5,6 +5,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   reasoning?: string
   reasoningTime?: number
+  sender?: 'orchestrator' | 'analysis' | 'collection' | 'automation'
 }
 
 export interface ToolCall {

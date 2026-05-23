@@ -196,3 +196,4 @@ beautifulsoup4
 python-multipart~=0.0.20
 lxml~=5.3.0
 sentence-transformers
+websockets

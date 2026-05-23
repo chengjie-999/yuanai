@@ -18,6 +18,7 @@ from api.v1.stats.router import router as stats_router
 from api.v1.admin.router import router as admin_router
 from api.v1.data.router import router as data_router
 from api.v1.knowledge.router import router as knowledge_router
+from api.v1.agent.router import router as agent_router
 from api.v1.middleware import auth_middleware
 from utils.data_path import root_path
 
@@ -49,6 +50,7 @@ app.include_router(stats_router, prefix="/api/v1", tags=["stats"])
 app.include_router(admin_router, prefix="/api/v1", tags=["admin"])
 app.include_router(data_router, prefix="/api/v1", tags=["data"])
 app.include_router(knowledge_router, prefix="", tags=["knowledge"])
+app.include_router(agent_router, prefix="/api/v1", tags=["agent"])
 
 app.middleware("http")(auth_middleware)
 

@@ -91,14 +91,13 @@ def _verify_session_owner(db, session_id: str, user_id: int):
 
 @router.post("/stream")
 async def chat_stream(req: ChatRequest, request: Request):
-    """SSE 流式聊天"""
+    """SSE 流式聊天（优先走本地 Agent，离线时回退到云端直接调用）"""
     try:
         model = req.model
         # DeepSeek V4 不支持图片 → 自动切到豆包多模态
         if req.images and 'deepseek' in model:
             from config.settings import VISION_MODEL
             model = VISION_MODEL
-        llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True)
 
         history = []
         for m in req.history:
@@ -130,6 +129,50 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         # 设置当前用户上下文，知识库检索时自动过滤私有/共享
         current_user_id.set(user_id if user_id else 0)
+
+        # --- 尝试走本地 Agent WebSocket 桥接 ---
+        if user_id:
+            from api.v1.agent.router import forward_to_agent, get_pending_queue, cleanup_pending
+            import uuid as _uuid
+
+            agent_request_id = str(_uuid.uuid4())
+            agent_chat_request = {
+                "type": "chat_request",
+                "request_id": agent_request_id,
+                "session_id": getattr(req, "session_id", ""),
+                "messages": input_messages,
+                "images": req.images,
+            }
+            bridged_request_id = await forward_to_agent(user_id, agent_chat_request)
+
+            if bridged_request_id:
+                logger.info("chat/stream → Agent 桥接 (user=%s, req=%s)", user_id, bridged_request_id[:8])
+                queue = get_pending_queue(bridged_request_id)
+
+                async def agent_bridge_stream():
+                    try:
+                        while True:
+                            try:
+                                event = await asyncio.wait_for(queue.get(), timeout=300)
+                            except asyncio.TimeoutError:
+                                yield f"data: {json.dumps({'type': 'error', 'data': 'Agent 响应超时'}, ensure_ascii=False)}\n\n"
+                                break
+
+                            if event.get("type") in ("done", "error"):
+                                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                                break
+
+                            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                    except asyncio.CancelledError:
+                        pass
+                    finally:
+                        cleanup_pending(bridged_request_id)
+
+                return StreamingResponse(agent_bridge_stream(), media_type="text/event-stream")
+
+        # --- 回退：云端直接调用 LLM ---
+        logger.info("chat/stream → 云端直接调用 (user=%s, agent offline)", user_id)
+        llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True)
 
         async def event_stream():
             try:

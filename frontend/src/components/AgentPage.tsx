@@ -163,6 +163,10 @@ function ModelsCard() {
           )})}
         </tbody>
       </table>
+      <div style={{ padding: '10px 24px', fontSize: 11, color: '#999', background: '#fafafa', lineHeight: 1.8 }}>
+        配置文件 <code style={{ background: '#f0f0f0', padding: '1px 4px', borderRadius: 2 }}>config/settings.py</code> 中修改 MODELS 字典，
+        子 Agent 模型在 <code style={{ background: '#f0f0f0', padding: '1px 4px', borderRadius: 2 }}>agent/agents/*.py</code> 的 get_llm() 调用中指定
+      </div>
     </div>
   )
 }

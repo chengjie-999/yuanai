@@ -46,6 +46,9 @@ export default function AgentPage({ userId }: { userId?: number }) {
     <div style={{ background: '#f8f9fb', padding: '40px', display: 'flex', justifyContent: 'center' }}>
       <div style={{ maxWidth: 560, width: '100%', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+        {/* 模型配置 */}
+        <ModelsCard />
+
         {/* 运行状态 */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #eee', padding: '20px 24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -76,9 +79,6 @@ export default function AgentPage({ userId }: { userId?: number }) {
             </code>
           )}
         </div>
-
-        {/* 模型配置 */}
-        <ModelsCard />
 
         {/* 子 Agent 团队 */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #eee', overflow: 'hidden' }}>
@@ -153,7 +153,7 @@ function ModelsCard() {
         <tbody>
           {Object.entries(models).map(([id, info]) => {
             const label = info.label as string
-            const desc = label.includes('Pro') ? '强推理/多模态' : label.includes('Lite') ? '轻量任务' : ''
+            const desc = id.includes('deepseek') ? (label.includes('Pro') ? '强推理' : '快速轻量') : label.includes('Pro') ? '多模态/强推理' : '轻量任务'
             return (
             <tr key={id} style={{ borderBottom: "1px solid #f0f0f0" }}>
               <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 500 }}>{label}{desc && <span style={{ fontSize: 11, color: '#999', marginLeft: 6 }}>{desc}</span>}</td>

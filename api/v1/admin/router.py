@@ -298,7 +298,13 @@ async def admin_list_sessions(request: Request):
             )
             .outerjoin(AIChat, AIChat.session_id == ChatSession.session_id)
             .outerjoin(User, User.id == ChatSession.user_id)
-            .group_by(ChatSession.session_id)
+            .group_by(
+                ChatSession.session_id,
+                ChatSession.title,
+                ChatSession.create_time,
+                ChatSession.update_time,
+                User.username,
+            )
             .order_by(ChatSession.update_time.desc())
             .limit(200)
             .all()

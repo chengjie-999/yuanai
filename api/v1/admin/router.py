@@ -244,10 +244,30 @@ async def admin_dashboard(request: Request):
         )
         daily_messages = [{"date": str(d), "count": c} for d, c in daily]
 
+        # 今日统计
+        today = dt.utcnow().strftime("%Y-%m-%d")
+        today_messages = sess.query(func.count(AIChat.id)).filter(
+            func.date(AIChat.create_time) == today
+        ).scalar() or 0
+        today_users = sess.query(func.count(func.distinct(AIChat.session_id))).filter(
+            func.date(AIChat.create_time) == today
+        ).scalar() or 0
+        avg_msgs = round(message_count / max(session_count, 1), 1)
+
+        # 数据集数
+        import os
+        from utils.data_path import root_path
+        ds_dir = os.path.join(root_path(), "data", "datasets")
+        dataset_count = len(os.listdir(ds_dir)) if os.path.isdir(ds_dir) else 0
+
         return {
             "users": user_count,
             "sessions": session_count,
             "messages": message_count,
+            "today_messages": today_messages,
+            "today_users": today_users,
+            "avg_messages": avg_msgs,
+            "datasets": dataset_count,
             "daily_messages": daily_messages,
         }
     finally:

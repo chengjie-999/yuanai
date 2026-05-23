@@ -85,14 +85,11 @@ function App() {
             fontSize: 13, color: '#1976d2', cursor: 'pointer',
             borderBottom: page === 'user' ? '1px solid #1976d2' : '1px solid transparent',
           }}>{user?.username || user?.display_name}</span>
-          <button onClick={handleLogout} style={{
-            background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 13, padding: 0,
-          }}>退出</button>
         </div>
       </header>
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {page === 'chat' && <ChatPage user={user} />}
-        {page === 'user' && <UserPage user={user} />}
+        {page === 'user' && <UserPage user={user} onLogout={handleLogout} />}
         {page === 'agent' && <AgentPage userId={user?.id} />}
         {page === 'admin' && isAdmin && <AdminPage isAdmin={isAdmin} />}
       </main>

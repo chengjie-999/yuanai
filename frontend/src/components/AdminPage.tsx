@@ -52,6 +52,10 @@ function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
     { label: '用户数', value: data?.users ?? '-', color: '#42a5f5', adminOnly: true },
     { label: '会话数', value: data?.sessions ?? '-', color: '#66bb6a', adminOnly: true },
     { label: '消息数', value: data?.messages ?? '-', color: '#ffa726', adminOnly: true },
+    { label: '今日消息', value: data?.today_messages ?? '-', color: '#ef5350', adminOnly: false },
+    { label: '今日活跃', value: data?.today_users ?? '-', color: '#ab47bc', adminOnly: false },
+    { label: '均消息/会话', value: data?.avg_messages ?? '-', color: '#26a69a', adminOnly: true },
+    { label: '数据集', value: data?.datasets ?? '-', color: '#8d6e63', adminOnly: false },
   ]
   const cards = isAdmin ? allCards : allCards.filter((c) => !c.adminOnly)
 

@@ -103,6 +103,9 @@ export default function AgentPage({ userId }: { userId?: number }) {
           ))}
         </div>
 
+        {/* 模型配置 */}
+        <ModelsCard />
+
         {/* 活动记录 */}
         {myAgents.map((a, i) => {
           const acts = a.activities || []
@@ -126,6 +129,35 @@ export default function AgentPage({ userId }: { userId?: number }) {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+function ModelsCard() {
+  const [models, setModels] = useState<Record<string, any>>({})
+  useEffect(() => {
+    fetch(`${API_BASE}/admin/models`, { headers: headers() })
+      .then((r) => r.json()).then(setModels).catch(() => {})
+  }, [])
+  return (
+    <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #eee", overflow: "hidden" }}>
+      <div style={{ padding: "14px 24px", borderBottom: "1px solid #f0f0f0", fontWeight: 600, fontSize: 14, color: "#333", background: "#fafafa" }}>模型配置</div>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr style={{ background: "#f5f5f8" }}>
+            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "#666" }}>模型</th>
+            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "#666" }}>供应商</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(models).map(([id, info]) => (
+            <tr key={id} style={{ borderBottom: "1px solid #f0f0f0" }}>
+              <td style={{ padding: "10px 14px", fontSize: 13 }}>{info.label as string}</td>
+              <td style={{ padding: "10px 14px", color: "#666", fontSize: 12 }}>{info.provider as string}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

@@ -172,6 +172,9 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         # --- 回退：云端直接调用 LLM ---
         logger.info("chat/stream → 云端直接调用 (user=%s, agent offline)", user_id)
+        # Agent 离线时没有 delegate 工具，修正系统提示
+        offline_prompt = "你是小元AI助手，可以直接使用工具完成任务。可用的工具包括：list_datasets(列出数据集)、preview_dataset(预览)、analyze_dataset(分析)、fetch_url(抓取网页)、parse_html(解析HTML)、get_today_temperature(天气)、calculate_sum(计算)、get_user_memory(用户记忆) 等。直接用工具处理用户请求，简洁回复。"
+        input_messages[0]["content"] = offline_prompt
         llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True)
 
         async def event_stream():

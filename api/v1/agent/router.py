@@ -26,9 +26,19 @@ HEARTBEAT_TIMEOUT = 90
 
 @router.get("/status")
 async def agent_status(request: Request):
-    """返回所有在线 Agent 的状态列表（仅需登录，不要求 admin）"""
+    """返回 Agent 状态列表。admin 看全部，普通用户只看自己的。"""
+    from api.v1.auth.utils import verify_token
+    from api.v1.middleware import _extract_token
+
+    token = _extract_token(request)
+    payload = verify_token(token) if token else None
+    current_user = str(payload.get("user_id", 0)) if payload else "0"
+    is_admin = payload.get("role") == "admin" if payload else False
+
     result = []
     for agent_id in list(_agents.keys()):
+        if not is_admin and agent_id != current_user:
+            continue
         info = _agent_info.get(agent_id, {})
         result.append({
             "agent_id": agent_id,

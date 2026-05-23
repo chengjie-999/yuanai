@@ -15,22 +15,26 @@ from yuanai_core.core.schemas import ChatRequest, AgentEvent, token as ev_token,
 
 logger = logging.getLogger(__name__)
 
-ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的统筹助手，管理着三个专业子Agent团队。
+ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的助手，可以独立处理简单任务，也可以委派复杂任务给专业子Agent。
 
-你的子Agent团队：
-- delegate_to_analysis_agent：数据分析（数据集管理、统计、图表）
-- delegate_to_collection_agent：数据采集（网页爬取、内容抓取）
+你可以直接使用的工具（简单任务，不要委派）：
+- calculate_sum / calculate_multiply：计算
+- get_today_temperature / get_tomorrow_forecast：天气
+- get_user_memory / remember_user_info：用户记忆
+- retrieve_knowledge：知识库检索
+- list_data_files / read_data_file：文件操作
+- get_system_stats：系统统计
+
+只在以下情况委派给子Agent（复杂任务）：
+- delegate_to_analysis_agent：数据分析（统计、图表生成等复杂操作）
+- delegate_to_collection_agent：数据采集（多页爬取、复杂抓取）
 - delegate_to_automation_agent：自动化（浏览器控制、题目审核）
 
 工作原则：
-1. 收到用户请求后，先判断需要哪个子Agent
-2. 用一句话告知用户将调用哪个子Agent，然后立刻调用它
-3. 子Agent返回结果后，如果结果已经清晰完整，只做简短确认如"以上是分析结果"，不要再复述一遍
-4. 只有当结果需要解读、比较、给出建议时，才补充分析
-5. 复杂任务分步进行：先采集再分析，先浏览再审核
-6. 需求不明确时，先询问用户再行动
-
-重要：用户能看到子Agent的输出，重复同样的内容只会让对话冗余。只补充子Agent没说的内容。"""
+1. 判断任务复杂度：简单任务直接用工具，复杂任务委派子Agent
+2. 委派时一句话说明调用哪个Agent，然后立即调用
+3. 子Agent结果清晰完整时只做简短确认，不要复述
+4. 需求不明确时先询问用户"""
 
 
 class Orchestrator:
@@ -63,13 +67,21 @@ class Orchestrator:
             self._automation = AutomationAgent()
         return self._automation
 
-    def _build_delegate_tools(self):
-        """构建委托工具列表"""
+    def _build_all_tools(self):
+        """构建完整工具列表：通用工具 + 3 个委托工具"""
+        # 通用工具（直接调用，不走子 Agent）
+        from yuanai_core.tools.calculator import calculate_sum, calculate_multiply
+        from yuanai_core.tools.weather import get_today_temperature, get_tomorrow_forecast
+        from yuanai_core.tools.user_memory import get_user_memory, remember_user_info
+        from yuanai_core.tools.knowledge_tool import retrieve_knowledge
+        from yuanai_core.tools.file_tools import list_data_files, read_data_file
+        from yuanai_core.tools.stats_tool import get_system_stats
+
         orch = self
 
         @tool
         def delegate_to_analysis_agent(prompt: str) -> str:
-            """将数据分析任务委托给数据分析子Agent。参数 prompt: 详细的数据分析需求描述（包含要分析的文件名、分析类型等）。返回分析结果。"""
+            """将复杂的数据分析任务（如统计分析、生成图表）委托给数据分析子Agent。简单的列举数据集、预览数据请直接用 list_datasets 等工具，不要调用此委托。参数 prompt: 详细的分析需求。"""
             orch._emit_activity("委派数据分析Agent", prompt[:80])
             result = orch.analysis_agent.run(prompt)
             orch._emit_activity("数据分析Agent已完成", "")
@@ -77,7 +89,7 @@ class Orchestrator:
 
         @tool
         def delegate_to_collection_agent(prompt: str) -> str:
-            """将数据采集任务委托给数据采集子Agent。参数 prompt: 详细的数据采集需求描述（包含目标网址、要抓取的数据等）。返回采集结果。"""
+            """将复杂的网页数据采集任务委托给数据采集子Agent。简单的抓取/解析直接用 fetch_url/parse_html 工具。参数 prompt: 详细的采集需求。"""
             orch._emit_activity("委派数据采集Agent", prompt[:80])
             result = orch.collection_agent.run(prompt)
             orch._emit_activity("数据采集Agent已完成", "")
@@ -85,13 +97,21 @@ class Orchestrator:
 
         @tool
         def delegate_to_automation_agent(prompt: str) -> str:
-            """将自动化/审核任务委托给自动化子Agent。参数 prompt: 详细的自动化需求描述（包含审核对象、操作步骤等）。返回执行结果。"""
+            """将复杂的浏览器自动化任务（如题目审核、多步操作）委托给自动化子Agent。参数 prompt: 详细的自动化需求。"""
             orch._emit_activity("委派自动化Agent", prompt[:80])
             result = orch.automation_agent.run(prompt)
             orch._emit_activity("自动化Agent已完成", "")
             return result
 
         return [
+            # 通用工具 — 简单任务直接调，不要委托给子 Agent
+            calculate_sum, calculate_multiply,
+            get_today_temperature, get_tomorrow_forecast,
+            get_user_memory, remember_user_info,
+            retrieve_knowledge,
+            list_data_files, read_data_file,
+            get_system_stats,
+            # 委托工具 — 复杂领域任务才用
             delegate_to_analysis_agent,
             delegate_to_collection_agent,
             delegate_to_automation_agent,
@@ -115,7 +135,7 @@ class Orchestrator:
             input_messages.append(m)
 
         llm = get_llm("doubao-seed-2-0-lite-260215", temperature=0.7, verbose=False, streaming=True)
-        orch_tools = self._build_delegate_tools()
+        orch_tools = self._build_all_tools()
         agent = create_react_agent(llm, orch_tools)
 
         full_response = ""

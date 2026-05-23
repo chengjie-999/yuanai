@@ -9,7 +9,7 @@ interface AgentInfo {
   last_heartbeat: string
 }
 
-export default function AgentStatus() {
+export default function AgentStatus({ userId }: { userId?: number }) {
   const [agents, setAgents] = useState<AgentInfo[]>([])
   const [error, setError] = useState(false)
 
@@ -24,7 +24,7 @@ export default function AgentStatus() {
           try {
             const data = JSON.parse(text)
             if (Array.isArray(data)) setAgents(data)
-          } catch { /* ignore parse errors */ }
+          } catch {}
           setError(false)
         }
       } catch {
@@ -36,19 +36,23 @@ export default function AgentStatus() {
     return () => clearInterval(interval)
   }, [])
 
-  if (error || agents.length === 0) {
+  // 只显示当前用户的 Agent
+  const myAgents = userId ? agents.filter((a) => String(a.agent_id) === String(userId)) : []
+  const online = myAgents.length > 0 && myAgents[0].online
+
+  if (error || !online) {
     return (
       <span style={{ fontSize: 12, color: '#999', display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{
           width: 8, height: 8, borderRadius: '50%', background: '#ccc',
           display: 'inline-block',
         }} />
-        本地 Agent 离线
+        Agent 离线{userId ? ` · python agent/main.py --agent-id ${userId}` : ''}
       </span>
     )
   }
 
-  const agent = agents[0]
+  const agent = myAgents[0]
   const capLabels: Record<string, string> = {
     analysis: '分析', collection: '采集', automation: '自动化',
   }
@@ -57,13 +61,13 @@ export default function AgentStatus() {
     <span style={{ fontSize: 12, color: '#333', display: 'flex', alignItems: 'center', gap: 6 }}>
       <span style={{
         width: 8, height: 8, borderRadius: '50%',
-        background: agent.online ? '#4caf50' : '#ff9800',
+        background: '#4caf50',
         display: 'inline-block',
-        boxShadow: agent.online ? '0 0 6px rgba(76,175,80,0.5)' : undefined,
+        boxShadow: '0 0 6px rgba(76,175,80,0.5)',
       }} />
       {agent.agent_name}
       <span style={{ color: '#999' }}>
-        {agent.capabilities.map((c) => capLabels[c] || c).join('·')}
+        {agent.capabilities.map((c: string) => capLabels[c] || c).join('·')}
       </span>
     </span>
   )

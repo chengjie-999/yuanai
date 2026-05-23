@@ -73,25 +73,24 @@ function App() {
           >
             对话
           </button>
-          {isAdmin && (
-            <button
-              onClick={() => setPage('admin')}
-              style={{
-                background: 'transparent', border: 'none',
-                color: page === 'admin' ? '#333' : '#999',
-                fontWeight: page === 'admin' ? 600 : 400, fontSize: 14,
-                padding: '0 14px', height: 52, cursor: 'pointer',
-                borderBottom: page === 'admin' ? '2px solid #333' : '2px solid transparent',
-                transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6,
-              }}
-            >
-              后台管理
-            </button>
-          )}
+          <button
+            onClick={() => setPage('admin')}
+            style={{
+              background: 'transparent', border: 'none',
+              color: page === 'admin' ? '#333' : '#999',
+              fontWeight: page === 'admin' ? 600 : 400, fontSize: 14,
+              padding: '0 14px', height: 52, cursor: 'pointer',
+              borderBottom: page === 'admin' ? '2px solid #333' : '2px solid transparent',
+              transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            后台管理
+          </button>
         </nav>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <AgentStatus />
+          <AgentStatus userId={user?.id} />
+          <span style={{ fontSize: 12, color: '#bbb', fontFamily: 'monospace' }}>ID:{user?.id}</span>
           <span style={{ fontSize: 13, color: '#999' }}>{user?.username || user?.display_name}</span>
           <button onClick={handleLogout} style={{
             background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 13, padding: 0,
@@ -100,7 +99,7 @@ function App() {
       </header>
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {page === 'chat' && <ChatPage user={user} />}
-        {page === 'admin' && isAdmin && <AdminPage />}
+        {page === 'admin' && <AdminPage isAdmin={isAdmin} userId={user?.id} />}
       </main>
     </div>
   )

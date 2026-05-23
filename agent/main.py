@@ -40,13 +40,26 @@ async def main():
         return
 
     # 配置日志
+    from logging.handlers import RotatingFileHandler
+    from utils.data_path import root_path
+    log_dir = os.path.join(root_path(), "data", "logs")
+    os.makedirs(log_dir, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[
+            logging.StreamHandler(),
+            RotatingFileHandler(
+                os.path.join(log_dir, "agent.log"),
+                maxBytes=5 * 1024 * 1024, backupCount=5,
+                encoding="utf-8",
+            ),
+        ],
     )
-    # 抑制 websockets 协议日志
     logging.getLogger("websockets").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)
 
     capabilities = ["analysis", "collection", "automation"]
 

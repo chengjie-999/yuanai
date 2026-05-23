@@ -39,6 +39,7 @@ class AgentWSClient:
         self._on_chat_request = on_chat_request
         self._ws = None
         self._running = False
+        self._status = "offline"  # offline | connecting | online | reconnecting
 
     def on_chat_request(
         self, handler: Callable[[ChatRequest], AsyncGenerator[AgentEvent, None]]
@@ -54,8 +55,9 @@ class AgentWSClient:
         while self._running:
             try:
                 url = f"{self.server_url}/api/v1/agent/ws/agent/{self.agent_id}"
+                self._status = "connecting"
                 logger.info("正在连接云端: %s", url)
-                self._ws = await connect(url, ping_interval=None)  # 我们自己管理心跳
+                self._ws = await connect(url, ping_interval=None)
 
                 # 发送注册消息
                 await self._ws.send(json.dumps({
@@ -65,6 +67,7 @@ class AgentWSClient:
                         "capabilities": self.capabilities,
                     },
                 }, ensure_ascii=False))
+                self._status = "online"
                 logger.info("已连接到云端，Agent: %s，能力: %s", self.agent_name, self.capabilities)
                 backoff = RECONNECT_MIN
 
@@ -94,6 +97,7 @@ class AgentWSClient:
             finally:
                 self._ws = None
                 if self._running:
+                    self._status = "reconnecting"
                     logger.info("将在 %ds 后重连...", backoff)
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, RECONNECT_MAX)

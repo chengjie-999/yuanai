@@ -41,7 +41,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
 
 // ==================== 仪表盘 ====================
 
-function DashboardTab() {
+function DashboardTab({ isAdmin, userId }: { isAdmin: boolean; userId?: number }) {
   const [data, setData] = useState<any>(null)
   const [agents, setAgents] = useState<any[]>([])
 
@@ -52,15 +52,18 @@ function DashboardTab() {
       .then(safeJson).then((a) => { if (Array.isArray(a)) setAgents(a) }).catch(() => {})
   }, [])
 
-  const agentList = Array.isArray(agents) ? agents : []
+  const agentList = (Array.isArray(agents) ? agents : []).filter(
+    (a: any) => !userId || String(a.agent_id) === String(userId)
+  )
   const onlineCount = agentList.filter((a: any) => a.online).length
 
-  const cards = [
-    { label: '用户数', value: data?.users ?? '-', color: '#42a5f5' },
-    { label: '会话数', value: data?.sessions ?? '-', color: '#66bb6a' },
-    { label: '消息数', value: data?.messages ?? '-', color: '#ffa726' },
-    { label: '在线 Agent', value: onlineCount, color: '#4caf50' },
+  const allCards = [
+    { label: '用户数', value: data?.users ?? '-', color: '#42a5f5', adminOnly: true },
+    { label: '会话数', value: data?.sessions ?? '-', color: '#66bb6a', adminOnly: true },
+    { label: '消息数', value: data?.messages ?? '-', color: '#ffa726', adminOnly: true },
+    { label: '在线 Agent', value: onlineCount, color: '#4caf50', adminOnly: false },
   ]
+  const cards = isAdmin ? allCards : allCards.filter((c) => !c.adminOnly)
 
   return (
     <div>
@@ -73,7 +76,7 @@ function DashboardTab() {
         ))}
       </div>
 
-      {data?.daily_messages?.length > 0 && (
+      {isAdmin && data?.daily_messages?.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: '#333' }}>近30天消息量</h3>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 80, background: '#fff', borderRadius: 8, padding: 12 }}>
@@ -380,7 +383,7 @@ const SUB_AGENTS = [
   { key: 'automation', label: '自动化 Agent', desc: '浏览器控制、题目审核、截图监控', color: '#e65100' },
 ]
 
-function AgentsTab() {
+function AgentsTab({ userId }: { userId?: number }) {
   const [agents, setAgents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -401,8 +404,9 @@ function AgentsTab() {
 
   if (loading) return <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>加载中...</div>
 
-  const mainOnline = agents.length > 0 && agents[0].online
-  const mainAgent = agents[0]
+  const myAgents = agents.filter((a: any) => !userId || String(a.agent_id) === String(userId))
+  const mainOnline = myAgents.length > 0 && myAgents[0].online
+  const mainAgent = myAgents[0]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -425,7 +429,7 @@ function AgentsTab() {
         </div>
         {!mainOnline && (
           <code style={{ display: 'block', marginTop: 8, background: '#f5f5f8', padding: '6px 10px', borderRadius: 4, fontSize: 12, color: '#666' }}>
-            python agent/main.py --server-url ws://your-server:8000 --agent-id 1
+            python agent/main.py --agent-id {userId || 'ID'}
           </code>
         )}
       </div>
@@ -455,7 +459,7 @@ function AgentsTab() {
       </div>
 
           {/* 实时活动 */}
-          {agents.map((a, i) => {
+          {myAgents.map((a, i) => {
             const acts = a.activities || []
             if (acts.length === 0) return null
             return (
@@ -524,15 +528,16 @@ function ModelsTab() {
 
 // ==================== 主组件 ====================
 
-function AdminPageInner() {
+function AdminPageInner({ isAdmin, userId }: { isAdmin: boolean; userId?: number }) {
   const [tab, setTab] = useState('dashboard')
+  const visibleTabs = isAdmin ? TABS : TABS.filter((t) => t.key !== 'users' && t.key !== 'websites')
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '24px 28px', gap: 16, overflow: 'auto', boxSizing: 'border-box', background: '#f8f9fb' }}>
       <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: '#2c2c54' }}>后台管理</h2>
 
       <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid #e0e0e0', paddingBottom: 0, flexWrap: 'wrap' }}>
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
             style={{
               padding: '8px 18px', borderRadius: '8px 8px 0 0', border: 'none',
@@ -547,20 +552,20 @@ function AdminPageInner() {
       </div>
 
       <div style={{ flex: 1 }}>
-        {tab === 'dashboard' && <DashboardTab />}
-        {tab === 'users' && <UsersTab />}
-        {tab === 'websites' && <WebsitesTab />}
-        {tab === 'agents' && <AgentsTab />}
+        {tab === 'dashboard' && <DashboardTab isAdmin={isAdmin} userId={userId} />}
+        {tab === 'users' && isAdmin && <UsersTab />}
+        {tab === 'websites' && isAdmin && <WebsitesTab />}
+        {tab === 'agents' && <AgentsTab userId={userId} />}
         {tab === 'models' && <ModelsTab />}
       </div>
     </div>
   )
 }
 
-export default function AdminPage() {
+export default function AdminPage({ isAdmin, userId }: { isAdmin: boolean; userId?: number }) {
   return (
     <ErrorBoundary>
-      <AdminPageInner />
+      <AdminPageInner isAdmin={isAdmin} userId={userId} />
     </ErrorBoundary>
   )
 }

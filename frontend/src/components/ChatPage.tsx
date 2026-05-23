@@ -204,13 +204,6 @@ export default function ChatPage({ user }: { user?: any }) {
     let responseReasoning = ''
     let reasoningStart = 0
 
-    const finishReasoning = (msg: ChatMessage): ChatMessage => {
-      if (reasoningStart && !msg.reasoningTime) {
-        return { ...msg, reasoningTime: Math.round((Date.now() - reasoningStart) / 100) / 10 }
-      }
-      return msg
-    }
-
     let currentSender: string = 'orchestrator'
     streamChat(
       { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: '你是小元AI的统筹助手，管理着数据分析、数据采集、自动化三个专业Agent团队。\n\n你可以委派的Agent：\n- delegate_to_analysis_agent：数据分析\n- delegate_to_collection_agent：数据采集\n- delegate_to_automation_agent：自动化\n\n工作原则：\n1. 判断意图，用一句话告诉用户将调用哪个Agent，然后立刻调用\n2. 子Agent返回结果后，如果结果已经清晰完整，只做简短确认如"以上是结果"，不要再复述\n3. 只有当结果需要解读、比较或给出建议时，才补充分析\n4. 用户能看到子Agent的输出，重复内容只会让对话冗余' },
@@ -242,6 +235,8 @@ export default function ChatPage({ user }: { user?: any }) {
         } else if (event.type === 'image') {
           responseImages.push(event.data)
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last })
+        } else if (event.type === 'progress') {
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0 && last[i].role === 'assistant') last[i] = { ...last[i], progress: event.data }; return last })
         } else if (event.type === 'error') {
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `${event.data}` }; return last }); setLoading(false)
         }
@@ -291,6 +286,7 @@ export default function ChatPage({ user }: { user?: any }) {
           if (isD2) { currentSender2 = 'orchestrator'; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }]) }
         }
         else if (event.type === 'image') { responseImages.push(event.data); setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last }) }
+        else if (event.type === 'progress') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0 && last[i].role === 'assistant') last[i] = { ...last[i], progress: event.data }; return last }) }
         else if (event.type === 'error') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `${event.data}` }; return last }); setLoading(false) }
       },
       (error) => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setLoading(false) },
@@ -611,6 +607,17 @@ export default function ChatPage({ user }: { user?: any }) {
                           </>
                         ) : (
                           <>
+                            {msg.progress && (
+                              <div style={{ marginBottom: 8, padding: '6px 10px', background: '#f0f5ff', borderRadius: 6 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#666', marginBottom: 4 }}>
+                                  <span>{msg.progress.message || '处理中...'}</span>
+                                  <span>{msg.progress.current}/{msg.progress.total}</span>
+                                </div>
+                                <div style={{ height: 4, background: '#e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${Math.round((msg.progress.current / Math.max(msg.progress.total, 1)) * 100)}%`, background: '#1976d2', borderRadius: 2, transition: 'width 0.3s' }} />
+                                </div>
+                              </div>
+                            )}
                             {msg.reasoning && (
                               <details open={loading && isLast && !msg.content} style={{ marginBottom: 8 }}>
                                 <summary style={{ cursor: 'pointer', fontSize: 12, color: '#888', userSelect: 'none', outline: 'none' }}>

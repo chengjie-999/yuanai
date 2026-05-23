@@ -185,116 +185,75 @@ export default function ChatPage({ user }: { user?: any }) {
     refreshSessions()
   }
 
+  const SYSTEM_PROMPT = '你是小元AI的统筹助手，管理着数据分析、数据采集、自动化三个专业Agent团队。\n\n你可以委派的Agent：\n- delegate_to_analysis_agent：数据分析\n- delegate_to_collection_agent：数据采集\n- delegate_to_automation_agent：自动化\n\n工作原则：\n1. 判断意图，用一句话告诉用户将调用哪个Agent，然后立刻调用\n2. 子Agent返回结果后，如果结果已经清晰完整，只做简短确认如"以上是结果"，不要再复述\n3. 只有当结果需要解读、比较或给出建议时，才补充分析\n4. 用户能看到子Agent的输出，重复内容只会让对话冗余'
+
+  const makeStreamHandlers = () => {
+    let currentSender = 'orchestrator'
+    const onEvent = (event: any) => {
+      if (event.type === 'token') {
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender) as any }; return last })
+      } else if (event.type === 'reasoning') {
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
+      } else if (event.type === 'tool_start') {
+        const ns = senderFromTool(event.data.name)
+        if (ns) { currentSender = ns; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
+        else { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
+      } else if (event.type === 'tool_end') {
+        const isDel = !!senderFromTool(event.data.name)
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const, result: event.data.output || '' } : c) }; return last })
+        if (isDel) { currentSender = 'orchestrator'; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }]) }
+      } else if (event.type === 'image') {
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last })
+      } else if (event.type === 'progress') {
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0 && last[i].role === 'assistant') last[i] = { ...last[i], progress: event.data }; return last })
+      } else if (event.type === 'error') {
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `请求失败，请重试` }; return last }); setLoading(false)
+      }
+    }
+    const onError = () => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: '网络异常，请检查连接' }; return last }); setLoading(false) }
+    return { onEvent, onError }
+  }
+
   const handleSend = () => {
     if (!input.trim() || loading || !currentSid) return
     const sid = currentSid
     const sentImages = images.length > 0 ? [...images] : undefined
-    const userMsg: ChatMessage = { role: 'user', content: input, images: sentImages }
-    const prevMsgs = [...messages] // 闭包快照，流式过程中会话切换不会影响此值
-    setMessages((prev) => [...prev, userMsg])
-    setImages([])
-    setInput('')
-    setLoading(true)
+    const prevMsgs = [...messages]
+    setMessages((prev) => [...prev, { role: 'user', content: input, images: sentImages }])
+    setImages([]); setInput(''); setLoading(true)
     const history = prevMsgs.map((m) => ({ role: m.role, content: m.content }))
-    const assistantMsg: ChatMessage = { role: 'assistant', content: '', toolCalls: [] }
-    setMessages((prev) => [...prev, assistantMsg])
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', toolCalls: [] }])
 
-    let responseContent = ''
-    let responseImages: string[] = []
-    let responseReasoning = ''
-    let reasoningStart = 0
-
-    let currentSender: string = 'orchestrator'
+    const { onEvent, onError } = makeStreamHandlers()
     streamChat(
-      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: '你是小元AI的统筹助手，管理着数据分析、数据采集、自动化三个专业Agent团队。\n\n你可以委派的Agent：\n- delegate_to_analysis_agent：数据分析\n- delegate_to_collection_agent：数据采集\n- delegate_to_automation_agent：自动化\n\n工作原则：\n1. 判断意图，用一句话告诉用户将调用哪个Agent，然后立刻调用\n2. 子Agent返回结果后，如果结果已经清晰完整，只做简短确认如"以上是结果"，不要再复述\n3. 只有当结果需要解读、比较或给出建议时，才补充分析\n4. 用户能看到子Agent的输出，重复内容只会让对话冗余' },
-      (event) => {
-        if (event.type === 'token') {
-          responseContent += event.data
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender) as any }; return last })
-        } else if (event.type === 'reasoning') {
-          if (!reasoningStart) reasoningStart = Date.now()
-          responseReasoning += event.data
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
-        } else if (event.type === 'tool_start') {
-          const newSender = senderFromTool(event.data.name)
-          if (newSender) {
-            currentSender = newSender
-            // 为子 Agent 创建新气泡
-            setMessages((prev) => { const nxt = [...prev, { role: 'assistant' as const, content: '', sender: newSender as any, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]; return nxt })
-          } else {
-            setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last })
-          }
-        } else if (event.type === 'tool_end') {
-          const isDelegate = !!senderFromTool(event.data.name)
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const, result: event.data.output || '' } : c) }; return last })
-          if (isDelegate) {
-            currentSender = 'orchestrator'
-            // 子 Agent 完成后，为统筹创建新气泡
-            setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }])
-          }
-        } else if (event.type === 'image') {
-          responseImages.push(event.data)
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last })
-        } else if (event.type === 'progress') {
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0 && last[i].role === 'assistant') last[i] = { ...last[i], progress: event.data }; return last })
-        } else if (event.type === 'error') {
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `${event.data}` }; return last }); setLoading(false)
-        }
-      },
-      (error) => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setLoading(false) },
+      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: SYSTEM_PROMPT },
+      onEvent, onError,
       () => {
         setLoading(false)
         const msgs = messagesRef.current.map(encodeMsg)
-        const title = input.length > 50 ? input.slice(0, 50) + '...' : input
-        saveMessages(sid, msgs, title)
+        saveMessages(sid, msgs, input.length > 50 ? input.slice(0, 50) + '...' : input)
         refreshSessions()
       },
     )
   }
 
   const sendWithNewSession = async (text: string) => {
-    setLoading(true) // 立即锁定，防止 setTimeout 窗口内重复发送
+    setLoading(true)
     const sid = await createSession()
-    setCurrentSid(sid)
-    refreshSessions()
-    setInput(text)
-    setQuickInput('')
-    const sentImages = [...images]
-    setImages([])
-    const userMsg: ChatMessage = { role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }
-    setMessages([userMsg])
+    setCurrentSid(sid); refreshSessions()
+    setInput(text); setQuickInput('')
+    const sentImages = [...images]; setImages([])
+    setMessages([{ role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }])
     setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: 'orchestrator', toolCalls: [] }])
 
-    let responseContent = ''
-    let responseImages: string[] = []
-    let responseReasoning = ''
-    let currentSender2: string = 'orchestrator'
-
+    const { onEvent, onError } = makeStreamHandlers()
     streamChat(
-      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: '你是小元AI的统筹助手，管理着数据分析、数据采集、自动化三个专业Agent团队。\n\n你可以委派的Agent：\n- delegate_to_analysis_agent：数据分析\n- delegate_to_collection_agent：数据采集\n- delegate_to_automation_agent：自动化\n\n工作原则：\n1. 判断意图，用一句话告诉用户将调用哪个Agent，然后立刻调用\n2. 子Agent返回结果后，如果结果已经清晰完整，只做简短确认如"以上是结果"，不要再复述\n3. 只有当结果需要解读、比较或给出建议时，才补充分析\n4. 用户能看到子Agent的输出，重复内容只会让对话冗余' },
-      (event) => {
-        if (event.type === 'token') { responseContent += event.data; setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender2) as any }; return last }) }
-        else if (event.type === 'reasoning') { responseReasoning += event.data; setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last }) }
-        else if (event.type === 'tool_start') {
-          const ns2 = senderFromTool(event.data.name)
-          if (ns2) { currentSender2 = ns2; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns2 as any, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
-          else { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
-        }
-        else if (event.type === 'tool_end') {
-          const isD2 = !!senderFromTool(event.data.name)
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const, result: event.data.output || '' } : c) }; return last })
-          if (isD2) { currentSender2 = 'orchestrator'; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }]) }
-        }
-        else if (event.type === 'image') { responseImages.push(event.data); setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last }) }
-        else if (event.type === 'progress') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0 && last[i].role === 'assistant') last[i] = { ...last[i], progress: event.data }; return last }) }
-        else if (event.type === 'error') { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `${event.data}` }; return last }); setLoading(false) }
-      },
-      (error) => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: `❌ ${error}` }; return last }); setLoading(false) },
+      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: SYSTEM_PROMPT },
+      onEvent, onError,
       () => {
         setLoading(false)
-        const msgs2 = messagesRef.current.map(encodeMsg)
-        const title = text.length > 50 ? text.slice(0, 50) + '...' : text
-        saveMessages(sid, msgs2, title)
+        const msgs = messagesRef.current.map(encodeMsg)
+        saveMessages(sid, msgs, text.length > 50 ? text.slice(0, 50) + '...' : text)
         refreshSessions()
       },
     )

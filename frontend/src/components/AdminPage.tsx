@@ -405,9 +405,9 @@ function SessionsTab() {
   const load = () => {
     setError('')
     fetch(`${API_BASE}/admin/sessions`, { headers: headers() })
-      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then((d) => { if (Array.isArray(d)) setSessions(d) })
-      .catch(() => setError('加载会话列表失败'))
+      .catch((e) => setError(`加载会话列表失败: ${e.message}`))
     setLoading(false)
   }
   useEffect(() => { load() }, [])

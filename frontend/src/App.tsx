@@ -87,7 +87,7 @@ function App() {
           }}>{user?.username || user?.display_name}</span>
         </div>
       </header>
-      <main style={{ flex: 1, overflow: 'hidden' }}>
+      <main style={{ flex: 1, minHeight: 0 }}>
         {page === 'chat' && <ChatPage user={user} />}
         {page === 'user' && <UserPage user={user} onLogout={handleLogout} />}
         {page === 'agent' && <AgentPage userId={user?.id} />}

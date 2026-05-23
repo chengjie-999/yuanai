@@ -274,60 +274,6 @@ async def admin_dashboard(request: Request):
         sess.close()
 
 
-# ===================== 会话管理 =====================
-
-
-@router.get("/sessions")
-async def admin_list_sessions(request: Request):
-    """返回全部用户会话（admin only），按更新时间倒序"""
-    require_admin(request)
-    db = get_db()
-    sess = db.Session()
-    try:
-        from db.session import ChatSession, AIChat, User
-        from sqlalchemy import func
-
-        # 子查询：每个会话的消息数
-        msg_count = (
-            sess.query(AIChat.session_id, func.count(AIChat.id).label("cnt"))
-            .group_by(AIChat.session_id)
-            .subquery()
-        )
-
-        rows = (
-            sess.query(
-                ChatSession.session_id,
-                ChatSession.title,
-                ChatSession.create_time,
-                ChatSession.update_time,
-                User.username,
-                func.coalesce(msg_count.c.cnt, 0).label("message_count"),
-            )
-            .outerjoin(User, User.id == ChatSession.user_id)
-            .outerjoin(msg_count, msg_count.c.session_id == ChatSession.session_id)
-            .order_by(ChatSession.update_time.desc())
-            .limit(200)
-            .all()
-        )
-        return [
-            {
-                "session_id": r.session_id,
-                "title": r.title,
-                "username": r.username or "-",
-                "message_count": r.message_count,
-                "create_time": str(r.create_time)[:19] if r.create_time else "",
-                "update_time": str(r.update_time)[:19] if r.update_time else "",
-            }
-            for r in rows
-        ]
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).exception("admin sessions failed")
-        raise HTTPException(status_code=500, detail=f"加载失败: {str(e)}")
-    finally:
-        sess.close()
-
-
 # ===================== Agent 状态摘要 =====================
 
 

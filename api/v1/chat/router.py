@@ -212,11 +212,45 @@ async def new_session(req: NewSessionRequest, request: Request):
 
 @router.get("/sessions")
 async def list_sessions(request: Request):
-    """获取会话列表"""
+    """获取会话列表（管理员看全部，普通用户只看自己的）"""
     try:
         db = _get_db()
-        user_id = _get_user_id(request)
-        return db.get_sessions(user_id=user_id)
+        is_admin = getattr(request.state, "role", "") == "admin"
+        user_id = None if is_admin else _get_user_id(request)
+        limit = 200 if is_admin else 50
+        sessions = db.get_sessions(user_id=user_id, limit=limit)
+        # 管理员补充用户名和消息数
+        if is_admin:
+            from db.session import User, ChatSession, AIChat
+            from sqlalchemy import func
+            sess = db.Session()
+            try:
+                sids = [s["session_id"] for s in sessions]
+                # 消息数
+                msg_counts = dict(
+                    sess.query(AIChat.session_id, func.count(AIChat.id))
+                    .filter(AIChat.session_id.in_(sids))
+                    .group_by(AIChat.session_id).all()
+                )
+                # user_id 映射
+                uid_map = dict(
+                    sess.query(ChatSession.session_id, ChatSession.user_id)
+                    .filter(ChatSession.session_id.in_(sids)).all()
+                )
+                uids = list(set(uid_map.values()))
+                user_map = {}
+                if uids:
+                    user_map = dict(
+                        sess.query(User.id, User.username)
+                        .filter(User.id.in_(uids)).all()
+                    )
+                for s in sessions:
+                    s["message_count"] = msg_counts.get(s["session_id"], 0)
+                    uid = uid_map.get(s["session_id"])
+                    s["username"] = user_map.get(uid, "-") if uid else "-"
+            finally:
+                sess.close()
+        return sessions
     except HTTPException:
         raise
     except Exception as e:

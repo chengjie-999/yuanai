@@ -404,7 +404,7 @@ function SessionsTab() {
 
   const load = () => {
     setError('')
-    fetch(`${API_BASE}/admin/sessions`, { headers: headers() })
+    fetch(`${API_BASE}/chat/sessions`, { headers: headers() })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then((d) => { if (Array.isArray(d)) setSessions(d) })
       .catch((e) => setError(`加载会话列表失败: ${e.message}`))

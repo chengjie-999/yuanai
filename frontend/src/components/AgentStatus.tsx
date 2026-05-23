@@ -47,7 +47,7 @@ export default function AgentStatus({ userId }: { userId?: number }) {
           width: 8, height: 8, borderRadius: '50%', background: '#ccc',
           display: 'inline-block',
         }} />
-        Agent 离线{userId ? ` · python agent/main.py --agent-id ${userId}` : ''}
+        本地Agent 离线{userId ? ` · python agent/main.py --agent-id ${userId}` : ''}
       </span>
     )
   }

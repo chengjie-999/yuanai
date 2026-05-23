@@ -43,7 +43,7 @@ export default function AgentPage({ userId }: { userId?: number }) {
   const mainAgent = myAgents[0]
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', background: '#f8f9fb', padding: '40px', display: 'flex', justifyContent: 'center' }}>
+    <div style={{ background: '#f8f9fb', padding: '40px', display: 'flex', justifyContent: 'center' }}>
       <div style={{ maxWidth: 560, width: '100%', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         {/* 运行状态 */}
@@ -56,7 +56,7 @@ export default function AgentPage({ userId }: { userId?: number }) {
               boxShadow: mainOnline ? '0 0 8px rgba(76,175,80,0.4)' : undefined,
             }} />
             <span style={{ fontWeight: 600, fontSize: 16, color: mainOnline ? '#333' : '#999' }}>
-              {mainOnline ? 'Agent 运行中' : 'Agent 离线'}
+              {mainOnline ? '本地Agent 运行中' : '本地Agent 离线'}
             </span>
             <div style={{ flex: 1 }} />
             <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#1976d2' }}>刷新</button>
@@ -145,17 +145,22 @@ function ModelsCard() {
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr style={{ background: "#f5f5f8" }}>
-            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "#666" }}>模型</th>
+            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "#666" }}>用途</th>
+            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "#666" }}>模型 ID</th>
             <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "#666" }}>供应商</th>
           </tr>
         </thead>
         <tbody>
-          {Object.entries(models).map(([id, info]) => (
+          {Object.entries(models).map(([id, info]) => {
+            const label = info.label as string
+            const desc = label.includes('Pro') ? '强推理/多模态' : label.includes('Lite') ? '轻量任务' : ''
+            return (
             <tr key={id} style={{ borderBottom: "1px solid #f0f0f0" }}>
-              <td style={{ padding: "10px 14px", fontSize: 13 }}>{info.label as string}</td>
+              <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 500 }}>{label}{desc && <span style={{ fontSize: 11, color: '#999', marginLeft: 6 }}>{desc}</span>}</td>
+              <td style={{ padding: "10px 14px", fontFamily: 'monospace', fontSize: 11, color: '#888' }}>{id}</td>
               <td style={{ padding: "10px 14px", color: "#666", fontSize: 12 }}>{info.provider as string}</td>
             </tr>
-          ))}
+          )})}
         </tbody>
       </table>
     </div>

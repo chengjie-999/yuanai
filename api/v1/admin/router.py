@@ -341,6 +341,38 @@ async def add_model(req: ModelUpsert, request: Request):
 class ModelDelete(BaseModel):
     model_id: str
 
+class ApiKeyUpsert(BaseModel):
+    provider: str
+    key: str
+
+@router.get("/apikeys")
+async def list_apikeys(request: Request):
+    require_admin(request)
+    return _read_models_file().get("_apikeys", {})
+
+@router.post("/apikeys")
+async def save_apikey(req: ApiKeyUpsert, request: Request):
+    require_admin(request)
+    data = _read_models_file()
+    keys = data.get("_apikeys", {})
+    keys[req.provider] = req.key
+    data["_apikeys"] = keys
+    _write_models_file(data)
+    return {"ok": True}
+
+@router.delete("/apikeys")
+async def delete_apikey(req: ApiKeyUpsert, request: Request):
+    require_admin(request)
+    data = _read_models_file()
+    keys = data.get("_apikeys", {})
+    keys.pop(req.provider, None)
+    if keys:
+        data["_apikeys"] = keys
+    else:
+        data.pop("_apikeys", None)
+    _write_models_file(data)
+    return {"ok": True}
+
 @router.delete("/models")
 async def delete_model(req: ModelDelete, request: Request):
     require_admin(request)

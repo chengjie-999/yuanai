@@ -135,10 +135,11 @@ export default function AgentPage({ userId }: { userId?: number }) {
 
 function ModelsCard() {
   const [models, setModels] = useState<Record<string, any>>({})
-  const [showAdd, setShowAdd] = useState(false)
+  const [showModal, setShowModal] = useState(false)
   const [newId, setNewId] = useState('')
   const [newLabel, setNewLabel] = useState('')
   const [newProvider, setNewProvider] = useState('Custom')
+  const [newKey, setNewKey] = useState('')
 
   const loadModels = () => {
     fetch(`${API_BASE}/admin/models`, { headers: headers() })
@@ -152,7 +153,13 @@ function ModelsCard() {
       method: 'POST', headers: headers(),
       body: JSON.stringify({ model_id: newId.trim(), label: newLabel.trim(), provider: newProvider.trim() || 'Custom' }),
     })
-    setShowAdd(false); setNewId(''); setNewLabel(''); setNewProvider('Custom')
+    if (newKey.trim()) {
+      await fetch(`${API_BASE}/admin/apikeys`, {
+        method: 'POST', headers: headers(),
+        body: JSON.stringify({ provider: newProvider.trim() || 'Custom', key: newKey.trim() }),
+      })
+    }
+    setShowModal(false); setNewId(''); setNewLabel(''); setNewProvider('Custom'); setNewKey('')
     loadModels()
   }
 
@@ -169,16 +176,8 @@ function ModelsCard() {
       <div style={{ padding: "14px 24px", borderBottom: "1px solid #f0f0f0", fontWeight: 600, fontSize: 14, color: "#333", background: "#fafafa", display: 'flex', alignItems: 'center' }}>
         模型配置
         <div style={{ flex: 1 }} />
-        <button onClick={() => setShowAdd(!showAdd)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#1976d2' }}>{showAdd ? '收起' : '+ 添加'}</button>
+        <button onClick={() => setShowModal(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#1976d2' }}>+ 添加</button>
       </div>
-      {showAdd && (
-        <div style={{ padding: '10px 24px', display: 'flex', gap: 8, borderBottom: '1px solid #f0f0f0', background: '#fafafa', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="模型 ID" style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, width: 200 }} />
-          <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="显示名" style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, width: 100 }} />
-          <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)} placeholder="供应商" style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, width: 80 }} />
-          <button onClick={handleAdd} style={{ padding: '4px 12px', background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>确定</button>
-        </div>
-      )}
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr style={{ background: "#f5f5f8" }}>
@@ -198,12 +197,31 @@ function ModelsCard() {
               <td style={{ padding: "10px 14px", fontFamily: 'monospace', fontSize: 11, color: '#888' }}>{id}</td>
               <td style={{ padding: "10px 14px", color: "#666", fontSize: 12 }}>{info.provider as string}</td>
               <td style={{ padding: "10px 14px" }}>
-                {!info.builtin && <button onClick={() => handleDelete(id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#ccc', padding: 0 }}>x</button>}
+                {!info.builtin && <button onClick={() => handleDelete(id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#ccc', padding: 0 }}>x</button>}
               </td>
             </tr>
           )})}
         </tbody>
       </table>
+      {showModal && (
+        <div onClick={() => setShowModal(false)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 24, minWidth: 360, boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: '#333' }}>添加模型</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="模型 ID (如 gpt-4)" style={inputStyle} />
+              <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="显示名 (如 GPT-4)" style={inputStyle} />
+              <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)} placeholder="供应商 (如 OpenAI)" style={inputStyle} />
+              <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="API Key (可选)" style={inputStyle} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowModal(false)} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', cursor: 'pointer', fontSize: 13, color: '#666' }}>取消</button>
+              <button onClick={handleAdd} style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: '#1976d2', color: '#fff', cursor: 'pointer', fontSize: 13 }}>确认添加</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
+const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 13, outline: 'none' }

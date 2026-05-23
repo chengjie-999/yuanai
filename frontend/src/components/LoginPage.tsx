@@ -25,6 +25,7 @@ export default function LoginPage({ onLogin }: { onLogin: (token: string, user: 
     setError('')
     try {
       const data = tab === 'login' ? await login(username, password) : await register(username, password)
+      if (!data?.token) { setError('登录失败，服务器返回异常'); setLoading(false); return }
       onLogin(data.token, data.user)
     } catch (e: any) {
       setError(e.message || '操作失败')

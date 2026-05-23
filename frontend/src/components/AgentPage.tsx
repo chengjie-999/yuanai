@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { Component, useState, useEffect } from 'react'
 import { API_BASE, getToken } from '../api'
 
 function headers() {
@@ -12,6 +12,23 @@ async function safeJson(res: Response): Promise<any> {
   const text = await res.text()
   try { return JSON.parse(text) }
   catch { return null }
+}
+
+class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
+  state = { hasError: false, error: '' }
+  static getDerivedStateFromError(e: Error) { return { hasError: true, error: e.message } }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, textAlign: 'center', color: '#e53935' }}>
+          <h3>页面加载异常</h3>
+          <p style={{ fontSize: 13, color: '#999' }}>{this.state.error}</p>
+          <button onClick={() => this.setState({ hasError: false })} style={{ marginTop: 12, padding: '6px 16px', cursor: 'pointer' }}>重试</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }
 
 const SUB_AGENTS = [
@@ -43,6 +60,7 @@ export default function AgentPage({ userId }: { userId?: number }) {
   const mainAgent = myAgents[0]
 
   return (
+    <ErrorBoundary>
     <div style={{ background: '#f8f9fb', padding: '40px', display: 'flex', justifyContent: 'center' }}>
       <div style={{ maxWidth: 560, width: '100%', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
@@ -130,6 +148,7 @@ export default function AgentPage({ userId }: { userId?: number }) {
         })}
       </div>
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -143,7 +162,9 @@ function ModelsCard() {
 
   const loadModels = () => {
     fetch(`${API_BASE}/admin/models`, { headers: headers() })
-      .then((r) => r.json()).then(setModels).catch(() => {})
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then((data) => { if (data && typeof data === 'object' && !Array.isArray(data)) setModels(data) })
+      .catch(() => {})
   }
   useEffect(() => { loadModels() }, [])
 
@@ -189,7 +210,9 @@ function ModelsCard() {
         </thead>
         <tbody>
           {Object.entries(models).map(([id, info]) => {
-            const label = info.label as string
+            if (!info || typeof info !== 'object') return null
+            const label = (info as any).label
+            if (!label) return null
             const desc = id.includes('deepseek') ? (label.includes('Pro') ? '强推理' : '快速轻量') : label.includes('Pro') ? '多模态/强推理' : '轻量任务'
             return (
             <tr key={id} style={{ borderBottom: "1px solid #f0f0f0" }}>

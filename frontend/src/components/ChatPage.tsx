@@ -125,7 +125,7 @@ function groupSessions(sessions: SessionInfo[]): { label: string; items: Session
   return groups
 }
 
-export default function ChatPage({ user }: { user?: any }) {
+export default function ChatPage({ user, focusKey = 0 }: { user?: any; focusKey?: number }) {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [currentSid, setCurrentSid] = useState<string>('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -140,6 +140,7 @@ export default function ChatPage({ user }: { user?: any }) {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef(messages)
   messagesRef.current = messages
+  const prevFocusRef = useRef(focusKey)
 
   const refreshSessions = useCallback(async () => {
     const list = await listSessions()
@@ -177,6 +178,16 @@ export default function ChatPage({ user }: { user?: any }) {
       }))
     }
   }
+
+  // 点击导航"对话"时自动跳转最近会话
+  useEffect(() => {
+    if (focusKey > 0 && focusKey !== prevFocusRef.current) {
+      prevFocusRef.current = focusKey
+      listSessions().then((list) => {
+        if (list.length > 0) handleSelectSession(list[0].session_id)
+      })
+    }
+  }, [focusKey])
 
   const handleDeleteSession = async (e: React.MouseEvent, sid: string) => {
     e.stopPropagation()

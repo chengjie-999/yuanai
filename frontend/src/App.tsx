@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { Component, useState, useEffect } from 'react'
 import ChatPage from './components/ChatPage'
 import LoginPage from './components/LoginPage'
 import AdminPage from './components/AdminPage'
@@ -7,6 +7,23 @@ import AgentPage from './components/AgentPage'
 import AgentStatus from './components/AgentStatus'
 import { checkToken, setStoredUser } from './api'
 
+class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
+  state = { hasError: false, error: '' }
+  static getDerivedStateFromError(e: Error) { return { hasError: true, error: e.message } }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, textAlign: 'center' }}>
+          <h3 style={{ color: '#e53935' }}>页面异常</h3>
+          <p style={{ fontSize: 13, color: '#999', margin: '8px 0' }}>{this.state.error}</p>
+          <button onClick={() => window.location.reload()} style={{ marginTop: 12, padding: '6px 16px', cursor: 'pointer', border: '1px solid #ddd', borderRadius: 6, background: '#fff', fontSize: 13 }}>刷新页面</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 type Page = 'chat' | 'user' | 'agent' | 'admin'
 
 function App() {
@@ -14,6 +31,7 @@ function App() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState<Page>('chat')
+  const [chatFocus, setChatFocus] = useState(0)
 
   useEffect(() => {
     const saved = localStorage.getItem('token')
@@ -34,10 +52,12 @@ function App() {
   }, [])
 
   const handleLogin = (newToken: string, newUser: any) => {
+    if (!newToken) return
     localStorage.setItem('token', newToken)
-    setToken(newToken)
-    setUser(newUser)
     setStoredUser(newUser)
+    setUser(newUser)
+    setToken(newToken)
+    setPage('chat')
   }
 
   const handleLogout = () => {
@@ -71,7 +91,7 @@ function App() {
           小元AI
         </span>
         <nav style={{ display: 'flex', gap: 2 }}>
-          <button onClick={() => setPage('chat')} style={tabStyle('chat')}>对话</button>
+          <button onClick={() => { setPage('chat'); setChatFocus(c => c + 1) }} style={tabStyle('chat')}>对话</button>
           {isAdmin && (
             <button onClick={() => setPage('admin')} style={tabStyle('admin')}>后台管理</button>
           )}
@@ -88,10 +108,12 @@ function App() {
         </div>
       </header>
       <main style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        {page === 'chat' && <ChatPage user={user} />}
-        {page === 'user' && <UserPage user={user} onLogout={handleLogout} />}
-        {page === 'agent' && <AgentPage userId={user?.id} />}
-        {page === 'admin' && isAdmin && <AdminPage isAdmin={isAdmin} />}
+        <ErrorBoundary>
+          {page === 'chat' && <ChatPage user={user} focusKey={chatFocus} />}
+          {page === 'user' && <UserPage user={user} onLogout={handleLogout} />}
+          {page === 'agent' && <AgentPage userId={user?.id} />}
+          {page === 'admin' && isAdmin && <AdminPage isAdmin={isAdmin} />}
+        </ErrorBoundary>
       </main>
     </div>
   )

@@ -612,7 +612,6 @@ export default function ChatPage({ user }: { user?: any }) {
 
             <div className="chat-input-area" style={{
               padding: '12px 24px 20px', borderTop: '1px solid #eee',
-              background: '#fafafa',
             }}>
               <div className="chat-input-inner" style={{ maxWidth: 720, margin: '0 auto', width: '100%', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
                 <div style={{ border: '1px solid #e0e0e0', borderRadius: 14, background: '#fff', transition: 'box-shadow 0.2s' }}

@@ -5,8 +5,7 @@ const TABS = [
   { key: 'dashboard', label: '仪表盘' },
   { key: 'users', label: '用户管理' },
   { key: 'websites', label: '网站管理' },
-  { key: 'agents', label: 'Agent 状态' },
-  { key: 'models', label: '模型配置' },
+  { key: 'files', label: '文件管理' },
 ]
 
 function headers() {
@@ -41,27 +40,18 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
 
 // ==================== 仪表盘 ====================
 
-function DashboardTab({ isAdmin, userId }: { isAdmin: boolean; userId?: number }) {
+function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
   const [data, setData] = useState<any>(null)
-  const [agents, setAgents] = useState<any[]>([])
 
   useEffect(() => {
     fetch(`${API_BASE}/admin/dashboard`, { headers: headers() })
       .then(safeJson).then((d) => { if (d && typeof d === 'object') setData(d) }).catch(() => {})
-    fetch(`${API_BASE}/admin/agent-status`, { headers: headers() })
-      .then(safeJson).then((a) => { if (Array.isArray(a)) setAgents(a) }).catch(() => {})
   }, [])
-
-  const agentList = (Array.isArray(agents) ? agents : []).filter(
-    (a: any) => !userId || String(a.agent_id) === String(userId)
-  )
-  const onlineCount = agentList.filter((a: any) => a.online).length
 
   const allCards = [
     { label: '用户数', value: data?.users ?? '-', color: '#42a5f5', adminOnly: true },
     { label: '会话数', value: data?.sessions ?? '-', color: '#66bb6a', adminOnly: true },
     { label: '消息数', value: data?.messages ?? '-', color: '#ffa726', adminOnly: true },
-    { label: '在线 Agent', value: onlineCount, color: '#4caf50', adminOnly: false },
   ]
   const cards = isAdmin ? allCards : allCards.filter((c) => !c.adminOnly)
 
@@ -94,38 +84,6 @@ function DashboardTab({ isAdmin, userId }: { isAdmin: boolean; userId?: number }
         </div>
       )}
 
-      {agents.length > 0 && (
-        <div>
-          <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: '#333' }}>Agent 列表</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, background: '#fff', borderRadius: 8, overflow: 'hidden' }}>
-            <thead>
-              <tr style={{ background: '#f5f5f8' }}>
-                {['名称', '状态', '能力', '最后心跳'].map((h) => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: '#666', fontWeight: 600 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {agents.map((a: any, i: number) => (
-                <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                  <td style={{ padding: '10px 14px', fontWeight: 600 }}>{a.agent_name}</td>
-                  <td style={{ padding: '10px 14px' }}>
-                    <span style={{
-                      display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
-                      background: a.online ? '#4caf50' : '#ccc', marginRight: 6,
-                    }} />
-                    {a.online ? '在线' : '离线'}
-                  </td>
-                  <td style={{ padding: '10px 14px', color: '#666', fontSize: 12 }}>
-                    {a.capabilities?.join(', ') || '-'}
-                  </td>
-                  <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{a.last_heartbeat || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   )
 }
@@ -374,161 +332,85 @@ function WebsitesTab() {
   )
 }
 
-// ==================== Agent 状态 ====================
+// ==================== 文件管理 ====================
 
-const SUB_AGENTS = [
-  { key: 'orchestrator', label: '统筹 Agent', desc: '意图识别与任务分发', color: '#1976d2' },
-  { key: 'analysis', label: '数据分析 Agent', desc: '数据集管理、统计分析、图表生成', color: '#7b1fa2' },
-  { key: 'collection', label: '数据采集 Agent', desc: '网页爬取、数据抓取、内容提取', color: '#00695c' },
-  { key: 'automation', label: '自动化 Agent', desc: '浏览器控制、题目审核、截图监控', color: '#e65100' },
-]
-
-function AgentsTab({ userId }: { userId?: number }) {
-  const [agents, setAgents] = useState<any[]>([])
+function FilesTab() {
+  const [dirs, setDirs] = useState<{ name: string; path: string; is_dir: boolean; size_kb: number }[]>([])
+  const [currentPath, setCurrentPath] = useState('')
   const [loading, setLoading] = useState(true)
+  const [preview, setPreview] = useState<any>(null)
 
-  const load = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/admin/agent-status`, { headers: headers() })
-      const data = await safeJson(res)
-      if (Array.isArray(data)) setAgents(data)
-    } catch {}
+  const load = async (p: string) => {
+    setLoading(true)
+    setCurrentPath(p)
+    fetch(`${API_BASE}/admin/files?path=` + encodeURIComponent(p), { headers: headers() })
+      .then(safeJson).then((d) => { if (d && d.items) setDirs(d.items) }).catch(() => {})
     setLoading(false)
   }
 
-  useEffect(() => {
-    load()
-    const interval = setInterval(load, 10000)
-    return () => clearInterval(interval)
-  }, [])
+  useEffect(() => { load('') }, [])
+
+  const goUp = () => {
+    const parts = currentPath.split(/[/\\]/).filter(Boolean)
+    parts.pop()
+    load(parts.join('/'))
+  }
+
+  const handlePreview = async (d: { name: string; path: string; is_dir: boolean }) => {
+    if (d.is_dir) { load(d.path); return }
+    fetch(`${API_BASE}/admin/file/read?path=` + encodeURIComponent(d.path), { headers: headers() })
+      .then(safeJson).then((r: any) => setPreview({ ...r, name: d.name })).catch(() => {})
+  }
 
   if (loading) return <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>加载中...</div>
-
-  const myAgents = agents.filter((a: any) => !userId || String(a.agent_id) === String(userId))
-  const mainOnline = myAgents.length > 0 && myAgents[0].online
-  const mainAgent = myAgents[0]
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* 统筹 Agent 运行状态 */}
-      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #eee', padding: '16px 20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <span style={{
-            width: 10, height: 10, borderRadius: '50%',
-            background: mainOnline ? '#4caf50' : '#ccc',
-            display: 'inline-block',
-          }} />
-          <span style={{ fontWeight: 600, fontSize: 14, color: '#333' }}>
-            {mainOnline ? 'Agent 运行中' : 'Agent 离线'}
-          </span>
-          <span style={{ fontSize: 12, color: '#999' }}>
-            {mainOnline ? `${mainAgent?.agent_name || ''} @ ${mainAgent?.agent_id || ''}` : '请在本地启动 Agent'}
-          </span>
-          <div style={{ flex: 1 }} />
-          <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#1976d2' }}>刷新</button>
-        </div>
-        {!mainOnline && (
-          <code style={{ display: 'block', marginTop: 8, background: '#f5f5f8', padding: '6px 10px', borderRadius: 4, fontSize: 12, color: '#666' }}>
-            python agent/main.py --agent-id {userId || 'ID'}
-          </code>
-        )}
-      </div>
-
-      {/* 子 Agent 列表 */}
-      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #eee', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 20px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, fontSize: 13, color: '#333', background: '#fafafa' }}>
-          子 Agent 团队
-        </div>
-        {SUB_AGENTS.map((sa) => (
-          <div key={sa.key} style={{
-            display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px',
-            borderBottom: '1px solid #f5f5f5',
-          }}>
-            <span style={{
-              width: 8, height: 8, borderRadius: '50%', background: mainOnline ? sa.color : '#ddd',
-              display: 'inline-block', flexShrink: 0,
-            }} />
-            <span style={{ fontWeight: 600, fontSize: 13, color: sa.color, minWidth: 120 }}>{sa.label}</span>
-            <span style={{ fontSize: 12, color: '#999' }}>{sa.desc}</span>
-            <div style={{ flex: 1 }} />
-            <span style={{ fontSize: 11, color: mainOnline ? '#4caf50' : '#999' }}>
-              {mainOnline ? '就绪' : '待连接'}
-            </span>
-          </div>
-        ))}
-      </div>
-
-          {/* 实时活动 */}
-          {myAgents.map((a, i) => {
-            const acts = a.activities || []
-            if (acts.length === 0) return null
-            return (
-              <div key={i} style={{ background: '#fff', borderRadius: 10, border: '1px solid #eee', padding: '12px 16px' }}>
-                <h4 style={{ fontSize: 13, fontWeight: 600, margin: '0 0 8px 0', color: '#333' }}>
-                  {a.agent_name} 活动记录
-                </h4>
-                <div style={{ maxHeight: 240, overflow: 'auto' }}>
-                  {acts.map((act: any, j: number) => (
-                    <div key={j} style={{
-                      padding: '6px 0', borderBottom: j < acts.length - 1 ? '1px solid #f5f5f5' : 'none',
-                      display: 'flex', gap: 8, alignItems: 'flex-start',
-                    }}>
-                      <span style={{ fontSize: 11, color: '#bbb', minWidth: 48, flexShrink: 0 }}>{act.time}</span>
-                      <span style={{ fontSize: 13, color: '#333' }}>{act.message}</span>
-                      {act.detail && <span style={{ fontSize: 11, color: '#999' }}>{act.detail}</span>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-    </div>
-  )
-}
-
-// ==================== 模型配置 ====================
-
-function ModelsTab() {
-  const [models, setModels] = useState<Record<string, any>>({})
-
-  useEffect(() => {
-    fetch(`${API_BASE}/admin/models`, { headers: headers() })
-      .then((r) => r.json()).then(setModels).catch(() => {})
-  }, [])
-
   return (
     <div>
-      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#333' }}>已配置的模型</h3>
+      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#666' }}>
+        {currentPath && <button onClick={goUp} style={{ fontSize: 11, padding: '4px 8px', border: '1px solid #ddd', background: '#fff', borderRadius: 4, cursor: 'pointer' }}>上级</button>}
+        <span>data/{currentPath || '.'}</span>
+        <button onClick={() => load(currentPath)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#1976d2' }}>刷新</button>
+      </div>
       <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #eee', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: '#f5f5f8' }}>
-              {['模型 ID', '显示名', '供应商'].map((h) => (
-                <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: '#666', fontWeight: 600 }}>{h}</th>
-              ))}
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: '#666', fontWeight: 600 }}>名称</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: '#666', fontWeight: 600 }}>类型</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: '#666', fontWeight: 600 }}>大小</th>
             </tr>
           </thead>
           <tbody>
-            {Object.entries(models).map(([id, info]) => (
-              <tr key={id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12 }}>{id}</td>
-                <td style={{ padding: '10px 14px' }}>{info.label as string}</td>
-                <td style={{ padding: '10px 14px', color: '#666' }}>{info.provider as string}</td>
+            {dirs.map((d, i) => (
+              <tr key={i} style={{ borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
+                onClick={() => handlePreview(d)}>
+                <td style={{ padding: '10px 14px', color: d.is_dir ? '#1976d2' : '#333' }}>{d.is_dir ? 'DIR ' : 'FILE '}{d.name}</td>
+                <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{d.is_dir ? '目录' : '文件'}</td>
+                <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{d.is_dir ? '-' : `${d.size_kb} KB`}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p style={{ fontSize: 12, color: '#999', marginTop: 12 }}>
-        模型配置在 <code>config/settings.py</code> 中修改。API Key 从本地 <code>.env</code> 文件读取。
-      </p>
+      {preview && (
+        <div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '80%', maxHeight: '85%', background: '#fff', borderRadius: 12, padding: 20, overflow: 'auto', minWidth: 300, boxShadow: '0 8px 40px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#333' }}>{preview.name}</span>
+              <span onClick={() => setPreview(null)} style={{ cursor: 'pointer', fontSize: 18, color: '#999' }}>x</span>
+            </div>
+            {preview.type === 'image' && <img src={`data:image/${preview.ext?.replace('.', '')};base64,${preview.data}`} style={{ maxWidth: '100%', borderRadius: 6 }} />}
+            {preview.type === 'text' && <pre style={{ background: '#f5f5f8', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, overflow: 'auto', maxHeight: '65vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{preview.content}</pre>}
+            {!preview.type && <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>{preview.detail || '无法预览'}</div>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 // ==================== 主组件 ====================
 
-function AdminPageInner({ isAdmin, userId }: { isAdmin: boolean; userId?: number }) {
+function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
   const [tab, setTab] = useState('dashboard')
   const visibleTabs = isAdmin ? TABS : TABS.filter((t) => t.key !== 'users' && t.key !== 'websites')
 
@@ -552,20 +434,20 @@ function AdminPageInner({ isAdmin, userId }: { isAdmin: boolean; userId?: number
       </div>
 
       <div style={{ flex: 1 }}>
-        {tab === 'dashboard' && <DashboardTab isAdmin={isAdmin} userId={userId} />}
+        {tab === 'dashboard' && <DashboardTab isAdmin={isAdmin} />}
         {tab === 'users' && isAdmin && <UsersTab />}
         {tab === 'websites' && isAdmin && <WebsitesTab />}
-        {tab === 'agents' && <AgentsTab userId={userId} />}
-        {tab === 'models' && <ModelsTab />}
+        {tab === 'files' && isAdmin && <FilesTab />}
+
       </div>
     </div>
   )
 }
 
-export default function AdminPage({ isAdmin, userId }: { isAdmin: boolean; userId?: number }) {
+export default function AdminPage({ isAdmin }: { isAdmin: boolean }) {
   return (
     <ErrorBoundary>
-      <AdminPageInner isAdmin={isAdmin} userId={userId} />
+      <AdminPageInner isAdmin={isAdmin} />
     </ErrorBoundary>
   )
 }

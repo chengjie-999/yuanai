@@ -94,7 +94,7 @@ function App() {
         {page === 'chat' && <ChatPage user={user} />}
         {page === 'user' && <UserPage user={user} />}
         {page === 'agent' && <AgentPage userId={user?.id} />}
-        {page === 'admin' && isAdmin && <AdminPage isAdmin={isAdmin} userId={user?.id} />}
+        {page === 'admin' && isAdmin && <AdminPage isAdmin={isAdmin} />}
       </main>
     </div>
   )

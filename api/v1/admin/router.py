@@ -322,8 +322,11 @@ class ModelUpsert(BaseModel):
 
 @router.get("/models")
 async def list_models(request: Request):
-    from config.settings import MODELS
-    return MODELS
+    from config.settings import MODELS, _DEFAULT_MODELS
+    result = {}
+    for k, v in MODELS.items():
+        result[k] = {**v, "builtin": k in _DEFAULT_MODELS}
+    return result
 
 @router.post("/models")
 async def add_model(req: ModelUpsert, request: Request):

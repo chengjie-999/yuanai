@@ -198,7 +198,7 @@ function ModelsCard() {
               <td style={{ padding: "10px 14px", fontFamily: 'monospace', fontSize: 11, color: '#888' }}>{id}</td>
               <td style={{ padding: "10px 14px", color: "#666", fontSize: 12 }}>{info.provider as string}</td>
               <td style={{ padding: "10px 14px" }}>
-                <button onClick={() => handleDelete(id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#ccc', padding: 0 }}>x</button>
+                {!info.builtin && <button onClick={() => handleDelete(id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#ccc', padding: 0 }}>x</button>}
               </td>
             </tr>
           )})}

@@ -274,6 +274,50 @@ async def admin_dashboard(request: Request):
         sess.close()
 
 
+# ===================== 会话管理 =====================
+
+
+@router.get("/sessions")
+async def admin_list_sessions(request: Request):
+    """返回全部用户会话（admin only），按更新时间倒序"""
+    require_admin(request)
+    db = get_db()
+    sess = db.Session()
+    try:
+        from db.session import ChatSession, AIChat, User
+        from sqlalchemy import func
+
+        rows = (
+            sess.query(
+                ChatSession.session_id,
+                ChatSession.title,
+                ChatSession.create_time,
+                ChatSession.update_time,
+                User.username,
+                func.count(AIChat.id).label("message_count"),
+            )
+            .outerjoin(AIChat, AIChat.session_id == ChatSession.session_id)
+            .outerjoin(User, User.id == ChatSession.user_id)
+            .group_by(ChatSession.session_id)
+            .order_by(ChatSession.update_time.desc())
+            .limit(200)
+            .all()
+        )
+        return [
+            {
+                "session_id": r.session_id,
+                "title": r.title,
+                "username": r.username or "-",
+                "message_count": r.message_count,
+                "create_time": str(r.create_time)[:19] if r.create_time else "",
+                "update_time": str(r.update_time)[:19] if r.update_time else "",
+            }
+            for r in rows
+        ]
+    finally:
+        sess.close()
+
+
 # ===================== Agent 状态摘要 =====================
 
 

@@ -135,19 +135,57 @@ export default function AgentPage({ userId }: { userId?: number }) {
 
 function ModelsCard() {
   const [models, setModels] = useState<Record<string, any>>({})
-  useEffect(() => {
+  const [showAdd, setShowAdd] = useState(false)
+  const [newId, setNewId] = useState('')
+  const [newLabel, setNewLabel] = useState('')
+  const [newProvider, setNewProvider] = useState('Custom')
+
+  const loadModels = () => {
     fetch(`${API_BASE}/admin/models`, { headers: headers() })
       .then((r) => r.json()).then(setModels).catch(() => {})
-  }, [])
+  }
+  useEffect(() => { loadModels() }, [])
+
+  const handleAdd = async () => {
+    if (!newId.trim() || !newLabel.trim()) return
+    await fetch(`${API_BASE}/admin/models`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ model_id: newId.trim(), label: newLabel.trim(), provider: newProvider.trim() || 'Custom' }),
+    })
+    setShowAdd(false); setNewId(''); setNewLabel(''); setNewProvider('Custom')
+    loadModels()
+  }
+
+  const handleDelete = async (id: string) => {
+    await fetch(`${API_BASE}/admin/models`, {
+      method: 'DELETE', headers: headers(),
+      body: JSON.stringify({ model_id: id }),
+    })
+    loadModels()
+  }
+
   return (
     <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #eee", overflow: "hidden" }}>
-      <div style={{ padding: "14px 24px", borderBottom: "1px solid #f0f0f0", fontWeight: 600, fontSize: 14, color: "#333", background: "#fafafa" }}>模型配置</div>
+      <div style={{ padding: "14px 24px", borderBottom: "1px solid #f0f0f0", fontWeight: 600, fontSize: 14, color: "#333", background: "#fafafa", display: 'flex', alignItems: 'center' }}>
+        模型配置
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowAdd(!showAdd)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#1976d2' }}>{showAdd ? '收起' : '+ 添加'}</button>
+      </div>
+      {showAdd && (
+        <div style={{ padding: '10px 24px', display: 'flex', gap: 8, borderBottom: '1px solid #f0f0f0', background: '#fafafa', flexWrap: 'wrap', alignItems: 'center' }}>
+          <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="模型 ID" style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, width: 200 }} />
+          <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="显示名" style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, width: 100 }} />
+          <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)} placeholder="供应商" style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, width: 80 }} />
+          <button onClick={handleAdd} style={{ padding: '4px 12px', background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>确定</button>
+        </div>
+      )}
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr style={{ background: "#f5f5f8" }}>
             <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "#666" }}>用途</th>
             <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "#666" }}>模型 ID</th>
             <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "#666" }}>供应商</th>
+            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "#666", width: 40 }}></th>
           </tr>
         </thead>
         <tbody>
@@ -159,14 +197,13 @@ function ModelsCard() {
               <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 500 }}>{label}{desc && <span style={{ fontSize: 11, color: '#999', marginLeft: 6 }}>{desc}</span>}</td>
               <td style={{ padding: "10px 14px", fontFamily: 'monospace', fontSize: 11, color: '#888' }}>{id}</td>
               <td style={{ padding: "10px 14px", color: "#666", fontSize: 12 }}>{info.provider as string}</td>
+              <td style={{ padding: "10px 14px" }}>
+                <button onClick={() => handleDelete(id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#ccc', padding: 0 }}>x</button>
+              </td>
             </tr>
           )})}
         </tbody>
       </table>
-      <div style={{ padding: '10px 24px', fontSize: 11, color: '#999', background: '#fafafa', lineHeight: 1.8 }}>
-        配置文件 <code style={{ background: '#f0f0f0', padding: '1px 4px', borderRadius: 2 }}>config/settings.py</code> 中修改 MODELS 字典，
-        子 Agent 模型在 <code style={{ background: '#f0f0f0', padding: '1px 4px', borderRadius: 2 }}>agent/agents/*.py</code> 的 get_llm() 调用中指定
-      </div>
     </div>
   )
 }

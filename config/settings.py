@@ -5,12 +5,30 @@ load_dotenv()
 
 # ===================== 模型配置 =====================
 
-MODELS = {
+import json as _json
+from pathlib import Path as _Path
+
+_DEFAULT_MODELS = {
     "doubao-seed-2-0-pro-260215": {"label": "豆包 Pro", "provider": "Doubao"},
     "doubao-seed-2-0-lite-260215": {"label": "豆包 Lite", "provider": "Doubao"},
     "deepseek-v4-flash": {"label": "DeepSeek V4 Flash", "provider": "DeepSeek"},
     "deepseek-v4-pro": {"label": "DeepSeek V4 Pro", "provider": "DeepSeek"},
 }
+
+def _load_models() -> dict:
+    models = dict(_DEFAULT_MODELS)
+    try:
+        custom_path = _Path(__file__).parent.parent / "data" / "models.json"
+        if custom_path.exists():
+            with open(custom_path, "r", encoding="utf-8") as f:
+                custom = _json.load(f)
+            if isinstance(custom, dict):
+                models.update(custom)
+    except Exception:
+        pass
+    return models
+
+MODELS = _load_models()
 
 MODEL_NAMES = list(MODELS.keys())
 DEFAULT_MODEL = "deepseek-v4-flash"

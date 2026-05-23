@@ -298,10 +298,56 @@ async def admin_agent_summary(request: Request):
 # ===================== 模型配置 =====================
 
 
+def _read_models_file() -> dict:
+    import json, os
+    from utils.data_path import root_path
+    path = os.path.join(root_path(), "data", "models.json")
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def _write_models_file(data: dict):
+    import json, os
+    from utils.data_path import root_path
+    path = os.path.join(root_path(), "data", "models.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+class ModelUpsert(BaseModel):
+    model_id: str
+    label: str
+    provider: str = "Custom"
+
 @router.get("/models")
 async def list_models(request: Request):
     from config.settings import MODELS
     return MODELS
+
+@router.post("/models")
+async def add_model(req: ModelUpsert, request: Request):
+    require_admin(request)
+    data = _read_models_file()
+    data[req.model_id] = {"label": req.label, "provider": req.provider}
+    _write_models_file(data)
+    from config.settings import _load_models, MODELS
+    MODELS.clear(); MODELS.update(_load_models())
+    return {"ok": True, "model_id": req.model_id}
+
+class ModelDelete(BaseModel):
+    model_id: str
+
+@router.delete("/models")
+async def delete_model(req: ModelDelete, request: Request):
+    require_admin(request)
+    data = _read_models_file()
+    if req.model_id in data:
+        del data[req.model_id]
+        _write_models_file(data)
+    from config.settings import _load_models, MODELS
+    MODELS.clear(); MODELS.update(_load_models())
+    return {"ok": True}
 
 
 # ===================== Agent 状态（代理到 agent router 内部数据）=====================

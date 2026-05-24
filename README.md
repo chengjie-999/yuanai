@@ -1,10 +1,10 @@
-# 小元AI — AI 数据分析平台
+# 小元AI — 云边协同多智能体平台
 
 [![Python](https://img.shields.io/badge/Python-3.10-blue)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688)](https://fastapi.tiangolo.com/)
 
-前后端分离的 AI 数据分析平台。以 AI 对话为统一入口，支持数据集上传、自动分析、可视化图表生成、AI Agent 工具调用。
+前后端分离的多智能体协作平台，以对话为统一入口，集成数据分析、数据采集、浏览器自动化。云服务器（火山引擎）运行 Web 服务，本地 Agent 负责实际任务执行。统筹 Agent 自动识别意图并委派专业子 Agent 处理。
 
 ---
 
@@ -32,68 +32,99 @@ CREATE DATABASE ai_agent DEFAULT CHARSET utf8mb4;
 
 ### 启动
 
-**后端 API（端口 8000）**：
+**云后端 API（端口 8000）**：
 ```bash
 python -m api.main
 ```
 
 **React 前端（端口 5173）**：
 ```bash
-cd frontend
-npm run dev
+cd frontend && npm run dev
+```
+
+**本地 Agent（命令行模式，开发调试用）**：
+```bash
+python -m agent.main --agent-id 1
+```
+
+**本地 Agent（系统托盘模式，发布用）**：
+```bash
+python -m agent.main --agent-id 1 --tray
 ```
 
 ### 创建管理员
 
-启动后用 admin 账号登录后台管理页（右上角 👤）→ 用户管理 → **创建用户**，设置角色为 admin。
+启动后用 admin 账号登录后台管理页 → 用户管理 → **创建用户**，设置角色为 admin。
+
+---
+
+## 多智能体架构
+
+```
+用户 → Web 对话界面 → SSE → FastAPI → WebSocket → 本地 Agent
+                                                        │
+                                              统筹 Agent（意图路由）
+                                             ┌──────┼──────┐
+                                        数据分析  数据采集  自动化
+                                         Agent    Agent    Agent
+```
+
+| Agent | 模型 | 职责 |
+|-------|------|------|
+| 统筹 | doubao-seed-2-0-lite | 意图识别 + 任务路由 |
+| 数据分析 | doubao-seed-2-0-pro | 数据集管理、统计、图表 |
+| 数据采集 | doubao-seed-2-0-lite | 网页爬取、数据抓取 |
+| 自动化 | doubao-seed-2-0-pro | 浏览器控制、题目审核、截图监控 |
+
+### 对话界面
+
+唯一业务入口，以群聊形式展示多 Agent 协作：
+
+| 颜色 | 身份 |
+|------|------|
+| 蓝色 | 小元AI（统筹） |
+| 紫色 | 数据分析 Agent |
+| 青色 | 数据采集 Agent |
+| 橙色 | 自动化 Agent |
+
+每个 Agent 气泡上方有彩色标签和身份标识，工具调用卡片显示 Agent 归属。
+
+### WebSocket 桥接
+
+- 本地 Agent 主动连接云端 `ws://<server>/api/v1/agent/ws/agent/{agent_id}`
+- HTTP 对话请求 → 检查 Agent 在线 → WebSocket 转发 → Agent 处理后回传 → SSE 推送前端
+- Agent 离线时自动回退到云端直接调用 LLM
 
 ---
 
 ## 功能模块
 
-### 💬 聊天
-- 多模型：豆包 Pro/Lite、DeepSeek V4 Flash/Pro
-- 多会话管理，按天分组
-- Markdown 渲染 + 图片上传/粘贴 + AI 生成图片展示（点击放大）
-- 工具调用可视化（按角色过滤）
+### 后台管理（仅 admin）
 
-### 📊 数据分析（核心）
-- 上传 CSV/Excel/JSON → 自动解析列信息 → 数据集管理
-- **基础分析**：describe 统计、缺失值检测、相关性矩阵（秒级）
-- **图表生成**：分布直方图、热力图、箱线图（matplotlib）
-- Redis + 文件双缓存，分析结果持久化
-- 图表放大/滚轮缩放/拖动平移
-- **AI 聊天分析**：对话中直接说"分析数据集 #1"
+7 个 Tab：
 
-### 📂 数据工作台
-- 上传/删除数据集，全屏预览
-- 同名+同大小文件自动查重替换
+| Tab | 内容 |
+|-----|------|
+| 仪表盘 | 用户数/会话数/消息数/在线Agent + 30天消息量图 |
+| 用户管理 | 创建/冻结/删除用户 |
+| 网站管理 | 添加/删除采集网站 |
+| Agent 状态 | 在线状态 + 4 个子 Agent 团队卡片 + 实时活动记录 |
+| 模型配置 | 已配置模型列表 |
 
-### 📡 数据采集（仅 admin）
-- HTTP 批量请求 + HTML 解析
-- 爬取记录管理，结果预览
+### 工具系统
 
-### 🔧 工具面板
-16 个 AI 工具分类展示、在线执行
-
-### 💬 AI 聊天
-- 多模型：豆包 / DeepSeek
-- SSE 流式输出 + Markdown 渲染
-- 图片上传/粘贴 + 工具调用可视化
-
-### ⚙ 后台管理（仅 admin）
-- 用户管理：创建/冻结/删除
-- 网站管理 + 文件管理
-- 系统统计：用户数、会话数、消息趋势
+- 通用工具：`yuanai_core/tools/` 递归扫描，19 个
+- Agent 专用工具：`agent/tools/` 递归扫描 + 合并通用工具，共 57 个
+- 工具自动发现：`isinstance(attr, BaseTool)` 判断，无需手动注册
 
 ---
 
 ## 权限系统
 
-| 角色  | 聊天 | 数据分析 | 数据工作台 | 数据采集 | 后台管理 |
-|-------|------|---------|-----------|---------|---------|
-| admin | ✅   | ✅      | ✅        | ✅      | ✅      |
-| user  | ✅   | ✅      | ✅        | ❌      | ❌      |
+| 角色  | 聊天 | 后台管理 |
+|-------|------|---------|
+| admin | ✅   | ✅      |
+| user  | ✅   | ❌      |
 
 - JWT Token 存储在 localStorage，有效期 7 天
 - 注册功能已关闭，仅 admin 可创建用户
@@ -143,33 +174,11 @@ npm run dev
 | GET | `/api/v1/data/analysis-image/{id}/{name}` | 图表图片 |
 | DELETE | `/api/v1/data/dataset/{id}` | 删除数据集 |
 
-### 爬虫（仅 admin）
+### Agent WebSocket
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v1/spider/save/record` | 保存采集记录 |
-| GET | `/api/v1/spider/save/records` | 记录列表 |
-| DELETE | `/api/v1/spider/save/record/{id}` | 删除记录 |
-| GET | `/api/v1/spider/save/record/{id}/file` | 读取原始文件 |
-
-### 工具
-| 方法 | 路径 | 权限 | 说明 |
-|------|------|------|------|
-| GET | `/api/v1/tools/` | 所有用户 | 工具列表 |
-| POST | `/api/v1/tools/execute` | admin | 执行工具 |
-
-### 浏览器
-| 方法 | 路径 | 权限 | 说明 |
-|------|------|------|------|
-| POST | `/api/v1/browser/start` | admin | 启动 |
-| POST | `/api/v1/browser/stop` | admin | 关闭 |
-| GET | `/api/v1/browser/status` | 所有用户 | 状态 |
-| GET | `/api/v1/browser/stream` | 需登录 | SSE 推流 |
-
-### 监控
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/monitor/screenshot` | 屏幕截图 |
-| GET | `/api/v1/monitor/stream` | SSE 推流 |
+| WS | `/api/v1/agent/ws/agent/{id}` | Agent 注册/心跳/中继 |
+| GET | `/api/v1/agent/status` | Agent 在线状态 |
 
 ### 后台管理
 | 方法 | 路径 | 说明 |
@@ -181,8 +190,6 @@ npm run dev
 | GET | `/api/v1/admin/websites` | 网站列表 |
 | POST | `/api/v1/admin/websites` | 添加网站 |
 | DELETE | `/api/v1/admin/websites/{id}` | 删除网站 |
-| GET | `/api/v1/admin/files` | 文件列表 |
-| GET | `/api/v1/admin/file/read` | 读取文件 |
 
 ---
 
@@ -190,51 +197,53 @@ npm run dev
 
 ```
 api/                    FastAPI 后端
-├── main.py             入口
+├── main.py             应用入口（CORS、路由注册）
 └── v1/
-    ├── auth/           用户认证
-    ├── chat/           聊天 SSE
-    ├── tools/          工具管理
-    ├── browser/        浏览器控制
-    ├── monitor/        屏幕监控
-    ├── spider/         爬虫请求/保存
-    ├── admin/          后台管理
-    ├── stats/          系统统计
-    ├── middleware.py   JWT 中间件
-    └── models.py       数据模型
+    ├── chat/router.py      SSE 对话 + Agent WebSocket 桥接
+    ├── agent/router.py     WebSocket Hub（Agent 注册/心跳/中继）
+    ├── admin/router.py     后台管理 API
+    ├── auth/               JWT 认证
+    ├── data/               数据集管理
+    ├── knowledge/           知识库
+    └── ...
+
+agent/                  本地 Agent 运行时
+├── main.py              入口（--tray 托盘 / 默认命令行）
+├── orchestrator.py      统筹 Agent（3 个 delegate 工具）
+├── ws_client.py         WebSocket 客户端（自动重连）
+├── tray.py              系统托盘程序（pystray）
+├── agents/              子 Agent
+│   ├── analysis.py      数据分析子 Agent
+│   ├── collection.py    数据采集子 Agent
+│   └── automation.py    自动化子 Agent
+├── tools/               Agent 专用工具（38 个）
+│   ├── selenium_tools/  浏览器自动化
+│   └── audit_tools.py   审核知识库 + 反馈
+└── audit/               AI 审核系统
+
+yuanai_core/            公共核心库（云边共用）
+├── core/
+│   ├── lc.py            LLM 工厂（DeepSeek / 豆包）
+│   ├── chat.py          Agent 编排
+│   └── schemas.py       消息协议（WebSocket / SSE）
+├── pure/                纯函数（无框架依赖）
+└── tools/               通用工具（19 个，自动发现）
+
+spiderlx/               浏览器自动化引擎（CDP/Selenium）
 
 frontend/               React 18 + TypeScript 前端
-├── src/components/
-│   ├── ChatPage.tsx        聊天
-│   ├── BrowserPage.tsx     WEB自动化
-│   ├── DataCollectionPage.tsx  数据采集
-│   ├── ToolsPage.tsx       工具面板
-│   ├── DataAnalysisPage.tsx 数据分析
-│   ├── AdminPage.tsx       后台管理
-│   ├── SettingsPage.tsx    系统设置
-│   └── LoginPage.tsx       登录
+├── src/
+│   ├── App.tsx          主入口（对话 + 后台管理）
+│   └── components/
+│       ├── ChatPage.tsx      对话界面（群聊式多 Agent 气泡）
+│       ├── AdminPage.tsx     后台管理
+│       ├── AgentStatus.tsx   顶部栏 Agent 在线指示灯
+│       ├── ToolCallCard.tsx  工具调用卡片（含 Agent 身份标签）
+│       └── MarkdownContent.tsx  富文本渲染
 
-spiderlx/               爬虫核心
-├── core/requests/      HTTP 请求（含反爬）
-├── core/save/          数据保存
-└── anti/               Cookie / UA
-
-yuanai_core/            核心业务逻辑
-├── core/               LangChain 适配层（lc.py, chat.py）
-├── pure/               ★ 纯业务逻辑（无框架依赖，任何代码可调用）
-├── tools/              @tool 装饰器（自动发现，薄壳调用 pure/）
-├── skills/             独立技能（从 pure/ 重新导出）
-├── rag.py              向量知识库（Milvus + Embedding，待启用）
-└── utils/              工具函数（图片处理等）
-
-config/settings.py      统一配置（模型/JWT/数据库）
-db/session.py           SQLAlchemy ORM（MySQL + SQLite）
-data/
-├── chat_images/        聊天图片存储（运行时生成）
-├── crawl/              爬取原始文件
-├── qimg/               题目截图
-├── aiprompt/           知识库文档（待启用）
-└── web_cookie/         第三方网站 Cookie
+config/settings.py      模型 / JWT / 数据库配置
+db/                     MySQL + Redis（云端）
+data/                   数据目录（聊天图片、爬取文件等）
 ```
 
 ---
@@ -245,9 +254,10 @@ data/
 |----|------|
 | 后端 | Python, FastAPI, Uvicorn, LangChain, LangGraph, SQLAlchemy |
 | 前端 | React 18, TypeScript, Vite |
-| 数据库 | MySQL 8.0, SQLite, Redis（可选） |
-| 爬虫 | requests, BeautifulSoup |
+| 数据库 | MySQL 8.0, Redis |
+| 爬虫 | requests, BeautifulSoup, Selenium |
 | AI | DeepSeek API, 豆包 API |
 | 鉴权 | python-jose (JWT), bcrypt |
+| 本地 Agent | WebSocket, pystray, PyInstaller |
 | 配置 | `config/settings.py` 统一管理 |
 | 业务层 | `yuanai_core/pure/` 纯 Python，无框架依赖 |

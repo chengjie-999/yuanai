@@ -1,5 +1,6 @@
 import { Component, useState, useEffect } from 'react'
 import { API_BASE, getToken } from '../api'
+import { SUB_AGENTS } from '../config/agents'
 
 function headers() {
   const h: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -30,13 +31,6 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
     return this.props.children
   }
 }
-
-const SUB_AGENTS = [
-  { key: 'orchestrator', label: '统筹 Agent', desc: '意图识别与任务分发', color: '#1976d2' },
-  { key: 'analysis', label: '数据分析 Agent', desc: '数据集管理、统计分析、图表生成', color: '#7b1fa2' },
-  { key: 'collection', label: '数据采集 Agent', desc: '网页爬取、数据抓取、内容提取', color: '#00695c' },
-  { key: 'automation', label: '自动化 Agent', desc: '浏览器控制、题目审核、截图监控', color: '#e65100' },
-]
 
 export default function AgentPage({ userId }: { userId?: number }) {
   const [agents, setAgents] = useState<any[]>([])
@@ -92,9 +86,10 @@ export default function AgentPage({ userId }: { userId?: number }) {
             </div>
           )}
           {!mainOnline && (
-            <code style={{ display: 'block', marginTop: 12, background: '#f5f5f8', padding: '8px 12px', borderRadius: 6, fontSize: 12, color: '#666' }}>
-              python agent/main.py --agent-id {userId || 'ID'}
-            </code>
+            <div style={{ marginTop: 12, fontSize: 13, color: '#999', lineHeight: 1.8 }}>
+              <p style={{ margin: 0 }}>请在本机启动 小元AI Agent 客户端，启动后将自动连接云端。</p>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#bbb' }}>如未安装，请联系管理员获取安装包。</p>
+            </div>
           )}
         </div>
 

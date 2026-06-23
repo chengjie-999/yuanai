@@ -41,11 +41,6 @@ def stream_download_with_tqdm(url, save_path, chunk_size=1024 * 1024):
 
 
 if __name__ == '__main__':
-    video_url = 'https://upos-sz-estgcos.bilivideo.com/upgcxcode/83/42/34159464283/34159464283-1-16.mp4?e' \
-                '=ig8euxZM2rNcNbRVhwdVhwdlhWdVhwdVhoNvNC8BqJIzNbfq9rVEuxTEnE8L5F6VnEsSTx0vkX8fqJeYTj_lta53NCM=&trid' \
-                '=2a2948e275104557b1981efc47cb641h&oi=0x240e087808fb1efc01475aa60e166fe2&nbs=1&platform=html5&gen' \
-                '=playurlv3&og=cos&mid=0&deadline=1763906034&uipk=5&os=estgcos&upsig=d71949b6a51c1a6e0f7edd41a6ee3cce' \
-                '&uparams=e,trid,oi,nbs,platform,gen,og,mid,deadline,uipk,' \
-                'os&bvc=vod&nettype=0&bw=366258&dl=0&f=h_0_0&agrr=0&buvid=&build=0&orderid=0,1 '
+    video_url = 'https://bj.bcebos.com/qfcd/doc/2024-06-19/%E6%A6%82%E7%8E%87%E8%AE%BA%E4%B8%8E%E6%95%B0%E7%90%86%E7%BB%9F%E8%AE%A1.pdf'
 
     stream_download_with_tqdm(video_url, "large_video.mp4")

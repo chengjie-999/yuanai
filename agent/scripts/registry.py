@@ -33,9 +33,10 @@ class _ScriptHandle:
         try:
             result = subprocess.run(
                 args,
-                capture_output=True, text=True,
+                capture_output=True, text=True, encoding="utf-8",
                 timeout=300,
                 cwd=PROJECT_ROOT,
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
             )
             if result.returncode != 0:
                 return f"脚本执行失败 (exit={result.returncode}):\n{result.stderr[:1000]}"
@@ -166,8 +167,8 @@ class ScriptRegistry:
 
         return "\n".join(lines)
 
-    def run(self, name: str, **params) -> str:
+    def run(self, name: str, params: dict = None) -> str:
         script = self._scripts.get(name)
         if not script:
             return f"未知脚本: {name}"
-        return script.run(**params)
+        return script.run(**(params or {}))

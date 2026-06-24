@@ -4,20 +4,22 @@ import sys
 import base64
 import subprocess
 import logging
-from typing import Dict
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
+# 项目根目录 = agent/scripts/registry.py 上 3 级
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 class _ScriptHandle:
-    """脚本句柄"""
-    def __init__(self, name: str, description: str, filepath: str):
+    def __init__(self, name: str, description: str, filepath: str, tags: List[str] = None):
         self.name = name
         self.description = description
         self._filepath = filepath
+        self.tags = tags or []
 
     def run(self, **params) -> str:
-        """子进程执行脚本，参数通过命令行传入。自动检测 __IMAGES__ 标记并嵌入 base64 图片"""
         args = [sys.executable, self._filepath]
         param_order = getattr(self, '_param_order', [])
         if param_order:
@@ -33,14 +35,13 @@ class _ScriptHandle:
                 args,
                 capture_output=True, text=True,
                 timeout=300,
-                cwd=os.path.dirname(os.path.dirname(os.path.dirname(self._filepath))),
+                cwd=PROJECT_ROOT,
             )
             if result.returncode != 0:
                 return f"脚本执行失败 (exit={result.returncode}):\n{result.stderr[:1000]}"
 
             output = result.stdout.strip() or "(脚本无输出)"
 
-            # 解析 __IMAGES__:path1,path2 标记，嵌入 base64 图片
             img_match = re.search(r'__IMAGES__:(.+)', output)
             if img_match:
                 output = output.replace(img_match.group(0), "")
@@ -48,7 +49,9 @@ class _ScriptHandle:
                     img_path = img_path.strip()
                     if os.path.isfile(img_path):
                         ext = os.path.splitext(img_path)[1].lower()
-                        mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(ext[1:], "image/png")
+                        mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(
+                            ext[1:], "image/png"
+                        )
                         with open(img_path, "rb") as f:
                             b64 = base64.b64encode(f.read()).decode()
                         output += f"\ndata:{mime};base64,{b64}"
@@ -61,24 +64,24 @@ class _ScriptHandle:
 
 
 class ScriptRegistry:
-    def __init__(self, package: str):
+    def __init__(self, script_dir: str):
         """
-        package: 脚本包路径，如 "agent.scripts.crawl"
-        纯文本解析 → 不导入模块，避免执行分析代码
+        script_dir: 脚本目录，相对于项目根，如 "agent/datanalysis/scripts"
         """
         self._scripts: Dict[str, _ScriptHandle] = {}
-        self._discover(package)
+        full_dir = os.path.join(PROJECT_ROOT, script_dir)
+        self._discover(full_dir, script_dir.replace("/", ".").replace("\\", "."))
 
-    def _discover(self, package: str):
-        import importlib
-        pkg = importlib.import_module(package)
-        pkg_dir = os.path.dirname(pkg.__file__)
+    def _discover(self, script_dir: str, package_hint: str):
+        if not os.path.isdir(script_dir):
+            logger.warning("脚本目录不存在: %s", script_dir)
+            return
 
-        for fname in sorted(os.listdir(pkg_dir)):
+        for fname in sorted(os.listdir(script_dir)):
             if fname.startswith('_') or not fname.endswith('.py'):
                 continue
 
-            filepath = os.path.join(pkg_dir, fname)
+            filepath = os.path.join(script_dir, fname)
             try:
                 with open(filepath, 'r', encoding='utf-8') as f:
                     source = f.read()
@@ -86,20 +89,22 @@ class ScriptRegistry:
                 logger.warning("读取脚本 %s 失败", fname, exc_info=True)
                 continue
 
-            # 从源码中正则提取 __script_name__ 和 __script_desc__
             name_match = re.search(r'__script_name__\s*=\s*["\']([^"\']+)["\']', source)
             desc_match = re.search(r'__script_desc__\s*=\s*["\']([^"\']+)["\']', source)
+            tags_match = re.search(r'__script_tags__\s*=\s*\[([^\]]+)\]', source)
 
             if not name_match:
-                # 兼容旧的 BaseScript 类模式
-                self._discover_class(filepath, package, fname)
+                self._discover_class(filepath, package_hint, fname)
                 continue
 
             name = name_match.group(1)
             desc = desc_match.group(1) if desc_match else ""
-            handle = _ScriptHandle(name, desc, filepath)
+            tags = []
+            if tags_match:
+                tags = [t.strip().strip('"').strip("'") for t in tags_match.group(1).split(",") if t.strip()]
 
-            # 提取参数顺序声明
+            handle = _ScriptHandle(name, desc, filepath, tags)
+
             params_match = re.search(r'__script_params__\s*=\s*\[([^\]]+)\]', source)
             if params_match:
                 handle._param_order = [
@@ -108,10 +113,9 @@ class ScriptRegistry:
                 ]
 
             self._scripts[name] = handle
-            logger.info("已注册脚本: %s → %s", name, filepath)
+            logger.info("已注册脚本: %s (tags=%s) → %s", name, tags, filepath)
 
     def _discover_class(self, filepath: str, package: str, fname: str):
-        """兼容：导入模块查找 BaseScript 子类"""
         import importlib.util, inspect
         from .base import BaseScript
 
@@ -137,9 +141,29 @@ class ScriptRegistry:
                 logger.info("已注册脚本(类): %s → %s", instance.name, filepath)
 
     def list_for_llm(self) -> str:
+        """按 __script_tags__ 分组，输出给 LLM 看的脚本清单"""
         if not self._scripts:
             return "（暂无可用脚本）"
-        lines = [f"- {s.name}: {s.description}" for s in self._scripts.values()]
+
+        tagged: Dict[str, list] = {}
+        untagged: list = []
+        for s in self._scripts.values():
+            if s.tags:
+                for tag in s.tags:
+                    tagged.setdefault(tag, []).append(s)
+            else:
+                untagged.append(s)
+
+        lines = []
+        for tag in sorted(tagged):
+            lines.append(f"[{tag}]")
+            for s in tagged[tag]:
+                lines.append(f"- {s.name}: {s.description}")
+        if untagged:
+            lines.append("[其他]")
+            for s in untagged:
+                lines.append(f"- {s.name}: {s.description}")
+
         return "\n".join(lines)
 
     def run(self, name: str, **params) -> str:

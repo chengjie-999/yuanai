@@ -22,6 +22,7 @@ plt.rcParams["axes.unicode_minus"] = False
 # ═══════════════════════════════════
 __script_name__ = "RFM客户分群"
 __script_desc__ = "从订单明细 Excel 中计算客户 RFM 价值分群。参数: file_path(必填, 含「用户编号」「交易时间」「金额」), user_info_path(可选, 含「用户编号」「区域」用于下钻)"
+__script_tags__ = ["客户分析"]
 __script_params__ = ["file_path", "user_info_path"]
 
 # %% [markdown]

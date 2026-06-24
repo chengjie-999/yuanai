@@ -23,6 +23,7 @@ HEADERS = {
 
 __script_name__ = "通用网页采集"
 __script_desc__ = "采集指定网页中的结构化数据（表格/列表），支持翻页。参数: url(必填), max_pages(可选,默认3), selector(可选,CSS选择器)"
+__script_tags__ = ["网页采集"]
 __script_params__ = ["url", "max_pages", "selector"]
 
 # %% [markdown]

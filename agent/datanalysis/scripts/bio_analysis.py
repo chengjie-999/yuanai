@@ -17,6 +17,7 @@ plt.rcParams["axes.unicode_minus"] = False
 
 __script_name__ = "基因表达分布分析"
 __script_desc__ = "对基因表达数据（log2_FPKM）做直方图 + KDE 核密度曲线分析。参数: file_path(可选, CSV文件路径，默认用内置示例数据)"
+__script_tags__ = ["生物信息"]
 
 # %% [markdown]
 # ### 参数

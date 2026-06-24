@@ -17,6 +17,7 @@ plt.rcParams["axes.unicode_minus"] = False
 
 __script_name__ = "描述性统计分析"
 __script_desc__ = "对数据集执行描述性统计分析：数据清洗、统计量、分布图、箱线图。参数: dataset_id(必填, 数据集ID)"
+__script_tags__ = ["统计分析"]
 __script_params__ = ["dataset_id"]
 
 # 用于收集图表路径（脚本末尾输出 __IMAGES__ 标记）

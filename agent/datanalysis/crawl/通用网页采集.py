@@ -30,7 +30,7 @@ __script_params__ = ["url", "max_pages", "selector"]
 # ### 参数
 
 # %%
-目标URL  = sys.argv[1] if len(sys.argv) > 1 else ""
+目标URL = sys.argv[1] if len(sys.argv) > 1 else ""
 最大页数 = int(sys.argv[2]) if len(sys.argv) > 2 else 3
 CSS选择器 = sys.argv[3] if len(sys.argv) > 3 else ""
 

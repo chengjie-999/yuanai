@@ -6,6 +6,7 @@ export interface ChatMessage {
   reasoning?: string
   reasoningTime?: number
   sender?: 'orchestrator' | 'analysis' | 'collection' | 'automation'
+  pageLink?: string
   progress?: { current: number; total: number; message?: string }
 }
 

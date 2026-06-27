@@ -6,12 +6,10 @@ import { encodeMsg } from './chat/helpers'
 import Sidebar from './chat/Sidebar'
 import WelcomePage from './chat/WelcomePage'
 import ChatView from './chat/ChatView'
-import SidePanel from './chat/SidePanel'
-import type { PanelType } from './chat/SidePanel'
 
 type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string }
 
-export default function ChatPage({ user, focusKey = 0 }: { user?: any; focusKey?: number }) {
+export default function ChatPage({ user }: { user?: any }) {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [currentSid, setCurrentSid] = useState<string>('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -22,12 +20,9 @@ export default function ChatPage({ user, focusKey = 0 }: { user?: any; focusKey?
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [images, setImages] = useState<string[]>([])
   const [expandedImage, setExpandedImage] = useState<string | null>(null)
-  const [panel, setPanel] = useState<PanelType>(null)
-  const [agentsOnline, setAgentsOnline] = useState<Record<string, boolean>>({})
   const handleModelChange = (v: string) => { setModel(v); setStoredModel(v) }
   const messagesRef = useRef(messages)
   messagesRef.current = messages
-  const prevFocusRef = useRef(focusKey)
 
   const refreshSessions = useCallback(async () => {
     const list = await listSessions()
@@ -35,33 +30,6 @@ export default function ChatPage({ user, focusKey = 0 }: { user?: any; focusKey?
   }, [])
 
   useEffect(() => { refreshSessions() }, [refreshSessions])
-
-  // Poll agent status for panel availability
-  useEffect(() => {
-    const poll = () => {
-      const token = localStorage.getItem('token')
-      if (!token) return
-      fetch('/api/v1/admin/agent-status', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((r) => r.json())
-        .then((data) => {
-          if (Array.isArray(data)) {
-            const online: Record<string, boolean> = {}
-            data.forEach((a: any) => {
-              if (a.online && a.capabilities) {
-                a.capabilities.forEach((c: string) => { online[c] = true })
-              }
-            })
-            setAgentsOnline(online)
-          }
-        })
-        .catch(() => {})
-    }
-    poll()
-    const i = setInterval(poll, 15000)
-    return () => clearInterval(i)
-  }, [])
 
   const handleNewSession = async () => {
     setCurrentSid('')
@@ -89,16 +57,6 @@ export default function ChatPage({ user, focusKey = 0 }: { user?: any; focusKey?
     }
   }
 
-  // 点击导航"对话"时自动跳转最近会话
-  useEffect(() => {
-    if (focusKey > 0 && focusKey !== prevFocusRef.current) {
-      prevFocusRef.current = focusKey
-      listSessions().then((list) => {
-        if (list.length > 0) handleSelectSession(list[0].session_id)
-      })
-    }
-  }, [focusKey])
-
   const handleDeleteSession = async (e: React.MouseEvent, sid: string) => {
     e.stopPropagation()
     await deleteSession(sid)
@@ -117,7 +75,7 @@ export default function ChatPage({ user, focusKey = 0 }: { user?: any; focusKey?
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
       } else if (event.type === 'tool_start') {
         const ns = senderFromTool(event.data.name)
-        if (ns) { currentSender = ns; setPanel(ns as PanelType); setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
+        if (ns) { currentSender = ns; const link = (ns === 'analysis' || ns === 'automation') ? `/agent/${ns}` : undefined; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
         else { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
       } else if (event.type === 'tool_end') {
         const isDel = !!senderFromTool(event.data.name)
@@ -232,13 +190,10 @@ export default function ChatPage({ user, focusKey = 0 }: { user?: any; focusKey?
             model={model} setModel={handleModelChange} currentSid={currentSid}
             sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
             sessions={sessions}
-            panel={panel} setPanel={setPanel}
           />
         )}
       </div>
 
-      <SidePanel panel={panel} onClose={() => setPanel(null)}
-        agentOnline={panel ? !!agentsOnline[panel] : false} />
 
       {expandedImage && (
         <div onClick={() => setExpandedImage(null)}

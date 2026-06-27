@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { login, register } from '../api'
+import { useAuth } from '../contexts/AuthContext'
 
-export default function LoginPage({ onLogin }: { onLogin: (token: string, user: any) => void }) {
+export default function LoginPage() {
+  const { login: handleLogin, token } = useAuth()
+  const navigate = useNavigate()
   const [tab, setTab] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -26,12 +30,15 @@ export default function LoginPage({ onLogin }: { onLogin: (token: string, user: 
     try {
       const data = tab === 'login' ? await login(username, password) : await register(username, password)
       if (!data?.token) { setError('登录失败，服务器返回异常'); setLoading(false); return }
-      onLogin(data.token, data.user)
+      handleLogin(data.token, data.user)
+      navigate('/', { replace: true })
     } catch (e: any) {
       setError(e.message || '操作失败')
     }
     setLoading(false)
   }
+
+  if (token) return <Navigate to="/" replace />
 
   return (
     <div style={{

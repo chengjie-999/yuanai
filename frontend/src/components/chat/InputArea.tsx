@@ -4,17 +4,13 @@ import { downloadChat } from './helpers'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
 
-import type { PanelType } from './SidePanel'
-
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, model, setModel, currentSid, sidebarOpen, setSidebarOpen, sessions, messages, panel, setPanel }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, model, setModel, currentSid, sidebarOpen, setSidebarOpen, sessions, messages }: {
   input: string; setInput: (v: string) => void; loading: boolean; handleSend: () => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   model: string; setModel: (v: string) => void; currentSid: string
   sidebarOpen: boolean; setSidebarOpen: (v: boolean) => void
   sessions: SessionInfo[]; messages: ChatMessage[]
-  panel: PanelType; setPanel: (v: PanelType) => void
 }) {
-  const PANELS: PanelType[] = ['automation', 'analysis', 'knowledge']
   const fileRef = useRef<HTMLInputElement>(null)
 
   return (
@@ -77,16 +73,6 @@ export default function InputArea({ input, setInput, loading, handleSend, images
             {!sidebarOpen && (
               <button onClick={() => setSidebarOpen(true)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 12, padding: 0 }}>▶ 侧栏</button>
             )}
-            <button
-              onClick={() => {
-                const idx = PANELS.indexOf(panel as PanelType)
-                setPanel(panel ? PANELS[(idx + 1) % PANELS.length] : PANELS[0])
-              }}
-              title="切换面板（测试）"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#bbb', padding: '2px 4px', opacity: 0.5 }}
-              onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-              onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.5')}
-            >▸ 面板</button>
           </div>
         </div>
       </div>

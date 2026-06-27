@@ -92,6 +92,19 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
               </details>
             )}
             <MarkdownContent content={msg.content} />
+            {msg.pageLink && (
+              <a href={msg.pageLink} target="_blank" rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  display: 'inline-block', marginTop: 6, padding: '5px 12px',
+                  borderRadius: 6, background: agent?.color || '#1976d2',
+                  color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
+                  transition: 'opacity 0.15s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+              >{msg.sender === 'analysis' ? '📊' : msg.sender === 'automation' ? '🤖' : '📋'} 打开面板 →</a>
+            )}
             {msg.images && msg.images.length > 0 && (
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>
                 {msg.images.map((img, j) => (

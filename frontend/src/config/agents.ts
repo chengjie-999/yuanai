@@ -20,8 +20,8 @@ export function senderFromTool(name: string): string | null {
 }
 
 export const SUGGESTIONS: { text: string; desc: string }[] = [
-  { text: '帮我分析一下数据集', desc: '数据分析' },
-  { text: '抓取这个网页的内容', desc: '数据采集' },
-  { text: '帮我审核小猿众包题目', desc: '自动化' },
-  { text: '列出当前所有数据集', desc: '数据管理' },
+  { text: '帮我分析一下数据集', desc: '数据分析 · 可打开独立面板' },
+  { text: '抓取这个网页的内容', desc: '数据采集 · 网页爬取抓取' },
+  { text: '帮我审核小猿众包题目', desc: '自动化 · 浏览器操控' },
+  { text: '搜索知识库中的技术文档', desc: '知识库 · 可打开独立面板' },
 ]

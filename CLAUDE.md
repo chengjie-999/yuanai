@@ -80,15 +80,22 @@ yuanai_core/            公共核心库（云边共用）
 spiderlx/               浏览器自动化引擎（CDP/Selenium）
 config/settings.py       模型 / JWT / 数据库配置
 db/                      MySQL + Redis（云端）
-frontend/                React 19 + TypeScript 前端
+frontend/                React 18 + TypeScript + React Router 前端
 ├── src/
-│   ├── App.tsx          主入口（对话 + 后台管理）
+│   ├── App.tsx               路由主入口（BrowserRouter + AuthProvider + 导航栏）
+│   ├── contexts/
+│   │   └── AuthContext.tsx   认证上下文
+│   ├── pages/
+│   │   ├── AgentAnalysisPage.tsx    数据分析全屏页（/agent/analysis）
+│   │   ├── AgentAutomationPage.tsx  自动化全屏页（/agent/automation）
+│   │   └── AgentKnowledgePage.tsx   知识库全屏页（/agent/knowledge）
 │   └── components/
-│       ├── ChatPage.tsx      对话界面（群聊式多 Agent 气泡）
-│       ├── AdminPage.tsx     后台管理（仪表盘/用户/Agent/模型）
-│       ├── AgentStatus.tsx   顶部栏 Agent 在线指示灯
-│       ├── ToolCallCard.tsx  工具调用卡片（含 Agent 身份标签）
-│       └── MarkdownContent.tsx  富文本渲染（表格/代码/图片）
+│       ├── ChatPage.tsx           对话界面（群聊式多 Agent 气泡）
+│       ├── AdminPage.tsx          后台管理（11 Tab，嵌套路由 /admin/*）
+│       ├── LoginPage.tsx          登录页（/login）
+│       ├── AgentStatus.tsx        顶部栏 Agent 在线指示灯
+│       ├── ToolCallCard.tsx       工具调用卡片（含 Agent 身份标签）
+│       └── MarkdownContent.tsx    富文本渲染（表格/代码/图片）
 data/                   数据目录
 ```
 
@@ -104,15 +111,21 @@ data/                   数据目录
 
 ## 后台管理
 
-7 个 Tab：
+11 个 Tab，每个有独立 URL 路由（`/admin/:tab`）：
 
-| Tab | 内容 |
-|-----|------|
-| 仪表盘 | 用户数/会话数/消息数/在线Agent + 30天消息量图 |
-| 用户管理 | 创建/冻结/删除用户 |
-| 网站管理 | 添加/删除采集网站 |
-| Agent 状态 | 在线状态 + 4 个子 Agent 团队卡片 + 实时活动记录 |
-| 模型配置 | 已配置模型列表 |
+| Tab | 路由 | 内容 |
+|-----|------|------|
+| 仪表盘 | `/admin/dashboard` | 用户数/会话数/消息数/在线Agent + 30天消息量图 |
+| 用户管理 | `/admin/users` | 创建/冻结/删除用户 |
+| 网站管理 | `/admin/websites` | 添加/删除采集网站 |
+| Agent 状态 | `/admin/agents` | 在线状态 + 4 个子 Agent 团队卡片 + 实时活动记录 |
+| 会话记录 | `/admin/sessions` | 历史会话查询 |
+| 模型配置 | `/admin/models` | 已配置模型列表 |
+| 数据集 | `/admin/datasets` | 上传/查看/删除数据集 |
+| 知识库 | `/admin/knowledge` | 知识库文档管理 |
+| 文件管理 | `/admin/files` | 服务器文件浏览 |
+| 工具 | `/admin/tools` | 已注册工具列表 |
+| 设置 | `/admin/settings` | 系统设置 |
 
 ## WebSocket 桥接
 

@@ -1,11 +1,15 @@
-import { Component, useState, useEffect } from 'react'
+import { Component } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import ChatPage from './components/ChatPage'
 import LoginPage from './components/LoginPage'
 import AdminPage from './components/AdminPage'
 import UserPage from './components/UserPage'
 import AgentPage from './components/AgentPage'
 import AgentStatus from './components/AgentStatus'
-import { checkToken, setStoredUser } from './api'
+import AgentAnalysisPage from './pages/AgentAnalysisPage'
+import AgentAutomationPage from './pages/AgentAutomationPage'
+import AgentKnowledgePage from './pages/AgentKnowledgePage'
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
   state = { hasError: false, error: '' }
@@ -24,61 +28,35 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
   }
 }
 
-type Page = 'chat' | 'user' | 'agent' | 'admin'
-
-function App() {
-  const [token, setToken] = useState<string | null>(null)
-  const [user, setUser] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState<Page>('chat')
-  const [chatFocus, setChatFocus] = useState(0)
-
-  useEffect(() => {
-    const saved = localStorage.getItem('token')
-    if (saved) {
-      checkToken().then((data) => {
-        if (data.valid && data.user) {
-          setToken(saved)
-          setUser(data.user)
-        } else {
-          if (data.detail) sessionStorage.setItem('loginError', data.detail)
-          localStorage.removeItem('token')
-        }
-        setLoading(false)
-      })
-    } else {
-      setLoading(false)
-    }
-  }, [])
-
-  const handleLogin = (newToken: string, newUser: any) => {
-    if (!newToken) return
-    localStorage.setItem('token', newToken)
-    setStoredUser(newUser)
-    setUser(newUser)
-    setToken(newToken)
-    setPage('chat')
-  }
-
-  const handleLogout = () => {
-    localStorage.removeItem('token')
-    setStoredUser(null)
-    setToken(null)
-    setUser(null)
-  }
-
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { token, loading } = useAuth()
   if (loading) return null
-  if (!token) return <LoginPage onLogin={handleLogin} />
+  if (!token) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
 
-  const isAdmin = user?.role === 'admin'
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { token, loading, isAdmin } = useAuth()
+  if (loading) return null
+  if (!token) return <Navigate to="/login" replace />
+  if (!isAdmin) return <Navigate to="/" replace />
+  return <>{children}</>
+}
 
-  const tabStyle = (key: Page) => ({
+function AppLayout() {
+  const { user, logout, isAdmin } = useAuth()
+  const location = useLocation()
+
+  const isActive = (path: string) => location.pathname === path || (path === '/admin' && location.pathname.startsWith('/admin'))
+
+  const navLinkStyle = (path: string) => ({
     background: 'transparent', border: 'none',
-    color: page === key ? '#333' : '#999',
-    fontWeight: (page === key ? 600 : 400) as any, fontSize: 14,
+    color: isActive(path) ? '#333' : '#999',
+    fontWeight: (isActive(path) ? 600 : 400) as any, fontSize: 14,
     padding: '0 14px', height: 52, cursor: 'pointer',
-    borderBottom: page === key ? '2px solid #333' : '2px solid transparent',
+    borderBottom: isActive(path) ? '2px solid #333' : '2px solid transparent',
     transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6,
+    textDecoration: 'none',
   })
 
   return (
@@ -87,36 +65,54 @@ function App() {
         background: '#fff', borderBottom: '1px solid #e5e5e5',
         padding: '0 20px', display: 'flex', alignItems: 'center', height: 52, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 17, fontWeight: 700, color: '#333', marginRight: 32, letterSpacing: -0.3 }}>
+        <Link to="/" style={{ fontSize: 17, fontWeight: 700, color: '#333', marginRight: 32, letterSpacing: -0.3, textDecoration: 'none' }}>
           小元AI
-        </span>
+        </Link>
         <nav style={{ display: 'flex', gap: 2 }}>
-          <button onClick={() => { setPage('chat'); setChatFocus(c => c + 1) }} style={tabStyle('chat')}>对话</button>
+          <Link to="/" style={navLinkStyle('/')}>对话</Link>
           {isAdmin && (
-            <button onClick={() => setPage('admin')} style={tabStyle('admin')}>后台管理</button>
+            <Link to="/admin" style={navLinkStyle('/admin')}>后台管理</Link>
           )}
         </nav>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span onClick={() => setPage('agent')} style={{ cursor: 'pointer' }}>
+          <Link to="/agent" style={{ textDecoration: 'none' }}>
             <AgentStatus userId={user?.id} />
-          </span>
-          <span onClick={() => setPage('user')} style={{
-            fontSize: 13, color: '#1976d2', cursor: 'pointer',
-            borderBottom: page === 'user' ? '1px solid #1976d2' : '1px solid transparent',
-          }}>{user?.username || user?.display_name}</span>
+          </Link>
+          <Link to="/user" style={{
+            fontSize: 13, color: '#1976d2', cursor: 'pointer', textDecoration: 'none',
+            borderBottom: location.pathname === '/user' ? '1px solid #1976d2' : '1px solid transparent',
+          }}>{user?.username || user?.display_name}</Link>
         </div>
       </header>
       <main style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         <ErrorBoundary>
-          {page === 'chat' && <ChatPage user={user} focusKey={chatFocus} />}
-          {page === 'user' && <UserPage user={user} onLogout={handleLogout} />}
-          {page === 'agent' && <AgentPage userId={user?.id} />}
-          {page === 'admin' && isAdmin && <AdminPage isAdmin={isAdmin} />}
+          <Routes>
+            <Route path="/" element={<ChatPage user={user} />} />
+            <Route path="/user" element={<UserPage user={user} onLogout={logout} />} />
+            <Route path="/agent" element={<AgentPage userId={user?.id} />} />
+            <Route path="/agent/analysis" element={<AgentAnalysisPage />} />
+            <Route path="/agent/automation" element={<AgentAutomationPage />} />
+            <Route path="/agent/knowledge" element={<AgentKnowledgePage />} />
+            <Route path="/admin/*" element={
+              <AdminRoute><AdminPage isAdmin={isAdmin} /></AdminRoute>
+            } />
+          </Routes>
         </ErrorBoundary>
       </main>
     </div>
   )
 }
 
-export default App
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
+  )
+}

@@ -17,12 +17,23 @@ export default function ChatPage({ user }: { user?: any }) {
   const [loading, setLoading] = useState(false)
   const [model, setModel] = useState(getStoredModel)
   const [quickInput, setQuickInput] = useState('')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth > 768)
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
   const [images, setImages] = useState<string[]>([])
   const [expandedImage, setExpandedImage] = useState<string | null>(null)
   const handleModelChange = (v: string) => { setModel(v); setStoredModel(v) }
   const messagesRef = useRef(messages)
   messagesRef.current = messages
+
+  useEffect(() => {
+    const onResize = () => {
+      const mobile = window.innerWidth <= 768
+      setIsMobile(mobile)
+      if (mobile) setSidebarOpen(false)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const refreshSessions = useCallback(async () => {
     const list = await listSessions()
@@ -142,32 +153,34 @@ export default function ChatPage({ user }: { user?: any }) {
     <>
     <style>{`
       @media (max-width: 768px) {
-        .chat-sidebar { position: fixed !important; z-index: 1000 !important; left: 0 !important; top: 0 !important; height: 100% !important; width: 280px !important; box-shadow: 2px 0 12px rgba(0,0,0,0.15) !important; }
-        .chat-sidebar + div[style] { left: 0 !important; }
-        .chat-main { padding: 16px 8px !important; }
-        .chat-welcome { padding: 24px 12px !important; }
-        .chat-welcome h1 { font-size: 24px !important; }
-        .chat-welcome > div:last-child { max-width: 100% !important; padding: 0 12px !important; }
-        .chat-msg-bubble { max-width: 85% !important; }
-        .chat-input-area { padding: 8px 12px 16px !important; }
+        .chat-main { padding: 12px 4px !important; }
+        .chat-welcome { padding: 3vh 8px 24px !important; }
+        .chat-welcome h1 { font-size: 20px !important; }
+        .chat-msg-bubble { max-width: 90% !important; }
+        .chat-input-area { padding: 6px 6px 10px !important; }
         .chat-input-inner { max-width: 100% !important; }
+        .chat-input-area textarea { font-size: 16px !important; }
       }
       @media (max-width: 480px) {
-        .chat-msg-bubble { max-width: 90% !important; font-size: 13px !important; }
+        .chat-msg-bubble { max-width: 94% !important; font-size: 13px !important; padding: 8px 12px !important; }
+        .chat-welcome h1 { font-size: 18px !important; }
+        .chat-input-area textarea { font-size: 16px !important; }
       }
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
-      <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen}
+      <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}
         onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} />
+
+      {sidebarOpen && <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 
       <div onClick={() => setSidebarOpen(!sidebarOpen)}
         style={{
-          position: 'absolute', left: sidebarOpen ? 258 : 0, top: 64, zIndex: 10,
+          position: 'absolute', left: isMobile ? 0 : (sidebarOpen ? 258 : 0), top: 64, zIndex: 10,
           padding: '12px 4px', borderRadius: '0 8px 8px 0',
-          background: '#fff', cursor: 'pointer', fontSize: 12, color: '#999',
-          border: '1px solid #e8e8ec',
-          borderLeft: sidebarOpen ? 'none' : '1px solid #e8e8ec',
-          boxShadow: sidebarOpen ? '1px 1px 4px rgba(0,0,0,0.04)' : '0 1px 3px rgba(0,0,0,0.06)',
+          background: 'var(--bg-primary)', cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)',
+          border: '1px solid var(--border)',
+          borderLeft: (!isMobile && sidebarOpen) ? 'none' : '1px solid var(--border)',
+          boxShadow: (!isMobile && sidebarOpen) ? '1px 1px 4px var(--shadow-sm)' : '0 1px 3px var(--shadow-sm)',
           lineHeight: 1, transition: 'left 0.2s',
         }}
       >{sidebarOpen ? '◀' : '▶'}</div>

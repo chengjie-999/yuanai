@@ -68,8 +68,8 @@ export default function ModelsTab() {
       )}
       {showModal && (
         <div onClick={() => setShowModal(false)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 24, minWidth: 380, boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: '#333' }}>添加模型</h3>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 24, minWidth: 380, boxShadow: '0 8px 40px var(--shadow-md)' }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>添加模型</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="模型 ID (如 gpt-4)" style={inputStyle} />
               <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="显示名 (如 GPT-4)" style={inputStyle} />
@@ -77,7 +77,7 @@ export default function ModelsTab() {
               <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="API Key (可选)" style={inputStyle} />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowModal(false)} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', cursor: 'pointer', fontSize: 13, color: '#666' }}>取消</button>
+              <button onClick={() => setShowModal(false)} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)' }}>取消</button>
               <button onClick={handleAdd} style={btnPrimary}>确认添加</button>
             </div>
           </div>

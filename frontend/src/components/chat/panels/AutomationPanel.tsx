@@ -59,7 +59,7 @@ export default function AutomationPanel({ agentOnline }: { agentOnline: boolean 
       <div style={{ flex: 1, overflow: 'auto' }}>
         {screenshot ? (
           <div style={{ padding: 8 }}>
-            <img src={screenshot} style={{ width: '100%', borderRadius: 8, border: '1px solid #eee' }} alt="截屏" />
+            <img src={screenshot} style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border)' }} alt="截屏" />
           </div>
         ) : (
           <div style={{ textAlign: 'center', color: '#ccc', padding: 30, fontSize: 13 }}>

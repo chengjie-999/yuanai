@@ -17,30 +17,30 @@ export class ErrorBoundary extends Component<{ children: React.ReactNode }, { ha
   }
 }
 
-export const Spinner = () => <div style={{ textAlign: 'center', color: '#999', padding: 40, fontSize: 13 }}>加载中...</div>
+export const Spinner = () => <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 40, fontSize: 13 }}>加载中...</div>
 
-export const Empty = ({ msg = '暂无数据' }: { msg?: string }) => <div style={{ textAlign: 'center', color: '#bbb', padding: 40, fontSize: 13 }}>{msg}</div>
+export const Empty = ({ msg = '暂无数据' }: { msg?: string }) => <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40, fontSize: 13 }}>{msg}</div>
 
 export const ErrorMsg = ({ msg, onRetry }: { msg: string; onRetry?: () => void }) => (
-  <div style={{ color: '#e53935', fontSize: 13, padding: 12, background: '#fff0f0', borderRadius: 8, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+  <div style={{ color: 'var(--danger)', fontSize: 13, padding: 12, background: 'var(--accent-light)', borderRadius: 8, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
     <span style={{ flex: 1 }}>{msg}</span>
-    {onRetry && <button onClick={onRetry} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1976d2', fontSize: 12, whiteSpace: 'nowrap' }}>重试</button>}
+    {onRetry && <button onClick={onRetry} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: 12, whiteSpace: 'nowrap' }}>重试</button>}
   </div>
 )
 
 export const Card = ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
-  <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #eee', overflow: 'hidden', ...style }}>{children}</div>
+  <div style={{ background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden', ...style }}>{children}</div>
 )
 
 export const CardHeader = ({ title, action }: { title: string; action?: React.ReactNode }) => (
-  <div style={{ padding: '14px 20px', borderBottom: '1px solid #f0f0f0', fontWeight: 600, fontSize: 14, color: '#333', background: '#fafafa', display: 'flex', alignItems: 'center' }}>
+  <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-light)', fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center' }}>
     {title}<div style={{ flex: 1 }} />{action}
   </div>
 )
 
-export const btnPrimary: React.CSSProperties = { background: '#1976d2', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 500 }
-export const btnDangerSm: React.CSSProperties = { fontSize: 12, padding: '4px 10px', color: '#e53935', border: '1px solid #e53935', background: 'none', borderRadius: 4, cursor: 'pointer' }
-export const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box' }
+export const btnPrimary: React.CSSProperties = { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 500 }
+export const btnDangerSm: React.CSSProperties = { fontSize: 12, padding: '4px 10px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer' }
+export const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--bg-input)', color: 'var(--text-primary)' }
 export const badge = (text: string, color: string) => <span style={{ fontSize: 11, color, background: `${color}15`, padding: '2px 6px', borderRadius: 4, marginLeft: 6 }}>{text}</span>
 
 export function headers() {

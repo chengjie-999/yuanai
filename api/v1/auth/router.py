@@ -57,8 +57,37 @@ def login(req: AuthRequest, request: Request):
     token = create_token(user.id, user.role, user.username)
     return {
         "token": token,
-        "user": {"id": user.id, "username": user.username, "role": user.role, "display_name": user.display_name or user.username},
+        "user": {"id": user.id, "username": user.username, "role": user.role, "display_name": user.display_name or user.username, "theme": user.theme or ""},
     }
+
+
+class ThemeUpdate(BaseModel):
+    theme: str  # 'light' | 'dark'
+
+
+@router.get("/theme")
+def get_theme(request: Request):
+    """获取用户主题偏好"""
+    db = get_db()
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    return {"theme": db.get_user_theme(uid)}
+
+
+@router.put("/theme")
+def update_theme(req: ThemeUpdate, request: Request):
+    """更新用户主题偏好"""
+    if req.theme not in ('light', 'dark'):
+        raise HTTPException(status_code=400, detail="theme 必须为 light 或 dark")
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    db = get_db()
+    ok = db.update_user_theme(uid, req.theme)
+    if not ok:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return {"ok": True, "theme": req.theme}
 
 
 class TokenCheck(BaseModel):
@@ -79,5 +108,5 @@ def check_token(req: TokenCheck):
         return {"valid": False, "detail": "账号已被冻结"}
     return {
         "valid": True,
-        "user": {"id": user.id, "username": user.username, "role": user.role, "display_name": user.display_name or user.username},
+        "user": {"id": user.id, "username": user.username, "role": user.role, "display_name": user.display_name or user.username, "theme": user.theme or ""},
     }

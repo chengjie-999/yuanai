@@ -32,32 +32,33 @@ export default function AgentAutomationPage() {
   }, [])
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#fafafa' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)' }}>
       <div style={{
-        padding: '10px 20px', background: '#fff', borderBottom: '1px solid #e8e8ec',
-        display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
+        padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
       }}>
         <Link to="/" style={{
-          fontSize: 12, color: '#999', textDecoration: 'none',
-          padding: '4px 10px', borderRadius: 6, border: '1px solid #e0e0e0',
-        }}>← 返回对话</Link>
+          fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
+          padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
+          flexShrink: 0,
+        }}>← 返回</Link>
         <span style={{ fontSize: 18, lineHeight: 1 }}>🤖</span>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: agent.color, display: 'flex', alignItems: 'center', gap: 8 }}>
             自动化 Agent
             <span style={{
               width: 6, height: 6, borderRadius: '50%',
-              background: agentOnline ? '#4caf50' : '#ccc',
+              background: agentOnline ? 'var(--success)' : 'var(--text-muted)',
               display: 'inline-block',
             }} />
-            <span style={{ fontSize: 11, color: agentOnline ? '#4caf50' : '#999', fontWeight: 400 }}>
+            <span style={{ fontSize: 11, color: agentOnline ? 'var(--success)' : 'var(--text-secondary)', fontWeight: 400 }}>
               {agentOnline ? '在线' : '离线'}
             </span>
           </div>
-          <div style={{ fontSize: 11, color: '#999' }}>浏览器控制、截图监控、题目审核</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>浏览器控制、截图监控、题目审核</div>
         </div>
       </div>
-      <div style={{ flex: 1, overflow: 'auto', maxWidth: 900, margin: '0 auto', width: '100%', padding: 20, boxSizing: 'border-box' }}>
+      <div className="agent-page-body" style={{ flex: 1, overflow: 'auto', maxWidth: 900, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
         <AutomationPanel agentOnline={agentOnline} />
       </div>
     </div>

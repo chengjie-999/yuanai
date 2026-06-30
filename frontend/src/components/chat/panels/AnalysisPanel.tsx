@@ -30,8 +30,8 @@ export default function AnalysisPanel() {
           onChange={(e) => { const v = Number(e.target.value); if (v) handleAnalyze(v) }}
           style={{
             width: '100%', padding: '6px 10px', borderRadius: 6,
-            border: '1px solid #ddd', fontSize: 13, outline: 'none',
-            background: '#fff',
+            border: '1px solid var(--border)', fontSize: 13, outline: 'none',
+            background: 'var(--bg-input)', color: 'var(--text-primary)',
           }}
         >
           <option value="">选择数据集分析...</option>
@@ -83,7 +83,7 @@ export default function AnalysisPanel() {
                 {analysis.charts.map((name: string, i: number) => (
                   <img key={i} src={`${API_BASE}/data/analysis-image/${analysis.dataset_id}/${name}`}
                     alt={name}
-                    style={{ width: '100%', borderRadius: 8, border: '1px solid #eee' }} />
+                    style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border)' }} />
                 ))}
               </div>
             )}

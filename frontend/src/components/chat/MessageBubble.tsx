@@ -32,7 +32,7 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
         </div>
       )}
       {isUser && (
-        <div style={{ fontSize: 11, color: '#b0b8c8', marginBottom: 3, marginRight: 4, fontWeight: 500 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3, marginRight: 4, fontWeight: 500 }}>
           {user?.display_name || user?.username || '我'}
         </div>
       )}
@@ -41,12 +41,12 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
         padding: '10px 16px',
         borderRadius: isUser ? '18px 18px 4px 18px' : '4px 14px 14px 14px',
         maxWidth: '75%',
-        background: isUser ? '#1976d2' : (agent?.bg || '#f5f5f8'),
-        color: isUser ? '#fff' : '#333',
+        background: isUser ? '#1976d2' : 'var(--bg-tertiary)',
+        color: isUser ? '#fff' : 'var(--text-primary)',
         borderLeft: agent ? `3px solid ${agent.color}` : undefined,
         boxShadow: isUser
           ? '0 1px 3px rgba(25,118,210,0.15)'
-          : '0 1px 2px rgba(0,0,0,0.04)',
+          : '0 1px 2px var(--shadow-sm)',
         whiteSpace: 'pre-wrap',
         fontSize: 14,
         lineHeight: 1.65,
@@ -71,22 +71,22 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
         ) : (
           <>
             {msg.progress && (
-              <div style={{ marginBottom: 8, padding: '6px 10px', background: '#f0f5ff', borderRadius: 6 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#666', marginBottom: 4 }}>
+              <div style={{ marginBottom: 8, padding: '6px 10px', background: 'var(--accent-light)', borderRadius: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>
                   <span>{msg.progress.message || '处理中...'}</span>
                   <span>{msg.progress.current}/{msg.progress.total}</span>
                 </div>
-                <div style={{ height: 4, background: '#e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${Math.round((msg.progress.current / Math.max(msg.progress.total, 1)) * 100)}%`, background: '#1976d2', borderRadius: 2, transition: 'width 0.3s' }} />
+                <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.round((msg.progress.current / Math.max(msg.progress.total, 1)) * 100)}%`, background: 'var(--accent)', borderRadius: 2, transition: 'width 0.3s' }} />
                 </div>
               </div>
             )}
             {msg.reasoning && (
               <details open={loading && isLast && !msg.content} style={{ marginBottom: 8 }}>
-                <summary style={{ cursor: 'pointer', fontSize: 12, color: '#888', userSelect: 'none', outline: 'none' }}>
+                <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none', outline: 'none' }}>
                   {loading && isLast && !msg.content ? '思考中...' : `思考完成${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''}`}
                 </summary>
-                <div style={{ marginTop: 6, padding: '8px 12px', background: '#f5f5f5', borderRadius: 6, fontSize: 12, color: '#777', lineHeight: 1.6, maxHeight: 200, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+                <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 200, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
                   {msg.reasoning}
                 </div>
               </details>

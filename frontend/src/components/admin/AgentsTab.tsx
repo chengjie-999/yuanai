@@ -34,9 +34,9 @@ export default function AgentsTab() {
           { label: '离线', value: offline.length, color: '#ccc' },
           { label: '子 Agent 类型', value: SUB_AGENTS.length, color: '#ff9800' },
         ].map((c) => (
-          <div key={c.label} style={{ background: '#fff', borderRadius: 10, border: '1px solid #eee', padding: '14px 16px', textAlign: 'center' }}>
+          <div key={c.label} style={{ background: 'var(--bg-primary)', borderRadius: 10, border: '1px solid var(--border)', padding: '14px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 22, fontWeight: 700, color: c.color }}>{c.value}</div>
-            <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>{c.label}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{c.label}</div>
           </div>
         ))}
       </div>

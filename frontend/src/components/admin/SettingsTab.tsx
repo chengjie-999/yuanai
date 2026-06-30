@@ -7,11 +7,11 @@ const row: React.CSSProperties = {
 }
 
 const label: React.CSSProperties = { fontSize: 13, color: '#333', fontWeight: 500 }
-const hint: React.CSSProperties = { fontSize: 11, color: '#bbb', marginTop: 2 }
+const hint: React.CSSProperties = { fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }
 
 const select: React.CSSProperties = {
-  padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd',
-  fontSize: 13, outline: 'none', background: '#fff', minWidth: 140,
+  padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)',
+  fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)', minWidth: 140,
 }
 
 export default function SettingsTab() {

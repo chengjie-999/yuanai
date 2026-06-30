@@ -31,7 +31,7 @@ export default function KnowledgePanel() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '12px 14px', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 6, flexShrink: 0 }}>
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-light)', display: 'flex', gap: 6, flexShrink: 0 }}>
         <input
           ref={inputRef}
           value={query}
@@ -39,8 +39,8 @@ export default function KnowledgePanel() {
           onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           placeholder="搜索知识库..."
           style={{
-            flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd',
-            fontSize: 13, outline: 'none',
+            flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)',
+            fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)',
           }}
         />
         <button
@@ -48,7 +48,7 @@ export default function KnowledgePanel() {
           disabled={searching || !query.trim()}
           style={{
             padding: '6px 12px', borderRadius: 6, border: 'none',
-            background: '#1976d2', color: '#fff', cursor: 'pointer', fontSize: 12,
+            background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: 12,
             opacity: searching || !query.trim() ? 0.5 : 1, whiteSpace: 'nowrap',
           }}
         >{searching ? '...' : '搜索'}</button>

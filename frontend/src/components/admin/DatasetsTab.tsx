@@ -104,11 +104,11 @@ export default function DatasetsTab() {
                     </div>
                   )
                 })}
-                {analysis.text && <pre style={{ marginTop: 12, background: '#f5f5f8', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{analysis.text}</pre>}
+                {analysis.text && <pre style={{ marginTop: 12, background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>{analysis.text}</pre>}
                 {analysis.charts?.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 16 }}>
                     {analysis.charts.map((name: string, i: number) => (
-                      <img key={i} src={`${API_BASE}/data/analysis-image/${analysis.dataset_id}/${name}`} alt={name} style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid #eee' }} />
+                      <img key={i} src={`${API_BASE}/data/analysis-image/${analysis.dataset_id}/${name}`} alt={name} style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid var(--border)' }} />
                     ))}
                   </div>
                 )}

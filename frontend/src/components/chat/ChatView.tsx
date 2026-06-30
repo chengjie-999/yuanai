@@ -24,6 +24,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
       <div className="chat-main" style={{
         flex: 1, overflowY: 'auto', padding: '32px 16px 16px',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
+        background: 'var(--bg-primary)',
       }}>
         <div style={{ maxWidth: 720, width: '100%' }}>
           {messages.map((msg, i) => (

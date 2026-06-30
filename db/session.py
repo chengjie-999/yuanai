@@ -61,6 +61,7 @@ class User(Base):
     display_name = Column(String(50), default='')
     role = Column(String(20), default='user')
     memory = Column(Text, default='')
+    theme = Column(String(10), default='')
     frozen_until = Column(TIMESTAMP, nullable=True)
     create_time = Column(TIMESTAMP, server_default=func.now())
 
@@ -135,6 +136,7 @@ class AgentDatabase:
             ("chat_session", "user_id INTEGER"),
             ("users", "frozen_until DATETIME"),
             ("users", "memory TEXT"),
+            ("users", "theme VARCHAR(10) DEFAULT ''"),
             ("ai_chat", "images TEXT"),
             ("datasets", "user_id INTEGER"),
             ("datasets", "analysis_json TEXT DEFAULT ''"),
@@ -337,6 +339,28 @@ class AgentDatabase:
             if not user:
                 return False
             user.memory = memory.strip()
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def get_user_theme(self, user_id: int) -> str:
+        """获取用户主题偏好"""
+        sess = self.Session()
+        try:
+            user = sess.query(User).filter_by(id=user_id).first()
+            return (user.theme or '') if user else ''
+        finally:
+            sess.close()
+
+    def update_user_theme(self, user_id: int, theme: str) -> bool:
+        """更新用户主题偏好"""
+        sess = self.Session()
+        try:
+            user = sess.query(User).filter_by(id=user_id).first()
+            if not user:
+                return False
+            user.theme = theme
             sess.commit()
             return True
         finally:

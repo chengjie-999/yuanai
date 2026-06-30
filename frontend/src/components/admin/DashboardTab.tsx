@@ -39,13 +39,13 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
       {error && <ErrorMsg msg={error} onRetry={load} />}
       {loading && <Spinner />}
       {!loading && <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, marginBottom: 24 }}>
+      <div className="card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, marginBottom: 24 }}>
         {cards.map((c) => (
-          <div key={c.label} style={{ background: '#fff', borderRadius: 12, border: '1px solid #eee', padding: '18px 16px', textAlign: 'center', transition: 'box-shadow 0.2s' }}
-            onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)')}
+          <div key={c.label} className="stat-card" style={{ background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', padding: '14px 12px', textAlign: 'center', transition: 'box-shadow 0.2s' }}
+            onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 2px 12px var(--shadow-sm)')}
             onMouseLeave={(e) => (e.currentTarget.style.boxShadow = '')}>
-            <div style={{ fontSize: 26, fontWeight: 700, color: c.color, lineHeight: 1.3 }}>{c.value}</div>
-            <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>{c.label}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: c.color, lineHeight: 1.3 }}>{c.value}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{c.label}</div>
           </div>
         ))}
       </div>

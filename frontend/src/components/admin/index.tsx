@@ -33,16 +33,24 @@ function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
   const currentTab = location.pathname.split('/').pop() || 'dashboard'
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '24px 28px', gap: 20, overflow: 'auto', boxSizing: 'border-box', background: '#f8f9fb' }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: '#1a1a2e' }}>后台管理</h2>
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e8e8ec', paddingBottom: 0, flexWrap: 'wrap' }}>
+    <div className="admin-page" style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '16px 12px', gap: 16, overflow: 'auto', boxSizing: 'border-box', background: 'var(--bg-secondary)' }}>
+      <style>{`
+        @media (min-width: 769px) {
+          .admin-page { padding: 24px 28px !important; gap: 20px !important; }
+        }
+        @media (max-width: 480px) {
+          .admin-page { padding: 12px 8px !important; gap: 12px !important; }
+        }
+      `}</style>
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>后台管理</h2>
+      <div className="admin-tab-bar" style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', paddingBottom: 0, flexWrap: 'nowrap' }}>
         {TABS.map((t) => (
           <button key={t.key} onClick={() => navigate(`/admin/${t.key}`)} style={{
             padding: '9px 16px', borderRadius: '8px 8px 0 0', border: 'none',
-            background: currentTab === t.key ? '#fff' : 'transparent',
-            color: currentTab === t.key ? '#1976d2' : '#888',
+            background: currentTab === t.key ? 'var(--bg-primary)' : 'transparent',
+            color: currentTab === t.key ? 'var(--accent)' : 'var(--text-secondary)',
             fontWeight: currentTab === t.key ? 600 : 400, fontSize: 13, cursor: 'pointer',
-            borderBottom: currentTab === t.key ? '2px solid #1976d2' : '2px solid transparent',
+            borderBottom: currentTab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
             whiteSpace: 'nowrap', transition: 'color 0.15s, border-color 0.15s',
           }}>{t.label}</button>
         ))}

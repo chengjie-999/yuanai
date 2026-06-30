@@ -41,32 +41,31 @@ export function ModelSelector({ model, onChange }: { model: string; onChange: (v
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button onClick={toggle} style={{
-        padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e5e5',
-        background: '#fff', cursor: 'pointer', fontSize: 13, color: '#333',
+        padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)',
+        background: 'var(--bg-input)', cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)',
         display: 'flex', alignItems: 'center', gap: 6,
-      }} onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#bbb')}
-        onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e5e5e5')}>
+      }} onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--text-secondary)')}
+        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: provider === 'Doubao' ? '#10a37f' : '#6366f1' }} />
         <span style={{ fontSize: 13 }}>{current.label}</span>
-        <span style={{ fontSize: 9, color: '#bbb', marginLeft: 2 }}>▼</span>
+        <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 2 }}>▼</span>
       </button>
       {open && (
         <div ref={menuRef} style={{
           position: 'absolute', [upward ? 'bottom' : 'top']: '100%',
           [upward ? 'marginBottom' : 'marginTop']: 4, left: 0,
-          background: '#fff', borderRadius: 10, border: '1px solid #e5e5e5',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.1)', padding: 6, zIndex: 100, minWidth: 210,
+          background: 'var(--bg-primary)', borderRadius: 10, border: '1px solid var(--border)',
+          boxShadow: '0 4px 24px var(--shadow-md)', padding: 6, zIndex: 100, minWidth: 210,
         }}>
           {['Doubao', 'DeepSeek'].map((p) => (
             <div key={p}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#999', padding: '4px 8px', marginTop: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>{p}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', padding: '4px 8px', marginTop: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>{p}</div>
               {MODELS.filter((m) => m.provider === p).map((m) => (
                 <div key={m.value} onClick={() => { onChange(m.value); setOpen(false) }}
-                  style={{ padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: model === m.value ? '#f5f5f5' : 'transparent', display: 'flex', alignItems: 'center', gap: 10 }}
-                  onMouseEnter={(e) => { if (model !== m.value) e.currentTarget.style.background = '#fafafa' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = model === m.value ? '#f5f5f5' : 'transparent' }}>
+                  style={{ padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: model === m.value ? 'var(--hover-bg)' : 'transparent', display: 'flex', alignItems: 'center', gap: 10 }}
+                >
                   <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: p === 'Doubao' ? '#10a37f' : '#6366f1' }} />
-                  <div style={{ flex: 1 }}><div style={{ fontSize: 14, color: '#333' }}>{m.label}</div></div>
+                  <div style={{ flex: 1 }}><div style={{ fontSize: 14, color: 'var(--text-primary)' }}>{m.label}</div></div>
                   {model === m.value && <span style={{ color: '#10a37f', fontSize: 14 }}>✓</span>}
                 </div>
               ))}

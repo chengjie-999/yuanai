@@ -32,6 +32,27 @@ function authHeaders(): Record<string, string> {
   return token ? { 'Authorization': `Bearer ${token}` } : {}
 }
 
+// ---- Theme ----
+export async function fetchTheme(): Promise<string> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/theme`, { headers: authHeaders() })
+    if (!res.ok) return ''
+    const data = await res.json()
+    return data.theme || ''
+  } catch { return '' }
+}
+
+export async function saveTheme(theme: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/theme`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ theme }),
+    })
+    return res.ok
+  } catch { return false }
+}
+
 // ---- Auth ----
 export async function login(username: string, password: string) {
   const res = await fetch(`${API_BASE}/auth/login`, {

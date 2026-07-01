@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { API_BASE, fetchDatasets, fetchDatasetAnalysis } from '../../../api'
+import AnalysisResultView from '../../AnalysisResultView'
 
 export default function AnalysisPanel() {
   const [datasets, setDatasets] = useState<any[]>([])
@@ -51,44 +52,7 @@ export default function AnalysisPanel() {
         {analyzing && (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20, fontSize: 13 }}>分析中...</div>
         )}
-        {analysis && (
-          <div>
-            {analysis.summary && (
-              <div style={{ marginBottom: 12 }}>
-                {Object.entries(analysis.summary).map(([k, v]: [string, any]) => {
-                  let val = '-'
-                  if (typeof v === 'number') {
-                    val = Number.isInteger(v) ? String(v) : v.toFixed(2)
-                  } else if (typeof v === 'object') {
-                    val = JSON.stringify(v)
-                  } else {
-                    val = String(v)
-                  }
-                  return (
-                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border-light)', fontSize: 12 }}>
-                      <span style={{ color: 'var(--text-muted)' }}>{k}</span>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 500, textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{val}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-            {analysis.text && (
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12, whiteSpace: 'pre-wrap' }}>
-                {analysis.text}
-              </div>
-            )}
-            {analysis.charts?.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {analysis.charts.map((name: string, i: number) => (
-                  <img key={i} src={`${API_BASE}/data/analysis-image/${analysis.dataset_id}/${name}`}
-                    alt={name}
-                    style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border)' }} />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {analysis && <AnalysisResult analysis={analysis} />}
         {!selectedId && !analysis && (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40, fontSize: 13 }}>
             选择数据集开始分析

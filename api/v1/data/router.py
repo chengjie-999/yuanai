@@ -253,6 +253,16 @@ async def serve_analysis_image(ds_id: int, name: str):
     return FileResponse(fpath, media_type="image/png")
 
 
+@router.get("/analysis-html/{ds_id}/{name}")
+async def serve_analysis_html(ds_id: int, name: str):
+    fpath = os.path.join(ANALYSIS_DIR, str(ds_id), f"{name}.html")
+    if not os.path.isfile(fpath):
+        raise HTTPException(status_code=404, detail="not found")
+    from fastapi.responses import HTMLResponse
+    with open(fpath, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+
 @router.delete("/dataset/{ds_id}")
 async def delete_dataset(ds_id: int, request: Request):
     db = get_db()

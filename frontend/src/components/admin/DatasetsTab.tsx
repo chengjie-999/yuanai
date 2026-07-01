@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, CardHeader, btnDangerSm, headers, API_BASE } from './shared'
+import AnalysisResultView from '../AnalysisResultView'
 
 export default function DatasetsTab() {
   const [datasets, setDatasets] = useState<any[]>([])
@@ -86,32 +87,9 @@ export default function DatasetsTab() {
 
           {analysis && (
             <Card>
-              <CardHeader title={`分析结果: ${analysis.dataset_name || ''}`} action={<button onClick={() => setAnalysis(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>关闭</button>} />
+              <CardHeader title={`分析结果: ${analysis.name || ''}`} action={<button onClick={() => setAnalysis(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>关闭</button>} />
               <div style={{ padding: 16 }}>
-                {analysis.summary && Object.entries(analysis.summary).map(([k, v]: [string, any]) => {
-                  let val = '-'
-                  if (typeof v === 'number') {
-                    val = Number.isInteger(v) ? String(v) : v.toFixed(2)
-                  } else if (typeof v === 'object') {
-                    val = JSON.stringify(v)
-                  } else {
-                    val = String(v)
-                  }
-                  return (
-                    <div key={k} style={{ display: 'flex', padding: '6px 0', borderBottom: '1px solid var(--border-light)' }}>
-                      <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', minWidth: 160 }}>{k}</span>
-                      <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{val}</span>
-                    </div>
-                  )
-                })}
-                {analysis.text && <pre style={{ marginTop: 12, background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>{analysis.text}</pre>}
-                {analysis.charts?.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 16 }}>
-                    {analysis.charts.map((name: string, i: number) => (
-                      <img key={i} src={`${API_BASE}/data/analysis-image/${analysis.dataset_id}/${name}`} alt={name} style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid var(--border)' }} />
-                    ))}
-                  </div>
-                )}
+                <AnalysisResultView analysis={analysis} />
               </div>
             </Card>
           )}

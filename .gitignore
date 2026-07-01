@@ -22,6 +22,7 @@ venv/
 # Runtime data (运行时生成)
 data/*
 !data/aiprompt/
+agent/data/
 
 # OS
 .DS_Store

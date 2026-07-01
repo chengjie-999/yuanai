@@ -43,19 +43,19 @@ export default function DatasetsTab() {
           <Card>
             <CardHeader title={`数据集 (${datasets.length})`} />
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead><tr style={{ background: '#f5f5f8' }}>
-                {['名称', '类型', '大小', '行数', '上传时间', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: '#666', fontWeight: 600, borderBottom: '2px solid #e0e0e0' }}>{h}</th>)}
+              <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
+                {['名称', '类型', '大小', '行数', '上传时间', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {datasets.map((d: any) => (
-                  <tr key={d.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                    <td style={{ padding: '10px 14px', fontWeight: 600, color: '#333', cursor: 'pointer' }} onClick={() => setPreview(d)}>{d.name}</td>
-                    <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{d.file_type}</td>
-                    <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{d.file_size ? `${(d.file_size / 1024).toFixed(1)} KB` : '-'}</td>
-                    <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{d.row_count ?? '-'}</td>
-                    <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{d.create_time?.slice(0, 16)}</td>
+                  <tr key={d.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer' }} onClick={() => setPreview(d)}>{d.name}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{d.file_type}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{d.file_size ? `${(d.file_size / 1024).toFixed(1)} KB` : '-'}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{d.row_count ?? '-'}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{d.create_time?.slice(0, 16)}</td>
                     <td style={{ padding: '10px 14px', display: 'flex', gap: 6 }}>
-                      <button onClick={() => handleAnalyze(d.id)} disabled={analyzing} style={{ fontSize: 12, padding: '4px 10px', color: '#1976d2', border: '1px solid #1976d2', background: 'none', borderRadius: 4, cursor: 'pointer' }}>{analyzing ? '分析中...' : '分析'}</button>
+                      <button onClick={() => handleAnalyze(d.id)} disabled={analyzing} style={{ fontSize: 12, padding: '4px 10px', color: 'var(--accent)', border: '1px solid var(--accent)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>{analyzing ? '分析中...' : '分析'}</button>
                       <button onClick={() => handleDelete(d.id)} style={btnDangerSm}>删除</button>
                     </td>
                   </tr>
@@ -66,16 +66,16 @@ export default function DatasetsTab() {
 
           {preview && preview.preview_rows && (
             <Card>
-              <CardHeader title={`预览: ${preview.name}`} action={<button onClick={() => setPreview(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#999' }}>关闭</button>} />
+              <CardHeader title={`预览: ${preview.name}`} action={<button onClick={() => setPreview(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>关闭</button>} />
               <div style={{ overflow: 'auto', maxHeight: 300 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead><tr>
-                    {preview.columns?.map((c: any) => <th key={c.name} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: '#666', background: '#f5f5f8', borderBottom: '2px solid #e0e0e0', whiteSpace: 'nowrap' }}>{c.name}</th>)}
+                    {preview.columns?.map((c: any) => <th key={c.name} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>{c.name}</th>)}
                   </tr></thead>
                   <tbody>
                     {preview.preview_rows.slice(0, 50).map((row: any, i: number) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                        {preview.columns?.map((c: any) => <td key={c.name} style={{ padding: '6px 12px', color: '#333', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(row[c.name] ?? '')}</td>)}
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                        {preview.columns?.map((c: any) => <td key={c.name} style={{ padding: '6px 12px', color: 'var(--text-primary)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(row[c.name] ?? '')}</td>)}
                       </tr>
                     ))}
                   </tbody>
@@ -86,7 +86,7 @@ export default function DatasetsTab() {
 
           {analysis && (
             <Card>
-              <CardHeader title={`分析结果: ${analysis.dataset_name || ''}`} action={<button onClick={() => setAnalysis(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#999' }}>关闭</button>} />
+              <CardHeader title={`分析结果: ${analysis.dataset_name || ''}`} action={<button onClick={() => setAnalysis(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>关闭</button>} />
               <div style={{ padding: 16 }}>
                 {analysis.summary && Object.entries(analysis.summary).map(([k, v]: [string, any]) => {
                   let val = '-'
@@ -98,9 +98,9 @@ export default function DatasetsTab() {
                     val = String(v)
                   }
                   return (
-                    <div key={k} style={{ display: 'flex', padding: '6px 0', borderBottom: '1px solid #f5f5f5' }}>
-                      <span style={{ fontWeight: 600, fontSize: 13, color: '#333', minWidth: 160 }}>{k}</span>
-                      <span style={{ fontSize: 13, color: '#666' }}>{val}</span>
+                    <div key={k} style={{ display: 'flex', padding: '6px 0', borderBottom: '1px solid var(--border-light)' }}>
+                      <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', minWidth: 160 }}>{k}</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{val}</span>
                     </div>
                   )
                 })}

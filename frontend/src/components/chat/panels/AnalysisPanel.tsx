@@ -24,7 +24,7 @@ export default function AnalysisPanel() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '12px 14px', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-light)', flexShrink: 0 }}>
         <select
           value={selectedId ?? ''}
           onChange={(e) => { const v = Number(e.target.value); if (v) handleAnalyze(v) }}
@@ -40,16 +40,16 @@ export default function AnalysisPanel() {
           ))}
         </select>
         {datasets.length === 0 && (
-          <div style={{ fontSize: 12, color: '#ccc', textAlign: 'center', marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', marginTop: 8 }}>
             暂无数据集，请先上传
           </div>
         )}
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '8px 14px' }}>
-        {error && <div style={{ padding: 8, color: '#e53935', fontSize: 12 }}>{error}</div>}
+        {error && <div style={{ padding: 8, color: 'var(--danger)', fontSize: 12 }}>{error}</div>}
         {analyzing && (
-          <div style={{ textAlign: 'center', color: '#999', padding: 20, fontSize: 13 }}>分析中...</div>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20, fontSize: 13 }}>分析中...</div>
         )}
         {analysis && (
           <div>
@@ -65,16 +65,16 @@ export default function AnalysisPanel() {
                     val = String(v)
                   }
                   return (
-                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f5f5f5', fontSize: 12 }}>
-                      <span style={{ color: '#888' }}>{k}</span>
-                      <span style={{ color: '#333', fontWeight: 500, textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{val}</span>
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border-light)', fontSize: 12 }}>
+                      <span style={{ color: 'var(--text-muted)' }}>{k}</span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500, textAlign: 'right', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{val}</span>
                     </div>
                   )
                 })}
               </div>
             )}
             {analysis.text && (
-              <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6, marginBottom: 12, whiteSpace: 'pre-wrap' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12, whiteSpace: 'pre-wrap' }}>
                 {analysis.text}
               </div>
             )}
@@ -90,7 +90,7 @@ export default function AnalysisPanel() {
           </div>
         )}
         {!selectedId && !analysis && (
-          <div style={{ textAlign: 'center', color: '#ccc', padding: 40, fontSize: 13 }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40, fontSize: 13 }}>
             选择数据集开始分析
           </div>
         )}

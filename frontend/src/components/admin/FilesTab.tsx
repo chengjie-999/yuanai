@@ -35,7 +35,7 @@ export default function FilesTab() {
   return (
     <div>
       {error && <ErrorMsg msg={error} />}
-      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#666' }}>
+      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
         {currentPath && <button onClick={goUp} style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg-primary)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)' }}>上级目录</button>}
         <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-primary)' }}>data/{currentPath || '.'}</span>
         <button onClick={() => load(currentPath)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--accent)' }}>刷新</button>

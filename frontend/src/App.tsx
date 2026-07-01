@@ -89,7 +89,7 @@ function AppLayout() {
           <button onClick={toggleTheme} title={isDark ? '切换亮色模式' : '切换暗色模式'}
             style={{
               width: 44, height: 24, borderRadius: 12, border: 'none',
-              background: isDark ? '#3a3a4a' : '#d0d7de',
+              background: isDark ? '#45494a' : '#d0d7de',
               cursor: 'pointer', position: 'relative', padding: 0, flexShrink: 0,
               transition: 'background 0.3s',
             }}
@@ -97,7 +97,7 @@ function AppLayout() {
             <span style={{
               position: 'absolute', top: 2, left: isDark ? 22 : 2,
               width: 20, height: 20, borderRadius: '50%',
-              background: isDark ? '#58a6ff' : '#ffffff',
+              background: isDark ? '#589df6' : '#ffffff',
               transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 11, lineHeight: 1, boxShadow: '0 1px 3px rgba(0,0,0,0.2)',

@@ -33,9 +33,9 @@ export default function ToolsTab() {
       {loading ? <Spinner /> : tools.length === 0 ? <Empty msg="暂无工具" /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: '#666' }}>共 {tools.length} 个工具，{grouped.length} 个分类</span>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>共 {tools.length} 个工具，{grouped.length} 个分类</span>
             <div style={{ flex: 1 }} />
-            <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#1976d2' }}>刷新</button>
+            <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--accent)' }}>刷新</button>
           </div>
           {grouped.map(([cat, items]) => (
             <Card key={cat}>
@@ -44,28 +44,28 @@ export default function ToolsTab() {
                 action={
                   <button
                     onClick={() => setExpanded((p) => ({ ...p, [cat]: !p[cat] }))}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#999' }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)' }}
                   >{expanded[cat] ? '收起' : '展开'}</button>
                 }
               />
               {(expanded[cat] !== false) && (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
-                    <tr style={{ background: '#f5f5f8' }}>
-                      {['工具名', '描述', ''].map((h) => <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 12, color: '#666', fontWeight: 600 }}>{h}</th>)}
+                    <tr style={{ background: 'var(--bg-tertiary)' }}>
+                      {['工具名', '描述', ''].map((h) => <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
                     {items.map((t: any) => (
-                      <tr key={t.name} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                        <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontSize: 12, color: '#333' }}>
+                      <tr key={t.name} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                        <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontSize: 12, color: 'var(--text-primary)' }}>
                           {t.name}
                           {t.admin_only && badge('管理员', '#e65100')}
                         </td>
-                        <td style={{ padding: '8px 14px', fontSize: 12, color: '#666', lineHeight: 1.5 }}>{t.description}</td>
+                        <td style={{ padding: '8px 14px', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{t.description}</td>
                         <td style={{ padding: '8px 14px' }}>
                           {t.args && Object.keys(t.args).length > 0 && (
-                            <span style={{ fontSize: 11, color: '#bbb' }}>{Object.keys(t.args).length} 参数</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{Object.keys(t.args).length} 参数</span>
                           )}
                         </td>
                       </tr>

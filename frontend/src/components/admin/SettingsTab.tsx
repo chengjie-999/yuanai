@@ -3,10 +3,10 @@ import { Card, CardHeader } from './shared'
 
 const row: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  padding: '14px 20px', borderBottom: '1px solid #f5f5f5', gap: 16,
+  padding: '14px 20px', borderBottom: '1px solid var(--border-light)', gap: 16,
 }
 
-const label: React.CSSProperties = { fontSize: 13, color: '#333', fontWeight: 500 }
+const label: React.CSSProperties = { fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }
 const hint: React.CSSProperties = { fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }
 
 const select: React.CSSProperties = {
@@ -69,15 +69,15 @@ export default function SettingsTab() {
         <CardHeader title="关于" />
         <div style={row}>
           <div style={label}>版本</div>
-          <div style={{ fontSize: 13, color: '#666' }}>小元AI v2.0</div>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>小元AI v2.0</div>
         </div>
         <div style={row}>
           <div style={label}>前端</div>
-          <div style={{ fontSize: 12, color: '#999', fontFamily: 'monospace' }}>React 19 + TypeScript + Vite</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>React 19 + TypeScript + Vite</div>
         </div>
         <div style={row}>
           <div style={label}>后端</div>
-          <div style={{ fontSize: 12, color: '#999', fontFamily: 'monospace' }}>FastAPI + LangGraph + MySQL + Redis</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>FastAPI + LangGraph + MySQL + Redis</div>
         </div>
       </Card>
     </div>
@@ -90,7 +90,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       onClick={() => onChange(!checked)}
       style={{
         width: 40, height: 22, borderRadius: 11,
-        background: checked ? '#1976d2' : '#ccc',
+        background: checked ? 'var(--accent)' : 'var(--text-muted)',
         cursor: 'pointer', position: 'relative',
         transition: 'background 0.2s',
         flexShrink: 0,

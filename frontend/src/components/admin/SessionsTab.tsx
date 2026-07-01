@@ -37,19 +37,19 @@ export default function SessionsTab() {
       {loading ? <Spinner /> : (
         <Card>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ background: '#f5f5f8' }}>
-              {['会话 ID', '标题', '用户', '消息数', '创建时间', '更新时间', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: '#666', fontWeight: 600, borderBottom: '2px solid #e0e0e0' }}>{h}</th>)}
+            <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
+              {['会话 ID', '标题', '用户', '消息数', '创建时间', '更新时间', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {filtered.length === 0 && <tr><td colSpan={7}><Empty msg={search ? '无匹配会话' : '暂无会话'} /></td></tr>}
               {filtered.map((s) => (
-                <tr key={s.session_id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 11, color: '#888', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.session_id}>{s.session_id.slice(0, 12)}...</td>
-                  <td style={{ padding: '10px 14px', fontWeight: 600, color: '#333', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || '未命名'}</td>
-                  <td style={{ padding: '10px 14px', color: '#666', fontSize: 12 }}>{s.username}</td>
-                  <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{s.message_count ?? '-'}</td>
-                  <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{s.create_time?.slice(0, 16)}</td>
-                  <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{s.update_time?.slice(0, 16)}</td>
+                <tr key={s.session_id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.session_id}>{s.session_id.slice(0, 12)}...</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text-primary)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || '未命名'}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: 12 }}>{s.username}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{s.message_count ?? '-'}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{s.create_time?.slice(0, 16)}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{s.update_time?.slice(0, 16)}</td>
                   <td style={{ padding: '10px 14px' }}><button onClick={() => handleDelete(s.session_id)} style={btnDangerSm}>删除</button></td>
                 </tr>
               ))}

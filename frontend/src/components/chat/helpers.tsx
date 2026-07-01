@@ -95,7 +95,7 @@ export function LoadingDots() {
     return () => clearInterval(t)
   }, [])
   return (
-    <span style={{ color: '#999', fontStyle: 'italic', fontSize: 14 }}>
+    <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 14 }}>
       正在思考<span style={{ letterSpacing: 1 }}>{dots}</span>
     </span>
   )

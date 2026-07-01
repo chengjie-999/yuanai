@@ -42,9 +42,9 @@ export default function AgentStatus({ userId }: { userId?: number }) {
 
   if (error || !online) {
     return (
-      <span style={{ fontSize: 12, color: '#999', display: 'flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{
-          width: 8, height: 8, borderRadius: '50%', background: '#ccc',
+          width: 8, height: 8, borderRadius: '50%', background: 'var(--text-muted)',
           display: 'inline-block',
         }} />
         本地Agent 离线
@@ -58,15 +58,15 @@ export default function AgentStatus({ userId }: { userId?: number }) {
   }
 
   return (
-    <span style={{ fontSize: 12, color: '#333', display: 'flex', alignItems: 'center', gap: 6 }}>
+    <span style={{ fontSize: 12, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
       <span style={{
         width: 8, height: 8, borderRadius: '50%',
-        background: '#4caf50',
+        background: 'var(--success)',
         display: 'inline-block',
         boxShadow: '0 0 6px rgba(76,175,80,0.5)',
       }} />
       {agent.agent_name}
-      <span style={{ color: '#999' }}>
+      <span style={{ color: 'var(--text-muted)' }}>
         {agent.capabilities.map((c: string) => capLabels[c] || c).join('·')}
       </span>
     </span>

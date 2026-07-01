@@ -51,14 +51,14 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
       </div>
       {isAdmin && data?.daily_messages?.length > 0 && (
         <Card style={{ marginBottom: 24, padding: '20px 24px' }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px', color: '#333' }}>近30天消息量</h3>
+          <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px', color: 'var(--text-primary)' }}>近30天消息量</h3>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 100, padding: '0 4px' }}>
             {data.daily_messages.map((d: any, i: number) => {
               const max = Math.max(...data.daily_messages.map((x: any) => x.count), 1)
               const h = Math.max((d.count / max) * 80, d.count > 0 ? 4 : 0)
               return (
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
-                  <div style={{ width: '100%', maxWidth: 24, height: h, background: d.count > 0 ? 'linear-gradient(180deg, #42a5f5, #1e88e5)' : '#e8e8e8', borderRadius: '3px 3px 0 0', transition: 'opacity 0.15s', cursor: 'default', opacity: 0.75 }}
+                  <div style={{ width: '100%', maxWidth: 24, height: h, background: d.count > 0 ? 'linear-gradient(180deg, #42a5f5, #1e88e5)' : 'var(--bg-tertiary)', borderRadius: '3px 3px 0 0', transition: 'opacity 0.15s', cursor: 'default', opacity: 0.75 }}
                     title={`${d.date}: ${d.count} 条`}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.75')} />
@@ -66,7 +66,7 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
               )
             })}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 10, color: '#bbb' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 10, color: 'var(--text-muted)' }}>
             <span>{data.daily_messages[0]?.date}</span>
             <span>{data.daily_messages[data.daily_messages.length - 1]?.date}</span>
           </div>
@@ -76,13 +76,13 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
         <Card>
           <CardHeader title="Agent 在线状态" />
           {agents.map((a: any) => (
-            <div key={a.agent_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 20px', borderBottom: '1px solid #f5f5f5' }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: a.online ? '#4caf50' : '#ccc', flexShrink: 0, boxShadow: a.online ? '0 0 6px rgba(76,175,80,0.5)' : undefined }} />
-              <span style={{ fontWeight: 600, fontSize: 13, color: '#333' }}>{a.agent_name}</span>
-              <span style={{ fontSize: 11, color: '#999', fontFamily: 'monospace' }}>ID: {a.agent_id}</span>
+            <div key={a.agent_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 20px', borderBottom: '1px solid var(--border-light)' }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: a.online ? 'var(--success)' : 'var(--text-muted)', flexShrink: 0, boxShadow: a.online ? '0 0 6px rgba(76,175,80,0.5)' : undefined }} />
+              <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>{a.agent_name}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>ID: {a.agent_id}</span>
               <div style={{ flex: 1 }} />
-              <span style={{ fontSize: 11, color: a.online ? '#4caf50' : '#999' }}>{a.online ? '在线' : '离线'}</span>
-              {a.last_heartbeat && <span style={{ fontSize: 11, color: '#bbb' }}>{a.last_heartbeat}</span>}
+              <span style={{ fontSize: 11, color: a.online ? 'var(--success)' : 'var(--text-muted)' }}>{a.online ? '在线' : '离线'}</span>
+              {a.last_heartbeat && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{a.last_heartbeat}</span>}
             </div>
           ))}
         </Card>

@@ -136,7 +136,7 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
                 <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
                   <img src={img} style={{ height: 50, borderRadius: 6, border: '1px solid var(--border)' }} />
                   <span onClick={() => setImages((p) => p.filter((_, j) => j !== i))}
-                    style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', background: '#e53935', color: '#fff', fontSize: 12, lineHeight: '18px', textAlign: 'center', cursor: 'pointer' }}>✕</span>
+                    style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', background: 'var(--danger)', color: '#fff', fontSize: 12, lineHeight: '18px', textAlign: 'center', cursor: 'pointer' }}>✕</span>
                 </div>
               ))}
             </div>
@@ -172,7 +172,7 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
                 }}
               />
               <button onClick={() => fileRef.current?.click()} title="上传文件/图片"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#999', padding: '8px', lineHeight: 1, opacity: 0.5, transition: 'opacity 0.15s' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-muted)', padding: '8px', lineHeight: 1, opacity: 0.5, transition: 'opacity 0.15s' }}
                 onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                 onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
               >📎</button>

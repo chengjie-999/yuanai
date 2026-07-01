@@ -42,11 +42,11 @@ export default function ModelsTab() {
       {error && <ErrorMsg msg={error} onRetry={loadModels} />}
       {loading ? <Spinner /> : (
         <Card>
-          <CardHeader title="模型配置" action={<button onClick={() => setShowModal(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#1976d2', fontWeight: 500 }}>+ 添加</button>} />
+          <CardHeader title="模型配置" action={<button onClick={() => setShowModal(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--accent)', fontWeight: 500 }}>+ 添加</button>} />
           {entries.length === 0 ? <Empty msg="暂无模型配置" /> : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead><tr style={{ background: '#f5f5f8' }}>
-                {['用途', '模型 ID', '供应商', ''].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: '#666' }}>{h}</th>)}
+              <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
+                {['用途', '模型 ID', '供应商', ''].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)' }}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {entries.map(([id, info]) => {
@@ -54,11 +54,11 @@ export default function ModelsTab() {
                   const label = (info as any).label; if (!label) return null
                   const desc = id.includes('deepseek') ? (label.includes('Pro') ? '强推理' : '快速轻量') : label.includes('Pro') ? '多模态/强推理' : '轻量任务'
                   return (
-                    <tr key={id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                      <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 500 }}>{label}<span style={{ fontSize: 11, color: '#999', marginLeft: 6 }}>{desc}</span></td>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 11, color: '#888' }}>{id}</td>
-                      <td style={{ padding: '10px 14px', color: '#666', fontSize: 12 }}>{info.provider as string}</td>
-                      <td style={{ padding: '10px 14px' }}>{!info.builtin && <button onClick={() => handleDelete(id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#ccc', padding: 0 }}>x</button>}</td>
+                    <tr key={id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                      <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{label}<span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>{desc}</span></td>
+                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>{id}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: 12 }}>{info.provider as string}</td>
+                      <td style={{ padding: '10px 14px' }}>{!info.builtin && <button onClick={() => handleDelete(id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)', padding: 0 }}>x</button>}</td>
                     </tr>)
                 })}
               </tbody>

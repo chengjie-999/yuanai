@@ -3,9 +3,9 @@ import type { ToolCall } from '../types'
 function AnimatedDot() {
   return (
     <span style={{ display: 'inline-flex', gap: 2, marginLeft: 4 }}>
-      <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#999', animation: 'pulse 1s ease-in-out infinite' }} />
-      <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#999', animation: 'pulse 1s ease-in-out 0.2s infinite' }} />
-      <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#999', animation: 'pulse 1s ease-in-out 0.4s infinite' }} />
+      <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--text-muted)', animation: 'pulse 1s ease-in-out infinite' }} />
+      <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--text-muted)', animation: 'pulse 1s ease-in-out 0.2s infinite' }} />
+      <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--text-muted)', animation: 'pulse 1s ease-in-out 0.4s infinite' }} />
     </span>
   )
 }

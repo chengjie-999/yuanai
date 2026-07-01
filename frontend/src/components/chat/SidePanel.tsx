@@ -22,8 +22,8 @@ export default function SidePanel({ panel, onClose, agentOnline }: {
     <div style={{
       width: open ? 380 : 0,
       overflow: open ? 'hidden' : 'hidden',
-      background: '#fff',
-      borderLeft: open ? '1px solid #e8e8ec' : 'none',
+      background: 'var(--bg-primary)',
+      borderLeft: open ? '1px solid var(--border)' : 'none',
       display: 'flex',
       flexDirection: 'column',
       flexShrink: 0,
@@ -33,9 +33,9 @@ export default function SidePanel({ panel, onClose, agentOnline }: {
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
           {/* Header */}
           <div style={{
-            padding: '12px 14px', borderBottom: '1px solid #f0f0f0',
+            padding: '12px 14px', borderBottom: '1px solid var(--border-light)',
             display: 'flex', alignItems: 'center', gap: 10,
-            background: '#fafafa', flexShrink: 0,
+            background: 'var(--bg-secondary)', flexShrink: 0,
           }}>
             <span style={{ fontSize: 18, lineHeight: 1 }}>{meta.icon}</span>
             <div style={{ flex: 1 }}>
@@ -43,18 +43,18 @@ export default function SidePanel({ panel, onClose, agentOnline }: {
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: agent.color, display: 'inline-block', flexShrink: 0 }} />
                 {agent.label}
               </div>
-              <div style={{ fontSize: 11, color: '#999', marginTop: 1 }}>{meta.desc}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{meta.desc}</div>
             </div>
             <span
               onClick={onClose}
               style={{
                 width: 22, height: 22, borderRadius: '50%',
-                background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', fontSize: 11, color: '#999', lineHeight: 1,
+                background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1,
                 transition: 'background 0.15s',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#e0e0e0')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = '#f0f0f0')}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover-bg)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
             >✕</span>
           </div>
 

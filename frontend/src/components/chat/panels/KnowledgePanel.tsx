@@ -56,26 +56,26 @@ export default function KnowledgePanel() {
 
       <div style={{ flex: 1, overflow: 'auto', padding: '8px 14px' }}>
         {error && (
-          <div style={{ padding: 8, color: '#e53935', fontSize: 12 }}>{error}</div>
+          <div style={{ padding: 8, color: 'var(--danger)', fontSize: 12 }}>{error}</div>
         )}
         {!hasSearched ? (
-          <div style={{ textAlign: 'center', color: '#ccc', padding: 40, fontSize: 13 }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40, fontSize: 13 }}>
             输入关键词搜索知识库
           </div>
         ) : results.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#ccc', padding: 40, fontSize: 13 }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40, fontSize: 13 }}>
             无匹配结果
           </div>
         ) : (
           results.map((r: any, i: number) => (
             <div key={i} style={{
-              padding: '10px 0', borderBottom: i < results.length - 1 ? '1px solid #f5f5f5' : 'none',
+              padding: '10px 0', borderBottom: i < results.length - 1 ? '1px solid var(--border-light)' : 'none',
             }}>
-              <div style={{ fontSize: 11, color: '#1976d2', marginBottom: 4, display: 'flex', gap: 8 }}>
+              <div style={{ fontSize: 11, color: 'var(--accent)', marginBottom: 4, display: 'flex', gap: 8 }}>
                 <span>{r.source}</span>
-                {r.score != null && <span style={{ color: '#bbb' }}>{(r.score * 100).toFixed(0)}%</span>}
+                {r.score != null && <span style={{ color: 'var(--text-muted)' }}>{(r.score * 100).toFixed(0)}%</span>}
               </div>
-              <div style={{ fontSize: 13, color: '#333', lineHeight: 1.6 }}>{r.content}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>{r.content}</div>
             </div>
           ))
         )}

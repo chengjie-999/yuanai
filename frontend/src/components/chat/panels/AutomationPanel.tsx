@@ -35,24 +35,24 @@ export default function AutomationPanel({ agentOnline }: { agentOnline: boolean 
 
   if (!agentOnline) {
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#bbb', padding: 40 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 40 }}>
         <div style={{ fontSize: 40, opacity: 0.3 }}>📡</div>
-        <div style={{ fontSize: 13, color: '#999' }}>自动化 Agent 离线</div>
-        <div style={{ fontSize: 12, color: '#ccc', textAlign: 'center' }}>请启动本地 Agent 后重试</div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>自动化 Agent 离线</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>请启动本地 Agent 后重试</div>
       </div>
     )
   }
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '12px 14px', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-light)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{
-            width: 8, height: 8, borderRadius: '50%', background: '#4caf50',
+            width: 8, height: 8, borderRadius: '50%', background: 'var(--success)',
             display: 'inline-block', boxShadow: '0 0 6px rgba(76,175,80,0.5)',
           }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>浏览器</span>
-          <span style={{ fontSize: 12, color: '#4caf50' }}>{status || '运行中'}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>浏览器</span>
+          <span style={{ fontSize: 12, color: 'var(--success)' }}>{status || '运行中'}</span>
         </div>
       </div>
 
@@ -62,7 +62,7 @@ export default function AutomationPanel({ agentOnline }: { agentOnline: boolean 
             <img src={screenshot} style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border)' }} alt="截屏" />
           </div>
         ) : (
-          <div style={{ textAlign: 'center', color: '#ccc', padding: 30, fontSize: 13 }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 30, fontSize: 13 }}>
             <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.3 }}>🖥️</div>
             浏览器就绪，等待任务...
           </div>
@@ -70,14 +70,14 @@ export default function AutomationPanel({ agentOnline }: { agentOnline: boolean 
 
         {activities.length > 0 && (
           <div style={{ padding: '0 14px' }}>
-            <div style={{ fontSize: 11, color: '#bbb', marginBottom: 6, fontWeight: 600 }}>活动记录</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>活动记录</div>
             {activities.slice(0, 10).map((act: any, j: number) => (
               <div key={j} style={{
-                padding: '4px 0', borderBottom: '1px solid #f5f5f5',
+                padding: '4px 0', borderBottom: '1px solid var(--border-light)',
                 display: 'flex', gap: 6, fontSize: 11,
               }}>
-                <span style={{ color: '#bbb', flexShrink: 0 }}>{act.time}</span>
-                <span style={{ color: '#666' }}>{act.message}</span>
+                <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{act.time}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{act.message}</span>
               </div>
             ))}
           </div>

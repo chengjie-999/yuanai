@@ -73,9 +73,9 @@ export default function KnowledgeTab() {
         {searchResult && (
           <div style={{ maxHeight: 400, overflow: 'auto', padding: '0 20px 16px' }}>
             {searchResult.results?.length > 0 ? searchResult.results.map((r: any, i: number) => (
-              <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #f0f0f0' }}>
-                <div style={{ fontSize: 12, color: '#1976d2', marginBottom: 4 }}>来源: {r.source} | 相似度: {(r.score * 100).toFixed(0)}%</div>
-                <div style={{ fontSize: 13, color: '#333', lineHeight: 1.6 }}>{r.content}</div>
+              <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid var(--border-light)' }}>
+                <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 4 }}>来源: {r.source} | 相似度: {(r.score * 100).toFixed(0)}%</div>
+                <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>{r.content}</div>
               </div>
             )) : <Empty msg="无匹配结果" />}
           </div>
@@ -87,23 +87,23 @@ export default function KnowledgeTab() {
           <CardHeader title={`知识源 (${sources.length})`} action={
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => fileRef.current?.click()} style={{ ...btnPrimary, fontSize: 12, padding: '5px 12px' }}>+ 上传 ZIP</button>
-              <button onClick={handleRebuild} disabled={rebuilding} style={{ fontSize: 12, padding: '5px 12px', color: '#e53935', border: '1px solid #e53935', background: 'none', borderRadius: 6, cursor: 'pointer' }}>{rebuilding ? '重建中...' : '重建索引'}</button>
+              <button onClick={handleRebuild} disabled={rebuilding} style={{ fontSize: 12, padding: '5px 12px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 6, cursor: 'pointer' }}>{rebuilding ? '重建中...' : '重建索引'}</button>
               <input ref={fileRef} type="file" accept=".zip" onChange={handleUpload} style={{ display: 'none' }} />
             </div>
           } />
           {sources.length === 0 ? <Empty msg="暂无知识源" /> : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead><tr style={{ background: '#f5f5f8' }}>
-                {['名称', '分块数', '图片数', '可见性', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: '#666', fontWeight: 600, borderBottom: '2px solid #e0e0e0' }}>{h}</th>)}
+              <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
+                {['名称', '分块数', '图片数', '可见性', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {sources.map((s) => (
-                  <tr key={s.source} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                    <td style={{ padding: '10px 14px', fontWeight: 600, color: '#333', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.source}>{s.source}</td>
-                    <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{s.chunks}</td>
-                    <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{s.images}</td>
+                  <tr key={s.source} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text-primary)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.source}>{s.source}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{s.chunks}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{s.images}</td>
                     <td style={{ padding: '10px 14px' }}>{s.visibility === 'shared' ? badge('共享', '#4caf50') : badge('私有', '#ff9800')}</td>
-                    <td style={{ padding: '10px 14px' }}><button onClick={() => handleDelete(s.source)} style={{ fontSize: 12, padding: '4px 10px', color: '#e53935', border: '1px solid #e53935', background: 'none', borderRadius: 4, cursor: 'pointer' }}>删除</button></td>
+                    <td style={{ padding: '10px 14px' }}><button onClick={() => handleDelete(s.source)} style={{ fontSize: 12, padding: '4px 10px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>删除</button></td>
                   </tr>
                 ))}
               </tbody>

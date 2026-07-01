@@ -29,9 +29,9 @@ export default function AgentsTab() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {[
-          { label: 'Agent 总数', value: agents.length, color: '#1976d2' },
-          { label: '在线', value: online.length, color: '#4caf50' },
-          { label: '离线', value: offline.length, color: '#ccc' },
+          { label: 'Agent 总数', value: agents.length, color: 'var(--accent)' },
+          { label: '在线', value: online.length, color: 'var(--success)' },
+          { label: '离线', value: offline.length, color: 'var(--text-muted)' },
           { label: '子 Agent 类型', value: SUB_AGENTS.length, color: '#ff9800' },
         ].map((c) => (
           <div key={c.label} style={{ background: 'var(--bg-primary)', borderRadius: 10, border: '1px solid var(--border)', padding: '14px 16px', textAlign: 'center' }}>
@@ -42,16 +42,16 @@ export default function AgentsTab() {
       </div>
 
       <Card>
-        <CardHeader title={`Agent 列表 (${agents.length})`} action={<button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#1976d2' }}>刷新</button>} />
+        <CardHeader title={`Agent 列表 (${agents.length})`} action={<button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--accent)' }}>刷新</button>} />
         {agents.length === 0 ? <Empty msg="暂无 Agent 连接" /> : (
           agents.map((a) => (
-            <div key={a.agent_id} style={{ padding: '14px 20px', borderBottom: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: a.online ? '#4caf50' : '#ccc', flexShrink: 0, boxShadow: a.online ? '0 0 8px rgba(76,175,80,0.4)' : undefined }} />
+            <div key={a.agent_id} style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: a.online ? 'var(--success)' : 'var(--text-muted)', flexShrink: 0, boxShadow: a.online ? '0 0 8px rgba(76,175,80,0.4)' : undefined }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 14, color: a.online ? '#333' : '#999' }}>{a.agent_name}</div>
-                <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>ID: {a.agent_id}{a.last_heartbeat && <span style={{ marginLeft: 12 }}>心跳: {a.last_heartbeat}</span>}</div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: a.online ? 'var(--text-primary)' : 'var(--text-muted)' }}>{a.agent_name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>ID: {a.agent_id}{a.last_heartbeat && <span style={{ marginLeft: 12 }}>心跳: {a.last_heartbeat}</span>}</div>
               </div>
-              <span style={{ fontSize: 12, fontWeight: 600, color: a.online ? '#4caf50' : '#999' }}>{a.online ? '在线' : '离线'}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: a.online ? 'var(--success)' : 'var(--text-muted)' }}>{a.online ? '在线' : '离线'}</span>
             </div>
           ))
         )}
@@ -60,11 +60,11 @@ export default function AgentsTab() {
       <Card>
         <CardHeader title="子 Agent 团队" />
         {SUB_AGENTS.map((sa) => (
-          <div key={sa.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid #f5f5f5' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: online.length > 0 ? sa.color : '#ddd', flexShrink: 0 }} />
-            <div><div style={{ fontWeight: 600, fontSize: 13, color: sa.color }}>{sa.label}</div><div style={{ fontSize: 12, color: '#999', marginTop: 1 }}>{sa.desc}</div></div>
+          <div key={sa.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-light)' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: online.length > 0 ? sa.color : 'var(--text-muted)', flexShrink: 0 }} />
+            <div><div style={{ fontWeight: 600, fontSize: 13, color: sa.color }}>{sa.label}</div><div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>{sa.desc}</div></div>
             <div style={{ flex: 1 }} />
-            <span style={{ fontSize: 11, color: online.length > 0 ? '#4caf50' : '#999' }}>{online.length > 0 ? '就绪' : '待连接'}</span>
+            <span style={{ fontSize: 11, color: online.length > 0 ? 'var(--success)' : 'var(--text-muted)' }}>{online.length > 0 ? '就绪' : '待连接'}</span>
           </div>
         ))}
       </Card>
@@ -74,11 +74,11 @@ export default function AgentsTab() {
           <CardHeader title="全局活动记录" />
           <div style={{ maxHeight: 300, overflow: 'auto' }}>
             {allActivities.map((act: any, j: number) => (
-              <div key={j} style={{ padding: '8px 20px', borderBottom: j < allActivities.length - 1 ? '1px solid #f5f5f5' : 'none', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                <span style={{ fontSize: 11, color: '#bbb', minWidth: 52, flexShrink: 0 }}>{act.time}</span>
-                <span style={{ fontSize: 11, color: '#1976d2', minWidth: 80, flexShrink: 0 }}>[{act.agent}]</span>
-                <span style={{ fontSize: 13, color: '#333' }}>{act.message}</span>
-                {act.detail && <span style={{ fontSize: 11, color: '#999' }}>{act.detail}</span>}
+              <div key={j} style={{ padding: '8px 20px', borderBottom: j < allActivities.length - 1 ? '1px solid var(--border-light)' : 'none', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 52, flexShrink: 0 }}>{act.time}</span>
+                <span style={{ fontSize: 11, color: 'var(--accent)', minWidth: 80, flexShrink: 0 }}>[{act.agent}]</span>
+                <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{act.message}</span>
+                {act.detail && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{act.detail}</span>}
               </div>
             ))}
           </div>

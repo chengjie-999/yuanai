@@ -41,11 +41,11 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
         padding: '10px 16px',
         borderRadius: isUser ? '18px 18px 4px 18px' : '4px 14px 14px 14px',
         maxWidth: '75%',
-        background: isUser ? '#1976d2' : 'var(--bg-tertiary)',
+        background: isUser ? 'var(--accent)' : 'var(--bg-tertiary)',
         color: isUser ? '#fff' : 'var(--text-primary)',
         borderLeft: agent ? `3px solid ${agent.color}` : undefined,
         boxShadow: isUser
-          ? '0 1px 3px rgba(25,118,210,0.15)'
+          ? '0 1px 3px rgba(88,157,246,0.2)'
           : '0 1px 2px var(--shadow-sm)',
         whiteSpace: 'pre-wrap',
         fontSize: 14,
@@ -63,7 +63,7 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
                 {msg.images.map((img, j) => (
                   <img key={j} src={addToken(img)}
                     onClick={() => setExpandedImage(addToken(img))}
-                    style={{ height: 120, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: '1px solid #e0e0e0' }} />
+                    style={{ height: 120, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: '1px solid var(--border)' }} />
                 ))}
               </div>
             )}
@@ -97,7 +97,7 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   display: 'inline-block', marginTop: 6, padding: '5px 12px',
-                  borderRadius: 6, background: agent?.color || '#1976d2',
+                  borderRadius: 6, background: agent?.color || 'var(--accent)',
                   color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
                   transition: 'opacity 0.15s',
                 }}
@@ -110,7 +110,7 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
                 {msg.images.map((img, j) => (
                   <img key={j} src={addToken(img)}
                     onClick={() => setExpandedImage(addToken(img))}
-                    style={{ height: 120, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: '1px solid #e0e0e0' }} />
+                    style={{ height: 120, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: '1px solid var(--border)' }} />
                 ))}
               </div>
             )}

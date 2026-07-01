@@ -81,7 +81,7 @@ export default function LoginPage() {
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none', boxSizing: 'border-box', paddingRight: 40, background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
           <span onClick={() => setShowPw(!showPw)}
-            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: 16, color: '#999', userSelect: 'none' }}>
+            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', fontSize: 16, color: 'var(--text-muted)', userSelect: 'none' }}>
             {showPw ? '🙈' : '👁'}
           </span>
         </div>
@@ -92,7 +92,7 @@ export default function LoginPage() {
             style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, outline: 'none', marginBottom: 16, boxSizing: 'border-box', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
         )}
 
-        {error && <div style={{ color: '#e53935', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+        {error && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
         <button onClick={handleSubmit} disabled={loading} className={`btn btn-primary btn-block${loading ? ' btn-loading' : ''}`}
           style={{ padding: '12px 0', fontSize: 15, fontWeight: 600 }}>

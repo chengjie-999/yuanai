@@ -8,10 +8,10 @@ export default function ThinkingBlock({ content }: { content: string }) {
     <div style={{
       margin: '8px 0',
       borderRadius: 10,
-      border: '1px solid #e8e0d0',
+      border: '1px solid var(--border)',
       overflow: 'hidden',
       fontSize: 13,
-      background: '#fcf9f2',
+      background: 'var(--bg-tertiary)',
     }}>
       <div
         onClick={() => setOpen(!open)}
@@ -21,20 +21,20 @@ export default function ThinkingBlock({ content }: { content: string }) {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          color: '#8b7d6b',
+          color: 'var(--text-secondary)',
           userSelect: 'none',
           transition: 'background 0.15s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8f3ea')}
+        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover-bg)')}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
         <span style={{ fontSize: 15, lineHeight: 1 }}>💭</span>
-        <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: '#8b7d6b' }}>
+        <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: 'var(--text-secondary)' }}>
           思考过程
         </span>
         <span style={{
           fontSize: 10,
-          color: '#c0b4a4',
+          color: 'var(--text-muted)',
           transition: 'transform 0.25s',
           transform: open ? 'rotate(180deg)' : 'none',
         }}>
@@ -44,11 +44,11 @@ export default function ThinkingBlock({ content }: { content: string }) {
       {open && (
         <div style={{
           padding: '10px 14px',
-          background: '#fefcf8',
-          color: '#6b5d4d',
+          background: 'var(--bg-secondary)',
+          color: 'var(--text-secondary)',
           lineHeight: 1.7,
           whiteSpace: 'pre-wrap',
-          borderTop: '1px solid #e8e0d0',
+          borderTop: '1px solid var(--border)',
           fontSize: 13,
           fontStyle: 'italic',
         }}>

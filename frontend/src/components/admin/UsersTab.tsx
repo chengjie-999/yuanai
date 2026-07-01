@@ -64,11 +64,11 @@ export default function UsersTab() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="用户名" style={{ ...inputStyle, width: 130 }} />
             <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type="password" placeholder="密码" style={{ ...inputStyle, width: 130 }} />
-            <select value={newRole} onChange={(e) => setNewRole(e.target.value)} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', fontSize: 13, outline: 'none' }}>
+            <select value={newRole} onChange={(e) => setNewRole(e.target.value)} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }}>
               <option value="user">user</option><option value="admin">admin</option>
             </select>
             <button onClick={handleCreateUser} style={btnPrimary}>确定</button>
-            <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#999' }}>取消</button>
+            <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>取消</button>
           </div>
         )}
         <div style={{ flex: 1 }} />
@@ -77,23 +77,23 @@ export default function UsersTab() {
       {loading ? <Spinner /> : (
         <Card>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr style={{ background: '#f5f5f8' }}>
-              {['ID', '用户名', '角色', '状态', '注册时间', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: '#666', fontWeight: 600, borderBottom: '2px solid #e0e0e0' }}>{h}</th>)}
+            <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
+              {['ID', '用户名', '角色', '状态', '注册时间', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {filtered.length === 0 && <tr><td colSpan={6}><Empty msg={search ? '无匹配用户' : '暂无用户'} /></td></tr>}
               {filtered.map((u) => {
                 const isAdminRole = u.role === 'admin'; const isFrozen = u.frozen
                 return (
-                  <tr key={u.id} style={{ borderBottom: '1px solid #f0f0f0', opacity: isFrozen ? 0.5 : 1 }}>
-                    <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{u.id}</td>
-                    <td style={{ padding: '10px 14px', color: '#333', fontWeight: 600 }}>{u.username}{isAdminRole && badge('管理员', '#1976d2')}{isFrozen && badge('已冻结', '#e53935')}</td>
-                    <td style={{ padding: '10px 14px' }}>{isAdminRole ? <span style={{ color: '#1976d2', fontWeight: 600 }}>admin</span> : <span style={{ color: '#666' }}>user</span>}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#999' }}>{isFrozen ? `冻结至 ${u.frozen_until?.slice(0, 10)}` : '正常'}</td>
-                    <td style={{ padding: '10px 14px', color: '#999', fontSize: 12 }}>{u.create_time?.slice(0, 10)}</td>
+                  <tr key={u.id} style={{ borderBottom: '1px solid var(--border-light)', opacity: isFrozen ? 0.5 : 1 }}>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.id}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-primary)', fontWeight: 600 }}>{u.username}{isAdminRole && badge('管理员', '#589df6')}{isFrozen && badge('已冻结', '#bc3f3c')}</td>
+                    <td style={{ padding: '10px 14px' }}>{isAdminRole ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>admin</span> : <span style={{ color: 'var(--text-secondary)' }}>user</span>}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>{isFrozen ? `冻结至 ${u.frozen_until?.slice(0, 10)}` : '正常'}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.create_time?.slice(0, 10)}</td>
                     <td style={{ padding: '10px 14px' }}>
                       {!isAdminRole && <div style={{ display: 'flex', gap: 4 }}>
-                        {isFrozen ? <button onClick={() => handleFreeze(u.id, 0)} style={{ fontSize: 12, padding: '4px 10px', color: '#388e3c', border: '1px solid #388e3c', background: 'none', borderRadius: 4, cursor: 'pointer' }}>解冻</button> : <FreezeBtn userId={u.id} onFreeze={handleFreeze} />}
+                        {isFrozen ? <button onClick={() => handleFreeze(u.id, 0)} style={{ fontSize: 12, padding: '4px 10px', color: 'var(--success)', border: '1px solid var(--success)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>解冻</button> : <FreezeBtn userId={u.id} onFreeze={handleFreeze} />}
                         <button onClick={() => handleDeleteUser(u.id, u.username)} style={btnDangerSm}>删除</button>
                       </div>}
                     </td>
@@ -109,13 +109,13 @@ export default function UsersTab() {
 
 function FreezeBtn({ userId, onFreeze }: { userId: number; onFreeze: (id: number, days: number) => void }) {
   const [open, setOpen] = useState(false); const [days, setDays] = useState(7)
-  if (!open) return <button onClick={() => setOpen(true)} style={{ fontSize: 12, padding: '4px 10px', color: '#e53935', border: '1px solid #e53935', background: 'none', borderRadius: 4, cursor: 'pointer' }}>冻结</button>
+  if (!open) return <button onClick={() => setOpen(true)} style={{ fontSize: 12, padding: '4px 10px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>冻结</button>
   return (
     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-      <input type="number" min={1} max={365} value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ width: 48, padding: '4px 6px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, outline: 'none' }} />
-      <span style={{ fontSize: 11, color: '#999' }}>天</span>
-      <button onClick={() => { onFreeze(userId, days); setOpen(false) }} style={{ fontSize: 11, padding: '4px 8px', color: '#fff', background: '#e53935', border: 'none', borderRadius: 4, cursor: 'pointer' }}>确定</button>
-      <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#999', padding: '2px 4px' }}>✕</button>
+      <input type="number" min={1} max={365} value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ width: 48, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 12, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
+      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>天</span>
+      <button onClick={() => { onFreeze(userId, days); setOpen(false) }} style={{ fontSize: 11, padding: '4px 8px', color: '#fff', background: 'var(--danger)', border: 'none', borderRadius: 4, cursor: 'pointer' }}>确定</button>
+      <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)', padding: '2px 4px' }}>✕</button>
     </div>
   )
 }

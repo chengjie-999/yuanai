@@ -11,7 +11,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
 from yuanai_core.core.lc import get_llm
-from yuanai_core.core.schemas import ChatRequest, AgentEvent, token as ev_token, tool_start as ev_tool_start, tool_end as ev_tool_end, image_event, done, error_event, reasoning, activity_event
+from yuanai_core.core.schemas import ChatRequest, AgentEvent, token as ev_token, tool_start as ev_tool_start, tool_end as ev_tool_end, image_event, dashboard_event, done, error_event, reasoning, activity_event
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +30,20 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的助手，可以独立处理简�
 - delegate_to_collection_agent：数据采集（多页爬取、复杂抓取）
 - delegate_to_automation_agent：自动化（浏览器控制、题目审核）
 
+数据分析Agent有内置示例数据，以下分析无需用户提供文件即可直接执行：
+- RFM客户价值分群（内置订单明细.xlsx）
+- 客户流失预测（内置churn数据）
+- 描述性统计分析（可指定dataset_id或使用内置数据）
+- 基因表达分布分析（内置示例数据）
+
+用户说"做RFM分析"时直接委派，不要追问文件路径。分析完成后会自动附带可视化大屏。
+
 工作原则：
 1. 判断任务复杂度：简单任务直接用工具，复杂任务委派子Agent
 2. 委派时一句话说明调用哪个Agent，然后立即调用
 3. 子Agent结果清晰完整时只做简短确认，不要复述
-4. 需求不明确时先询问用户"""
+4. 需求不明确时先询问用户
+5. 数据分析任务不要追问文件路径，直接委派让子Agent自行处理"""
 
 
 class Orchestrator:
@@ -158,10 +167,30 @@ class Orchestrator:
 
                 elif kind == "on_tool_end":
                     output = event["data"].get("output", "")
+                    # images
                     img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
                     for img_url in img_urls:
                         yield image_event(img_url, rid)
+                    # dashboard
+                    dash_match = re.search(r'__DASHBOARD__:(.+)', str(output))
+                    if dash_match:
+                        result_path = dash_match.group(1).strip()
+                        try:
+                            with open(result_path, "r", encoding="utf-8") as f:
+                                dash_data = json.load(f)
+                            cache_key = f"dashboard:{req.session_id}"
+                            try:
+                                from db.redis_client import get_redis
+                                rds = get_redis()
+                                rds.setex(cache_key, 3600, json.dumps(dash_data, ensure_ascii=False))
+                            except Exception:
+                                pass
+                            yield dashboard_event(req.session_id, rid)
+                        except Exception as e:
+                            logger.warning("dashboard parse failed: %s", e)
+                    # clean
                     clean_output = re.sub(r',data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
+                    clean_output = re.sub(r'\n__DASHBOARD__:\S+', '', clean_output).strip()
                     yield ev_tool_end(event.get("name", "未知工具"), clean_output, rid)
 
             yield done(full_response, full_reasoning, rid)

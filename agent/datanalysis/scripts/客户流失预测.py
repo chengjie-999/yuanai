@@ -21,7 +21,7 @@ plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "sans-serif"]
 plt.rcParams["axes.unicode_minus"] = False
 
 __script_name__ = "客户流失预测"
-__script_desc__ = "客户流失预测：EDA + 逻辑回归建模 + 评估。参数: file_path(必填,CSV路径), label_col(可选,默认churn), feature_cols(可选,逗号分隔), predict_path(可选,新客CSV)"
+__script_desc__ = "客户流失预测：EDA+逻辑回归建模+评估。file_path默认使用内置示例数据，无需用户提供即可直接运行。label_col默认'churn'"
 __script_tags__ = ["客户分析"]
 __script_params__ = ["file_path", "label_col", "feature_cols", "predict_path"]
 

@@ -24,6 +24,8 @@ export default function ChatPage({ user }: { user?: any }) {
   const handleModelChange = (v: string) => { setModel(v); setStoredModel(v) }
   const messagesRef = useRef(messages)
   messagesRef.current = messages
+  const sidRef = useRef(currentSid)
+  sidRef.current = currentSid
 
   useEffect(() => {
     const onResize = () => {
@@ -86,18 +88,27 @@ export default function ChatPage({ user }: { user?: any }) {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
       } else if (event.type === 'tool_start') {
         const ns = senderFromTool(event.data.name)
-        if (ns) { currentSender = ns; const link = (ns === 'analysis' || ns === 'automation') ? `/agent/${ns}` : undefined; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
+        if (ns) { currentSender = ns; var sid = sidRef.current; var link = ns === 'analysis' && sid ? '/agent/dashboard/' + sid : ns === 'automation' ? '/agent/' + ns : undefined; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
         else { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
       } else if (event.type === 'tool_end') {
-        const isDel = !!senderFromTool(event.data.name)
-        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].toolCalls = (last[i].toolCalls || []).map((c: any) => c.name === event.data.name ? { ...c, status: 'done' as const, result: event.data.output || '' } : c) }; return last })
+        var del_name = event.data.name || ''
+        var isDel = !!senderFromTool(del_name)
+        setMessages(function (prev) {
+          var last = prev.slice()
+          var i = last.length - 1
+          if (i >= 0) {
+            var calls = (last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { name: c.name, status: 'done', result: event.data.output || '' } : c })
+            last[i] = { role: last[i].role, content: last[i].content, sender: last[i].sender, toolCalls: calls, pageLink: last[i].pageLink, images: last[i].images }
+          }
+          return last
+        })
         if (isDel) { currentSender = 'orchestrator'; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }]) }
       } else if (event.type === 'image') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last })
       } else if (event.type === 'progress') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0 && last[i].role === 'assistant') last[i] = { ...last[i], progress: event.data }; return last })
       } else if (event.type === 'error') {
-        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `请求失败，请重试` }; return last }); setLoading(false)
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: '请求失败，请重试' }; return last }); setLoading(false)
       }
     }
     const onError = () => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: '网络异常，请检查连接' }; return last }); setLoading(false) }

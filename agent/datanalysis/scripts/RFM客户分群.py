@@ -21,7 +21,7 @@ plt.rcParams["axes.unicode_minus"] = False
 # Agent 发现用（不影响脚本独立运行）
 # ═══════════════════════════════════
 __script_name__ = "RFM客户分群"
-__script_desc__ = "从订单明细 Excel 中计算客户 RFM 价值分群。参数: file_path(必填, 含「用户编号」「交易时间」「金额」), user_info_path(可选, 含「用户编号」「区域」用于下钻)"
+__script_desc__ = "从订单明细 Excel 计算客户 RFM 价值分群。file_path 默认使用 data/user/from/订单明细.xlsx（已内置示例数据），无需用户提供即可直接运行。user_info_path 可选用于区域下钻"
 __script_tags__ = ["客户分析"]
 __script_params__ = ["file_path", "user_info_path"]
 
@@ -164,3 +164,16 @@ fig.savefig(rfm_png, dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"分布图已保存 -> {rfm_png}")
 print(f"__IMAGES__:{rfm_png}")
+
+# 结构化结果供大屏展示
+import json as _json
+_result = {
+    "summary": {"用户数": n_users, "订单数": len(df), "参考日期": str(参考日期.date())},
+    "means": {"R均值(天)": round(均值R, 1), "F均值(次)": round(均值F, 1), "M均值(元)": round(均值M, 0)},
+    "segments": [
+        {"label": row["用户标签"], "count": int(row["人数"]), "count_pct": row["人数占比"],
+         "amount": int(row["金额"]), "amount_pct": row["金额占比"]}
+        for _, row in 汇总表.iterrows()
+    ],
+}
+print(f"__RESULT__:{_json.dumps(_result, ensure_ascii=False)}")

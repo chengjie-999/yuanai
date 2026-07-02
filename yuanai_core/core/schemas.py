@@ -70,6 +70,10 @@ def done(display_content: str, reasoning_content: str = "", request_id: str = ""
     )
 
 
+def dashboard_event(session_id: str, request_id: str = "") -> AgentEvent:
+    return AgentEvent(type="dashboard", data={"session_id": session_id}, request_id=request_id)
+
+
 def error_event(message: str, request_id: str = "") -> AgentEvent:
     return AgentEvent(type="error", data=message, request_id=request_id)
 

@@ -20,7 +20,9 @@ export function senderFromTool(name: string): string | null {
 }
 
 export const SUGGESTIONS: { text: string; desc: string }[] = [
-  { text: '帮我分析一下数据集', desc: '数据分析 · 可打开独立面板' },
+  { text: '帮我做RFM客户价值分群', desc: '数据分析 · 客户分群 → 3D大屏' },
+  { text: '对我的数据集做描述性统计分析', desc: '数据分析 · 统计 + 图表 + 大屏' },
+  { text: '帮我预测客户流失情况', desc: '数据分析 · 逻辑回归预测 → 大屏' },
   { text: '抓取这个网页的内容', desc: '数据采集 · 网页爬取抓取' },
   { text: '帮我审核小猿众包题目', desc: '自动化 · 浏览器操控' },
   { text: '搜索知识库中的技术文档', desc: '知识库 · 可打开独立面板' },

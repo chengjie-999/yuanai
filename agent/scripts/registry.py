@@ -1,6 +1,8 @@
 import os
 import re
 import sys
+import json
+import uuid
 import base64
 import subprocess
 import logging
@@ -8,7 +10,6 @@ from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
-# 项目根目录 = agent/scripts/registry.py 上 3 级
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -43,6 +44,22 @@ class _ScriptHandle:
 
             output = result.stdout.strip() or "(脚本无输出)"
 
+            # extract __RESULT__:json line
+            result_match = re.search(r'__RESULT__:(.+)$', output, re.MULTILINE)
+            if result_match:
+                try:
+                    data = json.loads(result_match.group(1))
+                    result_dir = os.path.join(PROJECT_ROOT, "data", "analysis", "results")
+                    os.makedirs(result_dir, exist_ok=True)
+                    result_file = os.path.join(result_dir, f"{uuid.uuid4().hex[:8]}.json")
+                    with open(result_file, "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+                    output = output.replace(result_match.group(0), "")
+                    output += f"\n__DASHBOARD__:{result_file}"
+                except Exception as e:
+                    logger.warning("parse __RESULT__ failed: %s", e)
+
+            # extract __IMAGES__:path
             img_match = re.search(r'__IMAGES__:(.+)', output)
             if img_match:
                 output = output.replace(img_match.group(0), "")
@@ -66,9 +83,6 @@ class _ScriptHandle:
 
 class ScriptRegistry:
     def __init__(self, script_dir: str):
-        """
-        script_dir: 脚本目录，相对于项目根，如 "agent/datanalysis/scripts"
-        """
         self._scripts: Dict[str, _ScriptHandle] = {}
         full_dir = os.path.join(PROJECT_ROOT, script_dir)
         self._discover(full_dir, script_dir.replace("/", ".").replace("\\", "."))
@@ -142,7 +156,6 @@ class ScriptRegistry:
                 logger.info("已注册脚本(类): %s → %s", instance.name, filepath)
 
     def list_for_llm(self) -> str:
-        """按 __script_tags__ 分组，输出给 LLM 看的脚本清单"""
         if not self._scripts:
             return "（暂无可用脚本）"
 

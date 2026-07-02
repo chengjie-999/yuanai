@@ -52,6 +52,7 @@ api/                    FastAPI 后端
     ├── auth/               JWT 认证
     ├── data/               数据集管理
     ├── knowledge/           知识库
+    ├── analysis/           分析大屏 API（RFM、dashboard 数据服务）
     └── ...
 agent/                  本地 Agent 运行时 ★
 ├── main.py              入口（--tray 托盘 / 默认命令行）
@@ -68,6 +69,13 @@ agent/                  本地 Agent 运行时 ★
 │   ├── selenium_tools/  浏览器自动化
 │   ├── audit_tools.py   审核知识库 + 反馈
 │   └── ...
+├── datanalysis/         数据分析脚本目录
+│   ├── scripts/          独立分析脚本（Agent 自动发现）
+│   │   ├── 描述性统计分析.py   统计 + 图表
+│   │   ├── RFM客户分群.py     客户分群（内置示例数据）
+│   │   ├── 客户流失预测.py     逻辑回归预测
+│   │   └── bio_analysis.py    基因表达分析
+│   └── crawl/             网页采集脚本
 ├── audit/               AI 审核系统（题目判定 + 结果解析）
 └── rag.py               Milvus Lite 向量知识库
 yuanai_core/            公共核心库（云边共用）
@@ -152,3 +160,27 @@ data/                   数据目录
 - API Key 从环境变量读取，不在源码硬编码
 - URL 爬取有 SSRF 防护（内网地址拦截）
 - JWT 鉴权中间件统一验证
+
+## 数据分析大屏
+
+分析 Agent 采用 ScriptDispatchAgent 模式：LLM 根据用户意图从 `agent/datanalysis/scripts/` 自动选择脚本，通过 subprocess 执行。
+
+**脚本输出协议：**
+- `__script_name__` / `__script_tags__` / `__script_params__` — 脚本元数据，ScriptRegistry 自动发现
+- `__IMAGES__:path` — 图片输出（脚本 stdout），Registry 转为 base64 嵌入聊天
+- `__RESULT__:{json}` — 结构化结果（用于大屏展示），Registry 检测后缓存到文件，通过 `__DASHBOARD__:path` 回传
+- 协调器检测 `__DASHBOARD__` → 缓存至 Redis → 大屏页面读取渲染
+
+**大屏页面：**
+- `/agent/rfm` — RFM 3D 散点大屏（直连 API，不需要 Agent）
+- `/agent/dashboard/:sessionId` — 通用分析大屏（从 Redis 读取 Agent 执行结果，降级到直连 API）
+- 聊天中分析 Agent 消息的"打开面板"按钮指向 `/agent/dashboard/{sessionId}`
+
+**分析 API：**
+- `POST /api/v1/analysis/rfm` — RFM 分析（支持 dataset_id 或默认示例文件）
+- `GET /api/v1/analysis/dashboard/{session_id}` — 读取 Agent 缓存的仪表盘数据
+- `GET /api/v1/analysis/rfm-chart/{filename}` — Plotly 3D 图表 HTML（公开路径，iframe 嵌入）
+
+**内置工具（Agent 可直接调用）：**
+- `list_datasets` / `preview_dataset` / `analyze_dataset` — 数据集管理
+- `transform_dataset` — 数据转换（筛选/分组聚合/透视表）

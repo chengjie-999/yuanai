@@ -11,6 +11,8 @@ import AgentStatus from './components/AgentStatus'
 import AgentAnalysisPage from './pages/AgentAnalysisPage'
 import AgentAutomationPage from './pages/AgentAutomationPage'
 import AgentKnowledgePage from './pages/AgentKnowledgePage'
+import RFMDashboard from './pages/RFMDashboard'
+import AnalysisDashboard from './pages/AnalysisDashboard'
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
   state = { hasError: false, error: '' }
@@ -126,6 +128,8 @@ function AppLayout() {
             <Route path="/agent/analysis" element={<AgentAnalysisPage />} />
             <Route path="/agent/automation" element={<AgentAutomationPage />} />
             <Route path="/agent/knowledge" element={<AgentKnowledgePage />} />
+            <Route path="/agent/rfm" element={<RFMDashboard />} />
+            <Route path="/agent/dashboard/:sessionId" element={<AnalysisDashboard />} />
             <Route path="/admin/*" element={
               <AdminRoute><AdminPage isAdmin={isAdmin} /></AdminRoute>
             } />

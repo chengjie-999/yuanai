@@ -1,3 +1,5 @@
+import { API_BASE } from '../api'
+
 const thStyle: React.CSSProperties = {
   padding: '4px 6px', textAlign: 'left', fontSize: 10,
   color: 'var(--text-secondary)', fontWeight: 600,
@@ -8,15 +10,34 @@ const tdStyle: React.CSSProperties = {
   borderBottom: '1px solid var(--border-light)', whiteSpace: 'nowrap',
 }
 
+function exportUrl(dsId: number, format: string) {
+  return `${API_BASE}/data/export/${dsId}?format=${format}`
+}
+
 export default function AnalysisResultView({ analysis }: { analysis: any }) {
-  const { name, row_count, columns, num_cols, describe, missing, corr, corr_labels, charts } = analysis
+  const { id, name, row_count, columns, num_cols, describe, missing, corr, corr_labels, charts, time_series } = analysis
 
   return (
     <div>
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{name}</div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
-          {row_count} 行 · {columns?.length || 0} 列 · {num_cols?.length || 0} 数值列
+      {/* Header + export buttons */}
+      <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{name}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+            {row_count} 行 · {columns?.length || 0} 列 · {num_cols?.length || 0} 数值列
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <a href={exportUrl(id, 'excel')} download
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)',
+              background: 'var(--bg-secondary)', color: 'var(--text-secondary)', textDecoration: 'none', cursor: 'pointer' }}>
+            📥 Excel
+          </a>
+          <a href={exportUrl(id, 'html')} download
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)',
+              background: 'var(--bg-secondary)', color: 'var(--text-secondary)', textDecoration: 'none', cursor: 'pointer' }}>
+            🌐 HTML
+          </a>
         </div>
       </div>
 
@@ -80,6 +101,52 @@ export default function AnalysisResultView({ analysis }: { analysis: any }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Time series section */}
+      {time_series && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
+            时间序列分析 · {time_series.date_col}
+          </div>
+
+          {time_series.rolling && (
+            <div style={{ marginBottom: 10, overflow: 'auto' }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>7天滚动统计（最近50行）</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>日期</th>
+                    <th style={thStyle}>均值</th>
+                    <th style={thStyle}>标准差</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {time_series.rolling.date.slice(-10).map((d: string, i: number) => (
+                    <tr key={i}>
+                      <td style={tdStyle}>{d.slice(0, 10)}</td>
+                      <td style={tdStyle}>{time_series.rolling.mean_7d[time_series.rolling.date.length - 10 + i]?.toFixed(2)}</td>
+                      <td style={tdStyle}>{time_series.rolling.std_7d[time_series.rolling.date.length - 10 + i]?.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {time_series.anomalies && time_series.anomalies.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, color: 'var(--danger)', marginBottom: 4 }}>异常点 ({time_series.anomalies.length})</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {time_series.anomalies.map((a: any, i: number) => (
+                  <span key={i} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 3, background: 'rgba(188,63,60,0.1)', color: 'var(--danger)' }}>
+                    {a.date?.slice(0, 10)}: {a.value?.toFixed(1)} (z={a.z_score})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -32,6 +32,15 @@ def _is_admin(request: Request) -> bool:
     return getattr(request.state, "role", "") == "admin"
 
 
+def _check_ownership(request: Request, ds: dict):
+    """非管理员只能访问自己的数据集"""
+    if ds and not _is_admin(request):
+        owner_id = ds.get("user_id")
+        user_id = _get_user_id(request)
+        if owner_id is not None and owner_id != user_id:
+            raise HTTPException(status_code=404, detail="not found")
+
+
 @router.post("/upload")
 async def upload_dataset(request: Request, file: UploadFile = File(...)):
     ext = os.path.splitext(file.filename or "")[1].lower()
@@ -156,8 +165,7 @@ async def list_datasets(request: Request):
 async def get_dataset(ds_id: int, request: Request):
     db = get_db()
     ds = db.get_dataset(ds_id)
-    if not ds:
-        raise HTTPException(status_code=404, detail="not found")
+    _check_ownership(request, ds)
     return ds
 
 
@@ -167,8 +175,7 @@ async def get_dataset(ds_id: int, request: Request):
 async def analyze_dataset_api(ds_id: int, request: Request, force: bool = False, charts: bool = False, cache_only: bool = False):
     db = get_db()
     ds = db.get_dataset(ds_id)
-    if not ds:
-        raise HTTPException(status_code=404, detail="not found")
+    _check_ownership(request, ds)
 
     path = ds["file_path"]
     file_mtime = os.path.getmtime(path) if os.path.exists(path) else 0
@@ -244,7 +251,10 @@ async def analyze_dataset_api(ds_id: int, request: Request, force: bool = False,
 
 
 @router.get("/analysis-image/{ds_id}/{name}")
-async def serve_analysis_image(ds_id: int, name: str):
+async def serve_analysis_image(ds_id: int, name: str, request: Request):
+    db = get_db()
+    ds = db.get_dataset(ds_id)
+    _check_ownership(request, ds)
     from yuanai_core.pure.analysis import ANALYSIS_DIR
     fpath = os.path.join(ANALYSIS_DIR, str(ds_id), f"{name}.png")
     if not os.path.isfile(fpath):
@@ -254,13 +264,44 @@ async def serve_analysis_image(ds_id: int, name: str):
 
 
 @router.get("/analysis-html/{ds_id}/{name}")
-async def serve_analysis_html(ds_id: int, name: str):
+async def serve_analysis_html(ds_id: int, name: str, request: Request):
+    from yuanai_core.pure.analysis import ANALYSIS_DIR
+    db = get_db()
+    ds = db.get_dataset(ds_id)
+    _check_ownership(request, ds)
     fpath = os.path.join(ANALYSIS_DIR, str(ds_id), f"{name}.html")
     if not os.path.isfile(fpath):
         raise HTTPException(status_code=404, detail="not found")
     from fastapi.responses import HTMLResponse
     with open(fpath, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
+
+
+@router.get("/export/{ds_id}")
+async def export_analysis(ds_id: int, request: Request, format: str = "excel"):
+    from yuanai_core.pure.analysis import run_analysis
+    from yuanai_core.pure.export import export_excel, export_html
+
+    db = get_db()
+    ds = db.get_dataset(ds_id)
+    _check_ownership(request, ds)
+
+    result = run_analysis(ds, ds_id, charts=True)
+
+    if format == "excel":
+        data = export_excel(result)
+        from fastapi.responses import Response
+        filename = f"{result['name'].rsplit('.', 1)[0]}_分析报告.xlsx"
+        return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+    elif format == "html":
+        html = export_html(result)
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=html)
+
+    else:
+        raise HTTPException(status_code=400, detail="unsupported format")
 
 
 @router.delete("/dataset/{ds_id}")

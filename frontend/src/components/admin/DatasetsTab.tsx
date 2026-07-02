@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, CardHeader, btnDangerSm, headers, API_BASE } from './shared'
+import { uploadDataset } from '../../api'
 import AnalysisResultView from '../AnalysisResultView'
 
 export default function DatasetsTab() {
@@ -9,6 +10,8 @@ export default function DatasetsTab() {
   const [preview, setPreview] = useState<any>(null)
   const [analysis, setAnalysis] = useState<any>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const load = () => {
     setError('')
@@ -19,6 +22,17 @@ export default function DatasetsTab() {
     setLoading(false)
   }
   useEffect(() => { load() }, [])
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true); setError('')
+    const r = await uploadDataset(file)
+    if (r?.id) load()
+    else setError(r?.detail || '上传失败')
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
 
   const handleDelete = async (id: number) => {
     if (!confirm('确认删除此数据集？')) return
@@ -39,10 +53,27 @@ export default function DatasetsTab() {
   return (
     <>
       {error && <ErrorMsg msg={error} onRetry={load} />}
-      {loading ? <Spinner /> : datasets.length === 0 ? <Empty msg="暂无数据集" /> : (
+      <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.json" onChange={handleUpload} style={{ display: 'none' }} />
+      {loading ? <Spinner /> : datasets.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 40 }}>
+          <Empty msg="暂无数据集" />
+          <button onClick={() => fileRef.current?.click()} disabled={uploading}
+            style={{ fontSize: 12, padding: '5px 14px', color: 'var(--accent)', border: '1px solid var(--accent)', background: 'none', borderRadius: 4, cursor: 'pointer', marginTop: 8 }}>
+            {uploading ? '上传中...' : '+ 上传 CSV/Excel/JSON'}
+          </button>
+        </div>
+      ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card>
-            <CardHeader title={`数据集 (${datasets.length})`} />
+            <CardHeader title={`数据集 (${datasets.length})`} action={
+              <>
+                <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.json" onChange={handleUpload} style={{ display: 'none' }} />
+                <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                  style={{ fontSize: 12, padding: '4px 10px', color: 'var(--accent)', border: '1px solid var(--accent)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>
+                  {uploading ? '上传中...' : '+ 上传'}
+                </button>
+              </>
+            } />
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
                 {['名称', '类型', '大小', '行数', '上传时间', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>{h}</th>)}

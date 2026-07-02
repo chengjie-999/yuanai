@@ -151,3 +151,114 @@ def _format_analysis_result(result: dict) -> str:
         lines.append("\n---")
         lines.append("".join(f"\n![]({img})" for img in images))
     return "\n".join(lines)
+
+
+@tool
+def transform_dataset(dataset_id: int, operation: str, params: str) -> str:
+    """
+    对数据集执行数据转换操作。输入：
+    - dataset_id: 数据集ID
+    - operation: 操作类型，可选 "filter" / "groupby_agg" / "pivot_table"
+    - params: JSON字符串，具体参数如下：
+
+      filter: {"column":"列名","op":">"/"<"/"=="/"contains","value":"值"}
+        例: {"column":"年龄","op":">","value":"30"}
+
+      groupby_agg: {"group_col":"分组列","agg_col":"聚合列","func":"sum"/"mean"/"count"/"max"/"min"}
+        例: {"group_col":"城市","agg_col":"销售额","func":"sum"}
+
+      pivot_table: {"index_col":"行索引列","columns_col":"列分组列","values_col":"值列","aggfunc":"sum"/"mean"/"count"}
+        例: {"index_col":"日期","columns_col":"类别","values_col":"销售额","aggfunc":"sum"}
+
+    转换结果会保存为新数据集。返回新数据集的ID和预览信息。
+    """
+    import pandas as pd
+    import os, json as _json
+
+    from db.session import get_db
+    db = get_db()
+    ds = db.get_dataset(dataset_id)
+    if not ds:
+        return f"数据集 #{dataset_id} 不存在"
+
+    ft = ds["file_type"]
+    path = ds["file_path"]
+    try:
+        if ft == "csv":
+            df = pd.read_csv(path)
+        elif ft in ("xlsx", "xls"):
+            df = pd.read_excel(path)
+        elif ft == "json":
+            df = pd.read_json(path)
+        else:
+            return f"不支持的文件类型: {ft}"
+    except Exception as e:
+        return f"读取文件失败: {e}"
+
+    cfg = _json.loads(params) if isinstance(params, str) else params
+
+    try:
+        op = operation.lower()
+        if op == "filter":
+            col = cfg["column"]
+            o = cfg["op"]
+            val = cfg["value"]
+            if o == ">":
+                df = df[df[col].astype(float) > float(val)]
+            elif o == "<":
+                df = df[df[col].astype(float) < float(val)]
+            elif o == "==":
+                df = df[df[col].astype(str) == str(val)]
+            elif o == "contains":
+                df = df[df[col].astype(str).str.contains(str(val), na=False)]
+            else:
+                return f"不支持的操作符: {o}，可选 > / < / == / contains"
+
+        elif op == "groupby_agg":
+            gcol = cfg["group_col"]
+            acol = cfg["agg_col"]
+            func = cfg["func"]
+            if func == "count":
+                df = df.groupby(gcol).size().reset_index(name="count")
+            else:
+                df = df.groupby(gcol)[acol].agg(func).reset_index()
+
+        elif op == "pivot_table":
+            df = pd.pivot_table(
+                df,
+                index=cfg["index_col"],
+                columns=cfg.get("columns_col"),
+                values=cfg["values_col"],
+                aggfunc=cfg.get("aggfunc", "sum"),
+            ).reset_index()
+        else:
+            return f"不支持的操作: {op}，可选 filter / groupby_agg / pivot_table"
+    except Exception as e:
+        return f"转换失败: {e}"
+
+    if len(df) == 0:
+        return "转换后数据为空，请调整参数"
+
+    # save as new dataset
+    os.makedirs(os.environ.get("DATASETS_DIR", "data/datasets"), exist_ok=True)
+    base_dir = os.environ.get("DATASETS_DIR", "data/datasets")
+    fname = f"{ds['name'].rsplit('.',1)[0]}_{op}_{datetime.now().strftime('%H%M%S')}.csv"
+    fpath = os.path.join(base_dir, fname)
+    df.to_csv(fpath, index=False, encoding="utf-8-sig")
+
+    # register in db
+    new_id = db.add_dataset(
+        name=fname, file_path=fpath, file_type="csv",
+        file_size=os.path.getsize(fpath), row_count=len(df),
+        columns_info=_json.dumps([{"name": str(c), "dtype": str(df[c].dtype)} for c in df.columns], ensure_ascii=False),
+        preview_rows=_json.dumps(df.head(10).fillna("").to_dict(orient="records"), ensure_ascii=False),
+        user_id=None,
+    )
+
+    cols_str = ", ".join(c["name"] for c in _json.loads(_json.dumps([{"name": str(c), "dtype": str(df[c].dtype)} for c in df.columns])))
+    preview = df.head(5).to_string(index=False)
+    return f"转换完成！新数据集 #{new_id}「{fname}」\n{len(df)} 行 · 列: {cols_str}\n\n前 5 行预览:\n```\n{preview}\n```"
+
+
+from datetime import datetime
+

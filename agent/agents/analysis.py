@@ -18,10 +18,11 @@ class AnalysisAgent(ScriptDispatchAgent):
         "builtin_list_datasets": "列出所有可用数据集",
         "builtin_preview_dataset": "预览数据集前N行，参数 dataset_id",
         "builtin_analyze_dataset": "对数据集执行完整统计分析，参数 dataset_id",
+        "builtin_transform_dataset": "对数据集执行转换操作（筛选/分组聚合/透视表），参数 dataset_id, operation, params(JSON)",
     }
 
     def _dispatch_builtin(self, name: str, params: dict) -> str:
-        from yuanai_core.tools.data_tools import list_datasets, preview_dataset, analyze_dataset
+        from yuanai_core.tools.data_tools import list_datasets, preview_dataset, analyze_dataset, transform_dataset
 
         handlers = {
             "builtin_list_datasets": lambda: list_datasets.invoke({}),
@@ -31,6 +32,11 @@ class AnalysisAgent(ScriptDispatchAgent):
             "builtin_analyze_dataset": lambda: analyze_dataset.invoke(
                 {"dataset_id": params.get("dataset_id", 0)}
             ),
+            "builtin_transform_dataset": lambda: transform_dataset.invoke({
+                "dataset_id": params.get("dataset_id", 0),
+                "operation": params.get("operation", ""),
+                "params": params.get("params", "{}"),
+            }),
         }
         handler = handlers.get(name)
         return handler() if handler else f"未知内置操作: {name}"

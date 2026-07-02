@@ -663,7 +663,7 @@ class AgentDatabase:
                 "file_path": r.file_path, "file_size": r.file_size,
                 "row_count": r.row_count,
                 "columns": columns_info, "preview_rows": preview_rows,
-                "source": r.source,
+                "source": r.source, "user_id": r.user_id,
                 "create_time": str(r.create_time)[:19] if r.create_time else "",
             }
         finally:

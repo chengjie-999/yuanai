@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>{{ name }}</title>
+<style>
+body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;max-width:900px;margin:0 auto;padding:24px;color:#24292f;background:#fff}
+h1{font-size:20px;margin-bottom:4px}
+.sub{color:#656d76;font-size:13px;margin-bottom:24px}
+h2{font-size:15px;margin-top:24px;margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid #d0d7de}
+table{border-collapse:collapse;width:100%;margin:8px 0 16px;font-size:12px}
+th{background:#4472C4;color:#fff;padding:6px 8px;text-align:left;font-weight:600}
+td{border:1px solid #d0d7de;padding:4px 8px}
+tr:nth-child(even){background:#f7f8fa}
+.missing{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.missing span{font-size:12px;padding:2px 10px;border-radius:4px;background:#eef0f4}
+.anomaly{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.anomaly span{font-size:12px;padding:2px 8px;border-radius:3px;background:#fff0f0;color:#cf222e}
+.chart{margin:12px 0;border:1px solid #d0d7de;border-radius:8px;overflow:hidden}
+.chart-title{background:#f7f8fa;padding:6px 14px;font-size:12px;color:#656d76;font-weight:600}
+.chart img{width:100%;display:block}
+</style>
+</head>
+<body>
+
+<h1>{{ name }}</h1>
+<div class="sub">{{ row_count }} 行 · {{ col_count }} 列 · {{ num_count }} 数值列</div>
+
+{% if describe_rows %}
+<h2>数值列统计</h2>
+<table>
+<tr><th>列名</th>{% for k in stat_keys %}<th>{{ k }}</th>{% endfor %}</tr>
+{% for row in describe_rows %}
+<tr><td><b>{{ row.name }}</b></td>{% for v in row.values %}<td>{{ v }}</td>{% endfor %}</tr>
+{% endfor %}
+</table>
+{% endif %}
+
+{% if missing %}
+<h2>缺失值</h2>
+<div class="missing">
+{% for col, cnt in missing.items() %}
+<span>{{ col }}: {{ cnt }}</span>
+{% endfor %}
+</div>
+{% endif %}
+
+{% if corr_rows %}
+<h2>相关系数矩阵</h2>
+<table>
+<tr><th></th>{% for l in corr_labels %}<th>{{ l }}</th>{% endfor %}</tr>
+{% for row in corr_rows %}
+<tr><td><b>{{ row.name }}</b></td>{% for v in row.values %}<td>{{ v }}</td>{% endfor %}</tr>
+{% endfor %}
+</table>
+{% endif %}
+
+{% if time_series.anomalies %}
+<h2>异常点</h2>
+<div class="anomaly">
+{% for a in time_series.anomalies %}
+<span>{{ a.date }}: {{ a.value }} (z={{ a.z_score }})</span>
+{% endfor %}
+</div>
+{% endif %}
+
+{% if charts %}
+<h2>图表 ({{ charts|length }})</h2>
+{% for ch in charts %}
+<div class="chart">
+  <div class="chart-title">{{ ch.name }}</div>
+  {% if ch.img_src %}<img src="{{ ch.img_src }}" alt="{{ ch.name }}">{% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+</body>
+</html>

@@ -50,12 +50,17 @@ def run_analysis(ds: dict, ds_id: int, charts: bool = True) -> dict:
         if cat_cols:
             _make_bar(df, cat_cols, chart_dir, ds_id, chart_data)
 
+    ts_result = None
+    if date_cols and num_cols and charts:
+        ts_result = _run_time_series(df, date_cols[0], num_cols, chart_dir, ds_id, chart_data)
+
     return {
         "id": ds_id, "name": ds["name"], "row_count": len(df),
         "columns": col_info, "num_cols": num_cols,
         "describe": desc, "missing": missing,
         "corr_labels": num_cols, "corr": corr_data,
         "charts": chart_data,
+        "time_series": ts_result,
     }
 
 
@@ -201,6 +206,132 @@ def _make_bar(df, cat_cols, chart_dir, ds_id, chart_data):
                       xaxis_tickangle=-45,
                       template="plotly_dark" if _is_dark_friendly() else "plotly_white")
     _make_chart(fig, "bar", chart_dir, ds_id, chart_data)
+
+
+def _run_time_series(df, date_col, num_cols, chart_dir, ds_id, chart_data):
+    """Run time series analysis and return structured TS data."""
+    import numpy as np
+    import pandas as pd
+
+    df_ts = df[[date_col] + [c for c in num_cols if c != date_col]].copy()
+    df_ts[date_col] = pd.to_datetime(df_ts[date_col])
+    df_ts = df_ts.sort_values(date_col).dropna(subset=[date_col])
+
+    primary_col = [c for c in num_cols if c != date_col][0] if num_cols else None
+    if not primary_col:
+        return None
+
+    series = df_ts.set_index(date_col)[primary_col].dropna()
+    if len(series) < 14:
+        return None
+
+    result = {"date_col": date_col}
+
+    # rolling stats
+    rolling_7 = series.rolling(7, min_periods=1)
+    roll_dates = [d.isoformat() for d in series.index][-50:]
+    roll_mean = [float(v) for v in rolling_7.mean().values][-50:]
+    roll_std = [float(v) for v in rolling_7.std().values][-50:]
+    result["rolling"] = {"date": roll_dates, "mean_7d": roll_mean, "std_7d": roll_std}
+    _make_rolling_chart(df_ts, date_col, primary_col, chart_dir, ds_id, chart_data)
+
+    # STL decomposition
+    try:
+        from statsmodels.tsa.seasonal import STL
+        period = min(7, max(2, len(series) // 4))
+        stl = STL(series.dropna(), period=period, robust=True).fit()
+        result["decomposition"] = {
+            "date": [d.isoformat() for d in series.index],
+            "trend": [float(v) if not np.isnan(v) else None for v in stl.trend.values],
+            "seasonal": [float(v) if not np.isnan(v) else None for v in stl.seasonal.values],
+            "resid": [float(v) if not np.isnan(v) else None for v in stl.resid.values],
+        }
+        _make_decomposition_chart(series, stl, chart_dir, ds_id, chart_data)
+    except Exception:
+        pass
+
+    # anomaly detection (rolling z-score)
+    try:
+        roll_m = series.rolling(14, min_periods=7).mean()
+        roll_s = series.rolling(14, min_periods=7).std().replace(0, np.nan)
+        z_scores = ((series - roll_m) / roll_s).dropna()
+        anomalies = z_scores[z_scores.abs() > 3]
+        if len(anomalies) > 0 and len(anomalies) <= 50:
+            result["anomalies"] = [
+                {"date": d.isoformat(), "value": float(series[d]), "z_score": round(float(z_scores[d]), 2)}
+                for d in anomalies.index
+            ]
+            _make_anomaly_chart(series, anomalies, chart_dir, ds_id, chart_data)
+    except Exception:
+        pass
+
+    return result
+
+
+def _make_rolling_chart(df, date_col, value_col, chart_dir, ds_id, chart_data):
+    import plotly.graph_objects as go
+
+    series = df.set_index(date_col)[value_col].dropna()
+    roll = series.rolling(7, min_periods=1)
+    roll_mean = roll.mean()
+    roll_std = roll.std()
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=series.index, y=series.values, mode="lines", name=str(value_col)[:20],
+                             line=dict(color="#589df6", width=1), opacity=0.4))
+    fig.add_trace(go.Scatter(x=roll_mean.index, y=roll_mean.values, mode="lines", name="7天滚动均值",
+                             line=dict(color="#f5a623", width=2)))
+    fig.add_trace(go.Scatter(
+        x=list(roll_mean.index) + list(roll_mean.index[::-1]),
+        y=list((roll_mean + roll_std).values) + list((roll_mean - roll_std).values[::-1]),
+        fill="toself", fillcolor="rgba(245,166,35,0.15)", line=dict(width=0),
+        name="±1σ",
+    ))
+    fig.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=40),
+                      legend=dict(orientation="h", yanchor="top", y=-0.15),
+                      template="plotly_white")
+    _make_chart(fig, "rolling", chart_dir, ds_id, chart_data)
+
+
+def _make_decomposition_chart(series, stl, chart_dir, ds_id, chart_data):
+    from plotly.subplots import make_subplots
+    import plotly.graph_objects as go
+
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True,
+                        subplot_titles=["趋势", "季节", "残差"],
+                        vertical_spacing=0.08)
+
+    idx = series.index
+
+    def _add(trace, row):
+        fig.add_trace(trace, row=row, col=1)
+
+    _add(go.Scatter(x=idx, y=stl.trend, mode="lines", line=dict(color="#589df6", width=1.5), name="趋势"), 1)
+    _add(go.Scatter(x=idx, y=stl.seasonal, mode="lines", line=dict(color="#66bb6a", width=1.5), name="季节"), 2)
+    _add(go.Scatter(x=idx, y=stl.resid, mode="lines", line=dict(color="#ef5350", width=1), name="残差"), 3)
+
+    fig.update_layout(height=450, showlegend=False, margin=dict(l=20, r=20, t=50, b=20),
+                      template="plotly_white")
+    _make_chart(fig, "decomposition", chart_dir, ds_id, chart_data)
+
+
+def _make_anomaly_chart(series, anomalies, chart_dir, ds_id, chart_data):
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=series.index, y=series.values, mode="lines", name="数值",
+                             line=dict(color="#589df6", width=1)))
+
+    anomaly_dates = list(anomalies.index)
+    anomaly_vals = [float(series[d]) for d in anomaly_dates]
+    fig.add_trace(go.Scatter(x=anomaly_dates, y=anomaly_vals, mode="markers", name="异常点",
+                             marker=dict(color="#ef5350", size=8, symbol="x"),
+                             hovertemplate="%{x}<br>值: %{y:.2f}<extra></extra>"))
+
+    fig.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=40),
+                      legend=dict(orientation="h", yanchor="top", y=-0.15),
+                      template="plotly_white")
+    _make_chart(fig, "anomalies", chart_dir, ds_id, chart_data)
 
 
 def _is_dark_friendly() -> bool:

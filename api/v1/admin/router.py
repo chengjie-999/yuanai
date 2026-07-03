@@ -390,27 +390,6 @@ async def delete_model(req: ModelDelete, request: Request):
 
 @router.get("/agent-status")
 async def admin_agent_status_v2(request: Request):
-    """返回 Agent 列表。admin 看全部，普通用户只看自己的。"""
-    from api.v1.agent.router import _agents, _agent_info
-    from api.v1.auth.utils import verify_token
-    from api.v1.middleware import _extract_token
-
-    token = _extract_token(request)
-    payload = verify_token(token) if token else None
-    current_user = str(payload.get("user_id", 0)) if payload else "0"
-    is_admin = payload.get("role") == "admin" if payload else False
-
-    result = []
-    for agent_id, ws in list(_agents.items()):
-        if not is_admin and agent_id != current_user:
-            continue
-        info = _agent_info.get(agent_id, {})
-        result.append({
-            "agent_id": agent_id,
-            "agent_name": info.get("agent_name", agent_id),
-            "capabilities": info.get("capabilities", []),
-            "online": True,
-            "last_heartbeat": info.get("last_heartbeat", ""),
-            "activities": list(reversed(info.get("activities", [])[-10:])),
-        })
-    return result
+    """返回 Agent 列表（含活动记录）。admin 看全部，普通用户只看自己的。"""
+    from api.v1.agent.router import _get_agent_status
+    return _get_agent_status(request, include_activities=True)

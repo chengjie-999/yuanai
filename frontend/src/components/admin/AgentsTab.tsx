@@ -12,7 +12,7 @@ export default function AgentsTab() {
       .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => { if (Array.isArray(d)) { setAgents(d); setError('') } })
       .catch(() => setError('加载 Agent 状态失败'))
-    setLoading(false)
+      .finally(() => setLoading(false))
   }
   useEffect(() => { load(); const i = setInterval(load, 10000); return () => clearInterval(i) }, [])
 

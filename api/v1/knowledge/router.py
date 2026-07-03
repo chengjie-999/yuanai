@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Request, UploadFile, File, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from api.v1.exceptions import InternalError
 
 from yuanai_core.rag import (
     _parse_mindmap_md,
@@ -40,10 +41,7 @@ class SourceInfo(BaseModel):
     images: int
 
 
-# ====================== 辅助 ======================
-def _get_user_id(request: Request) -> int:
-    uid = getattr(request.state, "user_id", 0)
-    return int(uid) if uid else 0
+from api.v1.middleware import get_user_id as _get_user_id
 
 
 def _find_and_process_mds(
@@ -180,7 +178,7 @@ async def upload_knowledge(
         raise HTTPException(status_code=400, detail="无效的 ZIP 文件")
     except Exception as e:
         logger.exception("上传知识库失败")
-        raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
+        raise InternalError(str(e))
 
 
 @router.delete("/{source:path}")
@@ -231,7 +229,7 @@ async def rebuild(request: Request):
         return {"ok": True, "sources": stats}
     except Exception as e:
         logger.exception("知识库重建失败")
-        raise HTTPException(status_code=500, detail=f"重建失败: {str(e)}")
+        raise InternalError(str(e))
 
 
 @router.get("/img/{source}/{filename:path}")

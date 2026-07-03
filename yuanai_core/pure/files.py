@@ -22,9 +22,9 @@ def list_files(subdir: str = "") -> List[Dict]:
 def read_file_content(path: str) -> Optional[str]:
     """读取 data/ 下的文本文件。"""
     from utils.data_path import root_path
-    base = os.path.join(root_path(), "data")
-    target = os.path.normpath(os.path.join(base, path))
-    if not target.startswith(base) or not os.path.isfile(target):
+    base = os.path.realpath(root_path() + "/data")
+    target = os.path.realpath(os.path.join(base, path))
+    if not target.startswith(base + os.sep) or not os.path.isfile(target):
         return None
     ext = os.path.splitext(path)[1].lower()
     if ext not in (".txt", ".csv", ".json", ".py", ".tsx", ".ts", ".css",

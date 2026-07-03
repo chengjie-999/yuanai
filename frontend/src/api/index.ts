@@ -32,6 +32,19 @@ function authHeaders(): Record<string, string> {
   return token ? { 'Authorization': `Bearer ${token}` } : {}
 }
 
+export function headers(): Record<string, string> {
+  const h: Record<string, string> = { 'Content-Type': 'application/json' }
+  const t = localStorage.getItem('token')
+  if (t) h['Authorization'] = `Bearer ${t}`
+  return h
+}
+
+export async function safeJson(res: Response): Promise<any> {
+  const text = await res.text()
+  try { return JSON.parse(text) }
+  catch { return null }
+}
+
 // ---- Theme ----
 export async function fetchTheme(): Promise<string> {
   try {
@@ -125,7 +138,7 @@ export async function listSessions(): Promise<any[]> {
 export async function deleteSession(sessionId: string) {
   try {
     await fetch(`${API_BASE}/chat/session/${sessionId}`, { method: 'DELETE', headers: authHeaders() })
-  } catch { /* ignore */ }
+  } catch (e) { console.error('API 调用失败:', e) }
 }
 
 // ---- Messages ----
@@ -150,7 +163,7 @@ export async function saveMessages(sessionId: string, messages: { role: string; 
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body),
     })
-  } catch { /* ignore */ }
+  } catch (e) { console.error('API 调用失败:', e) }
 }
 
 // ---- Stream Chat ----
@@ -207,7 +220,7 @@ export function streamChat(
               } else {
                 onEvent(event)
               }
-            } catch { /* skip malformed */ }
+            } catch { /* skip malformed SSE data */ }
           }
         }
       }

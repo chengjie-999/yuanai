@@ -6,12 +6,21 @@
     python -m db.merge          # 交互式合并
     python -m db.merge --dry-run   # 仅预览不写入
 """
+import re
 import sys
 import argparse
 import logging
 
 from dotenv import load_dotenv
 load_dotenv()
+
+_ident = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+
+
+def _safe_ident(name: str) -> str:
+    if not _ident.match(name):
+        raise ValueError(f"非法标识符: {name}")
+    return name
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +96,7 @@ def _connect(mysql_config: dict):
 
 def _get_all(session, table: str):
     from sqlalchemy import text
-    rows = session.execute(text(f"SELECT * FROM `{table}`")).mappings().all()
+    rows = session.execute(text(f"SELECT * FROM `{_safe_ident(table)}`")).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -133,7 +142,7 @@ _columns_cache = {}
 def _get_columns(session, table: str) -> set:
     if table not in _columns_cache:
         from sqlalchemy import text
-        rows = session.execute(text(f"SHOW COLUMNS FROM `{table}`")).mappings().all()
+        rows = session.execute(text(f"SHOW COLUMNS FROM `{_safe_ident(table)}`")).mappings().all()
         _columns_cache[table] = {r["Field"] for r in rows}
     return _columns_cache[table]
 
@@ -145,7 +154,7 @@ def _insert_row(session, table: str, row: dict):
     cols = [k for k in row if k != "id" and k in valid]
     placeholders = ", ".join([f":{c}" for c in cols])
     col_names = ", ".join([f"`{c}`" for c in cols])
-    sql = f"INSERT INTO `{table}` ({col_names}) VALUES ({placeholders})"
+    sql = f"INSERT INTO `{_safe_ident(table)}` ({col_names}) VALUES ({placeholders})"
     session.execute(text(sql), {c: row[c] for c in cols})
 
 

@@ -54,10 +54,9 @@ def _save_chat_image(session_id: str, data_url: str) -> str:
 @router.get("/image/{session_id}/{filename}")
 async def serve_chat_image(session_id: str, filename: str):
     """提供聊天图片"""
-    if ".." in session_id or ".." in filename or "/" in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail="非法路径")
-    file_path = os.path.join(_CHAT_IMG_DIR, session_id, filename)
-    if not os.path.isfile(file_path):
+    base_dir = os.path.realpath(_CHAT_IMG_DIR)
+    file_path = os.path.normpath(os.path.join(base_dir, session_id, filename))
+    if not file_path.startswith(base_dir + os.sep) or not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="文件不存在")
     return FileResponse(file_path)
 
@@ -73,8 +72,7 @@ def _get_db():
     return get_db()
 
 
-def _get_user_id(request: Request) -> int:
-    return getattr(request.state, "user_id", None)
+from api.v1.middleware import get_user_id as _get_user_id
 
 
 def _verify_session_owner(db, session_id: str, user_id: int):

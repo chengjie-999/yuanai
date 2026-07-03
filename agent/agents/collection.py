@@ -1,10 +1,12 @@
 """数据采集 Agent：LLM 意图匹配 → 派发爬虫脚本"""
 from agent.agents.base import ScriptDispatchAgent
+from config.settings import AGENT_MODEL_MAP
 
 
 class CollectionAgent(ScriptDispatchAgent):
+    name = "collection"
     script_dir = "agent/datanalysis/crawl"
-    model_name = "doubao-seed-2-0-lite-260215"
+    model_name = AGENT_MODEL_MAP["collection"]
 
     system_prompt = """你是数据采集专家。根据用户需求，从可用操作中选择最合适的，提取参数。
 

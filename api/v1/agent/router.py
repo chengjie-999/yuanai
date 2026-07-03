@@ -24,9 +24,8 @@ HEARTBEAT_INTERVAL = 30
 HEARTBEAT_TIMEOUT = 90
 
 
-@router.get("/status")
-async def agent_status(request: Request):
-    """返回 Agent 状态列表。admin 看全部，普通用户只看自己的。"""
+def _get_agent_status(request: Request, include_activities: bool = False) -> list[dict]:
+    """返回 Agent 状态列表（admin 看全部，普通用户只看自己的）"""
     from api.v1.auth.utils import verify_token
     from api.v1.middleware import _extract_token
 
@@ -40,14 +39,22 @@ async def agent_status(request: Request):
         if not is_admin and agent_id != current_user:
             continue
         info = _agent_info.get(agent_id, {})
-        result.append({
+        entry = {
             "agent_id": agent_id,
             "agent_name": info.get("agent_name", agent_id),
             "capabilities": info.get("capabilities", []),
             "online": True,
             "last_heartbeat": info.get("last_heartbeat", ""),
-        })
+        }
+        if include_activities:
+            entry["activities"] = list(reversed(info.get("activities", [])[-10:]))
+        result.append(entry)
     return result
+
+
+@router.get("/status")
+async def agent_status(request: Request):
+    return _get_agent_status(request)
 
 
 def get_agent(user_id: int) -> WebSocket | None:
@@ -73,6 +80,17 @@ def cleanup_pending(request_id: str):
 
 @router.websocket("/ws/agent/{agent_id}")
 async def agent_ws(websocket: WebSocket, agent_id: str):
+    # 在 accept 前验证 token
+    from api.v1.auth.utils import verify_token
+    token = websocket.query_params.get("token", "")
+    payload = verify_token(token)
+    if not payload:
+        await websocket.close(code=4001, reason="token 无效或未提供")
+        return
+    if str(payload.get("user_id", "")) != agent_id:
+        await websocket.close(code=4003, reason="token 与 agent_id 不匹配")
+        return
+
     await websocket.accept()
     _agents[agent_id] = websocket
     logger.info("Agent %s 已连接（当前在线: %d）", agent_id, len(_agents))

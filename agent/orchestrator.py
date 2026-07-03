@@ -12,6 +12,7 @@ from langgraph.prebuilt import create_react_agent
 
 from yuanai_core.core.lc import get_llm
 from yuanai_core.core.schemas import ChatRequest, AgentEvent, token as ev_token, tool_start as ev_tool_start, tool_end as ev_tool_end, image_event, dashboard_event, done, error_event, reasoning, activity_event
+from config.settings import AGENT_MODEL_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +144,7 @@ class Orchestrator:
         for m in req.messages:
             input_messages.append(m)
 
-        llm = get_llm("doubao-seed-2-0-lite-260215", temperature=0.7, verbose=False, streaming=True)
+        llm = get_llm(AGENT_MODEL_MAP["orchestrator"], temperature=0.7, verbose=False, streaming=True)
         orch_tools = self._build_all_tools()
         agent = create_react_agent(llm, orch_tools)
 

@@ -22,8 +22,9 @@ CHUNK_SIZE = 300
 CHUNK_OVERLAP = 50
 TOP_K = 3
 
-# Embedding 配置：优先用默认模型对应的 API
-EMBEDDING_DIM = 1024  # 通用维度，豆包/DeepSeek 都支持
+# Embedding 配置：优先用默认模型对应的 API，运行时自动检测实际维度
+EMBEDDING_DIM = 1024  # 默认值，首次调用后自动更新
+_actual_dim: int | None = None  # 运行时检测的实际维度
 
 _client: OpenAI | None = None
 _db: MilvusClient | None = None
@@ -52,17 +53,22 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
     """批量获取文本向量"""
     if not texts:
         return []
+    global _actual_dim
     client = _get_openai_client()
     try:
         resp = client.embeddings.create(
             model=DEFAULT_MODEL,
             input=texts,
         )
-        return [d.embedding for d in resp.data]
+        embeddings = [d.embedding for d in resp.data]
+        if embeddings and _actual_dim is None:
+            _actual_dim = len(embeddings[0])
+            print(f"✅ Embedding 实际维度: {_actual_dim}")
+        return embeddings
     except Exception as e:
         print(f"⚠️ Embedding API 调用失败: {e}")
-        # 回退：零向量（检索时会降级为全量返回）
-        return [[0.0] * EMBEDDING_DIM for _ in texts]
+        dim = _actual_dim or EMBEDDING_DIM
+        return [[0.0] * dim for _ in texts]
 
 
 # ====================== Milvus ======================
@@ -153,7 +159,7 @@ def build_knowledge_base(force_rebuild: bool = False) -> bool:
             "source": chunk["source"],
         })
 
-    db.create_collection(COLLECTION_NAME, dimension=EMBEDDING_DIM)
+    db.create_collection(COLLECTION_NAME, dimension=_actual_dim or EMBEDDING_DIM)
     db.insert(COLLECTION_NAME, data)
     print(f"✅ 知识库构建完成，共 {len(data)} 条")
     return True
@@ -176,7 +182,7 @@ def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None) 
         # Embedding 不可用时返回原始文本的子集
         return _get_all_raw_text()[:2000]
 
-    filter_expr = f'source == "{source}"' if source else None
+    filter_expr = f'source == "{source.replace(chr(34), chr(92)+chr(34))}"' if source else None
     results = db.search(
         COLLECTION_NAME,
         data=[embeddings[0]],

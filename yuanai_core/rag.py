@@ -18,7 +18,6 @@ from contextvars import ContextVar
 import numpy as np
 from openai import OpenAI
 from pymilvus import MilvusClient
-from config.settings import DEFAULT_MODEL, MODELS
 from utils.data_path import root_path
 from utils.sensitive_data import get_api_key
 
@@ -353,7 +352,7 @@ def remove_source(source: str, user_id: int | None = None) -> int:
     db = _get_db()
     if not db.has_collection(COLLECTION_NAME):
         return 0
-    filter_parts = [f'source == "{source}"']
+    filter_parts = [f'source == "{source.replace(chr(34), chr(92)+chr(34))}"']
     if user_id is not None:
         filter_parts.append(f'user_id == {user_id}')
     try:
@@ -460,7 +459,7 @@ def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None,
     # 构建过滤条件
     filters = []
     if source:
-        filters.append(f'source == "{source}"')
+        filters.append(f'source == "{source.replace(chr(34), chr(92)+chr(34))}"')
     if user_id is not None:
         filters.append(f'(user_id == 0 or user_id == {user_id})')
 
@@ -596,18 +595,6 @@ def rebuild_vector_store():
 # ====================== LangChain Tool ======================
 try:
     from langchain_core.tools import tool
-
-    @tool
-    def retrieve_knowledge(query: str) -> str:
-        """
-        从知识库中检索相关内容，包括 Python 笔记、标注规范、操作步骤等。
-        当用户询问技术知识、编程问题、标注规范时调用。
-        输入：查询关键词或问题（如 'Python for循环' '数据标注规范'）
-        输出：知识库中语义最相关的段落及其路径
-        """
-        if not query:
-            return "知识库包含: " + ", ".join(list_knowledge_sources())
-        return search_knowledge(query)
 
     @tool
     def retrieve_specification(query: str = "") -> str:

@@ -1,10 +1,12 @@
 """数据分析 Agent：LLM 意图匹配 → 派发分析脚本"""
 from agent.agents.base import ScriptDispatchAgent
+from config.settings import AGENT_MODEL_MAP
 
 
 class AnalysisAgent(ScriptDispatchAgent):
+    name = "analysis"
     script_dir = "agent/datanalysis/scripts"
-    model_name = "doubao-seed-2-0-pro-260215"
+    model_name = AGENT_MODEL_MAP["analysis"]
 
     system_prompt = """你是数据分析专家。根据用户需求，从可用操作中选择最合适的，提取参数。
 

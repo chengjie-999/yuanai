@@ -36,16 +36,16 @@ export default function AnalysisDashboard() {
   </div>
   if (!data) return null
 
-  var summary = data.summary, means = data.means, segments = data.segments, chart_html = data.chart_html
-  var cards = []
+  const { summary, means, segments, chart_html } = data
+  const cards: { label: string; value: string }[] = []
   if (summary) {
-    Object.keys(summary).forEach(function (k) { cards.push({ label: k, value: String(summary[k]) }) })
+    Object.keys(summary).forEach(k => { cards.push({ label: k, value: String(summary[k]) }) })
   }
   if (means) {
-    Object.keys(means).forEach(function (k) { cards.push({ label: k, value: typeof means[k] === 'number' ? means[k].toLocaleString() : String(means[k]) }) })
+    Object.keys(means).forEach(k => { cards.push({ label: k, value: typeof means[k] === 'number' ? means[k].toLocaleString() : String(means[k]) }) })
   }
 
-  var colors = ['#e94560', '#0f3460', '#533483', '#1a73e8', '#0d904f', '#f9a825']
+  const colors = ['#e94560', '#0f3460', '#533483', '#1a73e8', '#0d904f', '#f9a825']
 
   return (
     <div style={{ minHeight: '100vh', background: '#1a1a2e' }}>

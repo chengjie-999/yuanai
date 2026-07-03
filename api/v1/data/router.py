@@ -24,8 +24,7 @@ os.makedirs(ANALYSIS_DIR, exist_ok=True)
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".json"}
 
 
-def _get_user_id(request: Request) -> int:
-    return getattr(request.state, "user_id", None)
+from api.v1.middleware import get_user_id as _get_user_id
 
 
 def _is_admin(request: Request) -> bool:

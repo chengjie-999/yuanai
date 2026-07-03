@@ -30,16 +30,31 @@ class AgentWSClient:
         agent_id: str,
         agent_name: str,
         capabilities: list[str],
+        agent_token: str = "",
         on_chat_request: Callable[[ChatRequest], AsyncGenerator[AgentEvent, None]] | None = None,
     ):
         self.server_url = server_url
         self.agent_id = agent_id
         self.agent_name = agent_name
         self.capabilities = capabilities
+        self.agent_token = agent_token
         self._on_chat_request = on_chat_request
         self._ws = None
         self._running = False
         self._status = "offline"  # offline | connecting | online | reconnecting
+        self._pending_tasks: set[asyncio.Task] = set()
+
+    def _track_task(self, coro) -> asyncio.Task:
+        """创建已追踪的 Task，异常时自动记录日志"""
+        task = asyncio.create_task(coro)
+        self._pending_tasks.add(task)
+
+        def _done(t: asyncio.Task):
+            self._pending_tasks.discard(t)
+            if not t.cancelled() and t.exception():
+                logger.error("后台任务异常", exc_info=t.exception())
+        task.add_done_callback(_done)
+        return task
 
     def on_chat_request(
         self, handler: Callable[[ChatRequest], AsyncGenerator[AgentEvent, None]]
@@ -55,6 +70,8 @@ class AgentWSClient:
         while self._running:
             try:
                 url = f"{self.server_url}/api/v1/agent/ws/agent/{self.agent_id}"
+                if self.agent_token:
+                    url += f"?token={self.agent_token}"
                 self._status = "connecting"
                 logger.info("正在连接云端: %s", url)
                 self._ws = await connect(url, ping_interval=None)
@@ -86,11 +103,11 @@ class AgentWSClient:
                         continue
 
                     if msg_type == "chat_request":
-                        asyncio.create_task(self._handle_chat_request(msg))
+                        self._track_task(self._handle_chat_request(msg))
                     else:
                         logger.debug("未知消息类型: %s", msg_type)
 
-            except (ConnectionClosed, WebSocketException, OSError) as e:
+            except (ConnectionClosed, OSError) as e:
                 logger.warning("WebSocket 断开: %s", e)
             except Exception as e:
                 logger.error("WebSocket 异常: %s", e, exc_info=True)
@@ -142,12 +159,16 @@ class AgentWSClient:
         """从同步上下文发送活动事件（fire-and-forget）"""
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self._send(event))
+            self._track_task(self._send(event))
         except RuntimeError:
             pass  # 不在事件循环中，忽略
 
     async def disconnect(self):
         """断开连接"""
         self._running = False
+        for task in list(self._pending_tasks):
+            task.cancel()
+        if self._pending_tasks:
+            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
         if self._ws:
             await self._ws.close()

@@ -1,4 +1,4 @@
-import { Component, useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
@@ -13,23 +13,7 @@ import AgentAutomationPage from './pages/AgentAutomationPage'
 import AgentKnowledgePage from './pages/AgentKnowledgePage'
 import RFMDashboard from './pages/RFMDashboard'
 import AnalysisDashboard from './pages/AnalysisDashboard'
-
-class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
-  state = { hasError: false, error: '' }
-  static getDerivedStateFromError(e: Error) { return { hasError: true, error: e.message } }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ padding: 40, textAlign: 'center' }}>
-          <h3 style={{ color: 'var(--danger)' }}>页面异常</h3>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '8px 0' }}>{this.state.error}</p>
-          <button onClick={() => window.location.reload()} style={{ marginTop: 12, padding: '6px 16px', cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-primary)', fontSize: 13, color: 'var(--text-primary)' }}>刷新页面</button>
-        </div>
-      )
-    }
-    return this.props.children
-  }
-}
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token, loading } = useAuth()
@@ -88,7 +72,7 @@ function AppLayout() {
         </nav>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={toggleTheme} title={isDark ? '切换亮色模式' : '切换暗色模式'}
+          <button onClick={toggleTheme} aria-label={isDark ? '切换亮色模式' : '切换暗色模式'} title={isDark ? '切换亮色模式' : '切换暗色模式'}
             style={{
               width: 44, height: 24, borderRadius: 12, border: 'none',
               background: isDark ? '#45494a' : '#d0d7de',

@@ -35,13 +35,28 @@ DEFAULT_MODEL = "deepseek-v4-flash"
 VISION_MODEL = "doubao-seed-2-0-pro-260215"  # DeepSeek V4 不支持图片，识图自动切豆包
 DEFAULT_TEMPERATURE = 0.7
 
+# Agent 模型分配 — 统一入口，消除代码中 15+ 处硬编码
+AGENT_MODEL_MAP = {
+    "orchestrator": "doubao-seed-2-0-lite-260215",
+    "analysis": "doubao-seed-2-0-pro-260215",
+    "collection": "doubao-seed-2-0-lite-260215",
+    "automation": "doubao-seed-2-0-pro-260215",
+    "audit": "doubao-seed-2-0-pro-260215",
+}
+
 # ===================== 鉴权配置 =====================
 
 _jwt = os.getenv("JWT_SECRET_KEY")
 if not _jwt or _jwt == "change-me-to-a-random-secret":
     if os.getenv("APP_ENV") == "production":
         raise RuntimeError("JWT_SECRET_KEY 未设置，生产环境必须设置此环境变量")
-    _jwt = os.urandom(32).hex()
+    # 持久化到文件，避免重启后 token 全部失效
+    _secret_file = _Path(__file__).parent / ".jwt_secret"
+    if _secret_file.exists():
+        _jwt = _secret_file.read_text(encoding="utf-8").strip()
+    else:
+        _jwt = os.urandom(32).hex()
+        _secret_file.write_text(_jwt, encoding="utf-8")
 JWT_SECRET_KEY = _jwt
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = 7

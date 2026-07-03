@@ -1,20 +1,21 @@
-import { Component } from 'react'
+import { useState, useEffect } from 'react'
 
-export class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
-  state = { hasError: false, error: '' }
-  static getDerivedStateFromError(e: Error) { return { hasError: true, error: e.message } }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--danger)' }}>
-          <h3>页面加载异常</h3>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{this.state.error}</p>
-          <button onClick={() => this.setState({ hasError: false })} style={{ marginTop: 12, padding: '6px 16px', cursor: 'pointer' }}>重试</button>
-        </div>
-      )
-    }
-    return this.props.children
+export { ErrorBoundary } from '../ErrorBoundary'
+
+export function useAdminFetch<T>(url: string) {
+  const [data, setData] = useState<T | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const load = () => {
+    setError('')
+    fetch(url, { headers: headers() })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+      .then(d => { setData(d); setError('') })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false))
   }
+  useEffect(() => { load() }, [])
+  return { data, loading, error, reload: load }
 }
 
 export const Spinner = () => <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 40, fontSize: 13 }}>加载中...</div>
@@ -43,17 +44,4 @@ export const btnDangerSm: React.CSSProperties = { fontSize: 12, padding: '4px 10
 export const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--bg-input)', color: 'var(--text-primary)' }
 export const badge = (text: string, color: string) => <span style={{ fontSize: 11, color, background: `${color}15`, padding: '2px 6px', borderRadius: 4, marginLeft: 6 }}>{text}</span>
 
-export function headers() {
-  const h: Record<string, string> = { 'Content-Type': 'application/json' }
-  const t = localStorage.getItem('token')
-  if (t) h['Authorization'] = `Bearer ${t}`
-  return h
-}
-
-export async function safeJson(res: Response): Promise<any> {
-  const text = await res.text()
-  try { return JSON.parse(text) }
-  catch { return null }
-}
-
-export const API_BASE = '/api/v1'
+export { headers, safeJson, API_BASE } from '../../api'

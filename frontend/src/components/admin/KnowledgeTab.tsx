@@ -17,7 +17,7 @@ export default function KnowledgeTab() {
       .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => { if (Array.isArray(d)) setSources(d) })
       .catch(() => setError('加载知识库失败'))
-    setLoading(false)
+      .finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [])
 

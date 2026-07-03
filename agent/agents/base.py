@@ -1,26 +1,41 @@
-"""脚本派发 Agent 基类：LLM 意图匹配 → 选择脚本 → 派发执行"""
+"""Agent 基类 + 脚本派发 Agent"""
+
 import json
 import logging
 from abc import ABC, abstractmethod
+from typing import AsyncGenerator
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from yuanai_core.core.lc import get_llm
+from yuanai_core.core.schemas import AgentEvent
 from agent.scripts.registry import ScriptRegistry
 
 logger = logging.getLogger(__name__)
 
 
-class ScriptDispatchAgent(ABC):
+class AgentBase(ABC):
+    """所有 Agent 的统一抽象基类"""
+
+    name: str = "base"
+    model_name: str = ""
+
+    @abstractmethod
+    def run(self, prompt: str) -> str:
+        """同步执行（子类实现）。Orchestrator 通过 delegate 工具调用。"""
+        ...
+
+
+class ScriptDispatchAgent(AgentBase):
     """子类只需声明 script_dir / model_name / system_prompt / builtins 即可"""
 
     # —— 子类必须覆盖 ——
-    script_dir: str                                    # 脚本目录，如 "agent/datanalysis/scripts"
-    model_name: str                                    # LLM 模型名
-    system_prompt: str                                 # 系统提示词
-    builtins: dict[str, str] = {}                      # {"builtin_xxx": "功能描述"}
+    script_dir: str
+    system_prompt: str
+    builtins: dict[str, str] = {}
 
     def __init__(self):
+        super().__init__()
         self.registry = ScriptRegistry(self.script_dir)
 
     # —— 子类可选覆盖 ——

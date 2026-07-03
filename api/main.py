@@ -21,9 +21,11 @@ from api.v1.knowledge.router import router as knowledge_router
 from api.v1.agent.router import router as agent_router
 from api.v1.analysis.rfm import router as rfm_router
 from api.v1.middleware import auth_middleware
+from api.v1.exceptions import AppError, app_error_handler
 from utils.data_path import root_path
 
 app = FastAPI(title="小元AI API", version="1.0.0")
+app.add_exception_handler(AppError, app_error_handler)
 
 _CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else [
     "http://localhost:8080",

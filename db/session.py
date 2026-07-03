@@ -8,6 +8,7 @@ import os
 import json
 import uuid
 from utils.data_path import root_path
+from config.settings import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -130,8 +131,21 @@ class AgentDatabase:
         self._run_migrations()
         self.Session = sessionmaker(bind=self.engine)
 
+    from contextlib import contextmanager
+
+    @contextmanager
+    def session(self):
+        """上下文管理器，自动关闭会话"""
+        sess = self.Session()
+        try:
+            yield sess
+        finally:
+            sess.close()
+
     def _run_migrations(self):
         """兼容旧数据库的列迁移"""
+        import re
+        _ident = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
         migrations = [
             ("chat_session", "user_id INTEGER"),
             ("users", "frozen_until DATETIME"),
@@ -143,6 +157,9 @@ class AgentDatabase:
             ("datasets", "analyzed_at DATETIME"),
         ]
         for table, col in migrations:
+            if not _ident.match(table) or not _ident.match(col.split()[0]):
+                logger.warning("跳过非法迁移: %s.%s", table, col)
+                continue
             try:
                 with self.engine.connect() as conn:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col}"))
@@ -151,6 +168,8 @@ class AgentDatabase:
             except Exception:
                 logger.debug("迁移: %s.%s 可能已存在", table, col.split()[0])
         for col in ["parsed_title VARCHAR(500) DEFAULT ''", "parsed_text TEXT", "parsed_links TEXT"]:
+            if not _ident.match(col.split()[0]):
+                continue
             try:
                 with self.engine.connect() as conn:
                     conn.execute(text(f"ALTER TABLE crawl_records ADD COLUMN {col}"))
@@ -171,7 +190,7 @@ class AgentDatabase:
     # --------------------------------------------------------------------------
     # 会话操作
     # --------------------------------------------------------------------------
-    def create_session(self, title: str = "新对话", model: str = "doubao-seed-2-0-pro-260215", user_id: int = None) -> dict:
+    def create_session(self, title: str = "新对话", model: str = DEFAULT_MODEL, user_id: int = None) -> dict:
         """创建新会话"""
         session = self.Session()
         try:

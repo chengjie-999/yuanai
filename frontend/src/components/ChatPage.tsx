@@ -88,16 +88,16 @@ export default function ChatPage({ user }: { user?: any }) {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
       } else if (event.type === 'tool_start') {
         const ns = senderFromTool(event.data.name)
-        if (ns) { currentSender = ns; var sid = sidRef.current; var link = ns === 'analysis' && sid ? '/agent/dashboard/' + sid : ns === 'automation' ? '/agent/' + ns : undefined; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
+        if (ns) { currentSender = ns; const sid =sidRef.current; const link =ns === 'analysis' && sid ? '/agent/dashboard/' + sid : ns === 'automation' ? '/agent/' + ns : undefined; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
         else { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
       } else if (event.type === 'tool_end') {
-        var del_name = event.data.name || ''
-        var isDel = !!senderFromTool(del_name)
+        const del_name =event.data.name || ''
+        const isDel =!!senderFromTool(del_name)
         setMessages(function (prev) {
-          var last = prev.slice()
-          var i = last.length - 1
+          const last =prev.slice()
+          const i =last.length - 1
           if (i >= 0) {
-            var calls = (last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { name: c.name, status: 'done', result: event.data.output || '' } : c })
+            const calls =(last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { name: c.name, status: 'done', result: event.data.output || '' } : c })
             last[i] = { role: last[i].role, content: last[i].content, sender: last[i].sender, toolCalls: calls, pageLink: last[i].pageLink, images: last[i].images }
           }
           return last

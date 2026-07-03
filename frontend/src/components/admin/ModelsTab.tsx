@@ -15,7 +15,7 @@ export default function ModelsTab() {
       .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((data) => { if (data && typeof data === 'object' && !Array.isArray(data)) setModels(data) })
       .catch(() => setError('加载模型配置失败'))
-    setLoading(false)
+      .finally(() => setLoading(false))
   }
   useEffect(() => { loadModels() }, [])
 
@@ -58,7 +58,7 @@ export default function ModelsTab() {
                       <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{label}<span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>{desc}</span></td>
                       <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>{id}</td>
                       <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: 12 }}>{info.provider as string}</td>
-                      <td style={{ padding: '10px 14px' }}>{!info.builtin && <button onClick={() => handleDelete(id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)', padding: 0 }}>x</button>}</td>
+                      <td style={{ padding: '10px 14px' }}>{!info.builtin && <button onClick={() => handleDelete(id)} aria-label={`删除模型 ${id}`} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)', padding: 0 }}>x</button>}</td>
                     </tr>)
                 })}
               </tbody>

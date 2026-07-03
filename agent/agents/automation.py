@@ -6,6 +6,8 @@ from langgraph.prebuilt import create_react_agent
 
 from yuanai_core.core.lc import get_llm
 from agent.tools import load_agent_tools
+from agent.agents.base import AgentBase
+from config.settings import AGENT_MODEL_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +49,12 @@ SYSTEM_PROMPT = """你是自动化操作专家，负责浏览器控制和题目�
 9. 循环处理下一题"""
 
 
-class AutomationAgent:
+class AutomationAgent(AgentBase):
+    name = "automation"
+    model_name = AGENT_MODEL_MAP["automation"]
+
     def __init__(self):
+        super().__init__()
         self._tools = None
 
     @property

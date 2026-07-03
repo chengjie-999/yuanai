@@ -206,7 +206,7 @@ async def _deepseek_agent_stream(
                 img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', result_str)
                 for img_url in img_urls:
                     yield {"type": "image", "data": img_url}
-                clean_output = re.sub(r',data:image/\w+;base64,[A-Za-z0-9+/=]+', '', result_str)
+                clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', result_str)
 
                 yield {
                     "type": "tool_end",
@@ -259,7 +259,7 @@ async def stream_agent_events(
                 img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
                 for img_url in img_urls:
                     yield {"type": "image", "data": img_url}
-                clean_output = re.sub(r',data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
+                clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
                 yield {"type": "tool_end", "data": {"name": event.get("name", "未知工具"), "output": clean_output}}
         yield {
             "type": "done",
@@ -333,7 +333,7 @@ async def stream_agent_with_messages(
                 img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
                 for img_url in img_urls:
                     yield {"type": "image", "data": img_url}
-                clean_output = re.sub(r',data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
+                clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
                 yield {"type": "tool_end", "data": {"name": event.get("name", "未知工具"), "output": clean_output}}
         yield {
             "type": "done",

@@ -13,7 +13,7 @@ export default function SessionsTab() {
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then((d) => { if (Array.isArray(d)) setSessions(d) })
       .catch((e) => setError(`加载会话列表失败: ${e.message}`))
-    setLoading(false)
+      .finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [])
 

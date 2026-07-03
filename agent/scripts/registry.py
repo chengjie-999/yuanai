@@ -20,16 +20,18 @@ class _ScriptHandle:
         self._filepath = filepath
         self.tags = tags or []
 
+    _SAFE_PARAM = re.compile(r'^[a-zA-Z0-9_\-一-鿿./: .,;!?@#$%^&*()+=<>\[\]{}|~`\'"]+$')
+
     def run(self, **params) -> str:
         args = [sys.executable, self._filepath]
         param_order = getattr(self, '_param_order', [])
-        if param_order:
-            for p in param_order:
-                if p in params:
-                    args.append(str(params[p]))
-        else:
-            for k in sorted(params):
-                args.append(str(params[k]))
+        keys = param_order if param_order else sorted(params)
+        for k in keys:
+            if k in params:
+                val = str(params[k])
+                if not self._SAFE_PARAM.match(val):
+                    return f"参数校验失败: {k}={val[:100]} 含非法字符"
+                args.append(val)
 
         try:
             result = subprocess.run(

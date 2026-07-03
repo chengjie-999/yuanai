@@ -19,7 +19,7 @@ export default function DatasetsTab() {
       .then((r) => { if (!r.ok) throw new Error(); return r.json() })
       .then((d) => { if (Array.isArray(d)) setDatasets(d) })
       .catch(() => setError('加载数据集失败'))
-    setLoading(false)
+      .finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [])
 

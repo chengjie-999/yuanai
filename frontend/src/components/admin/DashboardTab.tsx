@@ -8,15 +8,16 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
   const [error, setError] = useState('')
 
   const load = () => {
-    fetch(`${API_BASE}/admin/dashboard`, { headers: headers() })
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
-      .then((d) => { setData(d); setError('') })
-      .catch((e) => setError(`仪表盘加载失败: ${e.message}`))
-    fetch(`${API_BASE}/admin/agent-status`, { headers: headers() })
-      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
-      .then((d) => { if (Array.isArray(d)) setAgents(d) })
-      .catch(() => {})
-    setLoading(false)
+    Promise.all([
+      fetch(`${API_BASE}/admin/dashboard`, { headers: headers() })
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+        .then((d) => { setData(d); setError('') })
+        .catch((e) => setError(`仪表盘加载失败: ${e.message}`)),
+      fetch(`${API_BASE}/admin/agent-status`, { headers: headers() })
+        .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+        .then((d) => { if (Array.isArray(d)) setAgents(d) })
+        .catch(() => {}),
+    ]).finally(() => setLoading(false))
   }
 
   useEffect(() => { load(); const i = setInterval(load, 15000); return () => clearInterval(i) }, [])

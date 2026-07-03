@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from yuanai_core.core.lc import get_llm
 from agent.audit.parser import AuditResult, parse_audit_result
 from agent.rag import get_all_specs
+from config.settings import AGENT_MODEL_MAP
 
 
 # ==================== 扩展数据类型 ====================
@@ -143,7 +144,7 @@ def build_multimodal_message(images: List[str], prompt: str = None) -> List:
     return [SystemMessage(content=get_system_prompt()), HumanMessage(content=user_content)]
 
 
-def call_audit_llm(images: List[str], model: str = "doubao-seed-2-0-pro-260215") -> str:
+def call_audit_llm(images: List[str], model: str = AGENT_MODEL_MAP["audit"]) -> str:
     """
     调用 LLM 进行审核（多模态模型）
     :param images: Base64 图片列表
@@ -162,7 +163,7 @@ def call_audit_llm(images: List[str], model: str = "doubao-seed-2-0-pro-260215")
         return f'{{"is_correct": false, "error_type": "答案错", "error_count": 1, "reason": "AI调用失败: {error_msg}"}}'
 
 
-def call_audit_agent(images: List[str], model: str = "doubao-seed-2-0-pro-260215") -> str:
+def call_audit_agent(images: List[str], model: str = AGENT_MODEL_MAP["audit"]) -> str:
     """
     调用 LangGraph Agent 进行审核（支持工具调用）
     :param images: Base64 图片列表
@@ -201,7 +202,7 @@ def call_audit_agent(images: List[str], model: str = "doubao-seed-2-0-pro-260215
         return f'{{"is_correct": false, "error_type": "答案错", "error_count": 1, "reason": "Agent调用失败: {error_msg}"}}'
 
 
-def audit_question(images: List, model: str = "doubao-seed-2-0-pro-260215") -> AuditResult:
+def audit_question(images: List, model: str = AGENT_MODEL_MAP["audit"]) -> AuditResult:
     """
     审核题目图片（主接口）
     :param images: question_info() 返回的图片列表
@@ -234,7 +235,7 @@ def audit_question(images: List, model: str = "doubao-seed-2-0-pro-260215") -> A
     return parse_audit_result(ai_response)
 
 
-def quick_audit(images: List, model: str = "doubao-seed-2-0-pro-260215") -> bool:
+def quick_audit(images: List, model: str = AGENT_MODEL_MAP["audit"]) -> bool:
     """
     快速审核（仅返回是否正确）
     :param images: 图片列表
@@ -247,7 +248,7 @@ def quick_audit(images: List, model: str = "doubao-seed-2-0-pro-260215") -> bool
 
 def audit_question_detail(
         images: List,
-        model: str = "doubao-seed-2-0-pro-260215"
+        model: str = AGENT_MODEL_MAP["audit"]
 ) -> AuditDetailResult:
     """
     审核题目图片（带完整详情版本）

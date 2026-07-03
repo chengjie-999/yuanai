@@ -28,6 +28,7 @@ def parse_args():
     p.add_argument("--server-url", default="ws://localhost:8000", help="云端 WebSocket 地址")
     p.add_argument("--agent-id", default=socket.gethostname(), help="Agent 唯一标识")
     p.add_argument("--agent-name", default="小元AI Agent", help="Agent 显示名称")
+    p.add_argument("--agent-token", default=os.getenv("AGENT_TOKEN", ""), help="Agent 认证 JWT token（也可通过 AGENT_TOKEN 环境变量设置）")
     p.add_argument("--tray", action="store_true", help="以托盘模式运行（默认命令行模式）")
     return p.parse_args()
 
@@ -69,6 +70,7 @@ async def main():
         agent_id=args.agent_id,
         agent_name=args.agent_name,
         capabilities=capabilities,
+        agent_token=args.agent_token,
     )
     client.on_chat_request(orchestrator.stream)
 
@@ -82,7 +84,7 @@ async def main():
     logger.info("可用能力: %s", capabilities)
     logger.info("=" * 50)
 
-    # 优雅退出
+    # 优雅退出（兼容 Windows：add_signal_handler 不可用时退回到 signal.signal）
     loop = asyncio.get_running_loop()
     stop = loop.create_future()
 
@@ -90,12 +92,17 @@ async def main():
         logger.info("收到退出信号，正在关闭...")
         stop.set_result(True)
 
+    _signal_ok = False
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, _shutdown)
+            _signal_ok = True
         except NotImplementedError:
-            # Windows 不支持 add_signal_handler
             pass
+    if not _signal_ok:
+        # Windows fallback: signal.signal + call_soon_threadsafe
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, lambda s, f: loop.call_soon_threadsafe(_shutdown))
 
     connect_task = asyncio.create_task(client.connect())
 

@@ -34,10 +34,11 @@ def _make_icon(color: tuple) -> Image.Image:
 class AgentTray:
     """系统托盘：管理 Agent 连接状态和用户交互"""
 
-    def __init__(self, server_url: str, agent_id: str, agent_name: str):
+    def __init__(self, server_url: str, agent_id: str, agent_name: str, agent_token: str = ""):
         self.server_url = server_url
         self.agent_id = agent_id
         self.agent_name = agent_name
+        self.agent_token = agent_token
         self._icon = None
         self._running = False
         self._status = "offline"  # offline | online | working
@@ -106,6 +107,7 @@ class AgentTray:
                     agent_id=self.agent_id,
                     agent_name=self.agent_name,
                     capabilities=capabilities,
+                    agent_token=self.agent_token,
                 )
                 self._client.on_chat_request(orchestrator.stream)
                 orchestrator._on_activity = lambda ev: self._set_status("working") or (
@@ -140,6 +142,7 @@ def main():
     p.add_argument("--server-url", default="ws://localhost:8000", help="云端 WebSocket 地址")
     p.add_argument("--agent-id", default=None, help="Agent 唯一标识")
     p.add_argument("--agent-name", default="小元AI Agent", help="Agent 显示名称")
+    p.add_argument("--agent-token", default=os.environ.get("AGENT_TOKEN", ""), help="Agent 认证 JWT token")
     args = p.parse_args()
 
     agent_id = args.agent_id or os.environ.get("AGENT_ID", "") or "1"
@@ -153,7 +156,7 @@ def main():
 
     logger.info("启动托盘模式: server=%s agent=%s", args.server_url, agent_id)
 
-    tray = AgentTray(args.server_url, agent_id, args.agent_name)
+    tray = AgentTray(args.server_url, agent_id, args.agent_name, args.agent_token)
     tray.run()
 
 

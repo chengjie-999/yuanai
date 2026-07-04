@@ -53,6 +53,7 @@ api/                    FastAPI 后端
     ├── data/               数据集管理
     ├── knowledge/           知识库
     ├── analysis/           分析大屏 API（RFM、dashboard 数据服务）
+    ├── monitor/           代码进度实时监控（Git 轮询 + 可视化仪表盘）
     └── ...
 agent/                  本地 Agent 运行时 ★
 ├── main.py              入口（--tray 托盘 / 默认命令行）
@@ -119,7 +120,7 @@ data/                   数据目录
 
 ## 后台管理
 
-11 个 Tab，每个有独立 URL 路由（`/admin/:tab`）：
+12 个 Tab，每个有独立 URL 路由（`/admin/:tab`）：
 
 | Tab | 路由 | 内容 |
 |-----|------|------|
@@ -133,6 +134,7 @@ data/                   数据目录
 | 知识库 | `/admin/knowledge` | 知识库文档管理 |
 | 文件管理 | `/admin/files` | 服务器文件浏览 |
 | 工具 | `/admin/tools` | 已注册工具列表 |
+| 代码监控 | `/admin/monitor` | Git 轮询 + 代码变更趋势图 + 文件类型分布 + 实时活动日志 |
 | 设置 | `/admin/settings` | 系统设置 |
 
 ## WebSocket 桥接

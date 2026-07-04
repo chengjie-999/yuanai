@@ -376,6 +376,39 @@ export async function deleteDataset(id: number): Promise<boolean> {
   } catch { return false }
 }
 
+// ---- Code Monitor ----
+export async function fetchMonitorStatus(): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/monitor/status`, { headers: headers() })
+    if (!res.ok) return null
+    return await res.json()
+  } catch { return null }
+}
+
+export async function fetchMonitorChanges(limit: number = 50): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/monitor/changes?limit=${limit}`, { headers: headers() })
+    if (!res.ok) return { changes: [], total: 0 }
+    return await res.json()
+  } catch { return { changes: [], total: 0 } }
+}
+
+export async function fetchMonitorTimeline(): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/monitor/timeline`, { headers: headers() })
+    if (!res.ok) return { timeline: [] }
+    return await res.json()
+  } catch { return { timeline: [] } }
+}
+
+export async function fetchMonitorFileTypes(): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/monitor/file-types`, { headers: headers() })
+    if (!res.ok) return { distributions: [] }
+    return await res.json()
+  } catch { return { distributions: [] } }
+}
+
 export async function fetchDatasetAnalysis(id: number, charts = false, force = false): Promise<any> {
   try {
     const params = new URLSearchParams()

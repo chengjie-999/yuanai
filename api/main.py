@@ -20,6 +20,7 @@ from api.v1.data.router import router as data_router
 from api.v1.knowledge.router import router as knowledge_router
 from api.v1.agent.router import router as agent_router
 from api.v1.analysis.rfm import router as rfm_router
+from api.v1.monitor.router import router as monitor_router
 from api.v1.middleware import auth_middleware
 from api.v1.exceptions import AppError, app_error_handler
 from utils.data_path import root_path
@@ -55,6 +56,7 @@ app.include_router(data_router, prefix="/api/v1", tags=["data"])
 app.include_router(knowledge_router, prefix="", tags=["knowledge"])
 app.include_router(agent_router, prefix="/api/v1", tags=["agent"])
 app.include_router(rfm_router, prefix="/api/v1", tags=["analysis"])
+app.include_router(monitor_router, prefix="/api/v1", tags=["monitor"])
 
 app.middleware("http")(auth_middleware)
 

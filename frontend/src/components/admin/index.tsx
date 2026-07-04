@@ -11,6 +11,7 @@ import KnowledgeTab from './KnowledgeTab'
 import FilesTab from './FilesTab'
 import ToolsTab from './ToolsTab'
 import SettingsTab from './SettingsTab'
+import MonitorTab from './MonitorTab'
 
 const TABS = [
   { key: 'dashboard', label: '仪表盘' },
@@ -23,6 +24,7 @@ const TABS = [
   { key: 'knowledge', label: '知识库' },
   { key: 'files', label: '文件管理' },
   { key: 'tools', label: '工具' },
+  { key: 'monitor', label: '代码监控' },
   { key: 'settings', label: '设置' },
 ]
 
@@ -68,6 +70,7 @@ function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
           <Route path="knowledge" element={<KnowledgeTab />} />
           <Route path="files" element={<FilesTab />} />
           <Route path="tools" element={<ToolsTab />} />
+          <Route path="monitor" element={<MonitorTab />} />
           <Route path="settings" element={<SettingsTab />} />
         </Routes>
       </div>

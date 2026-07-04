@@ -123,7 +123,7 @@ python -m agent.main --agent-id 1 --tray
 
 ### 后台管理（仅 admin，独立路由 `/admin/*`）
 
-11 个 Tab，每个有独立 URL：
+12 个 Tab，每个有独立 URL：
 
 | Tab | 路由 | 内容 |
 |-----|------|------|
@@ -137,6 +137,7 @@ python -m agent.main --agent-id 1 --tray
 | 知识库 | `/admin/knowledge` | 知识库文档管理 |
 | 文件管理 | `/admin/files` | 服务器文件浏览 |
 | 工具 | `/admin/tools` | 已注册工具列表 |
+| 代码监控 | `/admin/monitor` | Git 轮询 + 代码变更趋势图 + 文件类型分布 + 实时活动日志 |
 | 设置 | `/admin/settings` | 系统设置 |
 
 ### 工具系统
@@ -208,6 +209,15 @@ python -m agent.main --agent-id 1 --tray
 | WS | `/api/v1/agent/ws/agent/{id}` | Agent 注册/心跳/中继 |
 | GET | `/api/v1/agent/status` | Agent 在线状态 |
 
+### 代码监控
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/monitor/status` | 会话汇总（文件数/行数/速度） |
+| GET | `/api/v1/monitor/changes` | 最近文件变更列表 |
+| GET | `/api/v1/monitor/timeline` | 时间序列累积数据 |
+| GET | `/api/v1/monitor/file-types` | 文件类型分布 |
+| GET | `/api/v1/monitor/top-files` | 最常变更文件排行 |
+
 ### 后台管理
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -233,6 +243,7 @@ api/                    FastAPI 后端
     ├── auth/               JWT 认证
     ├── data/               数据集管理
     ├── knowledge/           知识库
+    ├── monitor/           代码进度实时监控
     └── ...
 
 agent/                  本地 Agent 运行时
@@ -288,7 +299,7 @@ data/                   数据目录（聊天图片、爬取文件等）
 | 层 | 技术 |
 |----|------|
 | 后端 | Python, FastAPI, Uvicorn, LangChain, LangGraph, SQLAlchemy |
-| 前端 | React 18, TypeScript, Vite |
+| 前端 | React 18, TypeScript, Vite, Recharts |
 | 数据库 | MySQL 8.0, Redis |
 | 爬虫 | requests, BeautifulSoup, Selenium |
 | AI | DeepSeek API, 豆包 API |

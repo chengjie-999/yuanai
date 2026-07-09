@@ -3,6 +3,8 @@ import re
 import sys
 import json
 import uuid
+import time
+import shutil
 import base64
 import subprocess
 import logging
@@ -11,6 +13,21 @@ from typing import Dict, List
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _purge_html_cache(max_age_seconds: int = 3600):
+    """清理过期的 HTML 缓存文件（默认 TTL 1 小时）"""
+    cache_dir = os.path.join(PROJECT_ROOT, "data", "analysis", "html_cache")
+    if not os.path.isdir(cache_dir):
+        return
+    now = time.time()
+    for fname in os.listdir(cache_dir):
+        fpath = os.path.join(cache_dir, fname)
+        if fname.endswith(".html") and now - os.path.getmtime(fpath) > max_age_seconds:
+            try:
+                os.remove(fpath)
+            except OSError:
+                pass
 
 
 class _ScriptHandle:
@@ -23,6 +40,7 @@ class _ScriptHandle:
     _SAFE_PARAM = re.compile(r'^[a-zA-Z0-9_\-一-鿿./: .,;!?@#$%^&*()+=<>\[\]{}|~`\'"]+$')
 
     def run(self, **params) -> str:
+        _purge_html_cache()
         args = [sys.executable, self._filepath]
         param_order = getattr(self, '_param_order', [])
         keys = param_order if param_order else sorted(params)
@@ -75,6 +93,23 @@ class _ScriptHandle:
                         with open(img_path, "rb") as f:
                             b64 = base64.b64encode(f.read()).decode()
                         output += f"\ndata:{mime};base64,{b64}"
+
+            # extract __HTML__:path → copy to cache → __HTML__URL:url
+            html_match = re.search(r'__HTML__:(.+)', output)
+            if html_match:
+                output = output.replace(html_match.group(0), "")
+                html_urls = []
+                for html_path in html_match.group(1).split(","):
+                    html_path = html_path.strip()
+                    if os.path.isfile(html_path):
+                        cache_dir = os.path.join(PROJECT_ROOT, "data", "analysis", "html_cache")
+                        os.makedirs(cache_dir, exist_ok=True)
+                        cache_id = uuid.uuid4().hex[:12]
+                        cached_path = os.path.join(cache_dir, f"{cache_id}.html")
+                        shutil.copy2(html_path, cached_path)
+                        html_urls.append(f"/api/v1/data/script-html/{cache_id}")
+                if html_urls:
+                    output += f"\n__HTML__URL:{','.join(html_urls)}"
 
             return output.strip()
         except subprocess.TimeoutExpired:

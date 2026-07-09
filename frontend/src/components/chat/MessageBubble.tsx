@@ -114,6 +114,20 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
                 ))}
               </div>
             )}
+            {msg.htmls && msg.htmls.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                {msg.htmls.map((url, j) => (
+                  <div key={j} style={{
+                    borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)',
+                    background: 'var(--bg-primary)', aspectRatio: '2/1', maxHeight: 450,
+                  }}>
+                    <iframe src={addToken(url)} style={{
+                      width: '100%', height: '100%', border: 'none',
+                    }} title={`交互图表 ${j + 1}`} />
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
         {msg.toolCalls?.map((tc, j) => (

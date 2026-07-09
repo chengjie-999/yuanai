@@ -11,7 +11,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
 from yuanai_core.core.lc import get_llm
-from yuanai_core.core.schemas import ChatRequest, AgentEvent, token as ev_token, tool_start as ev_tool_start, tool_end as ev_tool_end, image_event, dashboard_event, done, error_event, reasoning, activity_event
+from yuanai_core.core.schemas import ChatRequest, AgentEvent, token as ev_token, tool_start as ev_tool_start, tool_end as ev_tool_end, image_event, dashboard_event, html_event, done, error_event, reasoning, activity_event
 from config.settings import AGENT_MODEL_MAP
 
 logger = logging.getLogger(__name__)
@@ -189,9 +189,15 @@ class Orchestrator:
                             yield dashboard_event(req.session_id, rid)
                         except Exception as e:
                             logger.warning("dashboard parse failed: %s", e)
+                    # HTML (plotly interactive charts)
+                    html_match = re.search(r'__HTML__URL:(.+)', str(output))
+                    if html_match:
+                        for url in html_match.group(1).split(","):
+                            yield html_event(url.strip(), rid)
                     # clean
                     clean_output = re.sub(r',data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
-                    clean_output = re.sub(r'\n__DASHBOARD__:\S+', '', clean_output).strip()
+                    clean_output = re.sub(r'\n__DASHBOARD__:\S+', '', clean_output)
+                    clean_output = re.sub(r'\n__HTML__URL:\S+', '', clean_output).strip()
                     yield ev_tool_end(event.get("name", "未知工具"), clean_output, rid)
 
             yield done(full_response, full_reasoning, rid)

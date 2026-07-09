@@ -71,11 +71,16 @@ agent/                  本地 Agent 运行时 ★
 │   ├── audit_tools.py   审核知识库 + 反馈
 │   └── ...
 ├── datanalysis/         数据分析脚本目录
-│   ├── scripts/          独立分析脚本（Agent 自动发现）
-│   │   ├── 描述性统计分析.py   统计 + 图表
-│   │   ├── RFM客户分群.py     客户分群（内置示例数据）
-│   │   ├── 客户流失预测.py     逻辑回归预测
-│   │   └── bio_analysis.py    基因表达分析
+│   ├── scripts/          独立分析脚本（Agent 自动发现，9个）
+│   │   ├── 描述性统计分析.py   统计 + 图表（matplotlib/seaborn/plotly）
+│   │   ├── 相关性分析.py       相关系数 + 热力图/聚类图/散点矩阵
+│   │   ├── 数据预处理.py       缺失值 + 异常值 + 标准化 + 特征选择
+│   │   ├── 时间序列分析.py     STL分解 + ADF检验 + 滚动统计
+│   │   ├── 回归分析.py         线性/岭/Lasso + 交叉验证
+│   │   ├── 分类数据分析.py     卡方检验 + 小提琴图/树图
+│   │   ├── RFM客户分群.py     客户分群 + 3D散点（内置示例数据）
+│   │   ├── 客户流失预测.py     逻辑回归 + ROC + CV
+│   │   └── bio_analysis.py    基因表达 + 火山图
 │   └── crawl/             网页采集脚本
 ├── audit/               AI 审核系统（题目判定 + 结果解析）
 └── rag.py               Milvus Lite 向量知识库
@@ -146,8 +151,9 @@ data/                   数据目录
 ## 工具系统
 
 - 通用工具：`yuanai_core/tools/__init__.py` 递归扫描，19 个
-- Agent 专用工具：`agent/tools/__init__.py` 递归扫描 + 合并通用工具，共 57 个
-- 工具自动发现：`isinstance(attr, BaseTool)` 判断，无需手动注册
+- Agent 专用工具：`agent/tools/__init__.py` 递归扫描 + 合并通用工具，共 57+ 个
+- 分析脚本：9 个（4 增强 + 5 新增），全面支持 pandas/numpy/matplotlib/seaborn/plotly
+- 输出协议：`__IMAGES__`(PNG) + `__HTML__`(交互图表) + `__RESULT__`(结构化JSON)
 
 ## 权限
 

@@ -2,6 +2,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   images?: string[]
+  htmls?: string[]
   toolCalls?: ToolCall[]
   reasoning?: string
   reasoningTime?: number

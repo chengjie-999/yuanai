@@ -74,6 +74,11 @@ def dashboard_event(session_id: str, request_id: str = "") -> AgentEvent:
     return AgentEvent(type="dashboard", data={"session_id": session_id}, request_id=request_id)
 
 
+def html_event(url: str, request_id: str = "") -> AgentEvent:
+    """交互式 HTML 图表（plotly 等），前端以 iframe 渲染"""
+    return AgentEvent(type="html", data={"url": url}, request_id=request_id)
+
+
 def error_event(message: str, request_id: str = "") -> AgentEvent:
     return AgentEvent(type="error", data=message, request_id=request_id)
 

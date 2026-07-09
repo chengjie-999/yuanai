@@ -105,6 +105,8 @@ export default function ChatPage({ user }: { user?: any }) {
         if (isDel) { currentSender = 'orchestrator'; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }]) }
       } else if (event.type === 'image') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last })
+      } else if (event.type === 'html') {
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].htmls = [...(last[i].htmls || []), event.data.url] }; return last })
       } else if (event.type === 'progress') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0 && last[i].role === 'assistant') last[i] = { ...last[i], progress: event.data }; return last })
       } else if (event.type === 'error') {

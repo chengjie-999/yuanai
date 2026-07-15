@@ -1,59 +1,13 @@
-"""数据分析 Agent：LLM 意图匹配 → 派发分析脚本（9 个脚本 + 4 内置工具）"""
+"""数据分析 Agent：LLM 意图匹配 → 派发分析脚本。
+配置从 skills/analysis/skill.yaml 加载，提示词和脚本列表无需改代码即可更新。"""
+
 from agent.agents.base import ScriptDispatchAgent
-from config.settings import AGENT_MODEL_MAP
+from skills import skill_registry
 
 
 class AnalysisAgent(ScriptDispatchAgent):
-    name = "analysis"
-    script_dir = "agent/datanalysis/scripts"
-    model_name = AGENT_MODEL_MAP["analysis"]
-
-    system_prompt = """你是数据分析专家，熟练运用 pandas/numpy/matplotlib/seaborn/plotly 全栈技术。
-
-根据用户需求，从以下分类中选择最合适的操作：
-
-【基本分析】
-- 描述性统计分析：统计量 + 分布图/热力图/箱线图 + 正态性检验。参数: dataset_id(必填), chart_type(可选: all/static/interactive)
-- 相关性分析：Pearson/Spearman/Kendall 相关系数 + 显著性检验 + 热力图/聚类图/散点矩阵。参数: dataset_id(必填), method(可选), top_n(可选)
-
-【数据预处理】
-- 数据预处理：缺失值填充 + 异常值检测(Z-score/IQR) + 标准化/归一化 + 分类编码 + 低方差过滤。参数: dataset_id(必填), operations(可选), target_col(可选)
-
-【时间序列与预测】
-- 时间序列分析：STL分解 + 滚动统计 + 异常检测 + ADF平稳性检验 + ACF/PACF。参数: dataset_id(必填), date_col(可选), value_col(可选), period(可选)
-- 回归分析：线性/岭/Lasso/多项式回归 + 交叉验证 + 残差诊断。参数: dataset_id(必填), target_col(必填), feature_cols(可选), model_type(可选), test_size(可选)
-
-【客户与分类分析】
-- RFM客户分群：百分位+均值双方法打分 + 3D散点 + 分群关系图。参数: file_path(可选, 默认内置示例), user_info_path(可选)
-- 客户流失预测：EDA + 逻辑回归 + 交叉验证 + ROC曲线 + 最优阈值。参数: file_path(可选), label_col(可选), feature_cols(可选)
-- 分类数据分析：频次 + 交叉表 + 卡方检验 + 小提琴图/增强箱线图/树图。参数: dataset_id(必填), cat_cols(可选), target_col(可选)
-
-【生物信息】
-- 基因表达分布分析：直方图+KDE + 小提琴/箱线图 + 火山图 + 表达热力图。参数: file_path(可选, 默认内置示例)
-
-【数据管理（内置工具）】
-- builtin_list_datasets：查看所有可用数据集
-- builtin_preview_dataset：预览某数据集前N行。参数 dataset_id
-- builtin_analyze_dataset：一键完整分析（含时间序列检测）。参数 dataset_id
-- builtin_transform_dataset：筛选/分组聚合/透视表。参数 dataset_id, operation, params
-
-参数规则：
-- dataset_id 是整数，先用 builtin_list_datasets 查看可用数据集
-- 可选参数不传也可执行（使用默认值）
-- file_path 不传时自动使用内置示例数据（RFM/流失/基因分析）
-- 所有分析自动包含静态图表和交互式可视化
-
-返回 JSON 格式（只返回 JSON，不要其他文字）：
-{"script": "脚本名", "params": {"参数名": "值"}}
-如果无法匹配任何操作，返回：
-{"script": null, "reason": "原因"}"""
-
-    builtins = {
-        "builtin_list_datasets": "列出所有可用数据集，包含ID、名称、行数、列信息",
-        "builtin_preview_dataset": "预览数据集前N行，参数 dataset_id(必填, 整数)",
-        "builtin_analyze_dataset": "一键完整统计分析（统计量+分布图+热力图+箱线图+时间序列），参数 dataset_id(必填, 整数)",
-        "builtin_transform_dataset": "数据转换操作（筛选filter/分组聚合groupby_agg/透视表pivot_table），参数 dataset_id, operation, params(JSON)",
-    }
+    def __init__(self):
+        super().__init__(skill_registry.get("analysis"))
 
     def _dispatch_builtin(self, name: str, params: dict) -> str:
         from yuanai_core.tools.data_tools import list_datasets, preview_dataset, analyze_dataset, transform_dataset

@@ -62,7 +62,8 @@ async def main():
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
 
-    capabilities = ["analysis", "collection", "automation"]
+    from skills import skill_registry
+    capabilities = skill_registry.names
 
     orchestrator = Orchestrator()
     client = AgentWSClient(

@@ -27,15 +27,24 @@ class AgentBase(ABC):
 
 
 class ScriptDispatchAgent(AgentBase):
-    """子类只需声明 script_dir / model_name / system_prompt / builtins 即可"""
+    """子类只需声明 script_dir / model_name / system_prompt / builtins 即可。
+    也支持传入 SkillConfig 动态创建（优先于类属性）。"""
 
-    # —— 子类必须覆盖 ——
-    script_dir: str
-    system_prompt: str
+    # —— 子类可覆盖（兼容旧写法） ——
+    script_dir: str = ""
+    system_prompt: str = ""
     builtins: dict[str, str] = {}
 
-    def __init__(self):
+    def __init__(self, skill_config=None):
         super().__init__()
+        # skill_config 优先于类属性
+        if skill_config is not None:
+            from skills import SkillConfig
+            self.name = skill_config.name
+            self.model_name = skill_config.model
+            self.script_dir = skill_config.script_dir or ""
+            self.system_prompt = skill_config.system_prompt
+            self.builtins = skill_config.builtins or {}
         self.registry = ScriptRegistry(self.script_dir)
 
     # —— 子类可选覆盖 ——
@@ -90,7 +99,6 @@ class ScriptDispatchAgent(AgentBase):
         except json.JSONDecodeError:
             return None
 
-    @abstractmethod
     def _dispatch_builtin(self, name: str, params: dict) -> str:
-        """子类实现内置操作的派发"""
-        ...
+        """默认实现：子类可覆盖以提供自定义内置工具派发"""
+        return f"未知内置操作: {name}"

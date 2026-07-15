@@ -57,7 +57,7 @@ api/                    FastAPI 后端
     └── ...
 agent/                  本地 Agent 运行时 ★
 ├── main.py              入口（--tray 托盘 / 默认命令行）
-├── orchestrator.py      统筹 Agent（3 个 delegate 工具）
+├── orchestrator.py      统筹 Agent（动态 delegate 工具，从 skills/ 自动发现）
 ├── ws_client.py         WebSocket 客户端（自动重连）
 ├── tray.py              系统托盘程序（pystray）
 ├── verify.py            多智能体链路验证脚本
@@ -92,6 +92,7 @@ yuanai_core/            公共核心库（云边共用）
 ├── pure/                纯函数（无框架依赖）
 └── tools/               通用工具（19 个，自动发现）
 spiderlx/               浏览器自动化引擎（CDP/Selenium）
+skills/                  Skill 配置中心（Agent 能力定义，YAML 驱动自动发现）
 config/settings.py       模型 / JWT / 数据库配置
 db/                      MySQL + Redis（云端）
 frontend/                React 18 + TypeScript + React Router 前端
@@ -154,6 +155,22 @@ data/                   数据目录
 - Agent 专用工具：`agent/tools/__init__.py` 递归扫描 + 合并通用工具，共 57+ 个
 - 分析脚本：9 个（4 增强 + 5 新增），全面支持 pandas/numpy/matplotlib/seaborn/plotly
 - 输出协议：`__IMAGES__`(PNG) + `__HTML__`(交互图表) + `__RESULT__`(结构化JSON)
+
+## Skill 系统
+
+Agent 能力通过 `skills/` 目录下的 YAML 配置定义，Orchestrator 自动发现并动态生成 delegate 工具。
+
+```
+skills/
+├── __init__.py              SkillRegistry 注册中心
+├── analysis/skill.yaml      数据分析 Skill（提示词、模型、脚本目录）
+├── collection/skill.yaml    数据采集 Skill
+└── automation/skill.yaml    自动化 Skill
+```
+
+每个 `skill.yaml` 包含：名称、描述、模型、运行模式（script_dispatch / react）、系统提示词、脚本目录、内置工具。
+
+**加新能力无需改代码**：新建 `skills/xxx/skill.yaml` + 可选脚本 → 重启 Agent → 自动注册。Orchestrator 遍历 `skill_registry.get_all()` 动态生成 `delegate_to_xxx_agent` 工具，capabilities 从 `skill_registry.names` 自动生成。
 
 ## 权限
 

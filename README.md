@@ -76,6 +76,22 @@ python -m agent.main --agent-id 1 --tray
 | 数据采集 | doubao-seed-2-0-lite | 网页爬取、数据抓取 |
 | 自动化 | doubao-seed-2-0-pro | 浏览器控制、题目审核、截图监控 |
 
+### Skill 系统（配置驱动，可扩展）
+
+子 Agent 的能力定义从代码中解耦，统一在 `skills/` 目录下通过 YAML 配置：
+
+```
+skills/
+├── __init__.py              SkillRegistry 注册中心（自动扫描子目录）
+├── analysis/skill.yaml      数据分析：提示词、模型、脚本目录、内置工具
+├── collection/skill.yaml    数据采集：提示词、模型、脚本目录、内置工具
+└── automation/skill.yaml    自动化：提示词、模型、工具列表
+```
+
+- Orchestrator 遍历 `skill_registry.get_all()` 动态生成 `delegate_to_*_agent` 工具
+- `agent/main.py` 的 capabilities 从 `skill_registry.names` 自动生成
+- **加新能力**：新建 `skills/xxx/skill.yaml` + 可选脚本 → 重启 Agent → 自动注册（零代码改动）
+
 ### 对话界面
 
 唯一业务入口，以群聊形式展示多 Agent 协作：
@@ -269,6 +285,7 @@ yuanai_core/            公共核心库（云边共用）
 └── tools/               通用工具（19 个，自动发现）
 
 spiderlx/               浏览器自动化引擎（CDP/Selenium）
+skills/                  Skill 配置中心（YAML 驱动，Agent 能力自动发现）
 
 frontend/               React 18 + TypeScript + React Router 前端
 ├── src/

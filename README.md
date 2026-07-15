@@ -219,6 +219,13 @@ skills/
 | GET | `/api/v1/data/analysis-image/{id}/{name}` | 图表图片 |
 | DELETE | `/api/v1/data/dataset/{id}` | 删除数据集 |
 
+### 数据分析
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v1/analysis/rfm` | RFM 客户分群分析 |
+| GET | `/api/v1/analysis/dashboard/{id}` | 分析仪表盘数据 |
+| GET | `/api/v1/analysis/rfm-chart/{file}` | 3D 散点图 HTML |
+
 ### Agent WebSocket
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -264,7 +271,7 @@ api/                    FastAPI 后端
 
 agent/                  本地 Agent 运行时
 ├── main.py              入口（--tray 托盘 / 默认命令行）
-├── orchestrator.py      统筹 Agent（3 个 delegate 工具）
+├── orchestrator.py      统筹 Agent（动态 delegate 工具，从 skills/ 自动发现）
 ├── ws_client.py         WebSocket 客户端（自动重连）
 ├── tray.py              系统托盘程序（pystray）
 ├── agents/              子 Agent

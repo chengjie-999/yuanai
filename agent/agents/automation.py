@@ -1,12 +1,12 @@
 """自动化子 Agent：浏览器控制 + 题目审核 + 截图监控。
-配置从 skills/automation/skill.yaml 加载。"""
+配置从 skills/automation/skill.yaml 加载。工具按意图组动态加载，节省 ~55% token。"""
 
 import logging
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
 from yuanai_core.core.lc import get_llm
-from agent.tools import load_agent_tools
+from agent.tools import automation_tools, classify_automation_intent, load_automation_tools_for_intent
 from agent.agents.base import AgentBase
 
 logger = logging.getLogger(__name__)
@@ -39,12 +39,17 @@ class AutomationAgent(AgentBase):
     @property
     def tools(self):
         if self._tools is None:
-            self._tools = load_agent_tools()
+            self._tools = automation_tools
         return self._tools
 
     def run(self, prompt: str) -> str:
+        # 意图分类 → 按组加载工具子集（减少 LLM token 消耗）
+        groups = classify_automation_intent(prompt)
+        filtered_tools = load_automation_tools_for_intent(groups)
+        logger.info("自动化 Agent 加载 %d 个工具 (组: %s)", len(filtered_tools), groups)
+
         llm = get_llm(self.model_name, temperature=0.3, verbose=False)
-        agent = create_react_agent(llm, self.tools)
+        agent = create_react_agent(llm, filtered_tools)
         messages = [
             SystemMessage(content=self._system_prompt),
             HumanMessage(content=prompt),

@@ -10,7 +10,7 @@ import asyncio
 import base64
 import logging
 import threading
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, Optional, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +20,11 @@ class CDPEventBus:
 
     def __init__(self):
         self._queue: asyncio.Queue = asyncio.Queue()
-        self._listeners: dict[str, list[Callable]] = {}
+        self._listeners: Dict[str, List[Callable]] = {}
         self._lock = threading.Lock()
         self._running = False
 
-    def push(self, event_type: str, data: dict):
+    def push(self, event_type: str, data: Dict):
         """Selenium CDP 回调线程调用，推事件到 asyncio 队列"""
         try:
             loop = asyncio.get_running_loop()
@@ -32,7 +32,7 @@ class CDPEventBus:
         except RuntimeError:
             logger.warning("asyncio 事件循环未运行，丢弃 CDP 事件: %s", event_type)
 
-    async def get(self, timeout: float = 0.5) -> dict | None:
+    async def get(self, timeout: float = 0.5) -> Optional[Dict]:
         """异步消费者：从队列取出事件（非阻塞）"""
         try:
             return await asyncio.wait_for(self._queue.get(), timeout=timeout)
@@ -103,7 +103,7 @@ class CDPScreencast:
         return self._active
 
 
-def register_cdp_listeners(driver, event_bus: CDPEventBus | None = None):
+def register_cdp_listeners(driver, event_bus: Optional[CDPEventBus] = None):
     """
     在 Selenium 驱动上注册 CDP 事件监听。
     在驱动创建后、任何导航前调用。

@@ -127,8 +127,8 @@ class AgentDatabase:
             database=cfg.get("database", "ai_agent"),
         )
         self.engine = create_engine(conn_url, pool_size=5, max_overflow=10)
-        Base.metadata.create_all(self.engine)
-        self._run_migrations()
+        Base.metadata.create_all(self.engine)  # 全新数据库首次建表
+        self._run_alembic_migrations()         # Alembic 增量迁移（替代原始 ALTER TABLE）
         self.Session = sessionmaker(bind=self.engine)
 
     from contextlib import contextmanager
@@ -142,46 +142,30 @@ class AgentDatabase:
         finally:
             sess.close()
 
-    def _run_migrations(self):
-        """兼容旧数据库的列迁移"""
-        import re
-        _ident = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
-        migrations = [
-            ("chat_session", "user_id INTEGER"),
-            ("users", "frozen_until DATETIME"),
-            ("users", "memory TEXT"),
-            ("users", "theme VARCHAR(10) DEFAULT ''"),
-            ("ai_chat", "images TEXT"),
-            ("datasets", "user_id INTEGER"),
-            ("datasets", "analysis_json TEXT DEFAULT ''"),
-            ("datasets", "analyzed_at DATETIME"),
-        ]
-        for table, col in migrations:
-            if not _ident.match(table) or not _ident.match(col.split()[0]):
-                logger.warning("跳过非法迁移: %s.%s", table, col)
-                continue
-            try:
-                with self.engine.connect() as conn:
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col}"))
-                    conn.commit()
-                    logger.info("迁移: %s 表添加了 %s 列", table, col.split()[0])
-            except Exception:
-                logger.debug("迁移: %s.%s 可能已存在", table, col.split()[0])
-        for col in ["parsed_title VARCHAR(500) DEFAULT ''", "parsed_text TEXT", "parsed_links TEXT"]:
-            if not _ident.match(col.split()[0]):
-                continue
-            try:
-                with self.engine.connect() as conn:
-                    conn.execute(text(f"ALTER TABLE crawl_records ADD COLUMN {col}"))
-                    conn.commit()
-            except Exception:
-                logger.debug("迁移: crawl_records.%s 可能已存在", col.split()[0])
+    def _run_alembic_migrations(self):
+        """通过 Alembic 执行增量迁移（替代原始 ALTER TABLE）"""
         try:
-            with self.engine.connect() as conn:
-                conn.execute(text("UPDATE chat_session SET user_id = 1 WHERE user_id IS NULL"))
-                conn.commit()
-        except Exception:
-            pass
+            from alembic.config import Config
+            from alembic import command
+            import os
+
+            alembic_ini = os.path.join(os.path.dirname(__file__), '..', 'alembic.ini')
+            if not os.path.exists(alembic_ini):
+                logger.warning("alembic.ini 不存在，跳过 Alembic 迁移")
+                return
+
+            alembic_cfg = Config(alembic_ini)
+            # 使用在线连接（共用 engine）
+            alembic_cfg.set_main_option("sqlalchemy.url", str(self.engine.url))
+            # 将 engine 注入 env.py，避免重复创建连接
+            alembic_cfg.attributes["connection"] = self.engine.connect()
+
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Alembic 迁移已应用至最新版本")
+        except ImportError:
+            logger.warning("alembic 未安装，跳过迁移（仅使用 create_all 创建表）")
+        except Exception as e:
+            logger.warning("Alembic 迁移失败（表可能已存在）: %s", e)
 
     def _init_tables(self):
         """自动创建表：SQLite 全表创建，MySQL 只建聊天相关表"""

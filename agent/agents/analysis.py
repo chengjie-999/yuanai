@@ -11,6 +11,7 @@ class AnalysisAgent(ScriptDispatchAgent):
 
     def _dispatch_builtin(self, name: str, params: dict) -> str:
         from yuanai_core.tools.data_tools import list_datasets, preview_dataset, analyze_dataset, transform_dataset
+        from yuanai_core.tools.file_tools import save_data_csv, list_data_files, read_data_file
 
         handlers = {
             "builtin_list_datasets": lambda: list_datasets.invoke({}),
@@ -25,6 +26,17 @@ class AnalysisAgent(ScriptDispatchAgent):
                 "operation": params.get("operation", ""),
                 "params": params.get("params", "{}"),
             }),
+            "builtin_save_data_csv": lambda: save_data_csv.invoke({
+                "name": params.get("name", ""),
+                "data": params.get("data", ""),
+                "headers": params.get("headers", ""),
+            }),
+            "builtin_list_data_files": lambda: list_data_files.invoke(
+                {"subdir": params.get("subdir", "")}
+            ),
+            "builtin_read_data_file": lambda: read_data_file.invoke(
+                {"path": params.get("path", "")}
+            ),
         }
         handler = handlers.get(name)
         return handler() if handler else f"未知内置操作: {name}"

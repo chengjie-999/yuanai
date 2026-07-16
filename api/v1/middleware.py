@@ -74,6 +74,31 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+async def rate_limit_middleware(request: Request, call_next):
+    """API 全局限流中间件（在认证中间件之前执行）"""
+    from api.v1.ratelimit import api_limiter, auth_limiter, upload_limiter, get_client_ip
+
+    path = request.url.path
+
+    # 跳过公开路径和非 API 路径
+    if path in ("/", "/health", "/docs", "/openapi.json"):
+        return await call_next(request)
+
+    ip = get_client_ip(request)
+
+    # 登录/注册使用严格限流
+    if path.startswith("/api/v1/auth/login") or path.startswith("/api/v1/auth/register"):
+        auth_limiter.check(ip)
+    # 上传端点使用中等限流
+    elif path.startswith("/api/v1/data/upload"):
+        upload_limiter.check(ip)
+    # 其他 API 使用通用限流
+    elif path.startswith("/api/"):
+        api_limiter.check(ip)
+
+    return await call_next(request)
+
+
 def get_user_id(request: Request) -> int:
     """从 request.state 获取当前用户 ID，未认证返回 0"""
     return getattr(request.state, "user_id", 0)

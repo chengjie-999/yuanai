@@ -151,10 +151,24 @@ data/                   数据目录
 
 ## 工具系统
 
-- 通用工具：`yuanai_core/tools/__init__.py` 递归扫描，19 个
-- Agent 专用工具：`agent/tools/__init__.py` 递归扫描 + 合并通用工具，共 57+ 个
-- 分析脚本：9 个（4 增强 + 5 新增），全面支持 pandas/numpy/matplotlib/seaborn/plotly
-- 输出协议：`__IMAGES__`(PNG) + `__HTML__`(交互图表) + `__RESULT__`(结构化JSON)
+- 通用工具：`yuanai_core/tools/` 自动发现，39 个（8 个模块，7 个类别：general/crawl/data/file/memory/knowledge/stats）
+- 工具类别标签：每个模块顶部 `TOOL_CATEGORY`，`load_tools_for("crawl", "data")` 按需加载
+- Agent 专用工具：`agent/tools/` 递归扫描，38 个（浏览器/审核/Cookie/截图）
+- 工具总计：39 共享 + 38 专用 = 80 个，按 Agent 角色精准分配
+- 分析脚本：9 个，输出协议：`__IMAGES__` + `__HTML__` + `__RESULT__`
+
+### 工具分配（Token 优化）
+
+| Agent | 工具数 | 加载方式 |
+|-------|:------:|---------|
+| 统筹 | 8-42 | 意图分类器 → 按类别动态加载（`agent/intent_classifier.py`） |
+| 数据分析 | 7 builtin | 脚本派发模式（`skills/analysis/skill.yaml`） |
+| 数据采集 | 8 builtin | 脚本派发模式（`skills/collection/skill.yaml`） |
+| 自动化 | 14-41 | 意图分类器 → 按组动态加载（`agent/tools/__init__.py`） |
+
+### 意图分类器（零成本）
+
+`agent/intent_classifier.py` — 关键词匹配 + LLM 降级，直接命令（如 "200+300"）跳过 LLM 直接执行工具，节省 30-55% token。
 
 ## Skill 系统
 
@@ -185,6 +199,31 @@ skills/
 - API Key 从环境变量读取，不在源码硬编码
 - URL 爬取有 SSRF 防护（内网地址拦截）
 - JWT 鉴权中间件统一验证
+- API 全局限流：Redis 优先 + 内存降级（`api/v1/ratelimit.py`）
+- 登录限流 5次/60s，通用 API 60次/60s，上传 10次/60s
+- Nginx 层安全响应头（CSP/HSTS/X-Frame-Options 等）
+
+## 数据库迁移
+
+使用 Alembic 管理增量迁移（替代原来的原始 ALTER TABLE + try/except）。
+
+```bash
+alembic revision --autogenerate -m "描述"   # 自动检测模型变更
+alembic upgrade head                          # 应用到最新
+alembic downgrade -1                          # 回滚一个版本
+# 或使用辅助命令
+python -m db.migrations.helper revision -m "描述"
+python -m db.migrations.helper upgrade
+```
+
+`AgentDatabase._run_alembic_migrations()` 在每次启动时自动调用 `alembic upgrade head`，失败时降级到 `create_all()`。
+
+## CI/CD
+
+GitHub Actions（`.github/workflows/ci.yml`）：
+- 后端：pip install → pytest → 语法检查
+- 前端：npm ci → tsc → lint → build
+- Docker：构建验证后端镜像 + 前端镜像
 
 ## 数据分析大屏
 
@@ -208,4 +247,4 @@ skills/
 
 **内置工具（Agent 可直接调用）：**
 - `list_datasets` / `preview_dataset` / `analyze_dataset` — 数据集管理
-- `transform_dataset` — 数据转换（筛选/分组聚合/透视表）
+- `transform_dataset` / `describe_column` / `correlate_columns` — 数据转换与分析

@@ -80,12 +80,26 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.frontend
+      args:
+        # 备案后如需自定义路径，修改此处
+        - VITE_BASE=/
     container_name: spider-frontend
     restart: always
     ports:
       - "80:80"
+      # 备案后启用 443：
+      # - "443:443"
+    # 备案后取消注释以挂载 SSL 证书：
+    # volumes:
+    #   - ./deploy/ssl/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
+    #   - ./deploy/ssl/privkey.key:/etc/nginx/ssl/privkey.key:ro
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
 volumes:
   mysql_data:

@@ -19,31 +19,25 @@ logger = logging.getLogger(__name__)
 
 ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的助手，可以独立处理简单任务，也可以委派复杂任务给专业子Agent。
 
-你可以直接使用的工具（简单任务，不要委派）：
-- calculate_sum / calculate_multiply：计算
-- get_today_temperature / get_tomorrow_forecast：天气
-- get_user_memory / remember_user_info：用户记忆
-- retrieve_knowledge：知识库检索
-- list_data_files / read_data_file：文件操作
-- get_system_stats：系统统计
+你可以直接使用的工具：
+- 计算器：calculate_sum / calculate_multiply
+- 天气：get_today_temperature / get_tomorrow_forecast
+- 用户记忆：get_user_memory / remember_user_info
+- 知识库：retrieve_knowledge
+- 文件操作：list_data_files / read_data_file / save_data_csv
+- 系统统计：get_system_stats
+- 数据集管理：list_datasets / preview_dataset / analyze_dataset / transform_dataset
+- 网页爬取：fetch_url / parse_html / save_crawl_data / list_crawl_data / get_crawl_detail
 
-只在以下情况委派给子Agent（复杂任务）：
+仅在以下情况委派给子Agent（复杂任务）：
 {SKILL_LIST}
 
-数据分析Agent有内置示例数据，以下分析无需用户提供文件即可直接执行：
-- RFM客户价值分群（内置订单明细.xlsx）
-- 客户流失预测（内置churn数据）
-- 描述性统计分析（可指定dataset_id或使用内置数据）
-- 基因表达分布分析（内置示例数据）
-
-用户说"做RFM分析"时直接委派，不要追问文件路径。分析完成后会自动附带可视化大屏。
-
 工作原则：
-1. 判断任务复杂度：简单任务直接用工具，复杂任务委派子Agent
-2. 委派时一句话说明调用哪个Agent，然后立即调用
-3. 子Agent结果清晰完整时只做简短确认，不要复述
-4. 需求不明确时先询问用户
-5. 数据分析任务不要追问文件路径，直接委派让子Agent自行处理"""
+1. 简单操作直接用工具（查数据集、爬网页、读文件等），不要委派
+2. 复杂分析/采集才委派子Agent
+3. 委派时简短说明意图，不要长篇解释
+4. 子Agent结果直接呈现用户，不再复述
+5. 数据分析优先用 list_datasets + preview_dataset 确认数据，简单统计直接用 analyze_dataset，复杂分析才委派"""
 
 
 def get_orchestrator_prompt() -> str:
@@ -107,23 +101,10 @@ class Orchestrator:
         return self._agents["automation"]
 
     def _build_all_tools(self):
-        """构建完整工具列表：通用工具 + 动态生成的 delegate 工具"""
-        # 通用工具（直接调用，不走子 Agent）
-        from yuanai_core.tools.calculator import calculate_sum, calculate_multiply
-        from yuanai_core.tools.weather import get_today_temperature, get_tomorrow_forecast
-        from yuanai_core.tools.user_memory import get_user_memory, remember_user_info
-        from yuanai_core.tools.knowledge_tool import retrieve_knowledge
-        from yuanai_core.tools.file_tools import list_data_files, read_data_file
-        from yuanai_core.tools.stats_tool import get_system_stats
+        """构建完整工具列表：全部共享工具 + 动态生成的 delegate 工具"""
+        from yuanai_core.tools import all_tools
 
-        tools = [
-            calculate_sum, calculate_multiply,
-            get_today_temperature, get_tomorrow_forecast,
-            get_user_memory, remember_user_info,
-            retrieve_knowledge,
-            list_data_files, read_data_file,
-            get_system_stats,
-        ]
+        tools = list(all_tools)
 
         # 动态生成 delegate_* 工具（遍历 skills/ 目录自动发现）
         orch = self
@@ -158,8 +139,93 @@ class Orchestrator:
             except Exception:
                 pass
 
+    def _build_tools_for_intent(self, intent) -> list:
+        """按意图分类动态加载工具子集（大幅节省 token）"""
+        from agent.intent_classifier import IntentClassifier, INTENT_TOOL_GROUPS
+        from yuanai_core.tools import load_tools_for
+
+        categories = IntentClassifier.get_tool_categories(intent)
+        tools = []
+        has_general = False
+        has_delegate_all = False
+
+        for cat in categories:
+            if cat == "delegate_all":
+                has_delegate_all = True
+            elif cat.startswith("delegate_"):
+                if not has_general:
+                    tools.extend(load_tools_for("general", "memory", "knowledge"))
+                    has_general = True
+                skill_name = cat.replace("delegate_", "")
+                skill = skill_registry.get(skill_name)
+                if skill:
+                    tools.append(_make_delegate_tool(skill, self))
+            elif cat == "general":
+                if not has_general:
+                    tools.extend(load_tools_for("general"))
+                    has_general = True
+            else:
+                tools.extend(load_tools_for(cat))
+
+        if has_delegate_all:
+            if not has_general:
+                tools.extend(load_tools_for("general", "memory", "knowledge"))
+                has_general = True
+            orch = self
+            for skill in skill_registry.get_all():
+                found = any(t.name == f"delegate_to_{skill.name}_agent" for t in tools)
+                if not found:
+                    tools.append(_make_delegate_tool(skill, orch))
+
+        return tools
+
+    def _handle_direct_command(self, intent, message: str) -> str:
+        """直接执行命令，完全跳过 LLM（100% token 节省）"""
+        msg = message.strip().replace(" ", "").replace("　", "")
+
+        # 算术
+        import re as _re
+        nums = _re.findall(r'[\d\.]+', msg)
+        if len(nums) >= 2:
+            a, b = float(nums[0]), float(nums[1])
+            try:
+                if any(op in msg for op in ('+', '＋')):
+                    from yuanai_core.tools.calculator import calculate_sum
+                    return str(calculate_sum.invoke({"a": a, "b": b}))
+                if any(op in msg for op in ('*', '×')):
+                    from yuanai_core.tools.calculator import calculate_multiply
+                    return str(calculate_multiply.invoke({"a": a, "b": b}))
+                if any(op in msg for op in ('/', '÷')):
+                    from yuanai_core.tools.calculator import calculate_divide
+                    return str(calculate_divide.invoke({"a": a, "b": b}))
+                if any(op in msg for op in ('-', '－')):
+                    from yuanai_core.tools.calculator import calculate_sum
+                    return str(calculate_sum.invoke({"a": a, "b": -b}))
+            except Exception as e:
+                return f"计算失败: {e}"
+
+        # 日期/时间
+        if "星期几" in msg:
+            from yuanai_core.tools.datetime_tools import get_weekday
+            return get_weekday.invoke({})
+        if any(w in msg for w in ("几点", "几点了", "当前时间")):
+            from yuanai_core.tools.datetime_tools import get_current_time
+            return get_current_time.invoke({"format": "%Y-%m-%d %H:%M:%S"})
+
+        return "无法直接处理，请重新描述需求"
+
+    def _extract_latest_message(self, messages: list) -> str:
+        """从消息列表中提取最新用户消息文本。"""
+        for m in reversed(messages):
+            if isinstance(m, dict):
+                if m.get("role") == "user":
+                    return m.get("content", "")
+            elif hasattr(m, "type") and m.type == "human":
+                return m.content if hasattr(m, "content") else str(m)
+        return ""
+
     async def stream(self, req: ChatRequest) -> AsyncGenerator[AgentEvent, None]:
-        """流式执行统筹 Agent"""
+        """两级路由：意图分类 → 动态加载工具子集 → 流式执行"""
         rid = req.request_id
 
         # 构建消息列表
@@ -167,8 +233,50 @@ class Orchestrator:
         for m in req.messages:
             input_messages.append(m)
 
+        # ---- Tier 1: 意图分类（零 API 成本）----
+        latest_msg = self._extract_latest_message(input_messages)
+        from agent.intent_classifier import classifier as intent_clf
+        intent = intent_clf.classify(latest_msg)
+
+        logger.info("意图分类: %s (置信度 %.2f, 消息前50字: %s)",
+                    intent.group, intent.confidence, latest_msg[:50])
+
+        # ---- Tier 1.5: 低置信度降级到 mini LLM 分类 ----
+        if intent_clf.needs_fallback_llm(intent) and latest_msg:
+            try:
+                from agent.intent_classifier import LLM_CLASSIFIER_PROMPT
+                fallback_llm = get_llm(AGENT_MODEL_MAP["orchestrator"],
+                                       temperature=0, verbose=False, streaming=False)
+                resp = fallback_llm.invoke([
+                    SystemMessage(content=LLM_CLASSIFIER_PROMPT.format(message=latest_msg)),
+                ])
+                fb = resp.content.strip().lower() if hasattr(resp, "content") else ""
+                for group in INTENT_TOOL_GROUPS:
+                    if group in fb:
+                        intent = intent_clf.__class__.__new__(intent_clf.__class__)
+                        intent.group = group
+                        intent.confidence = 0.7
+                        intent.is_direct = False
+                        logger.info("LLM 降级分类 → %s", group)
+                        break
+            except Exception as e:
+                logger.debug("LLM 降级分类失败: %s", e)
+
+        # ---- Tier 2: 直接命令（绕过 LLM）----
+        if intent.is_direct:
+            try:
+                result = self._handle_direct_command(intent, latest_msg)
+                logger.info("直接命令执行结果: %s", result[:100])
+                yield done(result, "", rid)
+                return
+            except Exception as e:
+                logger.warning("直接命令失败，回退 LLM: %s", e)
+
+        # ---- Tier 3: 动态加载工具子集 + LLM ----
+        orch_tools = self._build_tools_for_intent(intent)
+        logger.info("加载 %d 个工具 (意图: %s)", len(orch_tools), intent.group)
+
         llm = get_llm(AGENT_MODEL_MAP["orchestrator"], temperature=0.7, verbose=False, streaming=True)
-        orch_tools = self._build_all_tools()
         agent = create_react_agent(llm, orch_tools)
 
         full_response = ""

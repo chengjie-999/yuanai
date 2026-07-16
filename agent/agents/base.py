@@ -3,7 +3,7 @@
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional, Dict
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -87,7 +87,7 @@ class ScriptDispatchAgent(AgentBase):
             return builtin_lines
         return f"{builtin_lines}\n{script_list}"
 
-    def _parse_json(self, text: str) -> dict | None:
+    def _parse_json(self, text: str) -> Optional[Dict]:
         text = text.strip()
         if "```" in text:
             parts = text.split("```")

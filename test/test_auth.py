@@ -1,15 +1,28 @@
 # -*- coding: utf-8 -*-
-"""用户认证测试"""
+"""用户认证测试（使用 SQLite 内存数据库）"""
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.stdout.reconfigure(encoding='utf-8')
 
-from db.session import AgentDatabase
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from db.session import Base, AgentDatabase
+
+
+def _make_test_db():
+    """创建使用 SQLite 内存数据库的 AgentDatabase 实例"""
+    db = AgentDatabase.__new__(AgentDatabase)
+    db.engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(db.engine)
+    db._run_alembic_migrations = lambda: None
+    db.Session = sessionmaker(bind=db.engine)
+    return db
 
 
 def test_register_and_login():
-    db = AgentDatabase(db_path=':memory:')
+    db = _make_test_db()
     r = db.register_user('testuser', 'test123')
     assert 'error' not in r
     assert r['username'] == 'testuser'
@@ -35,7 +48,7 @@ def test_register_and_login():
 
 
 def test_admin_registration():
-    db = AgentDatabase(db_path=':memory:')
+    db = _make_test_db()
     r = db.register_user('admin1', 'admin123', role='admin')
     assert r['role'] == 'admin'
     user = db.authenticate_user('admin1', 'admin123')

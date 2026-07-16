@@ -6,6 +6,7 @@
 import os
 import re
 import time
+from typing import Optional, List, Dict
 import numpy as np
 from openai import OpenAI
 from pymilvus import MilvusClient
@@ -24,10 +25,10 @@ TOP_K = 3
 
 # Embedding 配置：优先用默认模型对应的 API，运行时自动检测实际维度
 EMBEDDING_DIM = 1024  # 默认值，首次调用后自动更新
-_actual_dim: int | None = None  # 运行时检测的实际维度
+_actual_dim: Optional[int] = None  # 运行时检测的实际维度
 
-_client: OpenAI | None = None
-_db: MilvusClient | None = None
+_client: Optional[OpenAI] = None
+_db: Optional[MilvusClient] = None
 
 
 # ====================== Embedding ======================
@@ -49,7 +50,7 @@ def _get_openai_client() -> OpenAI:
     return _client
 
 
-def get_embeddings(texts: list[str]) -> list[list[float]]:
+def get_embeddings(texts: List[str]) -> List[List[float]]:
     """批量获取文本向量"""
     if not texts:
         return []
@@ -82,7 +83,7 @@ def _get_db() -> MilvusClient:
     return _db
 
 
-def _chunk_text(text: str, source: str) -> list[dict]:
+def _chunk_text(text: str, source: str) -> List[Dict]:
     """将文本切分为带元数据的 chunk"""
     chunks = []
     # 按一级标题切分（中文数字 + 、 开头）
@@ -166,7 +167,7 @@ def build_knowledge_base(force_rebuild: bool = False) -> bool:
 
 
 # ====================== 检索 ======================
-def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None) -> str:
+def search_knowledge(query: str, top_k: int = TOP_K, source: Optional[str] = None) -> str:
     """向量检索知识库，返回相关段落"""
     if not query.strip():
         return ""

@@ -13,6 +13,7 @@ class CollectionAgent(ScriptDispatchAgent):
         from yuanai_core.tools.crawl_tools import (
             fetch_url, parse_html, save_crawl_data, list_crawl_data, get_crawl_detail,
         )
+        from yuanai_core.tools.file_tools import save_data_csv, list_data_files, read_data_file
 
         handlers = {
             "builtin_fetch_url": lambda: fetch_url.invoke(
@@ -30,6 +31,17 @@ class CollectionAgent(ScriptDispatchAgent):
             ),
             "builtin_get_crawl_detail": lambda: get_crawl_detail.invoke(
                 {"record_id": params.get("record_id", 0)}
+            ),
+            "builtin_save_data_csv": lambda: save_data_csv.invoke({
+                "name": params.get("name", ""),
+                "data": params.get("data", ""),
+                "headers": params.get("headers", ""),
+            }),
+            "builtin_list_data_files": lambda: list_data_files.invoke(
+                {"subdir": params.get("subdir", "")}
+            ),
+            "builtin_read_data_file": lambda: read_data_file.invoke(
+                {"path": params.get("path", "")}
             ),
         }
         handler = handlers.get(name)

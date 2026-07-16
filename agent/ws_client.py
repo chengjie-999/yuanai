@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from typing import AsyncGenerator, Callable, Awaitable
+from typing import AsyncGenerator, Callable, Awaitable, Optional
 
 import websockets
 from websockets import connect
@@ -31,7 +31,7 @@ class AgentWSClient:
         agent_name: str,
         capabilities: list[str],
         agent_token: str = "",
-        on_chat_request: Callable[[ChatRequest], AsyncGenerator[AgentEvent, None]] | None = None,
+        on_chat_request: Optional[Callable[[ChatRequest], AsyncGenerator[AgentEvent, None]]] = None,
     ):
         self.server_url = server_url
         self.agent_id = agent_id

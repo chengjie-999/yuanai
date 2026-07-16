@@ -69,12 +69,12 @@ python -m agent.main --agent-id 1 --tray
                                          Agent    Agent    Agent
 ```
 
-| Agent | 模型 | 职责 |
-|-------|------|------|
-| 统筹 | doubao-seed-2-0-lite | 意图识别 + 任务路由 |
-| 数据分析 | doubao-seed-2-0-pro | 数据集管理、统计、图表 |
-| 数据采集 | doubao-seed-2-0-lite | 网页爬取、数据抓取 |
-| 自动化 | doubao-seed-2-0-pro | 浏览器控制、题目审核、截图监控 |
+| Agent | 模型 | 架构 | 工具数 | 职责 |
+|-------|------|------|:------:|------|
+| 统筹 | doubao-seed-2-0-lite | Two-tier ReAct + 意图分类器 | 8-42（动态） | 意图识别 → 直接工具 / 委派子 Agent |
+| 数据分析 | doubao-seed-2-0-pro | ScriptDispatch | 7 builtin + 9 脚本 | 数据集管理、统计分析、图表生成 |
+| 数据采集 | doubao-seed-2-0-lite | ScriptDispatch | 8 builtin + 1 脚本 | 网页爬取、数据抓取、内容解析 |
+| 自动化 | doubao-seed-2-0-pro | ReAct + 意图过滤 | 14-41（动态） | 浏览器控制、题目审核、截图监控 |
 
 ### Skill 系统（配置驱动，可扩展）
 
@@ -158,9 +158,12 @@ skills/
 
 ### 工具系统
 
-- 通用工具：`yuanai_core/tools/` 递归扫描，19 个
-- Agent 专用工具：`agent/tools/` 递归扫描 + 合并通用工具，共 57 个
-- 工具自动发现：`isinstance(attr, BaseTool)` 判断，无需手动注册
+- 通用工具：`yuanai_core/tools/` 自动发现，**39 个**（8 模块，7 类别：general/crawl/data/file/memory/knowledge/stats）
+- Agent 专用工具：`agent/tools/` 自动发现，**38 个**（浏览器/审核/Cookie/截图）
+- **总计 80 个注册工具**，按 Agent 角色精准分配
+- 工具类别标签 `TOOL_CATEGORY`：`load_tools_for("crawl", "data")` 按需加载
+- 意图分类器：`agent/intent_classifier.py` — 关键词匹配 + LLM 降级，自动按意图加载工具子集，节省 30-55% token
+- 直接命令（如 "200+300"）绕过 LLM 直接执行，**100% token 节省**
 
 ---
 
@@ -324,10 +327,35 @@ data/                   数据目录（聊天图片、爬取文件等）
 |----|------|
 | 后端 | Python, FastAPI, Uvicorn, LangChain, LangGraph, SQLAlchemy |
 | 前端 | React 18, TypeScript, Vite, Recharts |
-| 数据库 | MySQL 8.0, Redis |
+| 数据库 | MySQL 8.0, Redis, Milvus |
+| 迁移 | Alembic（增量迁移，替代原始 ALTER TABLE） |
 | 爬虫 | requests, BeautifulSoup, Selenium |
 | AI | DeepSeek API, 豆包 API |
 | 鉴权 | python-jose (JWT), bcrypt |
+| 限流 | Redis + 内存降级（`api/v1/ratelimit.py`） |
 | 本地 Agent | WebSocket, pystray, PyInstaller |
+| CI/CD | GitHub Actions（test + lint + build + Docker） |
+| 部署 | Docker Compose（MySQL + Redis + Milvus + 后端 + Nginx 前端） |
 | 配置 | `config/settings.py` 统一管理 |
 | 业务层 | `yuanai_core/pure/` 纯 Python，无框架依赖 |
+
+---
+
+## 测试
+
+```bash
+# 无需数据库的单元测试
+pytest test/test_ratelimit.py test/test_auth.py test/test_db.py -v
+
+# 全部测试（需完整 API 环境）
+pytest test/ -v
+```
+
+## Docker 部署
+
+```bash
+cp .env.example .env  # 编辑生产环境变量
+docker-compose up -d   # 启动 MySQL + Redis + Milvus + 后端 + 前端(nginx:80)
+```
+
+Nginx 配置（`deploy/nginx.conf`）已包含：WebSocket 升级支持、SSL 443 模板（备案后启用）、安全响应头、分级限流。备案完成后取消注释 SSL 块即可。

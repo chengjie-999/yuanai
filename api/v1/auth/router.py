@@ -1,43 +1,13 @@
-import time
 import logging
-from collections import defaultdict
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from db.session import get_db
 from api.v1.auth.utils import create_token, verify_token
-from api.v1.exceptions import AppError
+from api.v1.ratelimit import auth_limiter, get_client_ip
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-_LOGIN_WINDOW = 60
-_LOGIN_MAX_ATTEMPTS = 5
-
-# 内存回退（Redis 不可用时使用，不跨实例共享）
-_login_fallback: dict[str, list[float]] = defaultdict(list)
-
-
-def _check_login_rate(ip: str):
-    now = time.time()
-    try:
-        from db.redis_client import get_redis
-        rds = get_redis()
-        key = f"ratelimit:login:{ip}"
-        count = rds.incr(key)
-        if count == 1:
-            rds.expire(key, _LOGIN_WINDOW)
-        if count > _LOGIN_MAX_ATTEMPTS:
-            raise AppError(429, "登录请求过于频繁，请 1 分钟后重试")
-    except AppError:
-        raise
-    except Exception:
-        # Redis 不可用时退回到进程内存
-        attempts = _login_fallback[ip]
-        attempts[:] = [t for t in attempts if now - t < _LOGIN_WINDOW]
-        if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
-            raise AppError(429, "登录请求过于频繁，请 1 分钟后重试")
-        attempts.append(now)
 
 
 class AuthRequest(BaseModel):
@@ -59,8 +29,8 @@ def register(req: RegisterRequest):
 @router.post("/login")
 def login(req: AuthRequest, request: Request):
     """用户登录"""
-    ip = request.client.host if request.client else "unknown"
-    _check_login_rate(ip)
+    ip = get_client_ip(request)
+    auth_limiter.check(ip)
     db = get_db()
     user = db.authenticate_user(req.username, req.password)
     if not user:

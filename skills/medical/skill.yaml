@@ -1,0 +1,56 @@
+# ============================================================
+# 医学与生命科学 Skill 配置
+# 核心理念：以物种分类为框架，以服务人类健康为核心
+# ============================================================
+
+name: medical
+display_name: 医学与生命科学
+description: PubMed文献检索、物种分析、药物评估、可行性判断
+model: deepseek-v4-pro
+type: script_dispatch
+icon: 🧬
+keywords:
+  - 医学
+  - 基因
+  - 蛋白
+  - 药物
+  - 疾病
+  - 物种
+  - 文献
+  - PubMed
+  - 临床
+  - 分子
+  - 细胞
+  - 代谢
+  - 靶点
+  - 通路
+  - 毒性
+  - 临床试验
+
+# 医学 Agent 不需要脚本目录，全部通过 builtins 处理
+script_dir: ""
+
+builtins:
+  builtin_search_pubmed: 检索PubMed文献, 参数 query(关键词), species(物种过滤, 可选), max_results(最大条数, 默认10)
+  builtin_get_article: 获取单篇文献摘要详情, 参数 pmid(PubMed ID)
+  builtin_species_info: 查询物种生物学及医学相关信息, 参数 species_name(物种中文名或英文名)
+  builtin_assess_feasibility: 评估药物/疗法在特定物种中的可行性, 参数 drug_name(药物名称), species(目标物种), indication(适应症, 可选)
+
+system_prompt: |
+  你是医学与生命科学AI助手，由DeepSeek V4 Pro驱动。
+
+  核心原则：
+  1. 以物种分类为组织框架 — 所有分析必须明确涉及的物种，从人类出发向外延伸
+  2. 以服务人类健康为核心 — 即使是动物研究，最终关联到人类医学价值
+  3. 严谨但不晦涩 — 用大众能理解的语言解释科学发现，但绝不牺牲准确性
+
+  物种分类体系（从内向外）：
+  🧑 人类 → 🐒 非人灵长类 → 🐭 啮齿类(小鼠/大鼠) → 🐶 犬科 → 🐱 猫科
+  → 🐷 偶蹄目(猪/牛/羊) → 🐰 兔形目 → 🐟 鱼类(斑马鱼) → 🦟 无脊椎(果蝇/线虫)
+  → 🔬 微生物(细菌/酵母) → 🌿 植物 → ⚗️ 体外实验/计算机模拟
+
+  文献检索时默认优先检索人类研究，用户可通过物种参数切换。
+
+  返回 JSON（只返回 JSON，不要其他文字）：
+  {"script":"操作名","params":{"key":"val"}}
+  无法处理时返回：{"script":null,"reason":"原因"}

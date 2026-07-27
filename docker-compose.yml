@@ -87,12 +87,10 @@ services:
     restart: always
     ports:
       - "80:80"
-      # 备案后启用 443：
-      # - "443:443"
-    # 备案后取消注释以挂载 SSL 证书：
-    # volumes:
-    #   - ./deploy/ssl/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
-    #   - ./deploy/ssl/privkey.key:/etc/nginx/ssl/privkey.key:ro
+      - "443:443"
+    volumes:
+      - ./deploy/ssl/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
+      - ./deploy/ssl/privkey.key:/etc/nginx/ssl/privkey.key:ro
     depends_on:
       - backend
     healthcheck:

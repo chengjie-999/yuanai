@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { API_BASE, fetchDatasets, fetchDatasetAnalysis, uploadDataset } from '../../../api'
+import { fetchDatasets, fetchDatasetAnalysis, uploadDataset } from '../../../api'
 import AnalysisResultView from '../../AnalysisResultView'
 
 export default function AnalysisPanel() {

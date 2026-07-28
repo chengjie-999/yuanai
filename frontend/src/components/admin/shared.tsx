@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { headers } from '../../api'
 
 export { ErrorBoundary } from '../ErrorBoundary'
 

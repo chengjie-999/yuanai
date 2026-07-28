@@ -36,6 +36,20 @@ web_cookie/*
 *.md
 !CLAUDE.md
 
+# 本地 Agent（云端 API 不需要）
+agent/
+skills/
+
+# 构建产物
+build/
+dist/
+
+# 虚拟环境
+venv/
+
+# 测试
+test/
+
 # 杂项
 .DS_Store
 *.log

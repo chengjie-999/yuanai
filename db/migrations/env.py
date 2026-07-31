@@ -11,7 +11,7 @@ Alembic 迁移环境配置 — 小元AI
 
 import sys
 import os
-from logging.config import fileConfig
+import logging
 
 # 确保项目根目录在 sys.path 中
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -24,8 +24,12 @@ from sqlalchemy.engine import URL
 config = context.config
 
 # 日志
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("alembic")
 
 # ---------------------- 目标元数据 ----------------------
 # 从 db/session.py 导入所有 ORM 模型（Base.metadata 包含全部表）

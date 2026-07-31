@@ -5,7 +5,7 @@ interface AuthState {
   token: string | null
   user: any
   loading: boolean
-  login: (token: string, user: any) => void
+  login: (token: string, user: any, rememberMe?: boolean) => void
   logout: () => void
   isAdmin: boolean
 }
@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const saved = localStorage.getItem('token')
+    const saved = localStorage.getItem('token') || sessionStorage.getItem('token')
     if (saved) {
       checkToken().then((data) => {
         if (data.valid && data.user) {
@@ -30,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           if (data.detail) sessionStorage.setItem('loginError', data.detail)
           localStorage.removeItem('token')
+          sessionStorage.removeItem('token')
         }
         setLoading(false)
       })
@@ -38,9 +39,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const login = useCallback((newToken: string, newUser: any) => {
+  const login = useCallback((newToken: string, newUser: any, rememberMe = true) => {
     if (!newToken) return
-    localStorage.setItem('token', newToken)
+    if (rememberMe) {
+      localStorage.setItem('token', newToken)
+      sessionStorage.removeItem('token')
+    } else {
+      sessionStorage.setItem('token', newToken)
+      localStorage.removeItem('token')
+    }
     setStoredUser(newUser)
     setToken(newToken)
     setUser(newUser)
@@ -48,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem('token')
+    sessionStorage.removeItem('token')
     setStoredUser(null)
     setToken(null)
     setUser(null)

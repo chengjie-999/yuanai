@@ -64,6 +64,8 @@ class User(Base):
     memory = Column(Text, default='')
     theme = Column(String(10), default='')
     frozen_until = Column(TIMESTAMP, nullable=True)
+    failed_login_attempts = Column(Integer, default=0)
+    locked_until = Column(TIMESTAMP, nullable=True)
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -306,7 +308,8 @@ class AgentDatabase:
             sess.close()
 
     def authenticate_user(self, username: str, password: str):
-        """验证用户登录，成功返回 user 对象，失败返回 None"""
+        """验证用户登录，成功返回 user 对象，失败返回 None。
+        调用方需自行检查 locked_until 是否已过期。"""
         import bcrypt as _bcrypt
         sess = self.Session()
         try:
@@ -314,6 +317,40 @@ class AgentDatabase:
             if user and _bcrypt.checkpw(password.encode(), user.password_hash.encode()):
                 return user
             return None
+        finally:
+            sess.close()
+
+    def get_user_by_username(self, username: str):
+        """根据用户名获取用户（用于登录前锁定检查等）"""
+        sess = self.Session()
+        try:
+            return sess.query(User).filter_by(username=username).first()
+        finally:
+            sess.close()
+
+    def record_failed_login(self, username: str):
+        """记录一次登录失败，连续 5 次后锁定 15 分钟"""
+        from datetime import timedelta
+        sess = self.Session()
+        try:
+            user = sess.query(User).filter_by(username=username).first()
+            if user:
+                user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+                if user.failed_login_attempts >= 5:
+                    user.locked_until = datetime.utcnow() + timedelta(minutes=15)
+                sess.commit()
+        finally:
+            sess.close()
+
+    def reset_login_attempts(self, user_id: int):
+        """登录成功后重置失败计数和锁定状态"""
+        sess = self.Session()
+        try:
+            user = sess.query(User).filter_by(id=user_id).first()
+            if user:
+                user.failed_login_attempts = 0
+                user.locked_until = None
+                sess.commit()
         finally:
             sess.close()
 

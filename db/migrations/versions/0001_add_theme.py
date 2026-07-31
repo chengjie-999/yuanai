@@ -19,9 +19,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column('users', sa.Column(
-        'theme', sa.String(10), nullable=True, server_default=sa.text("''")
-    ))
+    # 幂等：检查列是否已存在（兼容 create_all 先建表的情况）
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    columns = [c['name'] for c in inspector.get_columns('users')]
+    if 'theme' not in columns:
+        op.add_column('users', sa.Column(
+            'theme', sa.String(10), nullable=True, server_default=sa.text("''")
+        ))
 
 
 def downgrade() -> None:

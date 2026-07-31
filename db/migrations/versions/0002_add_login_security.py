@@ -19,12 +19,18 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column('users', sa.Column(
-        'failed_login_attempts', sa.Integer, nullable=True, server_default=sa.text("0")
-    ))
-    op.add_column('users', sa.Column(
-        'locked_until', sa.TIMESTAMP, nullable=True
-    ))
+    # 幂等：检查列是否已存在（兼容 create_all 先建表的情况）
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    columns = [c['name'] for c in inspector.get_columns('users')]
+    if 'failed_login_attempts' not in columns:
+        op.add_column('users', sa.Column(
+            'failed_login_attempts', sa.Integer, nullable=True, server_default=sa.text("0")
+        ))
+    if 'locked_until' not in columns:
+        op.add_column('users', sa.Column(
+            'locked_until', sa.TIMESTAMP, nullable=True
+        ))
 
 
 def downgrade() -> None:

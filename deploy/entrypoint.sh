@@ -15,5 +15,9 @@ db = get_db()
 print('  数据库表已就绪')
 "
 
+echo "=== 应用数据库迁移 ==="
+alembic upgrade head
+echo "  迁移已完成"
+
 echo "=== 启动 API 服务 ==="
 exec uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 1

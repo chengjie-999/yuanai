@@ -167,7 +167,7 @@ class AgentDatabase:
         except ImportError:
             logger.warning("alembic 未安装，跳过迁移（仅使用 create_all 创建表）")
         except Exception as e:
-            logger.warning("Alembic 迁移失败（表可能已存在）: %s", e)
+            logger.error("Alembic 迁移失败，数据库可能缺少新列: %s", e)
 
     def _init_tables(self):
         """自动创建表：SQLite 全表创建，MySQL 只建聊天相关表"""

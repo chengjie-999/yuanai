@@ -1,8 +1,8 @@
 import logging
+from urllib.parse import quote_plus
 from sqlalchemy import create_engine, Column, Integer, Text, TIMESTAMP, String, text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.engine import URL
 from sqlalchemy.sql import func
 import os
 import json
@@ -120,14 +120,13 @@ class AgentDatabase:
         from utils.sensitive_data import get_mysql_config
         cfg = mysql_config or get_mysql_config()
         logger.info("连接 MySQL: %s:%s/%s", cfg.get('host', 'localhost'), cfg.get('port', 3306), cfg.get('database', 'ai_agent'))
-        conn_url = URL.create(
-            "mysql+pymysql",
-            username=cfg.get("user", "root"),
-            password=cfg.get("password", ""),
-            host=cfg.get("host", "localhost"),
-            port=cfg.get("port", 3306),
-            database=cfg.get("database", "ai_agent"),
-        )
+        # 手动构造连接字符串（URL 编码密码，处理 @ 等特殊字符）
+        user = cfg.get("user", "root")
+        password = quote_plus(cfg.get("password", ""))
+        host = cfg.get("host", "localhost")
+        port = cfg.get("port", 3306)
+        database = cfg.get("database", "ai_agent")
+        conn_url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
         self.engine = create_engine(conn_url, pool_size=5, max_overflow=10)
         Base.metadata.create_all(self.engine)  # 全新数据库首次建表
         self._run_alembic_migrations()         # Alembic 增量迁移（替代原始 ALTER TABLE）

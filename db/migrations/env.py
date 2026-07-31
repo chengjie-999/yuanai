@@ -12,13 +12,13 @@ Alembic 迁移环境配置 — 小元AI
 import sys
 import os
 import logging
+from urllib.parse import quote_plus
 
 # 确保项目根目录在 sys.path 中
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context
-from sqlalchemy.engine import URL
 
 # Alembic Config 对象
 config = context.config
@@ -38,17 +38,15 @@ target_metadata = Base.metadata
 
 
 def get_db_url() -> str:
-    """从项目配置获取数据库连接 URL"""
+    """从项目配置获取数据库连接 URL（手动编码密码，处理 @ 等特殊字符）"""
     from utils.sensitive_data import get_mysql_config
     cfg = get_mysql_config()
-    return str(URL.create(
-        "mysql+pymysql",
-        username=cfg.get("user", "root"),
-        password=cfg.get("password", ""),
-        host=cfg.get("host", "localhost"),
-        port=cfg.get("port", 3306),
-        database=cfg.get("database", "ai_agent"),
-    ))
+    user = cfg.get("user", "root")
+    password = quote_plus(cfg.get("password", ""))
+    host = cfg.get("host", "localhost")
+    port = cfg.get("port", 3306)
+    database = cfg.get("database", "ai_agent")
+    return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
 
 
 def run_migrations_offline() -> None:

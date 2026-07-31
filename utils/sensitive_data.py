@@ -5,6 +5,7 @@ from cryptography.hazmat.backends import default_backend
 import base64
 import os
 import logging
+from urllib.parse import quote_plus
 from typing import Tuple, Dict
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,7 @@ def get_mysql_config() -> dict:
     return {
         "user": os.getenv("MYSQL_USER", "root"),
         "password": password,
+        "password_raw": password,  # 用于非 URL 场景（如直接连接测试）
         "host": os.getenv("MYSQL_HOST", "localhost"),
         "port": int(os.getenv("MYSQL_PORT", "3306")),
         "database": os.getenv("MYSQL_DATABASE", "ai_agent"),

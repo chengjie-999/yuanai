@@ -3,6 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom'
 import { login } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
+import Mascot from './Mascot'
 
 /* ============================================================
    小元AI 登录页 — 左右分栏布局（桌面端），移动端退化为卡片
@@ -64,11 +65,7 @@ export default function LoginPage() {
 
       <div className="login-brand-content">
         <div className="login-logo">
-          <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
-            <rect width="44" height="44" rx="12" fill="currentColor" opacity="0.15"/>
-            <path d="M14 28c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-            <circle cx="22" cy="16" r="5" stroke="currentColor" strokeWidth="2.5"/>
-          </svg>
+          <Mascot size={88} />
         </div>
 
         <h2 className="login-brand-title">小元AI</h2>
@@ -97,7 +94,7 @@ export default function LoginPage() {
       <div className="login-form-inner">
         {/* 移动端显示的品牌标识 */}
         <div className="login-mobile-header">
-          <div className="login-logo-sm">Y</div>
+          <Mascot size={56} />
           <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px' }}>欢迎回来</h1>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>登录小元AI账号以继续</p>
         </div>

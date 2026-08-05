@@ -1,7 +1,7 @@
 """本地 Agent 命令行入口
 
 用法:
-    python agent/main.py --server-url ws://localhost:8000 --agent-id 1
+    python agent/main.py --server-url wss://cjyuanai.cn --agent-id 1
 
 开发期以命令行脚本方式运行，前台输出日志，Ctrl+C 退出。
 """
@@ -25,7 +25,7 @@ logger = logging.getLogger("agent")
 
 def parse_args():
     p = argparse.ArgumentParser(description="小元AI 本地 Agent")
-    p.add_argument("--server-url", default="ws://localhost:8000", help="云端 WebSocket 地址")
+    p.add_argument("--server-url", default="wss://cjyuanai.cn", help="云端 WebSocket 地址")
     p.add_argument("--agent-id", default=socket.gethostname(), help="Agent 唯一标识")
     p.add_argument("--agent-name", default="小元AI Agent", help="Agent 显示名称")
     p.add_argument("--agent-token", default=os.getenv("AGENT_TOKEN", ""), help="Agent 认证 JWT token（也可通过 AGENT_TOKEN 环境变量设置）")

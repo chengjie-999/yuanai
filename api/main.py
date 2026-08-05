@@ -29,6 +29,8 @@ app = FastAPI(title="小元AI API", version="1.0.0")
 app.add_exception_handler(AppError, app_error_handler)
 
 _CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else [
+    "https://cjyuanai.cn",
+    "https://www.cjyuanai.cn",
     "http://localhost:8080",
     "http://localhost:5173",
 ]

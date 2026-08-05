@@ -139,7 +139,7 @@ def main():
     import argparse
 
     p = argparse.ArgumentParser(description="小元AI 本地 Agent（托盘模式）")
-    p.add_argument("--server-url", default="ws://localhost:8000", help="云端 WebSocket 地址")
+    p.add_argument("--server-url", default="wss://cjyuanai.cn", help="云端 WebSocket 地址")
     p.add_argument("--agent-id", default=None, help="Agent 唯一标识")
     p.add_argument("--agent-name", default="小元AI Agent", help="Agent 显示名称")
     p.add_argument("--agent-token", default=os.environ.get("AGENT_TOKEN", ""), help="Agent 认证 JWT token")

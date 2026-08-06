@@ -491,6 +491,23 @@ export default function LoginPage() {
           box-shadow: 0 4px 16px rgba(88,157,246,0.35);
         }
 
+        /* 暗夜模式 — 输入框 */
+        [data-theme="dark"] .login-input-wrap {
+          background: #3c3f41;
+          border-color: #45494a;
+        }
+        [data-theme="dark"] .login-input-wrap.focused {
+          background: #45494a;
+          border-color: var(--accent);
+        }
+        [data-theme="dark"] .login-input-wrap input:-webkit-autofill,
+        [data-theme="dark"] .login-input-wrap input:-webkit-autofill:hover,
+        [data-theme="dark"] .login-input-wrap input:-webkit-autofill:focus {
+          -webkit-box-shadow: 0 0 0 30px #3c3f41 inset !important;
+          -webkit-text-fill-color: var(--text-primary) !important;
+          caret-color: var(--text-primary);
+        }
+
         .login-spinner {
           width: 16px; height: 16px;
           border: 2px solid rgba(255,255,255,0.3);

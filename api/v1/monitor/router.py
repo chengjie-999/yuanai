@@ -1,10 +1,40 @@
 from fastapi import APIRouter, Request
+from pydantic import BaseModel
 
 from api.v1.middleware import require_admin
 from api.v1.monitor.watcher import get_monitor
 
 router = APIRouter(prefix="/monitor", tags=["monitor"])
 
+
+class FileChangeReport(BaseModel):
+    filepath: str
+    status: str = "M"          # M=modified, A=added, D=deleted
+    lines_added: int = 0
+    lines_removed: int = 0
+
+
+@router.get("/snapshot")
+async def monitor_snapshot(request: Request, limit: int = 100):
+    """单次获取全部监控数据（推荐）"""
+    require_admin(request)
+    return get_monitor().get_snapshot(min(limit, 200))
+
+
+@router.post("/report")
+async def monitor_report(request: Request, body: FileChangeReport):
+    """Agent 上报文件变更"""
+    require_admin(request)
+    get_monitor().report_change(
+        filepath=body.filepath,
+        status=body.status,
+        lines_added=body.lines_added,
+        lines_removed=body.lines_removed,
+    )
+    return {"ok": True}
+
+
+# ---- 以下端点保留兼容，推荐使用 /snapshot ----
 
 @router.get("/status")
 async def monitor_status(request: Request):

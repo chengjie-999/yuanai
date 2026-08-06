@@ -84,6 +84,10 @@ async def rate_limit_middleware(request: Request, call_next):
     if path in ("/", "/health", "/docs", "/openapi.json"):
         return await call_next(request)
 
+    # 代码监控免限流（前端轮询频繁）
+    if path.startswith("/api/v1/monitor"):
+        return await call_next(request)
+
     ip = get_client_ip(request)
 
     # 登录/注册使用严格限流

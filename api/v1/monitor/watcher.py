@@ -280,6 +280,101 @@ class GitMonitor:
                 for filepath, count in file_counter.most_common(top_n)
             ]
 
+    def report_change(self, filepath: str, status: str = "M",
+                      lines_added: int = 0, lines_removed: int = 0) -> None:
+        """外部上报文件变更（供 Agent 通过 HTTP 调用）"""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        change = FileChange(
+            filepath=filepath,
+            status=status,
+            lines_added=lines_added,
+            lines_removed=lines_removed,
+            timestamp=now_iso,
+        )
+        with self._lock:
+            self.changes.append(change)
+            if len(self.changes) > 2000:
+                self.changes = self.changes[-1000:]
+            self.total_files_changed += 1
+            self.total_lines_added += lines_added
+            self.total_lines_removed += lines_removed
+            self.timeline.append({
+                "timestamp": now_iso,
+                "cumulative_files": self.total_files_changed,
+                "cumulative_lines_added": self.total_lines_added,
+                "cumulative_lines_removed": self.total_lines_removed,
+            })
+            if len(self.timeline) > 1000:
+                self.timeline = self.timeline[-500:]
+            self._prev_status[filepath] = status
+
+    def get_snapshot(self, limit: int = 100) -> dict:
+        """返回全部监控数据的快照（单次请求，避免多次轮询触发限流）"""
+        fresh_added, fresh_removed = self._parse_diff_stat()
+        with self._lock:
+            if fresh_added or fresh_removed:
+                self.total_lines_added = fresh_added
+                self.total_lines_removed = fresh_removed
+
+            duration = (
+                (datetime.now(timezone.utc) - self.start_time).total_seconds()
+                if self.start_time else 0
+            )
+            total = self.total_lines_added + self.total_lines_removed
+            velocity = round(total / (duration / 60), 1) if duration > 0 else 0
+
+            # changes
+            recent = list(reversed(self.changes[-limit:]))
+            changes_data = [
+                {
+                    "filepath": c.filepath,
+                    "status": c.status,
+                    "status_label": c.status_label,
+                    "extension": c.extension,
+                    "lines_added": c.lines_added,
+                    "lines_removed": c.lines_removed,
+                    "timestamp": c.timestamp,
+                }
+                for c in recent
+            ]
+
+            # file type distribution
+            ext_counter: Counter = Counter()
+            for c in self.changes:
+                ext_counter[c.extension] += 1
+            ext_total = sum(ext_counter.values()) or 1
+            file_types = [
+                {"extension": ext, "count": count, "percentage": round(count / ext_total * 100, 1)}
+                for ext, count in ext_counter.most_common()
+            ]
+
+            # most changed files
+            file_counter: Counter = Counter(c.filepath for c in self.changes)
+            fc_total = sum(file_counter.values()) or 1
+            most_changed = [
+                {"filepath": filepath, "change_count": count,
+                 "percentage": round(count / fc_total * 100, 1)}
+                for filepath, count in file_counter.most_common(10)
+            ]
+
+            return {
+                "status": {
+                    "git_available": self._git_available,
+                    "monitoring": self._running,
+                    "start_time": self.start_time.isoformat() if self.start_time else "",
+                    "duration_seconds": round(duration, 1),
+                    "total_files_changed": self.total_files_changed,
+                    "total_lines_added": self.total_lines_added,
+                    "total_lines_removed": self.total_lines_removed,
+                    "change_velocity": velocity,
+                    "recent_changes_count": len(self.changes),
+                },
+                "changes": changes_data,
+                "timeline": list(self.timeline),
+                "file_types": file_types,
+                "most_changed": most_changed,
+            }
+
 
 _monitor: Optional[GitMonitor] = None
 

@@ -401,7 +401,7 @@ export default function LoginPage() {
         }
         .login-input-wrap input {
           flex: 1;
-          padding: 12px 0;
+          padding: 13px 14px 13px 0;
           border: none;
           font-size: 15px;
           outline: none;
@@ -410,7 +410,7 @@ export default function LoginPage() {
         }
         .login-input-wrap input::placeholder { color: var(--text-muted); }
         .login-input-icon {
-          padding: 0 0 0 14px;
+          padding: 0 8px 0 14px;
           color: var(--text-muted);
           display: flex;
           transition: color 0.2s;
@@ -418,7 +418,7 @@ export default function LoginPage() {
         .login-input-wrap.focused .login-input-icon { color: var(--accent); }
 
         .login-eye {
-          padding: 0 14px 0 0;
+          padding: 0 14px 0 8px;
           background: none; border: none;
           cursor: pointer; color: var(--text-muted);
           display: flex; opacity: 0.5;
@@ -503,11 +503,62 @@ export default function LoginPage() {
         /* ============================
            响应式
            ============================ */
+        /* 平板：缩小左侧品牌面板 */
+        @media (max-width: 1024px) {
+          .login-brand {
+            flex: 0 0 40%;
+            padding: 32px;
+          }
+          .login-brand-title { font-size: 26px; }
+          .login-brand-desc { font-size: 13px; margin-bottom: 28px; }
+          .login-feat-item { font-size: 13px; padding: 6px 10px; }
+        }
+
+        /* 手机：隐藏品牌面板，表单居中 */
         @media (max-width: 800px) {
+          .login-page {
+            flex-direction: column;
+          }
           .login-brand { display: none; }
           .login-mobile-header { display: block; }
           .login-form-panel {
-            padding: 24px 20px;
+            flex: 1;
+            padding: 40px 20px;
+            align-items: flex-start;
+          }
+          .login-form-inner {
+            max-width: 100%;
+          }
+          .login-input-wrap {
+            border-radius: 12px;
+          }
+          .login-input-wrap input {
+            font-size: 16px;  /* 防止 iOS 自动缩放 */
+            padding: 14px 14px 14px 0;
+          }
+          .login-input-icon {
+            padding: 0 8px 0 16px;
+          }
+          .login-eye {
+            padding: 0 16px 0 8px;
+          }
+          .login-btn {
+            padding: 15px 0;
+            font-size: 16px;
+            border-radius: 12px;
+          }
+          .login-remember {
+            margin-bottom: 28px;
+          }
+        }
+
+        /* 小屏手机 */
+        @media (max-width: 400px) {
+          .login-form-panel {
+            padding: 24px 16px;
+          }
+          .login-mobile-header {
+            margin-bottom: 20px;
           }
         }
       `}</style>

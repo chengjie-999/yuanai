@@ -20,8 +20,7 @@ frontend/dist
 *.swp
 *.swo
 
-# Git
-.git
+# Git（保留 .git 以支持代码监控）
 .gitignore
 .gitattributes
 

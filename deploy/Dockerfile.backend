@@ -16,6 +16,7 @@ RUN . /etc/os-release && \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    git \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \

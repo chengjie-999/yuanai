@@ -56,49 +56,30 @@ export default function MonitorTab() {
   const [changes, setChanges] = useState<any[]>([])
   const [timeline, setTimeline] = useState<any[]>([])
   const [fileTypes, setFileTypes] = useState<any[]>([])
+  const [mostChanged, setMostChanged] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   const loadAll = () => {
-    Promise.all([
-      fetch(`${API_BASE}/monitor/status`, { headers: headers() })
-        .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
-        .then(d => { setStatus(d); setError('') })
-        .catch(() => setError('加载监控状态失败')),
-
-      fetch(`${API_BASE}/monitor/changes?limit=100`, { headers: headers() })
-        .then(r => r.json())
-        .then(d => { if (d?.changes) setChanges(d.changes) })
-        .catch(() => {}),
-
-      fetch(`${API_BASE}/monitor/timeline`, { headers: headers() })
-        .then(r => r.json())
-        .then(d => { if (d?.timeline) setTimeline(d.timeline) })
-        .catch(() => {}),
-
-      fetch(`${API_BASE}/monitor/file-types`, { headers: headers() })
-        .then(r => r.json())
-        .then(d => { if (d?.distributions) setFileTypes(d.distributions) })
-        .catch(() => {}),
-    ]).finally(() => setLoading(false))
+    fetch(`${API_BASE}/monitor/snapshot?limit=100`, { headers: headers() })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+      .then(d => {
+        setStatus(d.status)
+        setChanges(d.changes || [])
+        setTimeline(d.timeline || [])
+        setFileTypes(d.file_types || [])
+        setMostChanged(d.most_changed || [])
+        setError('')
+      })
+      .catch(() => setError('加载监控数据失败'))
+      .finally(() => setLoading(false))
   }
 
   useEffect(() => {
     loadAll()
-    const interval = setInterval(loadAll, 3000)
+    const interval = setInterval(loadAll, 10000)
     return () => clearInterval(interval)
   }, [])
-
-  const mostChanged = useMemo(() => {
-    const map = new Map<string, number>()
-    changes.forEach((c: any) => {
-      map.set(c.filepath, (map.get(c.filepath) || 0) + 1)
-    })
-    return Array.from(map.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([filepath, count]) => ({ filepath, count }))
-  }, [changes])
 
   const chartData = useMemo(() => {
     return timeline.slice(-50).map((pt: any) => ({

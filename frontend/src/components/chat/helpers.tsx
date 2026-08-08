@@ -48,6 +48,7 @@ export function encodeMsg(m: any) {
   if (m.sender && m.sender !== 'orchestrator') meta.s = m.sender
   if (m.toolCalls?.length) meta.t = m.toolCalls
   if (m.reasoning) meta.r = m.reasoning
+  if (m.pageLink) meta.p = m.pageLink
   const content = Object.keys(meta).length > 0
     ? `\x00META\x00${JSON.stringify(meta)}\x00${m.content || ''}`
     : (m.content || '')

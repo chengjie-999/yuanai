@@ -64,10 +64,10 @@ export default function ChatPage({ user }: { user?: any }) {
         if (typeof content === 'string' && content.startsWith('\x00META\x00')) {
           const end = content.indexOf('\x00', 6)
           if (end > 6) {
-            try { const meta = JSON.parse(content.substring(6, end)); sender = meta.s; toolCalls = meta.t; reasoning = meta.r; content = content.substring(end + 1) } catch {}
+            try { const meta = JSON.parse(content.substring(6, end)); sender = meta.s; toolCalls = meta.t; reasoning = meta.r; pageLink = meta.p; content = content.substring(end + 1) } catch {}
           }
         }
-        return { role: m.role, content, images: m.images, sender, toolCalls, reasoning }
+        return { role: m.role, content, images: m.images, sender, toolCalls, reasoning, pageLink }
       }))
     }
   }

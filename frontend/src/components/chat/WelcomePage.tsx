@@ -1,15 +1,13 @@
 import { useRef } from 'react'
-import { ModelSelector } from '../ModelSelector'
 import { SUGGESTIONS } from '../../config/agents'
 import { uploadDataset } from '../../api'
 import Mascot from '../Mascot'
 import type { SessionInfo } from './helpers'
 
-export default function WelcomePage({ images, setImages, quickInput, setQuickInput, sendWithNewSession, model, setModel, sessions, onSelectSession }: {
+export default function WelcomePage({ images, setImages, quickInput, setQuickInput, sendWithNewSession, sessions, onSelectSession }: {
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   quickInput: string; setQuickInput: (v: string | ((p: string) => string)) => void
   sendWithNewSession: (text: string) => void
-  model: string; setModel: (v: string) => void
   sessions: SessionInfo[]; onSelectSession: (sid: string) => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -81,7 +79,6 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
                 style={{ padding: '10px 24px', fontSize: 14, fontWeight: 600, opacity: !quickInput.trim() ? 0.5 : 1, borderRadius: 10 }}>发送</button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px 10px' }}>
-              <ModelSelector model={model} onChange={(v) => { setModel(v) }} />
             </div>
           </div>
         </div>

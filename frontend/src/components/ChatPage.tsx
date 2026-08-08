@@ -21,7 +21,6 @@ export default function ChatPage({ user }: { user?: any }) {
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
   const [images, setImages] = useState<string[]>([])
   const [expandedImage, setExpandedImage] = useState<string | null>(null)
-  const handleModelChange = (v: string) => { setModel(v); setStoredModel(v) }
   const messagesRef = useRef(messages)
   messagesRef.current = messages
   const sidRef = useRef(currentSid)
@@ -204,7 +203,6 @@ export default function ChatPage({ user }: { user?: any }) {
             images={images} setImages={setImages}
             quickInput={quickInput} setQuickInput={setQuickInput}
             sendWithNewSession={sendWithNewSession}
-            model={model} setModel={handleModelChange}
             sessions={sessions} onSelectSession={handleSelectSession}
           />
         ) : (
@@ -213,7 +211,7 @@ export default function ChatPage({ user }: { user?: any }) {
             setExpandedImage={setExpandedImage}
             input={input} setInput={setInput} handleSend={handleSend}
             images={images} setImages={setImages}
-            model={model} setModel={handleModelChange} currentSid={currentSid}
+            currentSid={currentSid}
             sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
             sessions={sessions}
           />

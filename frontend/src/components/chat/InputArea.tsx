@@ -1,13 +1,12 @@
 import { useRef } from 'react'
-import { ModelSelector } from '../ModelSelector'
 import { downloadChat } from './helpers'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, model, setModel, currentSid, sidebarOpen, setSidebarOpen, sessions, messages }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, messages }: {
   input: string; setInput: (v: string) => void; loading: boolean; handleSend: () => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
-  model: string; setModel: (v: string) => void; currentSid: string
+  currentSid: string
   sidebarOpen: boolean; setSidebarOpen: (v: boolean) => void
   sessions: SessionInfo[]; messages: ChatMessage[]
 }) {
@@ -62,7 +61,6 @@ export default function InputArea({ input, setInput, loading, handleSend, images
             >{loading ? '...' : '发送'}</button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px 10px' }}>
-            <ModelSelector model={model} onChange={(v) => { setModel(v) }} />
             <button onClick={() => {
               const s = sessions.find(s => s.session_id === currentSid)
               downloadChat(messages, `${s?.title || 'chat'}.txt`)

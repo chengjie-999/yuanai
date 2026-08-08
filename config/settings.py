@@ -36,13 +36,36 @@ VISION_MODEL = "doubao-seed-2-0-pro-260215"  # DeepSeek V4 不支持图片，识
 DEFAULT_TEMPERATURE = 0.7
 
 # Agent 模型分配 — 统一入口，消除代码中 15+ 处硬编码
-AGENT_MODEL_MAP = {
-    "orchestrator": "doubao-seed-2-0-lite-260215",
-    "analysis": "doubao-seed-2-0-pro-260215",
-    "collection": "doubao-seed-2-0-lite-260215",
+_DEFAULT_AGENT_MODEL_MAP = {
+    # 通用快模型 — 意图识别 / 任务路由 / 简单爬取
+    "orchestrator": "deepseek-v4-flash",
+    "collection": "deepseek-v4-flash",
+    # 强推理 — 数据分析 / 复杂统计 / 图表生成
+    "analysis": "deepseek-v4-pro",
+    # 多模态 — 浏览器截图 / 视觉审核 / 图片理解
     "automation": "doubao-seed-2-0-pro-260215",
     "audit": "doubao-seed-2-0-pro-260215",
 }
+
+
+def _load_agent_models() -> dict:
+    """从 models.json 读取自定义 Agent 模型分配，合并到默认映射"""
+    result = dict(_DEFAULT_AGENT_MODEL_MAP)
+    try:
+        custom_path = _Path(__file__).parent.parent / "data" / "models.json"
+        if custom_path.exists():
+            with open(custom_path, "r", encoding="utf-8") as f:
+                data = _json.load(f)
+            if isinstance(data, dict):
+                custom = data.get("_agent_models", {})
+                if isinstance(custom, dict):
+                    result.update(custom)
+    except Exception:
+        pass
+    return result
+
+
+AGENT_MODEL_MAP = _load_agent_models()
 
 # ===================== 鉴权配置 =====================
 

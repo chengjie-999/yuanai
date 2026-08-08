@@ -93,6 +93,68 @@ export async function changePassword(old_password: string, new_password: string)
   return res.json()
 }
 
+// ---- Models ----
+export async function fetchModels(): Promise<Record<string, { label: string; provider: string }>> {
+  try {
+    const res = await fetch(`${API_BASE}/admin/models`, { headers: authHeaders() })
+    if (!res.ok) return {}
+    return await res.json()
+  } catch { return {} }
+}
+
+// ---- API Keys ----
+export async function fetchApiKeys(): Promise<Record<string, string>> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/apikeys`, { headers: authHeaders() })
+    if (!res.ok) return {}
+    const data = await res.json()
+    return data.keys || {}
+  } catch { return {} }
+}
+
+export async function saveApiKey(provider: string, key: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/apikeys`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ provider, key }),
+    })
+    return res.ok
+  } catch { return false }
+}
+
+export async function deleteApiKey(provider: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/apikeys`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ provider, key: '' }),
+    })
+    return res.ok
+  } catch { return false }
+}
+
+// ---- Agent Models ----
+export async function fetchAgentModels(): Promise<Record<string, string>> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/agent-models`, { headers: authHeaders() })
+    if (!res.ok) return {}
+    const data = await res.json()
+    return data.agent_models || {}
+  } catch { return {} }
+}
+
+export async function updateAgentModel(role: string, model_id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/agent-models`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ role, model_id }),
+    })
+    return res.ok
+  } catch { return false }
+}
+
 // ---- Auth ----
 export async function login(username: string, password: string) {
   const res = await fetch(`${API_BASE}/auth/login`, {

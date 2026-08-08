@@ -1,13 +1,31 @@
+import json as _json
 import logging
+import os as _os
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, field_validator
 from db.session import get_db
 from api.v1.auth.utils import create_token, verify_token
 from api.v1.ratelimit import auth_limiter, get_client_ip
+from utils.data_path import root_path as _root_path
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _read_models_file() -> dict:
+    path = _os.path.join(_root_path(), "data", "models.json")
+    if _os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return _json.load(f)
+    return {}
+
+
+def _write_models_file(data: dict):
+    path = _os.path.join(_root_path(), "data", "models.json")
+    _os.makedirs(_os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        _json.dump(data, f, ensure_ascii=False, indent=2)
 
 MAX_LOGIN_ATTEMPTS = 5
 LOCK_MINUTES = 15
@@ -170,6 +188,78 @@ def update_password(req: PasswordUpdate, request: Request):
     ok, err = db.change_password(uid, req.old_password, req.new_password)
     if not ok:
         raise HTTPException(status_code=400, detail=err)
+    return {"ok": True}
+
+
+class AgentModelUpdate(BaseModel):
+    role: str       # orchestrator, analysis, collection, automation, audit
+    model_id: str   # 分配给该角色的模型 ID
+
+
+@router.get("/agent-models")
+def get_agent_models(request: Request):
+    """获取 Agent 角色 → 模型分配"""
+    from config.settings import AGENT_MODEL_MAP
+    # 优先读取 models.json 中的自定义分配
+    custom = _read_agent_models()
+    merged = dict(AGENT_MODEL_MAP)
+    merged.update(custom)
+    return {"agent_models": merged}
+
+
+@router.put("/agent-models")
+def update_agent_models(req: AgentModelUpdate, request: Request):
+    """更新 Agent 角色 → 模型分配"""
+    from config.settings import AGENT_MODEL_MAP
+    valid_roles = list(AGENT_MODEL_MAP.keys())
+    if req.role not in valid_roles:
+        raise HTTPException(status_code=400, detail=f"无效角色: {req.role}，可选: {valid_roles}")
+    data = _read_models_file()
+    agent_models = data.get("_agent_models", {})
+    agent_models[req.role] = req.model_id
+    data["_agent_models"] = agent_models
+    _write_models_file(data)
+    return {"ok": True, "role": req.role, "model_id": req.model_id}
+
+
+class ApiKeyBody(BaseModel):
+    provider: str
+    key: str
+
+
+@router.get("/apikeys")
+def get_apikeys(request: Request):
+    """获取已配置的 API Key（密钥脱敏）"""
+    data = _read_models_file()
+    keys = data.get("_apikeys", {})
+    masked = {}
+    for k, v in keys.items():
+        masked[k] = v[:4] + "****" + v[-4:] if len(v) > 8 else "****"
+    return {"keys": masked}
+
+
+@router.post("/apikeys")
+def save_apikey(req: ApiKeyBody, request: Request):
+    """保存 API Key"""
+    data = _read_models_file()
+    keys = data.get("_apikeys", {})
+    keys[req.provider] = req.key
+    data["_apikeys"] = keys
+    _write_models_file(data)
+    return {"ok": True, "provider": req.provider}
+
+
+@router.delete("/apikeys")
+def delete_apikey(req: ApiKeyBody, request: Request):
+    """删除 API Key"""
+    data = _read_models_file()
+    keys = data.get("_apikeys", {})
+    keys.pop(req.provider, None)
+    if keys:
+        data["_apikeys"] = keys
+    else:
+        data.pop("_apikeys", None)
+    _write_models_file(data)
     return {"ok": True}
 
 

@@ -10,7 +10,7 @@ def get_user_memory(query: str = "") -> str:
     """Retrieve stored user info. query: optional filter keyword."""
     from db.session import get_db
     db = get_db()
-    uid = current_user_id()
+    uid = current_user_id.get()
     memory = db.get_user_memory(uid)
     if not memory:
         return "暂无用户记忆"
@@ -25,7 +25,7 @@ def remember_user_info(info: str) -> str:
     """Append user info to memory. info: fact to remember (appended, not overwritten)."""
     from db.session import get_db
     db = get_db()
-    uid = current_user_id()
+    uid = current_user_id.get()
     existing = db.get_user_memory(uid) or ""
     if existing and info.strip() in existing:
         return "已存在相同记忆，无需重复保存"

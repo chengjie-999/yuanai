@@ -91,13 +91,16 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
 
 
 # ====================== Milvus ======================
-def _get_db() -> MilvusClient:
+def _get_db() -> MilvusClient | None:
     global _db
     if _db is not None:
         return _db
     uri = f"http://{MILVUS_HOST}:{MILVUS_PORT}"
-    _db = MilvusClient(uri=uri)
-    return _db
+    try:
+        _db = MilvusClient(uri=uri, timeout=5)
+        return _db
+    except Exception:
+        return None
 
 
 # ====================== Markdown 思维导图解析 ======================
@@ -250,6 +253,9 @@ def _chunk_text(text: str, source: str) -> list[dict]:
 # ====================== 知识库构建 ======================
 def build_knowledge_base(force_rebuild: bool = False) -> bool:
     db = _get_db()
+    if db is None:
+        print("⚠️ Milvus 不可用，无法构建知识库")
+        return False
 
     if db.has_collection(COLLECTION_NAME) and not force_rebuild:
         print("✅ 知识库已存在")
@@ -448,6 +454,9 @@ def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None,
         return ""
 
     db = _get_db()
+    if db is None:
+        return "知识库服务未启动（Milvus 不可用），请联系管理员"
+
     if not db.has_collection(COLLECTION_NAME):
         if not build_knowledge_base():
             return _get_all_raw_text()
@@ -534,7 +543,7 @@ def _get_all_raw_text() -> str:
 def list_knowledge_sources() -> list[str]:
     """列出所有已索引的知识库来源"""
     db = _get_db()
-    if not db.has_collection(COLLECTION_NAME):
+    if db is None or not db.has_collection(COLLECTION_NAME):
         return []
     sources = set()
     # 简单查询所有数据

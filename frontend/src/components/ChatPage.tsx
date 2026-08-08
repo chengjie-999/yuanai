@@ -145,7 +145,7 @@ export default function ChatPage({ user }: { user?: any }) {
     setLoading(true)
     const sid = await createSession()
     setCurrentSid(sid); refreshSessions()
-    setInput(text); setQuickInput('')
+    setInput(''); setQuickInput('')
     const sentImages = [...images]; setImages([])
     setMessages([{ role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }])
     setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: 'orchestrator', toolCalls: [] }])

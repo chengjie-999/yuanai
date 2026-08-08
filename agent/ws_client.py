@@ -9,6 +9,7 @@ import websockets
 from websockets import connect
 from websockets.exceptions import ConnectionClosed
 
+from yuanai_core.rag import current_user_id
 from yuanai_core.core.schemas import (
     ChatRequest, AgentEvent,
     token, reasoning, tool_start, tool_end, image_event, done, error_event,
@@ -127,9 +128,14 @@ class AgentWSClient:
         req = ChatRequest(
             request_id=request_id,
             session_id=msg.get("session_id", ""),
+            user_id=msg.get("user_id", 0),
             messages=msg.get("messages", []),
             images=msg.get("images", []),
         )
+
+        # 设置当前用户，使 memory / knowledge 等工具能正确隔离用户数据
+        if req.user_id:
+            current_user_id.set(req.user_id)
 
         if not self._on_chat_request:
             await self._send(error_event("Agent 未配置对话处理器", request_id))

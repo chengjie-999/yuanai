@@ -22,9 +22,13 @@ def get_user_memory(query: str = "") -> str:
 
 @tool
 def remember_user_info(info: str) -> str:
-    """Save user info (replaces ALL previous memory!). info: full text to store."""
+    """Append user info to memory. info: fact to remember (appended, not overwritten)."""
     from db.session import get_db
     db = get_db()
     uid = current_user_id()
-    ok = db.update_user_memory(uid, info)
+    existing = db.get_user_memory(uid) or ""
+    if existing and info.strip() in existing:
+        return "已存在相同记忆，无需重复保存"
+    merged = (existing + "\n" + info.strip()).strip() if existing.strip() else info.strip()
+    ok = db.update_user_memory(uid, merged)
     return "记忆已保存" if ok else "保存失败"

@@ -138,6 +138,7 @@ async def chat_stream(req: ChatRequest, request: Request):
                 "type": "chat_request",
                 "request_id": agent_request_id,
                 "session_id": getattr(req, "session_id", ""),
+                "user_id": user_id,
                 "messages": input_messages,
                 "images": req.images,
             }

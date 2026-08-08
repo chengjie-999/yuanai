@@ -16,6 +16,7 @@ class ChatRequest:
     type: str = "chat_request"
     request_id: str = ""
     session_id: str = ""
+    user_id: int = 0
     messages: List[Dict[str, Any]] = field(default_factory=list)
     images: List[str] = field(default_factory=list)
 

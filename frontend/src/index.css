@@ -60,6 +60,11 @@ body {
   background: var(--bg-primary);
 }
 
+/* 全局输入框颜色继承 */
+input, textarea, select {
+  color: var(--text-primary);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

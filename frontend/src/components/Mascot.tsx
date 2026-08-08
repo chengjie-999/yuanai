@@ -144,14 +144,14 @@ export default function Mascot({ size = 80 }: { size?: number }) {
         </svg>
       )}
 
-      {/* 对话气泡 */}
+      {/* 对话气泡 — 显示在右侧 */}
       {bubble && (
         <div style={{
-          position: 'absolute', bottom: '100%', left: '50%',
-          transform: 'translateX(-50%)',
-          marginBottom: 10,
-          background: isDark ? '#3c3f41' : '#ffffff',
-          border: `1px solid ${isDark ? '#45494a' : '#d0d7de'}`,
+          position: 'absolute', top: '50%', left: '100%',
+          transform: 'translateY(-50%)',
+          marginLeft: 12,
+          background: isDark ? 'var(--bg-tertiary)' : '#ffffff',
+          border: `1px solid var(--border)`,
           borderRadius: 12,
           padding: '12px 16px',
           boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
@@ -159,15 +159,15 @@ export default function Mascot({ size = 80 }: { size?: number }) {
           zIndex: 100,
           animation: 'bubble-in 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
         }}>
-          {/* 三角箭头 */}
+          {/* 三角箭头 — 指向左侧吉祥物 */}
           <div style={{
-            position: 'absolute', top: '100%', left: '50%',
-            transform: 'translateX(-50%)',
+            position: 'absolute', top: '50%', right: '100%',
+            transform: 'translateY(-50%)',
             width: 0, height: 0,
-            borderLeft: '7px solid transparent',
-            borderRight: '7px solid transparent',
-            borderTop: `7px solid ${isDark ? '#3c3f41' : '#ffffff'}`,
-            filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.1))',
+            borderTop: '7px solid transparent',
+            borderBottom: '7px solid transparent',
+            borderRight: `7px solid ${isDark ? 'var(--bg-tertiary)' : '#ffffff'}`,
+            filter: 'drop-shadow(-1px 0 1px rgba(0,0,0,0.08))',
           }} />
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
@@ -218,8 +218,8 @@ export default function Mascot({ size = 80 }: { size?: number }) {
       {/* 气泡动画 keyframe */}
       <style>{`
         @keyframes bubble-in {
-          from { opacity: 0; transform: translateX(-50%) translateY(6px) scale(0.92); }
-          to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+          from { opacity: 0; transform: translateY(-50%) translateX(-6px) scale(0.92); }
+          to   { opacity: 1; transform: translateY(-50%) translateX(0) scale(1); }
         }
       `}</style>
     </div>

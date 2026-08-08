@@ -46,6 +46,8 @@ export default function ChatPage({ user }: { user?: any }) {
   const handleNewSession = async () => {
     setCurrentSid('')
     setMessages([])
+    setQuickInput('')
+    setInput('')
   }
 
   const handleSelectSession = async (sid: string) => {

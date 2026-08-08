@@ -290,9 +290,12 @@ class Orchestrator:
                     if hasattr(chunk, "content") and chunk.content:
                         full_response += chunk.content
                         yield ev_token(chunk.content, rid)
-                    if hasattr(chunk, "reasoning_content") and chunk.reasoning_content:
-                        full_reasoning += chunk.reasoning_content
-                        yield reasoning(chunk.reasoning_content, rid)
+                    rc = chunk.additional_kwargs.get("reasoning_content", "") if hasattr(chunk, "additional_kwargs") else ""
+                    if not rc:
+                        rc = getattr(chunk, "reasoning_content", "")
+                    if rc:
+                        full_reasoning += rc
+                        yield reasoning(rc, rid)
 
                 elif kind == "on_tool_start":
                     yield ev_tool_start(event.get("name", "未知工具"), rid)

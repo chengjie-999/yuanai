@@ -249,9 +249,12 @@ async def stream_agent_events(
                 if hasattr(chunk, "content") and chunk.content:
                     full_response += chunk.content
                     yield {"type": "token", "data": chunk.content}
-                if hasattr(chunk, "reasoning_content") and chunk.reasoning_content:
-                    full_reasoning += chunk.reasoning_content
-                    yield {"type": "reasoning", "data": chunk.reasoning_content}
+                rc = chunk.additional_kwargs.get("reasoning_content", "") if hasattr(chunk, "additional_kwargs") else ""
+                if not rc:
+                    rc = getattr(chunk, "reasoning_content", "")
+                if rc:
+                    full_reasoning += rc
+                    yield {"type": "reasoning", "data": rc}
             elif event["event"] == "on_tool_start":
                 yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具")}}
             elif event["event"] == "on_tool_end":
@@ -323,9 +326,12 @@ async def stream_agent_with_messages(
                 if hasattr(chunk, "content") and chunk.content:
                     full_response += chunk.content
                     yield {"type": "token", "data": chunk.content}
-                if hasattr(chunk, "reasoning_content") and chunk.reasoning_content:
-                    full_reasoning += chunk.reasoning_content
-                    yield {"type": "reasoning", "data": chunk.reasoning_content}
+                rc = chunk.additional_kwargs.get("reasoning_content", "") if hasattr(chunk, "additional_kwargs") else ""
+                if not rc:
+                    rc = getattr(chunk, "reasoning_content", "")
+                if rc:
+                    full_reasoning += rc
+                    yield {"type": "reasoning", "data": rc}
             elif event["event"] == "on_tool_start":
                 yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具")}}
             elif event["event"] == "on_tool_end":

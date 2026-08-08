@@ -57,12 +57,12 @@ function AppLayout() {
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <header style={{
+      <header className="app-header" style={{
         background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
         padding: '0 12px', display: 'flex', alignItems: 'center', height: 52, flexShrink: 0,
         gap: 8,
       }}>
-        <span onClick={goHome} style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: -0.3, cursor: 'pointer', flexShrink: 0, userSelect: 'none' }}>
+        <span className="brand" onClick={goHome} style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: -0.3, cursor: 'pointer', flexShrink: 0, userSelect: 'none' }}>
           小元AI
         </span>
         <nav style={{ display: 'flex', gap: 0 }}>
@@ -74,6 +74,7 @@ function AppLayout() {
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={toggleTheme} aria-label={isDark ? '切换亮色模式' : '切换暗色模式'} title={isDark ? '切换亮色模式' : '切换暗色模式'}
+            className="theme-toggle"
             style={{
               width: 44, height: 24, borderRadius: 12, border: 'none',
               background: isDark ? '#45494a' : '#d0d7de',
@@ -81,7 +82,7 @@ function AppLayout() {
               transition: 'background 0.3s',
             }}
           >
-            <span style={{
+            <span className="toggle-knob" style={{
               position: 'absolute', top: 2, left: isDark ? 22 : 2,
               width: 20, height: 20, borderRadius: '50%',
               background: isDark ? '#4da6ff' : '#ffffff',

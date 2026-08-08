@@ -358,6 +358,43 @@ input, textarea, select {
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Compact header */
+  .app-header {
+    padding: 0 8px !important;
+    height: 44px !important;
+    gap: 4px !important;
+  }
+  .app-header .nav-link {
+    font-size: 12px !important;
+    padding: 0 8px !important;
+    height: 44px !important;
+  }
+  .app-header .brand {
+    font-size: 14px !important;
+  }
+
+  /* Theme toggle — simple icon button on mobile */
+  .theme-toggle {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 8px !important;
+    background: transparent !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  .theme-toggle .toggle-knob {
+    position: static !important;
+    width: 20px !important;
+    height: 20px !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
   /* Larger touch targets */
   button, .btn, [role="button"] {
     min-height: 36px;

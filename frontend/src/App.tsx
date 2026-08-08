@@ -105,16 +105,16 @@ function AppLayout() {
               <AgentStatus userId={user?.id} />
             </Link>
           </span>
-          <Link to="/settings" style={{
-            fontSize: 13, color: location.pathname === '/settings' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap',
-            fontWeight: location.pathname === '/settings' ? 600 : 400,
-          }}>设置</Link>
           <Link to="/user" style={{
             fontSize: 13, color: 'var(--accent)', cursor: 'pointer', textDecoration: 'none',
             whiteSpace: 'nowrap',
             borderBottom: location.pathname === '/user' ? '1px solid var(--accent)' : '1px solid transparent',
           }}>{user?.username || user?.display_name}</Link>
+          <Link to="/settings" style={{
+            fontSize: 13, color: location.pathname === '/settings' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap',
+            fontWeight: location.pathname === '/settings' ? 600 : 400,
+          }}>设置</Link>
         </div>
       </header>
       <main style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>

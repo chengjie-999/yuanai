@@ -59,14 +59,15 @@ export default function ChatPage({ user }: { user?: any }) {
       setMessages(history.map((m: any) => {
         let sender: any = undefined
         let toolCalls: any = undefined
+        let reasoning: string | undefined
         let content = m.content || ''
         if (typeof content === 'string' && content.startsWith('\x00META\x00')) {
           const end = content.indexOf('\x00', 6)
           if (end > 6) {
-            try { const meta = JSON.parse(content.substring(6, end)); sender = meta.s; toolCalls = meta.t; content = content.substring(end + 1) } catch {}
+            try { const meta = JSON.parse(content.substring(6, end)); sender = meta.s; toolCalls = meta.t; reasoning = meta.r; content = content.substring(end + 1) } catch {}
           }
         }
-        return { role: m.role, content, images: m.images, sender, toolCalls }
+        return { role: m.role, content, images: m.images, sender, toolCalls, reasoning }
       }))
     }
   }

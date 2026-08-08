@@ -81,10 +81,10 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
                 </div>
               </div>
             )}
-            {(msg.reasoning || (msg.toolCalls && msg.toolCalls.length > 0 && !msg.content)) && (
+            {(msg.reasoning || msg.toolCalls?.length) ? (
               <details open={loading && isLast && !msg.content} style={{ marginBottom: 8 }}>
                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none', outline: 'none' }}>
-                  {loading && isLast && !msg.content ? '思考中...' : `思考与工具调用${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''}`}
+                  {loading && isLast && !msg.content ? '执行中...' : msg.reasoning ? `思考与工具调用${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''}` : `工具调用 (${msg.toolCalls!.length} 项)`}
                 </summary>
                 {msg.reasoning && (
                   <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 200, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
@@ -95,7 +95,7 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
                   <ToolCallCard key={j} call={tc} />
                 ))}
               </details>
-            )}
+            ) : null}
             <MarkdownContent content={msg.content} />
             {msg.pageLink && (
               <a href={msg.pageLink} target="_blank" rel="noopener noreferrer"
@@ -135,9 +135,6 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
             )}
           </>
         )}
-        {!msg.reasoning && msg.toolCalls?.map((tc, j) => (
-          <ToolCallCard key={j} call={tc} />
-        ))}
       </div>
     </div>
   )

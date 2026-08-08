@@ -11,7 +11,7 @@ from api.v1.exceptions import Unauthorized, Forbidden
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register", "/api/v1/knowledge/img", "/api/v1/analysis/rfm-chart"]
+PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register", "/api/v1/knowledge/img", "/api/v1/analysis/rfm-chart", "/api/v1/chat/image"]
 
 
 def is_public(path: str) -> bool:

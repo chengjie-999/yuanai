@@ -1,14 +1,53 @@
+import { useState, useRef, useEffect } from 'react'
 import { useTheme } from '../contexts/ThemeContext'
 
-/** 小元AI 吉祥物 — 欢迎页和登录页共享 */
+/** 小元AI 吉祥物 — 欢迎页和登录页共享，点击切换暗色/亮色模式 */
 export default function Mascot({ size = 80 }: { size?: number }) {
-  const { isDark } = useTheme()
+  const { isDark, toggle } = useTheme()
+  const [bubble, setBubble] = useState(false)
+  const [switching, setSwitching] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // 点击外部关闭气泡
+  useEffect(() => {
+    if (!bubble) return
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setBubble(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [bubble])
+
+  const handleToggle = () => {
+    setSwitching(true)
+    toggle()
+    setTimeout(() => {
+      setSwitching(false)
+      setBubble(false)
+    }, 400)
+  }
 
   return (
-    <div style={{
-      position: 'relative', width: size, height: size,
-      animation: isDark ? 'float 5s ease-in-out infinite' : 'float 3s ease-in-out infinite',
-    }}>
+    <div
+      ref={ref}
+      onClick={() => { if (!bubble) setBubble(true) }}
+      style={{
+        position: 'relative', width: size, height: size,
+        cursor: 'pointer',
+        animation: isDark ? 'float 5s ease-in-out infinite' : 'float 3s ease-in-out infinite',
+        transition: 'transform 0.2s',
+        transform: switching ? 'scale(1.15)' : bubble ? 'scale(1.08)' : 'scale(1)',
+        userSelect: 'none',
+        WebkitTapHighlightColor: 'transparent',
+      }}
+      title={`点击切换到${isDark ? '亮色' : '暗色'}模式`}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBubble(true) } }}
+      aria-label={`切换主题，当前为${isDark ? '暗色' : '亮色'}模式`}
+    >
       {isDark ? (
         <svg viewBox="0 0 100 100" width={size} height={size}>
           {/* Stars */}
@@ -104,6 +143,71 @@ export default function Mascot({ size = 80 }: { size?: number }) {
           <ellipse cx="70" cy="55" rx="6" ry="4" fill="#f8bbd0" opacity="0.4" />
         </svg>
       )}
+
+      {/* 对话气泡 */}
+      {bubble && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: '50%',
+          transform: 'translateX(-50%)',
+          marginBottom: 10,
+          background: isDark ? '#3c3f41' : '#ffffff',
+          border: `1px solid ${isDark ? '#45494a' : '#d0d7de'}`,
+          borderRadius: 12,
+          padding: '12px 16px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+          whiteSpace: 'nowrap',
+          zIndex: 100,
+          animation: 'bubble-in 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+        }}>
+          {/* 三角箭头 */}
+          <div style={{
+            position: 'absolute', top: '100%', left: '50%',
+            transform: 'translateX(-50%)',
+            width: 0, height: 0,
+            borderLeft: '7px solid transparent',
+            borderRight: '7px solid transparent',
+            borderTop: `7px solid ${isDark ? '#3c3f41' : '#ffffff'}`,
+            filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.1))',
+          }} />
+          <p style={{
+            margin: '0 0 10px', fontSize: 14, fontWeight: 500,
+            color: 'var(--text-primary)',
+          }}>
+            {isDark ? '☀️ 切换到亮色模式？' : '🌙 切换到暗色模式？'}
+          </p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleToggle() }}
+              style={{
+                padding: '5px 16px', borderRadius: 6,
+                border: 'none', background: 'var(--accent)', color: '#fff',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+              }}
+            >
+              切换
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setBubble(false) }}
+              style={{
+                padding: '5px 16px', borderRadius: 6,
+                border: '1px solid var(--border)',
+                background: 'transparent', color: 'var(--text-secondary)',
+                fontSize: 13, cursor: 'pointer',
+              }}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 气泡动画 keyframe */}
+      <style>{`
+        @keyframes bubble-in {
+          from { opacity: 0; transform: translateX(-50%) translateY(6px) scale(0.92); }
+          to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+        }
+      `}</style>
     </div>
   )
 }

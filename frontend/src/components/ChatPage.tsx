@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, getStoredModel, setStoredModel } from '../api'
+import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, getStoredModel } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool } from '../config/agents'
 import { encodeMsg } from './chat/helpers'
@@ -15,7 +15,7 @@ export default function ChatPage({ user }: { user?: any }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [model, setModel] = useState(getStoredModel)
+  const [model] = useState(getStoredModel)
   const [quickInput, setQuickInput] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth > 768)
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)

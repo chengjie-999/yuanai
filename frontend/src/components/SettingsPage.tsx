@@ -31,7 +31,6 @@ const ROLE_DESC: Record<string, string> = {
 }
 
 export default function SettingsPage() {
-  const { user } = { user: null } // 不依赖 auth，使用静态内容
   const [chatModel, setChatModel] = useState(getStoredModel())
   const [models, setModels] = useState<Record<string, { label: string; provider: string }>>({})
   const [agentModels, setAgentModels] = useState<Record<string, string>>({})

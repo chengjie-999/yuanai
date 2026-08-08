@@ -7,12 +7,13 @@ interface AuthState {
   loading: boolean
   login: (token: string, user: any, rememberMe?: boolean) => void
   logout: () => void
+  refresh: () => void
   isAdmin: boolean
 }
 
 const AuthContext = createContext<AuthState>({
   token: null, user: null, loading: true,
-  login: () => {}, logout: () => {}, isAdmin: false,
+  login: () => {}, logout: () => {}, refresh: () => {}, isAdmin: false,
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -61,8 +62,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
+  const refresh = useCallback(() => {
+    checkToken().then((data) => {
+      if (data.valid && data.user) {
+        setUser(data.user)
+        setStoredUser(data.user)
+      }
+    })
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ token, user, loading, login, logout, isAdmin: user?.role === 'admin' }}>
+    <AuthContext.Provider value={{ token, user, loading, login, logout, refresh, isAdmin: user?.role === 'admin' }}>
       {children}
     </AuthContext.Provider>
   )

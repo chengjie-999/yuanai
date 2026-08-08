@@ -66,6 +66,33 @@ export async function saveTheme(theme: string): Promise<boolean> {
   } catch { return false }
 }
 
+// ---- Profile ----
+export async function updateProfile(display_name: string) {
+  const res = await fetch(`${API_BASE}/auth/profile`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ display_name }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.detail || '更新失败')
+  }
+  return res.json()
+}
+
+export async function changePassword(old_password: string, new_password: string) {
+  const res = await fetch(`${API_BASE}/auth/password`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ old_password, new_password }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.detail || '修改失败')
+  }
+  return res.json()
+}
+
 // ---- Auth ----
 export async function login(username: string, password: string) {
   const res = await fetch(`${API_BASE}/auth/login`, {

@@ -405,6 +405,37 @@ class AgentDatabase:
         finally:
             sess.close()
 
+    def update_display_name(self, user_id: int, display_name: str) -> bool:
+        """更新用户显示名称"""
+        sess = self.Session()
+        try:
+            user = sess.query(User).filter_by(id=user_id).first()
+            if not user:
+                return False
+            user.display_name = display_name.strip()
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def change_password(self, user_id: int, old_password: str, new_password: str) -> tuple:
+        """修改密码，返回 (成功, 错误消息)"""
+        import bcrypt as _bcrypt
+        sess = self.Session()
+        try:
+            user = sess.query(User).filter_by(id=user_id).first()
+            if not user:
+                return False, "用户不存在"
+            if not _bcrypt.checkpw(old_password.encode(), user.password_hash.encode()):
+                return False, "原密码错误"
+            if len(new_password) < 8:
+                return False, "新密码至少 8 个字符"
+            user.password_hash = _bcrypt.hashpw(new_password.encode(), _bcrypt.gensalt()).decode()
+            sess.commit()
+            return True, ""
+        finally:
+            sess.close()
+
     # --------------------------------------------------------------------------
     # 统计
     # --------------------------------------------------------------------------

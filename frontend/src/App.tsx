@@ -6,6 +6,7 @@ import ChatPage from './components/ChatPage'
 import LoginPage from './components/LoginPage'
 import AdminPage from './components/AdminPage'
 import UserPage from './components/UserPage'
+import SettingsPage from './components/SettingsPage'
 import AgentPage from './components/AgentPage'
 import AgentStatus from './components/AgentStatus'
 import AgentAnalysisPage from './pages/AgentAnalysisPage'
@@ -104,6 +105,11 @@ function AppLayout() {
               <AgentStatus userId={user?.id} />
             </Link>
           </span>
+          <Link to="/settings" style={{
+            fontSize: 13, color: location.pathname === '/settings' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap',
+            fontWeight: location.pathname === '/settings' ? 600 : 400,
+          }}>设置</Link>
           <Link to="/user" style={{
             fontSize: 13, color: 'var(--accent)', cursor: 'pointer', textDecoration: 'none',
             whiteSpace: 'nowrap',
@@ -116,6 +122,7 @@ function AppLayout() {
           <Routes>
             <Route path="/" element={<ChatPage key={resetKey} user={user} />} />
             <Route path="/user" element={<UserPage user={user} onLogout={logout} />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="/agent" element={<AgentPage userId={user?.id} />} />
             <Route path="/agent/analysis" element={<AgentAnalysisPage />} />
             <Route path="/agent/automation" element={<AgentAutomationPage />} />

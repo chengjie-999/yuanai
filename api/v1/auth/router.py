@@ -136,6 +136,43 @@ def update_theme(req: ThemeUpdate, request: Request):
     return {"ok": True, "theme": req.theme}
 
 
+class ProfileUpdate(BaseModel):
+    display_name: str = ""
+
+
+class PasswordUpdate(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@router.put("/profile")
+def update_profile(req: ProfileUpdate, request: Request):
+    """更新个人信息（显示名称）"""
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    if not req.display_name.strip():
+        raise HTTPException(status_code=400, detail="显示名称不能为空")
+    db = get_db()
+    ok = db.update_display_name(uid, req.display_name.strip())
+    if not ok:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return {"ok": True, "display_name": req.display_name.strip()}
+
+
+@router.put("/password")
+def update_password(req: PasswordUpdate, request: Request):
+    """修改密码"""
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    db = get_db()
+    ok, err = db.change_password(uid, req.old_password, req.new_password)
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
+    return {"ok": True}
+
+
 class TokenCheck(BaseModel):
     token: str
 

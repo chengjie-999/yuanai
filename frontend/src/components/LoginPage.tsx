@@ -485,25 +485,25 @@ export default function LoginPage() {
           letter-spacing: 0;
         }
         [data-theme="dark"] .login-btn {
-          box-shadow: 0 2px 8px rgba(88,157,246,0.2);
+          box-shadow: 0 2px 8px rgba(77,166,255,0.2);
         }
         [data-theme="dark"] .login-btn:hover {
-          box-shadow: 0 4px 16px rgba(88,157,246,0.35);
+          box-shadow: 0 4px 16px rgba(77,166,255,0.35);
         }
 
-        /* 暗夜模式 — 输入框 */
+        /* 暗夜模式 — 输入框（与全局 --bg-input 一致） */
         [data-theme="dark"] .login-input-wrap {
-          background: #3c3f41;
-          border-color: #45494a;
+          background: var(--bg-tertiary);
+          border-color: var(--border);
         }
         [data-theme="dark"] .login-input-wrap.focused {
-          background: #45494a;
+          background: var(--bg-input);
           border-color: var(--accent);
         }
         [data-theme="dark"] .login-input-wrap input:-webkit-autofill,
         [data-theme="dark"] .login-input-wrap input:-webkit-autofill:hover,
         [data-theme="dark"] .login-input-wrap input:-webkit-autofill:focus {
-          -webkit-box-shadow: 0 0 0 30px #3c3f41 inset !important;
+          -webkit-box-shadow: 0 0 0 30px var(--bg-tertiary) inset !important;
           -webkit-text-fill-color: var(--text-primary) !important;
           caret-color: var(--text-primary);
         }

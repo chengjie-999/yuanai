@@ -6,17 +6,17 @@
 
 /* ---- Theme: CSS Custom Properties ---- */
 :root {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f7f8fa;
-  --bg-tertiary: #eef0f4;
+  --bg-primary: #f6f8fa;
+  --bg-secondary: #f0f2f5;
+  --bg-tertiary: #e8eaed;
   --bg-input: #ffffff;
-  --text-primary: #24292f;
+  --text-primary: #1f2328;
   --text-secondary: #656d76;
   --text-muted: #8b949e;
   --border: #d0d7de;
-  --border-light: #e8ecf0;
+  --border-light: #e3e6ea;
   --header-bg: #ffffff;
-  --sidebar-bg: #f6f7f9;
+  --sidebar-bg: #f3f4f6;
   --shadow-sm: rgba(31,35,40,0.04);
   --shadow-md: rgba(31,35,40,0.08);
   --accent: #1976d2;
@@ -27,23 +27,23 @@
 }
 
 [data-theme="dark"] {
-  --bg-primary: #2b2b2b;
-  --bg-secondary: #313335;
-  --bg-tertiary: #3c3f41;
-  --bg-input: #45494a;
-  --text-primary: #dfdfdf;
-  --text-secondary: #a9b7c6;
-  --text-muted: #808080;
-  --border: #3c3f41;
-  --border-light: #323232;
-  --header-bg: #3c3f41;
-  --sidebar-bg: #2b2b2b;
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-tertiary: #2d2d2d;
+  --bg-input: #3c3c3c;
+  --text-primary: #cccccc;
+  --text-secondary: #9d9d9d;
+  --text-muted: #6e6e6e;
+  --border: #3e3e42;
+  --border-light: #333333;
+  --header-bg: #2d2d2d;
+  --sidebar-bg: #252526;
   --shadow-sm: rgba(0,0,0,0.3);
   --shadow-md: rgba(0,0,0,0.5);
-  --accent: #589df6;
-  --accent-light: rgba(88,157,246,0.12);
-  --danger: #bc3f3c;
-  --success: #629755;
+  --accent: #4da6ff;
+  --accent-light: rgba(77,166,255,0.12);
+  --danger: #f44747;
+  --success: #6a9955;
   --hover-bg: rgba(255,255,255,0.06);
 }
 

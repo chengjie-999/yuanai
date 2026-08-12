@@ -218,6 +218,18 @@ python -m db.migrations.helper upgrade
 
 `AgentDatabase._run_alembic_migrations()` 在每次启动时自动调用 `alembic upgrade head`，失败时降级到 `create_all()`。
 
+## 会话总结惯例
+
+每次对话结束时，用表格总结本次修改的内容和对应的 commit，方便回顾。
+
+示例格式：
+```markdown
+| 提交 | 内容 |
+|------|------|
+| `abc1234` | 修复了什么 + 改了什么 |
+| `def5678` | 新增了什么功能 |
+```
+
 ## CI/CD
 
 GitHub Actions（`.github/workflows/ci.yml`）：

@@ -26,7 +26,7 @@ _CHAT_IMG_DIR = os.path.join(root_path(), "data", "chat_images")
 def _save_chat_image(session_id: str, data_url: str) -> str:
     """将 base64 data URL 保存为文件，返回访问 URL。非 base64 原样返回。"""
     if not data_url.startswith("data:"):
-        return data_url
+        return data_url  # 已经是文件 URL，跳过重复保存
     try:
         header, b64 = data_url.split(",", 1)
         ext = "png"
@@ -53,12 +53,14 @@ def _save_chat_image(session_id: str, data_url: str) -> str:
 
 @router.get("/image/{session_id}/{filename}")
 async def serve_chat_image(session_id: str, filename: str):
-    """提供聊天图片"""
+    """提供聊天图片（文件名含 UUID 永久有效，缓存 1 年）"""
     base_dir = os.path.realpath(_CHAT_IMG_DIR)
     file_path = os.path.normpath(os.path.join(base_dir, session_id, filename))
     if not file_path.startswith(base_dir + os.sep) or not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="文件不存在")
-    return FileResponse(file_path)
+    return FileResponse(file_path, headers={
+        "Cache-Control": "private, max-age=31536000, immutable",
+    })
 
 
 class MessagesRequest(BaseModel):
@@ -302,27 +304,35 @@ async def get_messages(req: MessagesRequest):
 
 @router.post("/save")
 async def save_messages(req: SaveMessagesRequest, request: Request):
-    """保存对话到数据库"""
+    """保存对话到数据库（先删旧记录，再批量插入，避免重复）"""
     try:
         db = _get_db()
         user_id = _get_user_id(request)
         _verify_session_owner(db, req.session_id, user_id)
 
-        # 批量插入在同一个事务中
         sess = db.Session()
         from db.session import AIChat
         try:
+            # 先删除该会话的全部旧消息，避免重复累积
+            sess.query(AIChat).filter_by(session_id=req.session_id).delete()
+            count = 0
             for msg in req.messages:
                 record = AIChat(session_id=req.session_id, role=msg["role"], content=msg["content"])
                 if msg.get("images"):
-                    saved = [_save_chat_image(req.session_id, img) for img in msg["images"]]
+                    # data: URL 是新的需要保存；/api/v1/chat/image/ 是已保存的跳过
+                    saved = []
+                    for img in msg["images"]:
+                        if isinstance(img, str) and img.startswith("/api/v1/"):
+                            saved.append(img)  # 已经是文件 URL
+                        else:
+                            saved.append(_save_chat_image(req.session_id, img))
                     record.images = json.dumps(saved, ensure_ascii=False)
                 sess.add(record)
+                count += 1
             if req.title:
                 from db.session import ChatSession
                 sess.query(ChatSession).filter_by(session_id=req.session_id).update({"title": req.title})
             sess.commit()
-            count = len(req.messages)
         except Exception:
             sess.rollback()
             raise

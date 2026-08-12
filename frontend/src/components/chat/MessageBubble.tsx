@@ -61,7 +61,7 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
             {msg.images && msg.images.length > 0 && (
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>
                 {msg.images.map((img, j) => (
-                  <img key={j} src={addToken(img)}
+                  <img key={j} src={addToken(img)} loading="lazy"
                     onClick={() => setExpandedImage(addToken(img))}
                     style={{ height: 120, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: '1px solid var(--border)' }} />
                 ))}
@@ -113,7 +113,7 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
             {msg.images && msg.images.length > 0 && (
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>
                 {msg.images.map((img, j) => (
-                  <img key={j} src={addToken(img)}
+                  <img key={j} src={addToken(img)} loading="lazy"
                     onClick={() => setExpandedImage(addToken(img))}
                     style={{ height: 120, borderRadius: 6, flexShrink: 0, cursor: 'pointer', border: '1px solid var(--border)' }} />
                 ))}

@@ -52,7 +52,7 @@ export default function ZoomableImage({ src, onClose }: Props) {
   }, [])
 
   // 点击背景关闭（未缩放时点击图片也关闭）
-  const onBackdropClick = useCallback((e: React.MouseEvent) => {
+  const onBackdropClick = useCallback((_e: React.MouseEvent) => {
     if (scale <= 1) onClose()
   }, [scale, onClose])
 

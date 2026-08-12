@@ -1,7 +1,8 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { downloadChat } from './helpers'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
+import { compressImage } from './imageUtils'
 
 export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, messages }: {
   input: string; setInput: (v: string) => void; loading: boolean; handleSend: () => void
@@ -11,6 +12,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   sessions: SessionInfo[]; messages: ChatMessage[]
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
 
   return (
     <div className="chat-input-area" style={{ padding: '12px 24px 20px', borderTop: '1px solid var(--border)' }}>
@@ -19,6 +21,12 @@ export default function InputArea({ input, setInput, loading, handleSend, images
           onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 2px 16px var(--shadow-sm)'}
           onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}
         >
+          {uploading && (
+            <div style={{ fontSize: 12, color: 'var(--accent)', padding: '8px 12px 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              正在压缩图片…
+            </div>
+          )}
           {images.length > 0 && (
             <div style={{ display: 'flex', gap: 6, padding: '8px 12px 0', overflowX: 'auto' }}>
               {images.map((img, i) => (
@@ -41,11 +49,21 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               onChange={(e) => {
                 const files = e.target.files
                 if (files) {
-                  Array.from(files).forEach((f) => {
-                    const reader = new FileReader()
-                    reader.onload = () => setImages((p) => [...p, reader.result as string])
-                    reader.readAsDataURL(f)
-                  })
+                  setUploading(true)
+                  Promise.all(Array.from(files).map(async (f) => {
+                    try {
+                      return await compressImage(f)
+                    } catch {
+                      return await new Promise<string>((resolve) => {
+                        const reader = new FileReader()
+                        reader.onload = () => resolve(reader.result as string)
+                        reader.readAsDataURL(f)
+                      })
+                    }
+                  })).then((results) => {
+                    setImages((p) => [...p, ...results])
+                    setUploading(false)
+                  }).catch(() => setUploading(false))
                   e.target.value = ''
                 }
               }}

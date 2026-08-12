@@ -6,7 +6,7 @@ import asyncio
 import logging
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import StreamingResponse, FileResponse
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field
 from utils.data_path import root_path
 
@@ -105,6 +105,9 @@ async def chat_stream(req: ChatRequest, request: Request):
                 history.append(HumanMessage(content=content))
             elif msg_role == "assistant":
                 history.append(AIMessage(content=content))
+            elif msg_role == "tool":
+                # 工具执行结果消息 — 保留在上下文中让模型知晓历史工具调用
+                history.append(ToolMessage(content=content, tool_call_id=m.get("tool_call_id", "")))
 
         system_prompt = req.system_prompt
 

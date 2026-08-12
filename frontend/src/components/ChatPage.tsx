@@ -2,10 +2,11 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, getStoredModel } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool } from '../config/agents'
-import { encodeMsg } from './chat/helpers'
+import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
 import Sidebar from './chat/Sidebar'
 import WelcomePage from './chat/WelcomePage'
 import ChatView from './chat/ChatView'
+import ZoomableImage from './chat/ZoomableImage'
 
 type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string }
 
@@ -128,7 +129,7 @@ export default function ChatPage({ user }: { user?: any }) {
     const prevMsgs = [...messages]
     setMessages((prev) => [...prev, { role: 'user', content: input, images: sentImages }])
     setImages([]); setInput(''); setLoading(true)
-    const history = prevMsgs.map((m) => ({ role: m.role, content: m.content }))
+    const history = buildHistoryWithToolContext(prevMsgs)
     setMessages((prev) => [...prev, { role: 'assistant', content: '', toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
@@ -225,10 +226,7 @@ export default function ChatPage({ user }: { user?: any }) {
 
 
       {expandedImage && (
-        <div onClick={() => setExpandedImage(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-          <img src={expandedImage} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }} />
-        </div>
+        <ZoomableImage src={expandedImage} onClose={() => setExpandedImage(null)} />
       )}
     </div>
     </>

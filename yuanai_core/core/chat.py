@@ -1,5 +1,6 @@
 import re
 import json
+import asyncio
 from typing import List, AsyncGenerator, Dict, Any
 
 from openai import AsyncOpenAI
@@ -68,7 +69,22 @@ def build_input_messages(
             else:
                 input_messages.append({"role": "user", "content": msg.content})
         elif isinstance(msg, AIMessage):
-            input_messages.append({"role": "assistant", "content": msg.content})
+            content = msg.content or ""
+            # 保留 tool_calls（DeepSeek V4 路径需要）
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                tc_list = []
+                for tc in msg.tool_calls:
+                    tc_dict = _tc_to_dict(tc)
+                    tc_list.append(tc_dict)
+                input_messages.append({"role": "assistant", "content": content, "tool_calls": tc_list})
+            else:
+                input_messages.append({"role": "assistant", "content": content})
+        elif isinstance(msg, ToolMessage):
+            input_messages.append({
+                "role": "tool",
+                "tool_call_id": getattr(msg, "tool_call_id", ""),
+                "content": msg.content or "",
+            })
     if images_base64:
         content = [{"type": "text", "text": prompt}]
         for img in images_base64:
@@ -195,8 +211,12 @@ async def _deepseek_agent_stream(
                 tool_func = tools_by_name.get(tc_name)
                 if tool_func:
                     try:
-                        result = await tool_func.ainvoke(tc_args)
+                        result = await asyncio.wait_for(
+                            tool_func.ainvoke(tc_args), timeout=120
+                        )
                         result_str = result.content if hasattr(result, "content") else str(result)
+                    except asyncio.TimeoutError:
+                        result_str = f"工具 {tc_name} 执行超时（超过120秒）"
                     except Exception as e:
                         result_str = f"工具执行出错: {e}"
                 else:
@@ -310,6 +330,9 @@ def build_chat_history(session_messages: List[tuple]) -> List[BaseMessage]:
             if reasoning_content:
                 ai_msg.additional_kwargs = {"reasoning_content": reasoning_content}
             chat_history.append(ai_msg)
+        elif role == "tool":
+            # 工具执行结果消息 — 保留在对话上下文中，让模型知道工具执行历史
+            chat_history.append(ToolMessage(content=content, tool_call_id=""))
     return chat_history
 
 

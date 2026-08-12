@@ -761,6 +761,62 @@ class AgentDatabase:
         finally:
             sess.close()
 
+    # ===================== 简易键值存储（审计反馈等） =====================
+
+    def set_state(self, key: str, value: dict) -> None:
+        """保存键值对状态（JSON 文件存储，跨 Agent 重启持久化）"""
+        import json as _json, os as _os, threading as _threading
+        _lock = getattr(self, '_state_lock', None)
+        if _lock is None:
+            _lock = _threading.Lock()
+            self._state_lock = _lock
+        with _lock:
+            try:
+                state_file = _os.path.join(
+                    _os.path.dirname(_os.path.dirname(__file__)), 'data', 'agent_state.json'
+                )
+                _os.makedirs(_os.path.dirname(state_file), exist_ok=True)
+                data = {}
+                if _os.path.exists(state_file):
+                    with open(state_file, 'r', encoding='utf-8') as f:
+                        data = _json.load(f)
+                data[key] = value
+                with open(state_file, 'w', encoding='utf-8') as f:
+                    _json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.warning("set_state 失败 key=%s: %s", key, e)
+
+    def get_state(self, key: str) -> dict | None:
+        """读取键值对状态"""
+        import json as _json, os as _os
+        try:
+            state_file = _os.path.join(
+                _os.path.dirname(_os.path.dirname(__file__)), 'data', 'agent_state.json'
+            )
+            if not _os.path.exists(state_file):
+                return None
+            with open(state_file, 'r', encoding='utf-8') as f:
+                data = _json.load(f)
+            return data.get(key)
+        except Exception as e:
+            logger.warning("get_state 失败 key=%s: %s", key, e)
+            return None
+
+    def get_all_states(self) -> dict:
+        """读取全部键值对状态"""
+        import json as _json, os as _os
+        try:
+            state_file = _os.path.join(
+                _os.path.dirname(_os.path.dirname(__file__)), 'data', 'agent_state.json'
+            )
+            if not _os.path.exists(state_file):
+                return {}
+            with open(state_file, 'r', encoding='utf-8') as f:
+                return _json.load(f)
+        except Exception as e:
+            logger.warning("get_all_states 失败: %s", e)
+            return {}
+
 
 _db_instance = None
 

@@ -22,8 +22,20 @@ def save_data_csv(name: str, data: str, headers: str = "") -> str:
 @tool
 def list_data_files(subdir: str = "") -> str:
     """List files in data directory. subdir: optional subdirectory name."""
-    files = _list(subdir)
-    return '\n'.join(files) if files else "目录为空"
+    try:
+        files = _list(subdir)
+        if not files:
+            return "目录为空"
+        lines = []
+        for f in files:
+            name = f.get("name", str(f)) if isinstance(f, dict) else str(f)
+            if isinstance(f, dict) and f.get("is_dir"):
+                name += "/"
+            size = f" ({f.get('size_kb', 0):.1f}KB)" if isinstance(f, dict) and f.get("size_kb") else ""
+            lines.append(name + size)
+        return '\n'.join(lines)
+    except Exception as e:
+        return f"列出文件失败: {e}"
 
 
 @tool

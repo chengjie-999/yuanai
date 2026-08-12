@@ -18,7 +18,8 @@ def retrieve_annotation_spec(query: str = "") -> str:
     """
     if not query:
         return "请提供关键词进行检索，如：独立批改、黄框、举报、数学、长文本"
-    return search_spec(query) if search_spec(query) else get_all_specs()
+    result = search_spec(query)
+    return result if result else get_all_specs()
 
 
 @tool

@@ -52,7 +52,7 @@ def _get_openai_client() -> OpenAI:
     api_key = get_api_key("seed")
     base_url = "https://ark.cn-beijing.volces.com/api/v3"
 
-    _client = OpenAI(api_key=api_key, base_url=base_url)
+    _client = OpenAI(api_key=api_key, base_url=base_url, timeout=30.0)
     return _client
 
 
@@ -81,16 +81,24 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
         batch_size = 256
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
-            resp = client.embeddings.create(model=model, input=batch)
+            resp = client.embeddings.create(model=model, input=batch, timeout=30.0)
             all_embeddings.extend([d.embedding for d in resp.data])
         return all_embeddings
     except Exception as e:
         print(f"⚠️ API embedding 失败: {e}，fallback 到本地模型")
-        m = _get_local_embedding_model()
-        return m.encode(texts, normalize_embeddings=True).tolist()
+        try:
+            m = _get_local_embedding_model()
+            return m.encode(texts, normalize_embeddings=True).tolist()
+        except Exception as e2:
+            print(f"⚠️ 本地模型也失败: {e2}")
+            dim = EMBEDDING_DIM
+            return [[0.0] * dim for _ in texts]
 
 
 # ====================== Milvus ======================
+MILVUS_OP_TIMEOUT = 15  # 单次 Milvus 操作超时（秒）
+
+
 def _get_db() -> MilvusClient | None:
     global _db
     if _db is not None:
@@ -100,6 +108,21 @@ def _get_db() -> MilvusClient | None:
         _db = MilvusClient(uri=uri, timeout=5)
         return _db
     except Exception:
+        return None
+
+
+def _safe_milvus(op_name: str, fn, *args, **kwargs):
+    """带超时保护执行 Milvus 操作，失败返回 None 而非挂死"""
+    try:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(fn, *args, **kwargs)
+            return future.result(timeout=MILVUS_OP_TIMEOUT)
+    except concurrent.futures.TimeoutError:
+        print(f"⚠️ Milvus {op_name} 超时（>{MILVUS_OP_TIMEOUT}s）")
+        return None
+    except Exception as e:
+        print(f"⚠️ Milvus {op_name} 异常: {e}")
         return None
 
 
@@ -457,7 +480,11 @@ def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None,
     if db is None:
         return "知识库服务未启动（Milvus 不可用），请联系管理员"
 
-    if not db.has_collection(COLLECTION_NAME):
+    # 带超时检查集合
+    has_coll = _safe_milvus("has_collection", db.has_collection, COLLECTION_NAME)
+    if has_coll is None:
+        return "知识库服务响应超时，请稍后重试"
+    if not has_coll:
         if not build_knowledge_base():
             return _get_all_raw_text()
 
@@ -475,17 +502,20 @@ def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None,
     filter_expr = " and ".join(filters) if filters else None
     output_fields = ["text", "title", "source", "path", "images", "user_id"]
 
-    try:
-        results = db.search(
-            COLLECTION_NAME,
-            data=[embeddings[0]],
-            limit=top_k,
-            output_fields=output_fields,
-            filter=filter_expr,
-        )
-    except Exception:
-        # 旧集合缺少 path/level/images 字段时回退
-        results = db.search(
+    results = _safe_milvus(
+        "search",
+        db.search,
+        COLLECTION_NAME,
+        data=[embeddings[0]],
+        limit=top_k,
+        output_fields=output_fields,
+        filter=filter_expr,
+    )
+    # 旧集合缺字段时回退
+    if results is None:
+        results = _safe_milvus(
+            "search(fallback)",
+            db.search,
             COLLECTION_NAME,
             data=[embeddings[0]],
             limit=top_k,
@@ -543,18 +573,20 @@ def _get_all_raw_text() -> str:
 def list_knowledge_sources() -> list[str]:
     """列出所有已索引的知识库来源"""
     db = _get_db()
-    if db is None or not db.has_collection(COLLECTION_NAME):
+    if db is None:
+        return []
+    has_coll = _safe_milvus("has_collection", db.has_collection, COLLECTION_NAME)
+    if not has_coll:
         return []
     sources = set()
-    # 简单查询所有数据
-    try:
-        results = db.query(
-            COLLECTION_NAME,
-            filter='id >= 0',
-            output_fields=["source"],
-            limit=10000,
-        )
-    except Exception:
+    results = _safe_milvus(
+        "query", db.query,
+        COLLECTION_NAME,
+        filter='id >= 0',
+        output_fields=["source"],
+        limit=10000,
+    )
+    if not results:
         return []
     for r in results:
         sources.add(r.get("source", ""))

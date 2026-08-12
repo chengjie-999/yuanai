@@ -46,7 +46,7 @@ def _get_openai_client() -> OpenAI:
         api_key = get_api_key("seed")
         base_url = "https://ark.cn-beijing.volces.com/api/v3"
 
-    _client = OpenAI(api_key=api_key, base_url=base_url)
+    _client = OpenAI(api_key=api_key, base_url=base_url, timeout=30.0)
     return _client
 
 

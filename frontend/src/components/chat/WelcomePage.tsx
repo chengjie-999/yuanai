@@ -1,8 +1,9 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { SUGGESTIONS } from '../../config/agents'
 import { uploadDataset } from '../../api'
 import Mascot from '../Mascot'
 import type { SessionInfo } from './helpers'
+import { compressImage } from './imageUtils'
 
 export default function WelcomePage({ images, setImages, quickInput, setQuickInput, sendWithNewSession, sessions, onSelectSession }: {
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
@@ -11,6 +12,7 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
   sessions: SessionInfo[]; onSelectSession: (sid: string) => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
 
   return (
     <div className="chat-welcome" style={{
@@ -28,6 +30,12 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
         <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 28, fontWeight: 400, letterSpacing: 0.3 }}>数据分析 / 数据采集 / 自动化 / 多智能体协作</p>
 
         <div style={{ maxWidth: 560, width: '100%', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
+          {uploading && (
+            <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              正在压缩图片…
+            </div>
+          )}
           {images.length > 0 && (
             <div style={{ display: 'flex', gap: 6, marginBottom: 8, overflowX: 'auto' }}>
               {images.map((img, i) => (
@@ -53,6 +61,7 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
                 onChange={async (e) => {
                   const files = e.target.files
                   if (!files) return
+                  setUploading(true)
                   for (const f of Array.from(files)) {
                     const ext = f.name.split('.').pop()?.toLowerCase()
                     if (['csv','xlsx','xls','json'].includes(ext || '')) {
@@ -61,11 +70,18 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
                         setQuickInput((p) => p + ` [数据集 #${result.id}: ${result.name}]`)
                       } catch { /* ignore */ }
                     } else {
-                      const reader = new FileReader()
-                      reader.onload = () => setImages((p) => [...p, reader.result as string])
-                      reader.readAsDataURL(f)
+                      try {
+                        const compressed = await compressImage(f)
+                        setImages((p) => [...p, compressed])
+                      } catch {
+                        // 压缩失败时回退到原始方式
+                        const reader = new FileReader()
+                        reader.onload = () => setImages((p) => [...p, reader.result as string])
+                        reader.readAsDataURL(f)
+                      }
                     }
                   }
+                  setUploading(false)
                   e.target.value = ''
                 }}
               />

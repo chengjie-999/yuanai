@@ -84,8 +84,21 @@ def analyze_dataset(dataset_id: int) -> str:
     except Exception:
         pass
     from yuanai_core.pure.analysis import run_analysis
-    with ProcessPoolExecutor(max_workers=1) as pool:
+    import concurrent.futures
+    pool = ProcessPoolExecutor(max_workers=1)
+    try:
         result = pool.submit(run_analysis, ds, dataset_id).result(timeout=120)
+    except concurrent.futures.TimeoutError:
+        pool.shutdown(wait=False, cancel_futures=True)
+        return f"数据集 #{dataset_id} 分析超时（超过120秒），文件可能过大，请尝试用更小的数据集或使用 describe_column 查看单列"
+    except Exception as e:
+        pool.shutdown(wait=False, cancel_futures=True)
+        return f"数据集 #{dataset_id} 分析失败: {e}"
+    finally:
+        try:
+            pool.shutdown(wait=False)
+        except Exception:
+            pass
     try:
         from db.redis_client import get_redis
         rds = get_redis()

@@ -55,6 +55,36 @@ export function encodeMsg(m: any) {
   return { role: m.role, content, ...(m.images?.length ? { images: m.images } : {}) }
 }
 
+/** 将会话消息转为包含工具调用上下文的历史记录（传给模型用） */
+export function buildHistoryWithToolContext(messages: ChatMessage[]): { role: string; content: string }[] {
+  const result: { role: string; content: string }[] = []
+
+  for (const m of messages) {
+    if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+      // 先添加"assistant决定调工具"的标记
+      const toolNames = m.toolCalls.map(tc => tc.name).join(', ')
+      result.push({ role: 'assistant', content: `[决定调用工具: ${toolNames}]` })
+
+      // 对每个完成的工具，添加工具结果消息
+      for (const tc of m.toolCalls) {
+        if (tc.status === 'done') {
+          const summary = (tc.result || '完成').slice(0, 800)
+          result.push({ role: 'tool', content: `工具 ${tc.name} 执行结果:\n${summary}` })
+        } else if (tc.status === 'error') {
+          result.push({ role: 'tool', content: `工具 ${tc.name} 执行出错: ${tc.result || '未知错误'}` })
+        }
+      }
+
+      // 最后是助手的实际回复
+      result.push({ role: 'assistant', content: m.content || '' })
+    } else {
+      result.push({ role: m.role, content: m.content || '' })
+    }
+  }
+
+  return result
+}
+
 export function timeAgo(dateStr: string): string {
   const now = new Date()
   const d = new Date(dateStr)

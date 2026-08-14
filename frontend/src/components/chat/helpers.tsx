@@ -8,6 +8,7 @@ export function addToken(url: string): string {
   if (url.startsWith('data:')) return url
   if (!url.startsWith('/api/v1/')) return url
   if (url.includes('?token=')) return url
+  if (url.startsWith('/api/v1/chat/image')) return url  // 图片路由公开，加 token 会击穿 immutable 缓存
   return `${url}?token=${getToken()}`
 }
 

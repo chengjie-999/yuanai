@@ -184,7 +184,7 @@ skills/
 /                      健康检查
 /health                健康检查
 /api/v1/qimg/*         静态文件
-/api/v1/chat/image/*   聊天图片
+/api/v1/chat/image/*   聊天图片（immutable 缓存，前端不拼 token，跨登录命中缓存）
 /api/v1/auth/login     登录
 /api/v1/auth/check     Token 验证
 /api/v1/auth/register  注册（返回关闭提示）

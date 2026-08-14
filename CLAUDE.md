@@ -124,6 +124,8 @@ data/                   数据目录
 
 每个 Agent 气泡上方有彩色标签和身份标识，工具调用卡片显示 Agent 归属。
 
+聊天图片：`data/chat_images/` 文件存储，经公开路由 `/api/v1/chat/image/{sid}/{fname}` 提供（`Cache-Control: immutable`，文件名含 UUID）。前端 `addToken` 对此路由**不拼接 JWT**——拼 token 会在每次登录后改变 URL，击穿浏览器缓存导致历史图片全部重新下载。
+
 ## 后台管理
 
 12 个 Tab，每个有独立 URL 路由（`/admin/:tab`）：

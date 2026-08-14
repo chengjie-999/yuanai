@@ -239,6 +239,8 @@ GitHub Actions（`.github/workflows/ci.yml`）：
 - 前端：npm ci → tsc → lint → build
 - Docker：构建验证后端镜像 + 前端镜像
 
+`deploy/Dockerfile.backend` 注意：安装 torch 前必须先预装 `Jinja2`/`typing_extensions`（清华源、精确名称、版本与 requirements.txt 一致）——torch 依赖声明的小写/连字符写法会被新版 pip 严格校验判为不一致，丢弃 pytorch 索引 wheel 转 sdist 构建，而该索引不托管 flit_core 导致构建失败。改动这条 RUN 时勿删预装行。
+
 ## 数据分析大屏
 
 分析 Agent 采用 ScriptDispatchAgent 模式：LLM 根据用户意图从 `agent/datanalysis/scripts/` 自动选择脚本，通过 subprocess 执行。

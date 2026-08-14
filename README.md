@@ -359,3 +359,5 @@ docker-compose up -d   # 启动 MySQL + Redis + Milvus + 后端 + 前端(nginx:8
 ```
 
 Nginx 配置（`deploy/nginx.conf`）已包含：WebSocket 升级支持、SSL 443 模板（备案后启用）、安全响应头、分级限流。备案完成后取消注释 SSL 块即可。
+
+> 后端镜像构建前需先用清华源预装 `Jinja2` / `typing_extensions`（版本与 requirements.txt 一致）：torch 依赖声明与 pytorch 索引 wheel 元数据大小写/连字符不一致，新版 pip 严格校验会丢弃 wheel 转 sdist 构建而失败（见 `deploy/Dockerfile.backend` 注释）。

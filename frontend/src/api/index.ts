@@ -264,6 +264,9 @@ export function streamChat(
     images?: string[]
     history: { role: string; content: string }[]
     system_prompt: string
+    session_id?: string
+    decision?: { decision_id: string; approve: boolean }
+    claude?: boolean
   },
   onEvent: (event: any) => void,
   onError: (error: string) => void,
@@ -272,9 +275,11 @@ export function streamChat(
 ): AbortController {
   const controller = new AbortController()
 
-  const url = browserContext
-    ? `${API_BASE}/chat/stream?browser_context=true`
-    : `${API_BASE}/chat/stream`
+  const url = params.claude
+    ? `${API_BASE}/chat/claude-stream`
+    : browserContext
+      ? `${API_BASE}/chat/stream?browser_context=true`
+      : `${API_BASE}/chat/stream`
   fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },

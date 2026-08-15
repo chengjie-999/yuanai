@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, getStoredModel } from '../api'
 import type { ChatMessage } from '../types'
-import { senderFromTool } from '../config/agents'
+import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
 import Sidebar from './chat/Sidebar'
 import WelcomePage from './chat/WelcomePage'
@@ -22,6 +22,9 @@ export default function ChatPage({ user }: { user?: any }) {
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
   const [images, setImages] = useState<string[]>([])
   const [expandedImage, setExpandedImage] = useState<string | null>(null)
+  // Claude Code 桥接模式 + 待审批命令
+  const [claudeMode, setClaudeMode] = useState(false)
+  const [pendingApproval, setPendingApproval] = useState<{ decision_id: string; tool_name: string; command: string } | null>(null)
   const messagesRef = useRef(messages)
   messagesRef.current = messages
   const sidRef = useRef(currentSid)
@@ -114,6 +117,21 @@ export default function ChatPage({ user }: { user?: any }) {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].htmls = [...(last[i].htmls || []), event.data.url] }; return last })
       } else if (event.type === 'progress') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0 && last[i].role === 'assistant') last[i] = { ...last[i], progress: event.data }; return last })
+      } else if (event.type === 'agent') {
+        // Claude 桥接声明身份：后续 token 归属该 Agent 气泡
+        const ns = event.data.sender
+        if (ns && AGENT_CONFIG[ns]) {
+          currentSender = ns
+          setMessages((prev) => {
+            const last = prev[prev.length - 1]
+            if (last && last.role === 'assistant' && !last.content && !(last.toolCalls?.length) && (last.sender || 'orchestrator') === 'orchestrator') {
+              return [...prev.slice(0, -1), { ...last, sender: ns as any }]
+            }
+            return [...prev, { role: 'assistant' as const, content: '', sender: ns as any, toolCalls: [] }]
+          })
+        }
+      } else if (event.type === 'approval') {
+        setPendingApproval({ decision_id: event.data.decision_id, tool_name: event.data.tool_name, command: event.data.command })
       } else if (event.type === 'error') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: '请求失败，请重试' }; return last }); setLoading(false)
       }
@@ -129,12 +147,16 @@ export default function ChatPage({ user }: { user?: any }) {
     const prevMsgs = [...messages]
     setMessages((prev) => [...prev, { role: 'user', content: input, images: sentImages }])
     setImages([]); setInput(''); setLoading(true)
+    // 普通消息自动撤销未决审批（桥接侧会 deny pending 后正常处理）
+    setPendingApproval(null)
     const history = buildHistoryWithToolContext(prevMsgs)
-    setMessages((prev) => [...prev, { role: 'assistant', content: '', toolCalls: [] }])
+    const placeholderSender = claudeMode ? 'claude' : 'orchestrator'
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
     streamChat(
-      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: SYSTEM_PROMPT },
+      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: SYSTEM_PROMPT,
+        session_id: claudeMode ? sid : undefined, claude: claudeMode },
       onEvent, onError,
       () => {
         setLoading(false)
@@ -145,6 +167,19 @@ export default function ChatPage({ user }: { user?: any }) {
     )
   }
 
+  // 审批决议：走 Claude 桥接专用流，body 带 decision
+  const handleDecision = (approve: boolean) => {
+    const pa = pendingApproval
+    setPendingApproval(null)
+    if (!pa || !currentSid) return
+    streamChat(
+      { model, temperature: 0.7, prompt: '', history: [], system_prompt: SYSTEM_PROMPT,
+        session_id: currentSid, decision: { decision_id: pa.decision_id, approve }, claude: true },
+      () => {}, () => {},
+      () => { setLoading(false) },
+    )
+  }
+
   const sendWithNewSession = async (text: string) => {
     setLoading(true)
     const sid = await createSession()
@@ -152,11 +187,13 @@ export default function ChatPage({ user }: { user?: any }) {
     setInput(''); setQuickInput('')
     const sentImages = [...images]; setImages([])
     setMessages([{ role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }])
-    setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: 'orchestrator', toolCalls: [] }])
+    const placeholderSender = claudeMode ? 'claude' : 'orchestrator'
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
     streamChat(
-      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: SYSTEM_PROMPT },
+      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: SYSTEM_PROMPT,
+        session_id: claudeMode ? sid : undefined, claude: claudeMode },
       onEvent, onError,
       () => {
         setLoading(false)
@@ -220,6 +257,8 @@ export default function ChatPage({ user }: { user?: any }) {
             currentSid={currentSid}
             sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
             sessions={sessions}
+            claudeMode={claudeMode} setClaudeMode={setClaudeMode}
+            pendingApproval={pendingApproval} handleDecision={handleDecision}
           />
         )}
       </div>

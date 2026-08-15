@@ -9,6 +9,8 @@ class ChatRequest(BaseModel):
     images: List[str] = Field(default_factory=list, description="Base64 图片列表")
     history: List[dict] = Field(default_factory=list, description='历史消息，格式 [{"role": "user/assistant", "content": "..."}]')
     system_prompt: str = Field("你是一个能调用工具的助手", description="系统提示")
+    session_id: str = Field("", description="会话ID（Claude 桥接用于会话持久化）")
+    decision: Optional[dict] = Field(None, description="审批决议（Claude 桥接）：{decision_id, approve}")
 
 
 class MessageResponse(BaseModel):

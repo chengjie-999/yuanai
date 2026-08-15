@@ -3,8 +3,9 @@ import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
 import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
+import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, claudeMode, setClaudeMode, pendingApproval, handleDecision }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string) => void; handleSend: () => void
@@ -12,12 +13,15 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   currentSid: string
   sidebarOpen: boolean; setSidebarOpen: (v: boolean) => void
   sessions: SessionInfo[]
+  claudeMode: boolean; setClaudeMode: (v: boolean) => void
+  pendingApproval: { decision_id: string; tool_name: string; command: string } | null
+  handleDecision: (approve: boolean) => void
 }) {
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, pendingApproval])
 
   return (
     <>
@@ -33,6 +37,16 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
               setExpandedImage={setExpandedImage} />
           ))}
           <div ref={chatEndRef} />
+          {pendingApproval && (
+            <div style={{ display: 'flex', justifyContent: 'flex-start', maxWidth: 720, width: '100%' }}>
+              <ApprovalCard
+                decisionId={pendingApproval.decision_id}
+                toolName={pendingApproval.tool_name}
+                command={pendingApproval.command}
+                onDecision={handleDecision}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -40,7 +54,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         handleSend={handleSend} images={images} setImages={setImages}
         currentSid={currentSid}
         sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
-        sessions={sessions} messages={messages} />
+        sessions={sessions} messages={messages}
+        claudeMode={claudeMode} setClaudeMode={setClaudeMode} />
     </>
   )
 }

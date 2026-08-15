@@ -151,6 +151,23 @@ data/                   数据目录
 - 云端收到 HTTP 对话请求 → 检查 Agent 在线 → WebSocket 转发 → Agent 处理后回传 → SSE 推送前端
 - Agent 离线时自动回退到云端直接调用 LLM
 
+## Claude Code 桥接（Phase 2）
+
+独立桥接进程让云端聊天直接对话本机 Claude Code（流式 token + 工具卡片 + 会话持久化）：
+
+```bash
+# 1. 后台管理创建专属用户（如 claude_bridge，role=user）→ POST /admin/agent-token 签发长令牌
+# 2. 云端环境变量：CLAUDE_BRIDGE_AGENT_ID=<该用户id> CLAUDE_BRIDGE_ALLOWED_USERNAMES=<白名单用户名>
+# 3. 本地启动桥接进程（专属 agent_id + 长令牌）
+python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户id> --agent-token <长令牌>
+```
+
+- 入口端点：`POST /api/v1/chat/claude-stream`（复用 SSE 桥；离线回退云端 LLM）；前端输入区「⌘ Claude Code」模式切换
+- 会话映射：`data/claude_sessions.json`（cloud session_id → claude session uuid，`--resume` 续接；`--session-id` 仅用于新建）
+- 事件扩展：`sender_event`（type=agent，声明气泡归属）与 `approval_event`（type=approval，审批卡）
+- **审批流未启用**：依赖 claude-agent-sdk 的 `can_use_tool`，当前网络装不了该包（pypi.org 不通、清华源无包）。review 级命令目前靠提示词黑名单约束（同 Phase 1 delegate）
+- 验证：`python -m agent.verify_claude_bridge`（离线断言 agent→token→tool→done + 会话续接）
+
 ## 工具系统
 
 - 通用工具：`yuanai_core/tools/` 自动发现，39 个（8 个模块，7 个类别：general/crawl/data/file/memory/knowledge/stats）

@@ -89,6 +89,28 @@ def _verify_session_owner(db, session_id: str, user_id: int):
         sess.close()
 
 
+async def _bridge_sse(queue: asyncio.Queue, request_id: str):
+    """Agent 事件队列 → SSE 流（300s 超时按每次事件重置；done/error 终止）"""
+    from api.v1.agent.router import cleanup_pending
+    try:
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=300)
+            except asyncio.TimeoutError:
+                yield f"data: {json.dumps({'type': 'error', 'data': 'Agent 响应超时'}, ensure_ascii=False)}\n\n"
+                break
+
+            if event.get("type") in ("done", "error"):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                break
+
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    except asyncio.CancelledError:
+        pass
+    finally:
+        cleanup_pending(request_id)
+
+
 @router.post("/stream")
 async def chat_stream(req: ChatRequest, request: Request):
     """SSE 流式聊天（优先走本地 Agent，离线时回退到云端直接调用）"""
@@ -152,27 +174,7 @@ async def chat_stream(req: ChatRequest, request: Request):
             if bridged_request_id:
                 logger.info("chat/stream → Agent 桥接 (user=%s, req=%s)", user_id, bridged_request_id[:8])
                 queue = get_pending_queue(bridged_request_id)
-
-                async def agent_bridge_stream():
-                    try:
-                        while True:
-                            try:
-                                event = await asyncio.wait_for(queue.get(), timeout=300)
-                            except asyncio.TimeoutError:
-                                yield f"data: {json.dumps({'type': 'error', 'data': 'Agent 响应超时'}, ensure_ascii=False)}\n\n"
-                                break
-
-                            if event.get("type") in ("done", "error"):
-                                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-                                break
-
-                            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-                    except asyncio.CancelledError:
-                        pass
-                    finally:
-                        cleanup_pending(bridged_request_id)
-
-                return StreamingResponse(agent_bridge_stream(), media_type="text/event-stream")
+                return StreamingResponse(_bridge_sse(queue, bridged_request_id), media_type="text/event-stream")
 
         # --- 回退：云端直接调用 LLM ---
         logger.info("chat/stream → 云端直接调用 (user=%s, agent offline)", user_id)
@@ -192,6 +194,90 @@ async def chat_stream(req: ChatRequest, request: Request):
         return StreamingResponse(event_stream(), media_type="text/event-stream")
     except Exception as e:
         logger.error("聊天请求初始化失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
+@router.post("/claude-stream")
+async def claude_stream(req: ChatRequest, request: Request):
+    """Claude Code 桥接对话：转发给本机 claude 桥接进程（独立 agent_id），离线时回退云端 LLM
+
+    访问控制：仅 admin 或 CLAUDE_BRIDGE_ALLOWED_USERNAMES 白名单用户（防跨用户向他人本机注入）。
+    """
+    from config.settings import CLAUDE_BRIDGE_AGENT_ID, CLAUDE_BRIDGE_ALLOWED_USERNAMES
+
+    # 访问控制
+    role = getattr(request.state, "role", "")
+    username = getattr(request.state, "username", "")
+    if role != "admin" and username not in CLAUDE_BRIDGE_ALLOWED_USERNAMES:
+        raise HTTPException(status_code=403, detail="无权访问 Claude Code 桥接")
+
+    try:
+        user_id = _get_user_id(request)
+        model = req.model
+
+        # DeepSeek 不支持图片 → 自动切豆包多模态
+        if req.images and "deepseek" in model:
+            from config.settings import VISION_MODEL
+            model = VISION_MODEL
+
+        history = []
+        for m in req.history:
+            if m.get("role") == "user":
+                history.append(HumanMessage(content=m.get("content", "")))
+            elif m.get("role") == "assistant":
+                history.append(AIMessage(content=m.get("content", "")))
+            elif m.get("role") == "tool":
+                history.append(ToolMessage(content=m.get("content", ""), tool_call_id=m.get("tool_call_id", "")))
+
+        input_messages = build_input_messages(
+            prompt=req.prompt,
+            images_base64=req.images,
+            history=history,
+            system_message=SystemMessage(content=req.system_prompt),
+        )
+        current_user_id.set(user_id if user_id else 0)
+
+        if CLAUDE_BRIDGE_AGENT_ID > 0:
+            from api.v1.agent.router import forward_to_agent, get_pending_queue
+            import uuid as _uuid
+
+            agent_request_id = str(_uuid.uuid4())
+            agent_chat_request = {
+                "type": "chat_request",
+                "request_id": agent_request_id,
+                "session_id": req.session_id,
+                "user_id": user_id,
+                "messages": input_messages,
+                "images": req.images,
+                "decision": req.decision,  # 审批决议原样转发（无则 None）
+            }
+            bridged_request_id = await forward_to_agent(CLAUDE_BRIDGE_AGENT_ID, agent_chat_request)
+            if bridged_request_id:
+                logger.info("chat/claude-stream → Claude 桥接 (user=%s, session=%s, req=%s)",
+                            user_id, req.session_id, bridged_request_id[:8])
+                queue = get_pending_queue(bridged_request_id)
+                return StreamingResponse(_bridge_sse(queue, bridged_request_id), media_type="text/event-stream")
+
+        # 回退：云端直接调用 LLM
+        logger.info("chat/claude-stream → Claude 桥离线，云端回退 (user=%s)", user_id)
+        offline_prompt = ("你是小元AI助手（Claude Code 桥接当前离线，已切换云端模式）。"
+                          "可以直接使用工具完成任务。简洁回复，任务完成时用表格总结本次完成了什么。")
+        input_messages[0]["content"] = offline_prompt
+        llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True)
+
+        async def event_stream():
+            try:
+                async for event in stream_agent_events(llm, input_messages, all_tools):
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            except Exception as e:
+                logger.error("claude-stream 云端回退异常: %s", e)
+                yield f"data: {json.dumps({'type': 'error', 'data': _SAFE_ERROR}, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("claude-stream 请求初始化失败: %s", e)
         raise HTTPException(status_code=500, detail=_SAFE_ERROR)
 
 

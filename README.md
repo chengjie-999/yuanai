@@ -205,6 +205,7 @@ skills/
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/api/v1/chat/stream` | SSE 流式聊天 |
+| POST | `/api/v1/chat/claude-stream` | Claude Code 桥接对话（admin/白名单；桥离线回退云端） |
 | POST | `/api/v1/chat/session/new` | 创建会话 |
 | GET | `/api/v1/chat/sessions` | 会话列表 |
 | DELETE | `/api/v1/chat/session/{id}` | 删除会话 |
@@ -351,6 +352,18 @@ pytest test/test_ratelimit.py test/test_auth.py test/test_db.py -v
 # 全部测试（需完整 API 环境）
 pytest test/ -v
 ```
+
+## Claude Code 桥接（云端 ↔ 本机 Claude Code）
+
+1. 后台管理创建专属普通用户（如 `claude_bridge`），用 `POST /admin/agent-token` 签发长令牌（1-365 天）
+2. 云端配置环境变量：`CLAUDE_BRIDGE_AGENT_ID`（专属用户 id）、`CLAUDE_BRIDGE_ALLOWED_USERNAMES`（允许使用桥接的用户名，空 = 仅 admin）
+3. 本机启动桥接进程（需安装并登录 Claude Code CLI）：
+
+```bash
+python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户id> --agent-token <长令牌>
+```
+
+前端聊天输入区切换到「⌘ Claude Code」模式后，消息直发本机 Claude Code（流式回复 + 工具卡片 + 会话续接）。安全边界：工具白名单 + `acceptEdits` + cwd 锁仓库 + 提示词黑名单 + 审计日志 `data/logs/claude_audit.log`。验证：`python -m agent.verify_claude_bridge`。
 
 ## Docker 部署
 

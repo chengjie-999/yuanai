@@ -84,6 +84,15 @@ JWT_SECRET_KEY = _jwt
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = 7
 
+# ===================== Claude Code 桥接配置 =====================
+
+# 独立桥接进程的 agent_id（即专属云账号的 user_id；0 = 未启用）
+CLAUDE_BRIDGE_AGENT_ID = int(os.getenv("CLAUDE_BRIDGE_AGENT_ID", "0"))
+# 允许使用 /chat/claude-stream 的用户名（逗号分隔；为空 = 仅 admin）
+CLAUDE_BRIDGE_ALLOWED_USERNAMES = [u.strip() for u in os.getenv("CLAUDE_BRIDGE_ALLOWED_USERNAMES", "").split(",") if u.strip()]
+# 审批超时（秒）
+CLAUDE_BRIDGE_APPROVAL_TIMEOUT = int(os.getenv("CLAUDE_BRIDGE_APPROVAL_TIMEOUT", "120"))
+
 # ===================== 数据库配置 =====================
 
 MYSQL_CONFIG = {

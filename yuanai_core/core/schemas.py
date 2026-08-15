@@ -19,6 +19,7 @@ class ChatRequest:
     user_id: int = 0
     messages: List[Dict[str, Any]] = field(default_factory=list)
     images: List[str] = field(default_factory=list)
+    decision: Optional[Dict[str, Any]] = None  # 审批决议（Claude 桥接）：{"decision_id", "approve"} | None
 
     def __post_init__(self):
         if not self.request_id:
@@ -88,6 +89,20 @@ def progress(current: int, total: int, message: str = "", request_id: str = "") 
     return AgentEvent(
         type="progress",
         data={"current": current, "total": total, "message": message},
+        request_id=request_id,
+    )
+
+
+def sender_event(sender: str, request_id: str = "") -> AgentEvent:
+    """通知前端后续 token 归属的 Agent 身份（如 claude 桥接）"""
+    return AgentEvent(type="agent", data={"sender": sender}, request_id=request_id)
+
+
+def approval_event(decision_id: str, tool_name: str, command: str, cwd: str = "", request_id: str = "") -> AgentEvent:
+    """待审批操作卡片（Claude 桥接 review 级命令）"""
+    return AgentEvent(
+        type="approval",
+        data={"decision_id": decision_id, "tool_name": tool_name, "command": command, "cwd": cwd},
         request_id=request_id,
     )
 

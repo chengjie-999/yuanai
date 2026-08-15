@@ -19,7 +19,7 @@ export interface ToolCall {
 }
 
 export interface SSEEvent {
-  type: 'token' | 'reasoning' | 'tool_start' | 'tool_end' | 'done' | 'error'
+  type: 'token' | 'reasoning' | 'tool_start' | 'tool_end' | 'done' | 'error' | 'progress' | 'image' | 'html' | 'dashboard' | 'agent' | 'approval'
   data: any
 }
 

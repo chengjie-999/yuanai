@@ -22,6 +22,11 @@ class AdminCreateUser(BaseModel):
     role: str = 'user'
 
 
+class AgentTokenRequest(BaseModel):
+    user_id: int
+    expires_days: float = 180
+
+
 class WebsiteCreate(BaseModel):
     name: str
     url: str
@@ -94,6 +99,27 @@ async def admin_create_user(req: AdminCreateUser, request: Request):
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+@router.post("/agent-token")
+async def mint_agent_token(req: AgentTokenRequest, request: Request):
+    """为本地 Agent 桥接签发长生命周期 JWT（仅 admin；默认 180 天，上限 365 天）"""
+    require_admin(request)
+    if not 1 <= req.expires_days <= 365:
+        raise HTTPException(status_code=400, detail="expires_days 必须在 1-365 天之间")
+    from db.session import User
+    db = get_db()
+    sess = db.Session()
+    try:
+        user = sess.query(User).filter_by(id=req.user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        from api.v1.auth.utils import create_token
+        token = create_token(user.id, user.role or "user", user.username or "",
+                             expires_days=req.expires_days)
+        return {"token": token, "user_id": user.id, "expires_days": req.expires_days}
+    finally:
+        sess.close()
 
 
 @router.delete("/users/{user_id}")

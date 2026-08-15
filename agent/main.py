@@ -77,6 +77,8 @@ async def main():
 
     # 把 orchestrator 的活动事件通过 WebSocket 实时上报
     orchestrator._on_activity = lambda ev: client.send_activity(ev)
+    # 工具内的 progress 心跳等任意事件上报（如 Claude Code 长任务保活）
+    orchestrator._on_event = lambda ev: client.send_event(ev)
 
     logger.info("=" * 50)
     logger.info("小元AI 本地 Agent 启动")

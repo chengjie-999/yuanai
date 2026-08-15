@@ -54,7 +54,7 @@ export default function AgentStatus({ userId }: { userId?: number }) {
 
   const agent = myAgents[0]
   const capLabels: Record<string, string> = {
-    analysis: '分析', collection: '采集', automation: '自动化',
+    analysis: '分析', collection: '采集', automation: '自动化', claude: 'Claude Code',
   }
 
   return (

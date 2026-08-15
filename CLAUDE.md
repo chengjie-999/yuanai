@@ -159,6 +159,15 @@ data/                   数据目录
 - 工具总计：39 共享 + 38 专用 = 80 个，按 Agent 角色精准分配
 - 分析脚本：9 个，输出协议：`__IMAGES__` + `__HTML__` + `__RESULT__`
 
+### 本地 Claude Code 委派工具
+
+`agent/tools/claude_delegate.py` — 统筹 Agent 的 `delegate_to_claude_agent` 工具：以 `claude -p --output-format stream-json` 子进程在**本机仓库**执行代码/终端/Git 任务，30s `progress` 心跳防 SSE 300s 超时，输出截断 8000 字符。
+
+安全边界（重要）：
+- **Claude Code hooks 在 `-p` 无头模式下不触发**（第三方网关模式下实测），**不要**把 hooks 写进 `.claude/settings.json`——它只会作用于交互会话且钩子进程 cwd 不是项目根（相对路径命令会以 exit 2 报错，锁死本仓库所有交互会话的工具调用，需重启会话清除）
+- 实际防护 = 进程级白名单（`--allowedTools Read,Glob,Grep,Write,Edit,Bash` + `--disallowedTools WebFetch,WebSearch` + `acceptEdits` + cwd 锁仓库根 + `--max-budget-usd 10`）+ 提示词硬约束（黑名单命令清单，实测模型会拒绝）+ 审计日志 `data/logs/claude_audit.log`
+- `agent/bridge_policy.py` 命令分类（allow/deny/review）与 `scripts/hooks/claude_guard.py` 保留，供后续 SDK 桥接（can_use_tool 审批流）复用
+
 ### 工具分配（Token 优化）
 
 | Agent | 工具数 | 加载方式 |

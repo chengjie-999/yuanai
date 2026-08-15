@@ -9,7 +9,7 @@ import websockets
 from websockets import connect
 from websockets.exceptions import ConnectionClosed
 
-from yuanai_core.rag import current_user_id
+from yuanai_core.rag import current_user_id, current_request_id
 from yuanai_core.core.schemas import (
     ChatRequest, AgentEvent,
     token, reasoning, tool_start, tool_end, image_event, done, error_event,
@@ -74,7 +74,7 @@ class AgentWSClient:
                 if self.agent_token:
                     url += f"?token={self.agent_token}"
                 self._status = "connecting"
-                logger.info("正在连接云端: %s", url)
+                logger.info("正在连接云端: %s/api/v1/agent/ws/agent/%s", self.server_url, self.agent_id)
                 self._ws = await connect(url, ping_interval=None)
 
                 # 发送注册消息
@@ -136,6 +136,7 @@ class AgentWSClient:
         # 设置当前用户，使 memory / knowledge 等工具能正确隔离用户数据
         if req.user_id:
             current_user_id.set(req.user_id)
+        current_request_id.set(request_id)
 
         if not self._on_chat_request:
             await self._send(error_event("Agent 未配置对话处理器", request_id))
@@ -165,6 +166,14 @@ class AgentWSClient:
         """从同步上下文发送活动事件（fire-and-forget）"""
         try:
             loop = asyncio.get_running_loop()
+            self._track_task(self._send(event))
+        except RuntimeError:
+            pass  # 不在事件循环中，忽略
+
+    def send_event(self, event: AgentEvent):
+        """从同步上下文发送任意事件（如工具内的 progress 心跳，fire-and-forget）"""
+        try:
+            asyncio.get_running_loop()
             self._track_task(self._send(event))
         except RuntimeError:
             pass  # 不在事件循环中，忽略

@@ -144,13 +144,15 @@ async def agent_ws(websocket: WebSocket, agent_id: str):
         logger.error("Agent %s 连接异常: %s", agent_id, e)
     finally:
         heartbeat_task.cancel()
-        _agents.pop(agent_id, None)
-        _agent_info.pop(agent_id, None)
-        # 清理该 agent 关联的所有 pending 请求
-        stale = [rid for rid in _pending if rid.startswith(agent_id)]
-        for rid in stale:
-            cleanup_pending(rid)
-        logger.info("Agent %s 已移除（当前在线: %d）", agent_id, len(_agents))
+        # 守卫式清理：仅当注册的仍是当前连接时才移除，避免旧连接断开误删新连接的 socket
+        if _agents.get(agent_id) is websocket:
+            _agents.pop(agent_id, None)
+            _agent_info.pop(agent_id, None)
+            # 清理该 agent 关联的所有 pending 请求
+            stale = [rid for rid in _pending if rid.startswith(agent_id)]
+            for rid in stale:
+                cleanup_pending(rid)
+            logger.info("Agent %s 已移除（当前在线: %d）", agent_id, len(_agents))
 
 
 async def _heartbeat(websocket: WebSocket, agent_id: str):

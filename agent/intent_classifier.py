@@ -34,6 +34,7 @@ INTENT_TOOL_GROUPS: Dict[str, List[str]] = {
     "delegate_analysis":      ["general", "delegate_analysis"],
     "delegate_collection":    ["general", "delegate_collection"],
     "delegate_automation":    ["general", "delegate_automation"],
+    "delegate_claude":        ["general", "delegate_claude"],
     "general_chat":           ["general", "memory", "knowledge", "delegate_all"],
 }
 
@@ -65,6 +66,10 @@ _KEYWORDS: Dict[str, set] = {
     "delegate_automation":   {"浏览器", "审核", "自动化", "截图", "xiaoyuan",
                                "启动浏览器", "打开网页", "操控", "题目审核",
                                "打开chrome", "start browser"},
+    "delegate_claude":       {"claude", "code", "写代码", "改代码", "编程",
+                               "终端命令", "命令行", "本地运行", "git", "重构",
+                               "修bug", "修复bug", "实现功能", "跑命令",
+                               "运行测试", "本地文件", "仓库"},
 }
 
 # 直接命令正则（匹配后跳过 LLM）
@@ -156,6 +161,7 @@ knowledge_q - knowledge base search
 delegate_analysis - complex data analysis needing sub-agent
 delegate_collection - massive crawling needing sub-agent
 delegate_automation - browser control, auditing, automation
+delegate_claude - coding, writing/modifying code, terminal commands, git, local file creation
 
 Message: {message}
 Category:"""

@@ -28,6 +28,7 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的助手，可以独立处理简�
 - 系统统计：get_system_stats
 - 数据集管理：list_datasets / preview_dataset / analyze_dataset / transform_dataset
 - 网页爬取：fetch_url / parse_html / save_crawl_data / list_crawl_data / get_crawl_detail
+- 本地代码执行：delegate_to_claude_agent（编写/修改代码、终端命令、Git 操作，交给本机 Claude Code）
 
 仅在以下情况委派给子Agent（复杂任务）：
 {SKILL_LIST}
@@ -78,6 +79,7 @@ class Orchestrator:
         self._collection = None
         self._automation = None
         self._on_activity = None  # callback(activity_event) for live status updates
+        self._on_event = None  # callback(event) 任意事件上报（如工具内 progress 心跳）
         self._agents = {}  # skill_name -> Agent 实例（动态创建）
 
     @property
@@ -112,6 +114,9 @@ class Orchestrator:
         for skill in skill_registry.get_all():
             tools.append(_make_delegate_tool(skill, orch))
 
+        # 本地 Claude Code 委派工具（异步，支持心跳）
+        tools.append(self._make_claude_tool())
+
         return tools
 
     def _get_or_create_agent(self, skill_config):
@@ -140,6 +145,19 @@ class Orchestrator:
             except Exception:
                 pass
 
+    def _emit_event(self, event):
+        """发送任意事件（如工具内 progress 心跳）（如果 ws_client 注册了回调）"""
+        if self._on_event:
+            try:
+                self._on_event(event)
+            except Exception:
+                pass
+
+    def _make_claude_tool(self):
+        """创建 delegate_to_claude_agent 工具（emit 回调节点：工具内进度心跳 → 云端）"""
+        from agent.tools.claude_delegate import make_claude_tool
+        return make_claude_tool(lambda ev: self._emit_event(ev))
+
     def _build_tools_for_intent(self, intent) -> list:
         """按意图分类动态加载工具子集（大幅节省 token）"""
         from agent.intent_classifier import IntentClassifier, INTENT_TOOL_GROUPS
@@ -153,6 +171,11 @@ class Orchestrator:
         for cat in categories:
             if cat == "delegate_all":
                 has_delegate_all = True
+            elif cat == "delegate_claude":
+                if not has_general:
+                    tools.extend(load_tools_for("general", "memory", "knowledge"))
+                    has_general = True
+                tools.append(self._make_claude_tool())
             elif cat.startswith("delegate_"):
                 if not has_general:
                     tools.extend(load_tools_for("general", "memory", "knowledge"))
@@ -177,6 +200,8 @@ class Orchestrator:
                 found = any(t.name == f"delegate_to_{skill.name}_agent" for t in tools)
                 if not found:
                     tools.append(_make_delegate_tool(skill, orch))
+            if not any(t.name == "delegate_to_claude_agent" for t in tools):
+                tools.append(self._make_claude_tool())
 
         return tools
 

@@ -250,6 +250,7 @@ skills/
 | GET | `/api/v1/admin/users` | 用户列表 |
 | POST | `/api/v1/admin/users/freeze` | 冻结/解冻 |
 | POST | `/api/v1/admin/users/create` | 创建用户 |
+| POST | `/api/v1/admin/agent-token` | 为本地 Agent 签发长生命周期 JWT（1-365 天，默认 180） |
 | DELETE | `/api/v1/admin/users/{id}` | 删除用户 |
 | GET | `/api/v1/admin/websites` | 网站列表 |
 | POST | `/api/v1/admin/websites` | 添加网站 |

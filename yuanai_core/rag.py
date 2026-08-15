@@ -40,6 +40,7 @@ _client: OpenAI | None = None
 _db: MilvusClient | None = None
 _db_lock = threading.RLock()  # 保护集合创建/写入并发（可重入）
 current_user_id: ContextVar[int] = ContextVar("kb_user_id", default=0)  # 当前检索用户上下文
+current_request_id: ContextVar[str] = ContextVar("kb_request_id", default="")  # 当前对话请求 ID（工具内发心跳/事件用）
 
 
 # ====================== Embedding ======================

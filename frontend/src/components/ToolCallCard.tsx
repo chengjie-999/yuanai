@@ -20,6 +20,7 @@ const AGENT_LABELS: Record<string, { label: string; color: string }> = {
   delegate_to_analysis_agent: { label: '数据分析 Agent', color: '#58a6ff' },
   delegate_to_collection_agent: { label: '数据采集 Agent', color: '#3fb950' },
   delegate_to_automation_agent: { label: '自动化 Agent', color: '#d29922' },
+  delegate_to_claude_agent: { label: 'Claude Code', color: '#d97757' },
   list_datasets: { label: '列出数据集', color: '#bc8cff' },
   preview_dataset: { label: '预览数据', color: '#bc8cff' },
   analyze_dataset: { label: '分析数据', color: '#bc8cff' },

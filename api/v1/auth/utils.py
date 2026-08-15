@@ -1,12 +1,15 @@
 import secrets
 import time
 from datetime import datetime, timedelta
+from typing import Optional
 from jose import jwt, JWTError
 from config.settings import JWT_SECRET_KEY, JWT_ALGORITHM, JWT_EXPIRE_DAYS
 
 
-def create_token(user_id: int, role: str = "user", username: str = "") -> str:
-    expire = datetime.utcnow() + timedelta(days=JWT_EXPIRE_DAYS)
+def create_token(user_id: int, role: str = "user", username: str = "", expires_days: Optional[float] = None) -> str:
+    """签发 JWT。expires_days 为空时使用全局默认有效期；供 Agent 桥接等场景签发长令牌。"""
+    days = expires_days if expires_days is not None else JWT_EXPIRE_DAYS
+    expire = datetime.utcnow() + timedelta(days=days)
     payload = {"user_id": user_id, "role": role, "username": username, "exp": expire}
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 

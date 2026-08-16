@@ -11,7 +11,7 @@ from api.v1.exceptions import Unauthorized, Forbidden
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register", "/api/v1/knowledge/img", "/api/v1/analysis/rfm-chart", "/api/v1/chat/image"]
+PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register", "/api/v1/knowledge/img", "/api/v1/analysis/rfm-chart", "/api/v1/chat/image", "/api/v1/agent/register"]
 
 
 def is_public(path: str) -> bool:
@@ -34,6 +34,10 @@ def _extract_token(request: Request) -> str:
 
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
+
+    # Agent WebSocket 连接由端点自行鉴权（JWT 或 agent_secret），中间件直接放行
+    if path.startswith("/api/v1/agent/ws"):
+        return await call_next(request)
 
     if is_public(path):
         return await call_next(request)

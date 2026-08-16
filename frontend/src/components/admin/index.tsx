@@ -3,6 +3,7 @@ import { ErrorBoundary } from './shared'
 import DashboardTab from './DashboardTab'
 import UsersTab from './UsersTab'
 import AgentsTab from './AgentsTab'
+import AgentDevicesTab from './AgentDevicesTab'
 import SessionsTab from './SessionsTab'
 import ModelsTab from './ModelsTab'
 import WebsitesTab from './WebsitesTab'
@@ -17,6 +18,7 @@ const TABS = [
   { key: 'dashboard', label: '仪表盘' },
   { key: 'users', label: '用户管理' },
   { key: 'agents', label: 'Agent 状态' },
+  { key: 'agent-devices', label: 'Agent 管理' },
   { key: 'sessions', label: '会话记录' },
   { key: 'models', label: '模型配置' },
   { key: 'websites', label: '网站管理' },
@@ -63,6 +65,7 @@ function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
           <Route path="dashboard" element={<DashboardTab isAdmin={isAdmin} />} />
           <Route path="users" element={<UsersTab />} />
           <Route path="agents" element={<AgentsTab />} />
+          <Route path="agent-devices" element={<AgentDevicesTab />} />
           <Route path="sessions" element={<SessionsTab />} />
           <Route path="models" element={<ModelsTab />} />
           <Route path="websites" element={<WebsitesTab />} />

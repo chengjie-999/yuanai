@@ -27,6 +27,20 @@ class AgentTokenRequest(BaseModel):
     expires_days: float = 180
 
 
+class AgentCodeGen(BaseModel):
+    count: int = 1
+
+
+class AgentBindRequest(BaseModel):
+    agent_id: int
+    user_id: int
+
+
+class AgentFreezeRequest(BaseModel):
+    agent_id: int
+    enabled: int
+
+
 class WebsiteCreate(BaseModel):
     name: str
     url: str
@@ -118,6 +132,130 @@ async def mint_agent_token(req: AgentTokenRequest, request: Request):
         token = create_token(user.id, user.role or "user", user.username or "",
                              expires_days=req.expires_days)
         return {"token": token, "user_id": user.id, "expires_days": req.expires_days}
+    finally:
+        sess.close()
+
+
+# ===================== Agent 设备管理（机器识别） =====================
+
+
+@router.post("/agent-codes")
+async def gen_agent_codes(req: AgentCodeGen, request: Request):
+    """批量生成 Agent 安装码（未注册状态，安装码即本机注册凭证）"""
+    require_admin(request)
+    if not 1 <= req.count <= 50:
+        raise HTTPException(status_code=400, detail="count 必须在 1-50 之间")
+    import secrets as _secrets
+    from db.session import AgentDevice
+    db = get_db()
+    sess = db.Session()
+    try:
+        codes = []
+        for _ in range(req.count):
+            code = "YUAN-" + "-".join(_secrets.token_hex(2).upper() for _ in range(3))
+            sess.add(AgentDevice(install_code=code, agent_secret=""))
+            codes.append(code)
+        sess.commit()
+        return {"codes": codes}
+    finally:
+        sess.close()
+
+
+@router.get("/agent-devices")
+async def list_agent_devices(request: Request):
+    """设备列表：注册状态、绑定用户、在线状态、最后在线时间"""
+    require_admin(request)
+    from db.session import AgentDevice, User
+    from api.v1.agent.router import _agents
+    db = get_db()
+    sess = db.Session()
+    try:
+        devices = sess.query(AgentDevice).order_by(AgentDevice.id.desc()).all()
+        users = {u.id: u.username for u in sess.query(User).all()}
+        result = []
+        for d in devices:
+            result.append({
+                "agent_id": d.id,
+                "install_code": d.install_code,
+                "registered": bool(d.agent_secret),
+                "machine_name": d.machine_name or "",
+                "user_id": d.user_id,
+                "username": users.get(d.user_id, "") if d.user_id else "",
+                "enabled": d.enabled == 1,
+                "online": str(d.id) in _agents,
+                "last_seen": str(d.last_seen)[:19] if d.last_seen else "",
+                "create_time": str(d.create_time)[:19] if d.create_time else "",
+            })
+        return result
+    finally:
+        sess.close()
+
+
+@router.post("/agent-bind")
+async def bind_agent_device(req: AgentBindRequest, request: Request):
+    """一对一绑定：设备 ↔ 云端用户（admin 操作；双方均不能已绑定）"""
+    require_admin(request)
+    from db.session import AgentDevice, User
+    db = get_db()
+    sess = db.Session()
+    try:
+        dev = sess.query(AgentDevice).filter_by(id=req.agent_id).first()
+        if not dev:
+            raise HTTPException(status_code=404, detail="设备不存在")
+        user = sess.query(User).filter_by(id=req.user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if dev.user_id and dev.user_id != req.user_id:
+            raise HTTPException(status_code=400, detail=f"该设备已绑定用户 {dev.user_id}，请先解绑")
+        other = sess.query(AgentDevice).filter(AgentDevice.user_id == req.user_id,
+                                               AgentDevice.id != req.agent_id).first()
+        if other:
+            raise HTTPException(status_code=400, detail=f"该用户已绑定设备 {other.id}（一对一）")
+        dev.user_id = req.user_id
+        sess.commit()
+        from api.v1.agent.router import invalidate_bind_cache
+        invalidate_bind_cache(req.user_id)
+        return {"ok": True, "agent_id": dev.id, "user_id": req.user_id}
+    finally:
+        sess.close()
+
+
+@router.post("/agent-unbind")
+async def unbind_agent_device(req: AgentBindRequest, request: Request):
+    """解绑设备（仅传 agent_id 即可，user_id 忽略）"""
+    require_admin(request)
+    from db.session import AgentDevice
+    db = get_db()
+    sess = db.Session()
+    try:
+        dev = sess.query(AgentDevice).filter_by(id=req.agent_id).first()
+        if not dev:
+            raise HTTPException(status_code=404, detail="设备不存在")
+        old_user = dev.user_id
+        dev.user_id = None
+        sess.commit()
+        if old_user:
+            from api.v1.agent.router import invalidate_bind_cache
+            invalidate_bind_cache(old_user)
+        return {"ok": True, "agent_id": dev.id}
+    finally:
+        sess.close()
+
+
+@router.post("/agent-freeze")
+async def freeze_agent_device(req: AgentFreezeRequest, request: Request):
+    """冻结/解冻设备（冻结后 WS 连接被拒绝）"""
+    require_admin(request)
+    from db.session import AgentDevice
+    db = get_db()
+    sess = db.Session()
+    try:
+        dev = sess.query(AgentDevice).filter_by(id=req.agent_id).first()
+        if not dev:
+            raise HTTPException(status_code=404, detail="设备不存在")
+        dev.enabled = 1 if req.enabled else 0
+        sess.commit()
+        return {"ok": True, "agent_id": dev.id, "enabled": dev.enabled == 1}
     finally:
         sess.close()
 

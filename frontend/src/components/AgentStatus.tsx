@@ -36,8 +36,9 @@ export default function AgentStatus({ userId }: { userId?: number }) {
     return () => clearInterval(interval)
   }, [])
 
-  // 只显示当前用户的 Agent
-  const myAgents = userId ? agents.filter((a) => String(a.agent_id) === String(userId)) : []
+  // 后端已按用户过滤（旧模式直连或绑定设备）；这里优先匹配 user_id，否则取第一个
+  const matched = agents.find((a) => String(a.agent_id) === String(userId))
+  const myAgents = userId ? (matched ? [matched] : agents.slice(0, 1)) : agents.slice(0, 1)
   const online = myAgents.length > 0 && myAgents[0].online
 
   if (error || !online) {

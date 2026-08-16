@@ -69,6 +69,24 @@ class User(Base):
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
+class AgentDevice(Base):
+    """本地 Agent 设备表（机器识别：后台签发安装码 → 本机注册 → 一对一绑定云端用户）
+
+    - id 即 WS 路径的 agent_id（与用户 id 解耦）
+    - install_code 由后台预签发（agent_secret 为空 = 未注册），本机注册时消费
+    - agent_secret 注册时生成，本机持久化，连接 WS 时校验
+    """
+    __tablename__ = 'agent_devices'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    install_code = Column(String(32), unique=True, nullable=False)
+    agent_secret = Column(String(64), default='')  # 空 = 安装码尚未被注册消费
+    machine_name = Column(String(64), default='')
+    user_id = Column(Integer, nullable=True, index=True)  # 一对一绑定的云端用户
+    enabled = Column(Integer, default=1)  # 0 = 冻结
+    last_seen = Column(TIMESTAMP, nullable=True)
+    create_time = Column(TIMESTAMP, server_default=func.now())
+
+
 class Website(Base):
     """网站配置表"""
     __tablename__ = 'websites'

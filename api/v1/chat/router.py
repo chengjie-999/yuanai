@@ -111,6 +111,25 @@ async def _bridge_sse(queue: asyncio.Queue, request_id: str):
         cleanup_pending(request_id)
 
 
+def _fix_history_for_api(history: list) -> list:
+    """清洗历史：工具调用结构（tool_calls/tool）统一扁平化为普通文本。
+
+    云端 API 对 tool 消息有严格配对校验（400: 'Messages with role tool must be a
+    response to a preceding message with tool_calls'），而历史里的工具上下文用文本
+    表达已足够让模型理解，故全部转为文本，彻底规避结构校验问题。
+    """
+    fixed = []
+    for m in history:
+        role = m.get("role", "")
+        if role == "tool":
+            fixed.append({"role": "user", "content": f"[工具结果] {str(m.get('content', ''))[:2000]}"})
+        elif role == "assistant" and m.get("tool_calls"):
+            fixed.append({"role": "assistant", "content": m.get("content", "")})
+        else:
+            fixed.append(m)
+    return fixed
+
+
 @router.post("/stream")
 async def chat_stream(req: ChatRequest, request: Request):
     """SSE 流式聊天（优先走本地 Agent，离线时回退到云端直接调用）"""
@@ -122,7 +141,7 @@ async def chat_stream(req: ChatRequest, request: Request):
             model = VISION_MODEL
 
         history = []
-        for m in req.history:
+        for m in _fix_history_for_api(req.history):
             msg_role = m.get("role", "")
             content = m.get("content", "")
             if msg_role == "user":
@@ -199,9 +218,11 @@ async def chat_stream(req: ChatRequest, request: Request):
 
 @router.post("/claude-stream")
 async def claude_stream(req: ChatRequest, request: Request):
-    """Claude Code 桥接对话：转发给本机 claude 桥接进程（独立 agent_id），离线时回退云端 LLM
+    """Claude Code 桥接对话：转发给该用户本机的 Agent（mode=claude 分支），离线时回退云端 LLM
 
-    访问控制：仅 admin 或 CLAUDE_BRIDGE_ALLOWED_USERNAMES 白名单用户（防跨用户向他人本机注入）。
+    路由：CLAUDE_BRIDGE_AGENT_ID > 0 时走共享桥接（固定 agent_id，多用户共用一台本机）；
+    否则转发给 agent_id == 当前用户 user_id 的 Agent（每用户一台本机，多 PC 天然扩展）。
+    访问控制：仅 admin 或 CLAUDE_BRIDGE_ALLOWED_USERNAMES 白名单用户。
     """
     from config.settings import CLAUDE_BRIDGE_AGENT_ID, CLAUDE_BRIDGE_ALLOWED_USERNAMES
 
@@ -221,7 +242,7 @@ async def claude_stream(req: ChatRequest, request: Request):
             model = VISION_MODEL
 
         history = []
-        for m in req.history:
+        for m in _fix_history_for_api(req.history):
             if m.get("role") == "user":
                 history.append(HumanMessage(content=m.get("content", "")))
             elif m.get("role") == "assistant":
@@ -237,7 +258,10 @@ async def claude_stream(req: ChatRequest, request: Request):
         )
         current_user_id.set(user_id if user_id else 0)
 
-        if CLAUDE_BRIDGE_AGENT_ID > 0:
+        # 目标 agent：共享桥接（固定 id）或该用户自己的本机 Agent
+        target_agent_id = CLAUDE_BRIDGE_AGENT_ID if CLAUDE_BRIDGE_AGENT_ID > 0 else user_id
+
+        if target_agent_id:
             from api.v1.agent.router import forward_to_agent, get_pending_queue
             import uuid as _uuid
 
@@ -249,12 +273,13 @@ async def claude_stream(req: ChatRequest, request: Request):
                 "user_id": user_id,
                 "messages": input_messages,
                 "images": req.images,
+                "mode": "claude",  # 本机 Agent 的 claude 分支
                 "decision": req.decision,  # 审批决议原样转发（无则 None）
             }
-            bridged_request_id = await forward_to_agent(CLAUDE_BRIDGE_AGENT_ID, agent_chat_request)
+            bridged_request_id = await forward_to_agent(target_agent_id, agent_chat_request)
             if bridged_request_id:
-                logger.info("chat/claude-stream → Claude 桥接 (user=%s, session=%s, req=%s)",
-                            user_id, req.session_id, bridged_request_id[:8])
+                logger.info("chat/claude-stream → Claude 桥接 (target=%s, user=%s, session=%s, req=%s)",
+                            target_agent_id, user_id, req.session_id, bridged_request_id[:8])
                 queue = get_pending_queue(bridged_request_id)
                 return StreamingResponse(_bridge_sse(queue, bridged_request_id), media_type="text/event-stream")
 

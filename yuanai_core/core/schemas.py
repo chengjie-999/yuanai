@@ -19,6 +19,7 @@ class ChatRequest:
     user_id: int = 0
     messages: List[Dict[str, Any]] = field(default_factory=list)
     images: List[str] = field(default_factory=list)
+    mode: str = ""  # 处理模式："claude" = 本机 Claude Code 桥接；空 = 统筹 Agent
     decision: Optional[Dict[str, Any]] = None  # 审批决议（Claude 桥接）：{"decision_id", "approve"} | None
 
     def __post_init__(self):

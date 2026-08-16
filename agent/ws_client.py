@@ -131,6 +131,8 @@ class AgentWSClient:
             user_id=msg.get("user_id", 0),
             messages=msg.get("messages", []),
             images=msg.get("images", []),
+            mode=msg.get("mode", ""),
+            decision=msg.get("decision"),
         )
 
         # 设置当前用户，使 memory / knowledge 等工具能正确隔离用户数据

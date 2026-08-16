@@ -355,15 +355,20 @@ pytest test/ -v
 
 ## Claude Code 桥接（云端 ↔ 本机 Claude Code）
 
-1. 后台管理创建专属普通用户（如 `claude_bridge`），用 `POST /admin/agent-token` 签发长令牌（1-365 天）
-2. 云端配置环境变量：`CLAUDE_BRIDGE_AGENT_ID`（专属用户 id）、`CLAUDE_BRIDGE_ALLOWED_USERNAMES`（允许使用桥接的用户名，空 = 仅 admin）
-3. 本机启动桥接进程（需安装并登录 Claude Code CLI）：
+1. 后台「Agent 管理」签发安装码
+2. 本机安装（需安装并登录 Claude Code CLI）：
 
 ```bash
-python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户id> --agent-token <长令牌>
+python -m agent.main --install YUAN-XXXX-XXXX-XXXX   # 注册本机，保存 data/agent_identity.json
+python -m agent.main                                  # 启动（统筹 + Claude 二合一进程）
 ```
 
-前端聊天输入区切换到「⌘ Claude Code」模式后，消息直发本机 Claude Code（流式回复 + 工具卡片 + 会话续接）。安全边界：工具白名单 + `acceptEdits` + cwd 锁仓库 + 提示词黑名单 + 审计日志 `data/logs/claude_audit.log`。验证：`python -m agent.verify_claude_bridge`。
+3. 后台「Agent 管理」把该设备一对一绑定到用户账号
+4. 前端聊天输入区切换到「⌘ Claude Code」模式后，消息直发本机 Claude Code（流式回复 + 工具卡片 + 会话续接）
+
+安全边界：工具白名单 + `acceptEdits` + cwd 锁仓库 + 提示词黑名单 + 审计日志 `data/logs/claude_audit.log`。验证：`python -m agent.verify_claude_bridge`。
+
+> 共享桥接模式（多用户共用一台本机）仍可用：云端设 `CLAUDE_BRIDGE_AGENT_ID` 指向专属设备，单独跑 `python -m agent.claude_bridge`。
 
 ## Docker 部署
 

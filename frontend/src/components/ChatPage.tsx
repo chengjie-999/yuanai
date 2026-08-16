@@ -118,13 +118,13 @@ export default function ChatPage({ user }: { user?: any }) {
       } else if (event.type === 'progress') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0 && last[i].role === 'assistant') last[i] = { ...last[i], progress: event.data }; return last })
       } else if (event.type === 'agent') {
-        // Claude 桥接声明身份：后续 token 归属该 Agent 气泡
+        // Claude 桥接声明身份：后续 token 归属该 Agent 气泡（复用尾部空占位气泡，不新增）
         const ns = event.data.sender
         if (ns && AGENT_CONFIG[ns]) {
           currentSender = ns
           setMessages((prev) => {
             const last = prev[prev.length - 1]
-            if (last && last.role === 'assistant' && !last.content && !(last.toolCalls?.length) && (last.sender || 'orchestrator') === 'orchestrator') {
+            if (last && last.role === 'assistant' && !last.content && !(last.toolCalls?.length)) {
               return [...prev.slice(0, -1), { ...last, sender: ns as any }]
             }
             return [...prev, { role: 'assistant' as const, content: '', sender: ns as any, toolCalls: [] }]
@@ -133,7 +133,9 @@ export default function ChatPage({ user }: { user?: any }) {
       } else if (event.type === 'approval') {
         setPendingApproval({ decision_id: event.data.decision_id, tool_name: event.data.tool_name, command: event.data.command })
       } else if (event.type === 'error') {
-        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: '请求失败，请重试' }; return last }); setLoading(false)
+        // 展示真实错误信息（截断），便于排查
+        const errMsg = typeof event.data === 'string' && event.data ? event.data.slice(0, 300) : '请求失败，请重试'
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `请求失败: ${errMsg}` }; return last }); setLoading(false)
       }
     }
     const onError = () => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: '网络异常，请检查连接' }; return last }); setLoading(false) }

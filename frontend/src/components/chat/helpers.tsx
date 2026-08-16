@@ -56,25 +56,32 @@ export function encodeMsg(m: any) {
   return { role: m.role, content, ...(m.images?.length ? { images: m.images } : {}) }
 }
 
-/** 将会话消息转为包含工具调用上下文的历史记录（传给模型用） */
-export function buildHistoryWithToolContext(messages: ChatMessage[]): { role: string; content: string }[] {
-  const result: { role: string; content: string }[] = []
+/** 将会话消息转为包含工具调用上下文的历史记录（传给模型用）
+ * 注意：tool 消息必须紧跟带 tool_calls 的 assistant 消息，否则云端 API 400 拒绝
+ */
+export function buildHistoryWithToolContext(messages: ChatMessage[]): { role: string; content: string; tool_calls?: any[]; tool_call_id?: string }[] {
+  const result: { role: string; content: string; tool_calls?: any[]; tool_call_id?: string }[] = []
 
   for (const m of messages) {
     if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
-      // 先添加"assistant决定调工具"的标记
+      // assistant 决策消息 + 对应的 tool_calls 列表（保证 tool 消息有合法归属）
       const toolNames = m.toolCalls.map(tc => tc.name).join(', ')
-      result.push({ role: 'assistant', content: `[决定调用工具: ${toolNames}]` })
+      const calls = m.toolCalls.map((tc, i) => ({
+        id: `hist_${i}`, type: 'function', function: { name: tc.name, arguments: '{}' },
+      }))
+      result.push({ role: 'assistant', content: `[决定调用工具: ${toolNames}]`, tool_calls: calls })
 
-      // 对每个完成的工具，添加工具结果消息
-      for (const tc of m.toolCalls) {
+      // 每个 tool_call 都必须有一条 tool 结果消息（未完成/出错也占位）
+      m.toolCalls.forEach((tc, i) => {
         if (tc.status === 'done') {
           const summary = (tc.result || '完成').slice(0, 800)
-          result.push({ role: 'tool', content: `工具 ${tc.name} 执行结果:\n${summary}` })
+          result.push({ role: 'tool', content: `工具 ${tc.name} 执行结果:\n${summary}`, tool_call_id: `hist_${i}` })
         } else if (tc.status === 'error') {
-          result.push({ role: 'tool', content: `工具 ${tc.name} 执行出错: ${tc.result || '未知错误'}` })
+          result.push({ role: 'tool', content: `工具 ${tc.name} 执行出错: ${tc.result || '未知错误'}`, tool_call_id: `hist_${i}` })
+        } else {
+          result.push({ role: 'tool', content: `工具 ${tc.name} 未完成`, tool_call_id: `hist_${i}` })
         }
-      }
+      })
 
       // 最后是助手的实际回复
       result.push({ role: 'assistant', content: m.content || '' })

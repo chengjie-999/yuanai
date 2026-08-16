@@ -151,6 +151,14 @@ data/                   数据目录
 - 云端收到 HTTP 对话请求 → 检查 Agent 在线 → WebSocket 转发 → Agent 处理后回传 → SSE 推送前端
 - Agent 离线时自动回退到云端直接调用 LLM
 
+### 机器识别（每用户一台 PC）
+
+- 安装流程：后台「Agent 管理」签发安装码（`POST /admin/agent-codes`）→ 用户本机 `python -m agent.main --install <安装码>` → 云端注册设备（`POST /agent/register`，公开路径，安装码即凭证）→ 本机保存 `data/agent_identity.json`（agent_id + agent_secret）
+- WS 鉴权两种凭据：JWT（旧模式，user_id==agent_id）或 agent_secret（机器模式，查 `agent_devices` 表）
+- 路由：`get_agent(user_id)` 先查旧模式直连，再查一对一绑定（`agent_devices.user_id`，30s 缓存）→ 转发到绑定的设备 socket
+- 一对一绑定：后台「Agent 管理」页操作（设备↔用户互不重复绑定，可解绑/冻结）
+- 本机 Agent 是**二合一进程**：chat_request 带 `mode=claude` 走 Claude Code 桥接分支，否则走统筹 Agent
+
 ## Claude Code 桥接（Phase 2）
 
 独立桥接进程让云端聊天直接对话本机 Claude Code（流式 token + 工具卡片 + 会话持久化）：

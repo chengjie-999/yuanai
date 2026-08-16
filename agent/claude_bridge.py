@@ -151,6 +151,9 @@ class ClaudeBridgeHandler:
         self._sessions.load()
         self._locks = {}  # cloud session_id -> asyncio.Lock（防并发 query）
         self._pending_approvals = {}  # decision_id -> asyncio.Future（SDK 审批流启用后使用）
+        # 全局并发上限：Claude Code 子进程重量级（内存 + 网关配额），默认 2
+        max_conc = int(os.getenv("CLAUDE_BRIDGE_MAX_CONCURRENCY", "2"))
+        self._sem = asyncio.Semaphore(max_conc)
 
     async def stream(self, req: ChatRequest) -> "asyncio.AsyncGenerator[AgentEvent, None]":
         rid = req.request_id
@@ -174,9 +177,13 @@ class ClaudeBridgeHandler:
         if lock.locked():
             yield error_event("Claude Code 正在处理上一请求，请稍候", rid)
             return
-        async with lock:
-            async for ev in self._run_query(req, rid, prompt):
-                yield ev
+        if self._sem.locked():
+            yield error_event("本机 Claude Code 正忙（并发任务已满），请稍后再试", rid)
+            return
+        async with self._sem:
+            async with lock:
+                async for ev in self._run_query(req, rid, prompt):
+                    yield ev
 
     async def _run_query(self, req: ChatRequest, rid: str, prompt: str):
         claude_path = shutil.which(CLAUDE_CLI)
@@ -319,11 +326,23 @@ class ClaudeBridgeHandler:
 
 def parse_args():
     p = argparse.ArgumentParser(description="小元AI Claude Code 桥接进程")
-    p.add_argument("--server-url", default="wss://cjyuanai.cn", help="云端 WebSocket 地址")
-    p.add_argument("--agent-id", default=socket.gethostname(), help="Agent 唯一标识（= 专属云账号 user_id）")
+    p.add_argument("--server-url", default=None, help="云端 WebSocket 地址（默认 wss://cjyuanai.cn）")
+    p.add_argument("--agent-id", default=None, help="Agent 唯一标识（机器模式：由安装注册自动获得）")
     p.add_argument("--agent-name", default="Claude Code 桥接", help="Agent 显示名称")
-    p.add_argument("--agent-token", default=os.getenv("AGENT_TOKEN", ""), help="Agent 认证 JWT token（也可用 AGENT_TOKEN 环境变量）")
-    return p.parse_args()
+    p.add_argument("--agent-token", default=None,
+                   help="Agent 认证凭据（默认：命令行 > 身份文件 > CLAUDE_BRIDGE_TOKEN/AGENT_TOKEN 环境变量）")
+    args = p.parse_args()
+    # 机器模式：未显式指定时回退到安装注册保存的身份，再回退环境变量
+    from agent.main import load_identity
+    identity = load_identity()
+    if not args.agent_id:
+        args.agent_id = str(identity.get("agent_id") or socket.gethostname())
+    if not args.agent_token:
+        args.agent_token = identity.get("agent_secret", "") or \
+            os.getenv("CLAUDE_BRIDGE_TOKEN", "") or os.getenv("AGENT_TOKEN", "")
+    if not args.server_url:
+        args.server_url = identity.get("server_url") or "wss://cjyuanai.cn"
+    return args
 
 
 async def main():

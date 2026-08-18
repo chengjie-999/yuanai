@@ -148,6 +148,7 @@ class AgentDatabase:
         self.engine = create_engine(conn_url, pool_size=5, max_overflow=10)
         Base.metadata.create_all(self.engine)  # 全新数据库首次建表
         self._run_alembic_migrations()         # Alembic 增量迁移（替代原始 ALTER TABLE）
+        Base.metadata.create_all(self.engine)  # 迁移后兜底：幂等补建缺失的新表（如无迁移文件的模型）
         self.Session = sessionmaker(bind=self.engine)
 
     from contextlib import contextmanager

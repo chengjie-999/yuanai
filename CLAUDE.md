@@ -13,11 +13,14 @@ python -m api.main
 # React 前端（端口 5173）
 cd frontend && npm run dev
 
-# 本地 Agent（命令行模式，开发调试用）
-python -m agent.main --agent-id 1
+# 本地 Agent 首次安装（机器注册，一次性；后台「Agent 管理」签发安装码）
+python -m agent.main --install YUAN-XXXX-XXXX-XXXX --server-url ws://localhost:8000
+
+# 本地 Agent 日常启动（自动读 data/agent_identity.json；旧模式 --agent-id 1 仍兼容）
+python -m agent.main
 
 # 本地 Agent（托盘模式，发布用）
-python -m agent.main --agent-id 1 --tray
+python -m agent.main --tray
 ```
 
 ## 多智能体架构
@@ -118,6 +121,7 @@ data/                   数据目录
 
 唯一业务入口。欢迎页居中显示输入框，历史对话以群聊形式展示：
 - 蓝色 = 小元AI（统筹）
+- 棕色/橙色 = Claude Code（本机桥接）
 - 紫色 = 数据分析 Agent
 - 青色 = 数据采集 Agent
 - 橙色 = 自动化 Agent
@@ -128,7 +132,7 @@ data/                   数据目录
 
 ## 后台管理
 
-12 个 Tab，每个有独立 URL 路由（`/admin/:tab`）：
+13 个 Tab，每个有独立 URL 路由（`/admin/:tab`）：
 
 | Tab | 路由 | 内容 |
 |-----|------|------|
@@ -136,6 +140,7 @@ data/                   数据目录
 | 用户管理 | `/admin/users` | 创建/冻结/删除用户 |
 | 网站管理 | `/admin/websites` | 添加/删除采集网站 |
 | Agent 状态 | `/admin/agents` | 在线状态 + 4 个子 Agent 团队卡片 + 实时活动记录 |
+| Agent 管理 | `/admin/agent-devices` | 签发安装码、设备列表、一对一绑定、解绑/冻结 |
 | 会话记录 | `/admin/sessions` | 历史会话查询 |
 | 模型配置 | `/admin/models` | 已配置模型列表 |
 | 数据集 | `/admin/datasets` | 上传/查看/删除数据集 |

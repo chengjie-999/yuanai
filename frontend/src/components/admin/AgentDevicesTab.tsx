@@ -134,7 +134,7 @@ export default function AgentDevicesTab() {
       </Card>
 
       {/* 设备列表 */}
-      {loading ? <Spinner /> : devices.length === 0 ? <Empty text="暂无设备" /> : (
+      {loading ? <Spinner /> : devices.length === 0 ? <Empty msg="暂无设备" /> : (
         <Card>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>

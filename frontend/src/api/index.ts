@@ -267,6 +267,7 @@ export function streamChat(
     session_id?: string
     decision?: { decision_id: string; approve: boolean }
     claude?: boolean
+    force_cloud?: boolean
   },
   onEvent: (event: any) => void,
   onError: (error: string) => void,

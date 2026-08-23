@@ -2,15 +2,18 @@ import { useRef, useState } from 'react'
 import { downloadChat } from './helpers'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
+import type { ChatMode } from './ChatModeSelector'
+import ChatModeSelector from './ChatModeSelector'
 import { compressImage } from './imageUtils'
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, messages, claudeMode, setClaudeMode }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, messages, chatMode, setChatMode, localOnline, claudeOnline }: {
   input: string; setInput: (v: string) => void; loading: boolean; handleSend: () => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
   sidebarOpen: boolean; setSidebarOpen: (v: boolean) => void
   sessions: SessionInfo[]; messages: ChatMessage[]
-  claudeMode: boolean; setClaudeMode: (v: boolean) => void
+  chatMode: ChatMode; setChatMode: (v: ChatMode) => void
+  localOnline: boolean; claudeOnline: boolean
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -90,16 +93,8 @@ export default function InputArea({ input, setInput, loading, handleSend, images
             {!sidebarOpen && (
               <button onClick={() => setSidebarOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12, padding: 0 }}>▶ 侧栏</button>
             )}
-            <button onClick={() => setClaudeMode(!claudeMode)}
-              title={claudeMode ? 'Claude Code 模式：对话直接发送到本机 Claude Code（需要桥接进程在线）' : '切换到本机 Claude Code 模式'}
-              style={{
-                background: claudeMode ? '#d97757' : 'var(--bg-tertiary)',
-                border: `1px solid ${claudeMode ? '#d97757' : 'var(--border)'}`,
-                color: claudeMode ? '#fff' : 'var(--text-secondary)',
-                cursor: 'pointer', fontSize: 12, padding: '3px 10px', borderRadius: 20,
-                fontWeight: 600, transition: 'all 0.15s',
-              }}
-            >⌘ Claude Code {claudeMode ? '· 开' : ''}</button>
+            <ChatModeSelector chatMode={chatMode} setChatMode={setChatMode}
+              localOnline={localOnline} claudeOnline={claudeOnline} />
           </div>
         </div>
       </div>

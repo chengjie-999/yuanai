@@ -1,11 +1,12 @@
 import { useRef, useEffect } from 'react'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
+import type { ChatMode } from './ChatModeSelector'
 import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, claudeMode, setClaudeMode, pendingApproval, handleDecision }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, chatMode, setChatMode, localOnline, claudeOnline, pendingApproval, handleDecision }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string) => void; handleSend: () => void
@@ -13,7 +14,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   currentSid: string
   sidebarOpen: boolean; setSidebarOpen: (v: boolean) => void
   sessions: SessionInfo[]
-  claudeMode: boolean; setClaudeMode: (v: boolean) => void
+  chatMode: ChatMode; setChatMode: (v: ChatMode) => void
+  localOnline: boolean; claudeOnline: boolean
   pendingApproval: { decision_id: string; tool_name: string; command: string } | null
   handleDecision: (approve: boolean) => void
 }) {
@@ -55,7 +57,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         currentSid={currentSid}
         sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
         sessions={sessions} messages={messages}
-        claudeMode={claudeMode} setClaudeMode={setClaudeMode} />
+        chatMode={chatMode} setChatMode={setChatMode}
+        localOnline={localOnline} claudeOnline={claudeOnline} />
     </>
   )
 }

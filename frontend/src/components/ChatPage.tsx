@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, getStoredModel } from '../api'
+import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, getStoredModel, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
@@ -28,8 +28,12 @@ export default function ChatPage({ user }: { user?: any }) {
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
   const [images, setImages] = useState<string[]>([])
   const [expandedImage, setExpandedImage] = useState<string | null>(null)
-  // Claude Code 桥接模式 + 待审批命令
-  const [claudeMode, setClaudeMode] = useState(false)
+  // 聊天模式：local=本地统筹 Agent / cloud=云端直连 / claude=Claude Code 桥接
+  const [chatMode, setChatMode] = useState<'local' | 'cloud' | 'claude'>('local')
+  const [localOnline, setLocalOnline] = useState(false)
+  const [claudeOnline, setClaudeOnline] = useState(false)
+  const [statusKnown, setStatusKnown] = useState(false)
+  // Claude Code 桥接待审批命令
   const [pendingApproval, setPendingApproval] = useState<{ decision_id: string; tool_name: string; command: string } | null>(null)
   const messagesRef = useRef(messages)
   messagesRef.current = messages
@@ -45,6 +49,34 @@ export default function ChatPage({ user }: { user?: any }) {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+
+  // 轮询 Agent 在线状态（本地统筹 + Claude 桥接），供模式选择器置灰/点亮
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/admin/agent-status`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          setLocalOnline(data.some((a: any) => !(a.capabilities || []).includes('claude_code')))
+          setClaudeOnline(data.some((a: any) => (a.capabilities || []).includes('claude_code')))
+          setStatusKnown(true)
+        }
+      } catch { /* 忽略轮询失败，保持上次状态 */ }
+    }
+    poll()
+    const interval = setInterval(poll, 10000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // 当前模式对应的 Agent 掉线时自动回落到云端（首次轮询完成前不判定）
+  useEffect(() => {
+    if (!statusKnown) return
+    if (chatMode === 'local' && !localOnline) setChatMode('cloud')
+    if (chatMode === 'claude' && !claudeOnline) setChatMode('cloud')
+  }, [chatMode, localOnline, claudeOnline, statusKnown])
 
   const refreshSessions = useCallback(async () => {
     const list = await listSessions()
@@ -158,13 +190,13 @@ export default function ChatPage({ user }: { user?: any }) {
     // 普通消息自动撤销未决审批（桥接侧会 deny pending 后正常处理）
     setPendingApproval(null)
     const history = buildHistoryWithToolContext(prevMsgs)
-    const placeholderSender = claudeMode ? 'claude' : 'orchestrator'
+    const placeholderSender = chatMode === 'claude' ? 'claude' : 'orchestrator'
     setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
     streamChat(
       { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: SYSTEM_PROMPT,
-        session_id: claudeMode ? sid : undefined, claude: claudeMode },
+        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud' },
       onEvent, onError,
       () => {
         setLoading(false)
@@ -195,13 +227,13 @@ export default function ChatPage({ user }: { user?: any }) {
     setInput(''); setQuickInput('')
     const sentImages = [...images]; setImages([])
     setMessages([{ role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }])
-    const placeholderSender = claudeMode ? 'claude' : 'orchestrator'
+    const placeholderSender = chatMode === 'claude' ? 'claude' : 'orchestrator'
     setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
     streamChat(
       { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: SYSTEM_PROMPT,
-        session_id: claudeMode ? sid : undefined, claude: claudeMode },
+        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud' },
       onEvent, onError,
       () => {
         setLoading(false)
@@ -255,6 +287,8 @@ export default function ChatPage({ user }: { user?: any }) {
             quickInput={quickInput} setQuickInput={setQuickInput}
             sendWithNewSession={sendWithNewSession}
             sessions={sessions} onSelectSession={handleSelectSession}
+            chatMode={chatMode} setChatMode={setChatMode}
+            localOnline={localOnline} claudeOnline={claudeOnline}
           />
         ) : (
           <ChatView
@@ -265,7 +299,8 @@ export default function ChatPage({ user }: { user?: any }) {
             currentSid={currentSid}
             sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
             sessions={sessions}
-            claudeMode={claudeMode} setClaudeMode={setClaudeMode}
+            chatMode={chatMode} setChatMode={setChatMode}
+            localOnline={localOnline} claudeOnline={claudeOnline}
             pendingApproval={pendingApproval} handleDecision={handleDecision}
           />
         )}

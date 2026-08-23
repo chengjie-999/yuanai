@@ -59,6 +59,25 @@ def _get_agent_status(request: Request, include_activities: bool = False) -> lis
         if include_activities:
             entry["activities"] = list(reversed(info.get("activities", [])[-10:]))
         result.append(entry)
+
+    # Claude Code 桥接进程对白名单用户可见（前端据此给「⌘ Claude Code」按钮置灰/点亮）
+    from config.settings import CLAUDE_BRIDGE_AGENT_ID, CLAUDE_BRIDGE_ALLOWED_USERNAMES
+    bridge_id = str(CLAUDE_BRIDGE_AGENT_ID)
+    # 跳过主循环已包含的情况（桥接用户本人 / admin 看全部），避免重复条目
+    if CLAUDE_BRIDGE_AGENT_ID and bridge_id in _agents and not any(e["agent_id"] == bridge_id for e in result):
+        username = payload.get("username", "") if payload else ""
+        if is_admin or (username and username in CLAUDE_BRIDGE_ALLOWED_USERNAMES):
+            info = _agent_info.get(bridge_id, {})
+            entry = {
+                "agent_id": bridge_id,
+                "agent_name": info.get("agent_name", "Claude Code 桥接"),
+                "capabilities": info.get("capabilities", ["claude_code"]),
+                "online": True,
+                "last_heartbeat": info.get("last_heartbeat", ""),
+            }
+            if include_activities:
+                entry["activities"] = list(reversed(info.get("activities", [])[-10:]))
+            result.append(entry)
     return result
 
 

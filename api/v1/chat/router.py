@@ -174,8 +174,8 @@ async def chat_stream(req: ChatRequest, request: Request):
         # 设置当前用户上下文，知识库检索时自动过滤私有/共享
         current_user_id.set(user_id if user_id else 0)
 
-        # --- 尝试走本地 Agent WebSocket 桥接 ---
-        if user_id:
+        # --- 尝试走本地 Agent WebSocket 桥接（云端模式 force_cloud 时跳过） ---
+        if user_id and not req.force_cloud:
             from api.v1.agent.router import forward_to_agent, get_pending_queue, cleanup_pending
             import uuid as _uuid
 

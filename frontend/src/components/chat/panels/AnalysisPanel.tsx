@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { fetchDatasets, fetchDatasetAnalysis, uploadDataset } from '../../../api'
+import { fetchDatasets, fetchDatasetAnalysis, uploadDataset, API_BASE } from '../../../api'
 import AnalysisResultView from '../../AnalysisResultView'
 
 export default function AnalysisPanel() {
@@ -42,6 +42,52 @@ export default function AnalysisPanel() {
     setAnalyzing(false)
   }
 
+  // 导出报告：后端接口需 JWT 鉴权（window.open 不带 token 会 401），
+  // 用 fetch 带 Authorization 头拉取 blob 再触发浏览器下载
+  const [exporting, setExporting] = useState(false)
+  const [tip, setTip] = useState('')
+
+  const handleExport = async () => {
+    if (!selectedId) return
+    setExporting(true)
+    setTip('')
+    try {
+      const token = localStorage.getItem('token')
+      const h: Record<string, string> = {}
+      if (token) h['Authorization'] = `Bearer ${token}`
+      const res = await fetch(`${API_BASE}/data/export/${selectedId}?format=excel`, { headers: h })
+      if (!res.ok) {
+        let detail = ''
+        try { detail = (await res.json())?.detail || '' } catch { /* 非 JSON 错误响应 */ }
+        setTip(detail || `导出失败 (HTTP ${res.status})`)
+      } else {
+        const blob = await res.blob()
+        // 优先解析 Content-Disposition 中的文件名，缺失则按数据集名拼接
+        let filename = ''
+        const cd = res.headers.get('Content-Disposition') || ''
+        const m = cd.match(/filename="?([^"]+)"?/)
+        if (m) filename = m[1]
+        if (!filename) {
+          const ds = datasets.find((d: any) => d.id === selectedId)
+          filename = `${(ds?.name || '数据集').replace(/\.[^.]+$/, '')}_分析报告.xlsx`
+        }
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+        setTip('导出成功')
+      }
+    } catch {
+      setTip('导出失败，请重试')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-light)', flexShrink: 0 }}>
@@ -65,7 +111,16 @@ export default function AnalysisPanel() {
             style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}>
             {uploading ? '上传中...' : '📤 上传'}
           </button>
+          <button onClick={handleExport} disabled={!selectedId || exporting}
+            style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: selectedId ? 'var(--accent)' : 'var(--text-muted)', cursor: selectedId && !exporting ? 'pointer' : 'not-allowed', fontSize: 12, whiteSpace: 'nowrap' }}>
+            {exporting ? '导出中...' : '⬇ 导出'}
+          </button>
         </div>
+        {tip && (
+          <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center', color: tip === '导出成功' ? '#629755' : 'var(--danger)' }}>
+            {tip}
+          </div>
+        )}
         {datasets.length === 0 && (
           <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', marginTop: 8 }}>
             暂无数据集，上传 CSV / Excel / JSON 开始分析

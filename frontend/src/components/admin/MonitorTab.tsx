@@ -4,6 +4,7 @@ import {
   BarChart, Bar,
 } from 'recharts'
 import { Spinner, ErrorMsg, Card, CardHeader, Empty, headers, API_BASE } from './shared'
+import { fetchMonitorStatus, fetchMonitorChanges, fetchMonitorTimeline, fetchMonitorFileTypes } from '../../api'
 
 const CHART_GREEN = '#629755'
 const CHART_RED = '#bc3f3c'
@@ -51,6 +52,21 @@ function SummaryCard({ label, value, color, unit }: {
   )
 }
 
+function OverviewItem({ label, value, unit }: {
+  label: string; value: string | number; unit?: string
+}) {
+  return (
+    <div style={{
+      background: 'var(--bg-secondary)', borderRadius: 8, padding: '8px 12px',
+      fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'baseline', gap: 4,
+    }}>
+      <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 15 }}>{value}</span>
+      {unit && <span>{unit}</span>}
+      <span style={{ marginLeft: 'auto' }}>{label}</span>
+    </div>
+  )
+}
+
 export default function MonitorTab() {
   const [status, setStatus] = useState<any>(null)
   const [changes, setChanges] = useState<any[]>([])
@@ -75,8 +91,65 @@ export default function MonitorTab() {
       .finally(() => setLoading(false))
   }
 
+  // ---- 监控控制端点（api/index.ts 未封装 start/stop/report/top-files，仿其 fetch 写法写在组件内） ----
+  const monitorStart = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE}/monitor/start`, { method: 'POST', headers: headers() })
+      return res.ok
+    } catch { return false }
+  }
+
+  const monitorStop = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE}/monitor/stop`, { method: 'POST', headers: headers() })
+      return res.ok
+    } catch { return false }
+  }
+
+  const fetchMonitorTopFiles = async (topN: number = 10): Promise<any> => {
+    try {
+      const res = await fetch(`${API_BASE}/monitor/top-files?top_n=${topN}`, { headers: headers() })
+      if (!res.ok) return { top_files: [] }
+      return await res.json()
+    } catch { return { top_files: [] } }
+  }
+
+  // ---- 监控控制数据（status / changes / timeline / file-types / top-files 各端点） ----
+  const [ctrlStatus, setCtrlStatus] = useState<any>(null)
+  const [ctrlChanges, setCtrlChanges] = useState<any>(null)
+  const [ctrlTimeline, setCtrlTimeline] = useState<any>(null)
+  const [ctrlFileTypes, setCtrlFileTypes] = useState<any>(null)
+  const [ctrlTopFiles, setCtrlTopFiles] = useState<any>(null)
+  const [ctrlBusy, setCtrlBusy] = useState('')  // 正在执行的控制操作: start/stop
+  const [ctrlMsg, setCtrlMsg] = useState('')    // 控制操作结果提示
+
+  const loadControls = () => {
+    fetchMonitorStatus().then(setCtrlStatus)
+    fetchMonitorChanges(50).then(setCtrlChanges)
+    fetchMonitorTimeline().then(setCtrlTimeline)
+    fetchMonitorFileTypes().then(setCtrlFileTypes)
+    fetchMonitorTopFiles(10).then(setCtrlTopFiles)
+  }
+
+  // 注意：POST /monitor/report 是 Agent 变更上报通道（非报告生成），
+  // 前端不提供入口，避免注入脏数据
+  const handleMonitorAction = async (action: 'start' | 'stop') => {
+    setCtrlBusy(action)
+    setCtrlMsg('')
+    const ok = action === 'start' ? await monitorStart() : await monitorStop()
+    if (ok) {
+      setCtrlMsg(action === 'start' ? '监控已启动' : '监控已停止')
+      loadControls()  // 刷新端点数据
+      loadAll()       // 刷新快照展示
+    } else {
+      setCtrlMsg('操作失败，请重试')
+    }
+    setCtrlBusy('')
+  }
+
   useEffect(() => {
     loadAll()
+    loadControls()
     const interval = setInterval(loadAll, 10000)
     return () => clearInterval(interval)
   }, [])
@@ -108,6 +181,90 @@ export default function MonitorTab() {
           <span>未检测到 Git 仓库或 Git 未安装。代码监控需要 Git 支持。</span>
         </div>
       )}
+
+      {/* 监控控制：启动/停止 + 各独立端点数据概览 */}
+      <Card>
+        <CardHeader title="监控控制" action={
+          <span style={{
+            fontSize: 11, padding: '2px 8px', borderRadius: 10,
+            color: ctrlStatus?.monitoring ? CHART_GREEN : 'var(--text-muted)',
+            background: ctrlStatus?.monitoring ? `${CHART_GREEN}20` : 'var(--bg-tertiary)',
+          }}>
+            {ctrlStatus?.monitoring ? '● 监控中' : '○ 已停止'}
+          </span>
+        } />
+        <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => handleMonitorAction('start')}
+              disabled={ctrlBusy !== '' || ctrlStatus?.monitoring}
+              style={{
+                padding: '7px 14px', borderRadius: 6, border: 'none', fontSize: 13,
+                background: ctrlStatus?.monitoring ? 'var(--bg-tertiary)' : 'var(--accent)',
+                color: ctrlStatus?.monitoring ? 'var(--text-muted)' : '#fff',
+                cursor: ctrlBusy === '' && !ctrlStatus?.monitoring ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {ctrlBusy === 'start' ? '启动中...' : '▶ 启动监控'}
+            </button>
+            <button
+              onClick={() => handleMonitorAction('stop')}
+              disabled={ctrlBusy !== '' || !ctrlStatus?.monitoring}
+              style={{
+                padding: '7px 14px', borderRadius: 6, fontSize: 13,
+                border: '1px solid var(--danger)', background: 'none', color: 'var(--danger)',
+                cursor: ctrlBusy === '' && ctrlStatus?.monitoring ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {ctrlBusy === 'stop' ? '停止中...' : '⏹ 停止监控'}
+            </button>
+            {ctrlMsg && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{ctrlMsg}</span>}
+          </div>
+
+          {/* GET /monitor/status 状态详情 */}
+          {ctrlStatus && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+              <span>Git: {ctrlStatus.git_available ? '可用' : '不可用'}</span>
+              {ctrlStatus.start_time && <span>开始时间: {ctrlStatus.start_time.slice(0, 19).replace('T', ' ')}</span>}
+              <span>监控时长: {formatDuration(ctrlStatus.duration_seconds || 0)}</span>
+              <span>变更文件: {ctrlStatus.total_files_changed ?? 0}</span>
+            </div>
+          )}
+
+          {/* changes / timeline / file-types / top-files 端点概览 */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8 }}>
+            <OverviewItem label="已记录变更" value={ctrlChanges?.total ?? '-'} unit="条" />
+            <OverviewItem label="时间线采样" value={ctrlTimeline?.timeline?.length ?? '-'} unit="点" />
+            <OverviewItem label="文件类型" value={ctrlFileTypes?.distributions?.length ?? '-'} unit="种" />
+            <OverviewItem label="Top 文件" value={ctrlTopFiles?.top_files?.length ?? '-'} unit="个" />
+          </div>
+
+          {/* 文件类型 Top3 + 变更文件 Top3 预览 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>文件类型 Top3</div>
+              {(ctrlFileTypes?.distributions || []).slice(0, 3).map((t: any) => (
+                <div key={t.extension} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0' }}>
+                  <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>{t.extension}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{t.count} 次 · {t.percentage}%</span>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>变更文件 Top3</div>
+              {(ctrlTopFiles?.top_files || []).slice(0, 3).map((f: any) => (
+                <div key={f.filepath} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, padding: '3px 0' }}>
+                  <span style={{
+                    flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    fontFamily: 'monospace', color: 'var(--text-primary)',
+                  }} title={f.filepath}>{f.filepath}</span>
+                  <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{f.change_count} 次</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* Summary Cards */}
       <div style={{

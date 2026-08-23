@@ -104,14 +104,16 @@ frontend/                React 18 + TypeScript + React Router 前端
 │   ├── contexts/
 │   │   └── AuthContext.tsx   认证上下文
 │   ├── pages/
-│   │   ├── AgentAnalysisPage.tsx    数据分析全屏页（/agent/analysis）
-│   │   ├── AgentAutomationPage.tsx  自动化全屏页（/agent/automation）
-│   │   └── AgentKnowledgePage.tsx   知识库全屏页（/agent/knowledge）
+│   │   ├── AgentAnalysisPage.tsx    数据分析全屏页（/chat/agent/analysis）
+│   │   ├── AgentAutomationPage.tsx  自动化全屏页（/chat/agent/automation）
+│   │   └── AgentKnowledgePage.tsx   知识库全屏页（/chat/agent/knowledge）
 │   └── components/
 │       ├── ChatPage.tsx           对话界面（群聊式多 Agent 气泡）
 │       ├── LandingPage.tsx        官网公开首页（免登录，Hero/能力/特性/功能入口区/CTA；功能入口直达 /chat/agent/* 各面板）
 │       ├── LandingHeader.tsx      公开页共享 Header（首页/关于我们导航 + 主题 + 登录态按钮）
 │       ├── AboutPage.tsx          关于我（简历+博客，免登录，POSTS 数组扩展文章）
+│       ├── MedicalPage.tsx        医学与生命科学工作台（/chat/agent/medical：PubMed检索/物种导航/药物可行性）
+│       ├── CollectionRecordsPage.tsx 采集记录页（/chat/agent/records：列表/详情/删除）
 │       ├── AdminPage.tsx          后台管理（11 Tab，嵌套路由 /admin/*）
 │       ├── LoginPage.tsx          登录页（/login）
 │       ├── AgentStatus.tsx        顶部栏 Agent 在线指示灯
@@ -302,6 +304,11 @@ GitHub Actions（`.github/workflows/ci.yml`）：
 - `POST /api/v1/analysis/rfm` — RFM 分析（支持 dataset_id 或默认示例文件）
 - `GET /api/v1/analysis/dashboard/{session_id}` — 读取 Agent 缓存的仪表盘数据
 - `GET /api/v1/analysis/rfm-chart/{filename}` — Plotly 3D 图表 HTML（公开路径，iframe 嵌入）
+
+**医学 API（`api/v1/medical/router.py`，JWT 保护）：**
+- `GET /api/v1/medical/species` — 物种→MeSH 导航列表
+- `GET /api/v1/medical/search?q=&max=` — PubMed 文献检索（esearch+efetch，NCBI 失败返回 502）
+- `POST /api/v1/medical/feasibility` — 药物可行性评估（LLM，verdict 高/中/低 + 理由 + 置信度）
 
 **内置工具（Agent 可直接调用）：**
 - `list_datasets` / `preview_dataset` / `analyze_dataset` — 数据集管理

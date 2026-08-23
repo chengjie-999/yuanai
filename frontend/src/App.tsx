@@ -16,6 +16,8 @@ import AgentAutomationPage from './pages/AgentAutomationPage'
 import AgentKnowledgePage from './pages/AgentKnowledgePage'
 import RFMDashboard from './pages/RFMDashboard'
 import AnalysisDashboard from './pages/AnalysisDashboard'
+import MedicalPage from './components/MedicalPage'
+import CollectionRecordsPage from './components/CollectionRecordsPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -132,6 +134,8 @@ function AppLayout() {
             <Route path="/agent/knowledge" element={<AgentKnowledgePage />} />
             <Route path="/agent/rfm" element={<RFMDashboard />} />
             <Route path="/agent/dashboard/:sessionId" element={<AnalysisDashboard />} />
+            <Route path="/agent/medical" element={<MedicalPage />} />
+            <Route path="/agent/records" element={<CollectionRecordsPage />} />
             <Route path="/admin/*" element={
               <AdminRoute><AdminPage isAdmin={isAdmin} /></AdminRoute>
             } />

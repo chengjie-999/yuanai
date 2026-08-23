@@ -122,6 +122,8 @@ skills/
 | `/chat/agent/analysis` | 数据分析全屏面板 | 需登录 |
 | `/chat/agent/automation` | 自动化全屏面板 | 需登录 |
 | `/chat/agent/knowledge` | 知识库检索面板 | 需登录 |
+| `/chat/agent/medical` | 医学与生命科学工作台 | 需登录 |
+| `/chat/agent/records` | 采集记录 | 需登录 |
 | `/chat/admin/dashboard` | 仪表盘 | admin |
 | `/chat/admin/users` | 用户管理 | admin |
 | `/chat/admin/agents` | Agent 状态 | admin |

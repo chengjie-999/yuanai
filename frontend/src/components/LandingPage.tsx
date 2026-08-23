@@ -77,6 +77,18 @@ const ENTRIES = [
     to: '/chat/agent/automation',
   },
   {
+    icon: 'M10 2v7.5L4.5 18a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L14 9.5V2M8.5 2h7M7 16h10',
+    title: '生命科学工作台',
+    desc: 'PubMed 文献检索 · 物种导航 · 药物可行性',
+    to: '/chat/agent/medical',
+  },
+  {
+    icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8',
+    title: '采集记录',
+    desc: '网页采集结果保存记录与内容预览',
+    to: '/chat/agent/records',
+  },
+  {
     icon: 'M3 4h18v12H3zM3 20h18M7 8h.01M7 12h.01M7 16h.01',
     title: 'Agent 运行状态',
     desc: '本机 Agent 在线状态与模型配置',

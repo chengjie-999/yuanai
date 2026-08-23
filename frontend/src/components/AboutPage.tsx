@@ -439,6 +439,18 @@ export default function AboutPage() {
           .about-blog-wrap { padding-bottom: 40px; }
           .about-footer { gap: 10px; }
         }
+
+        /* 小屏手机：进一步收缩 */
+        @media (max-width: 480px) {
+          .about-hero { padding: 32px 12px; }
+          .about-hero-title { font-size: 24px; }
+          .about-hero-desc { font-size: 13px; letter-spacing: 1px; }
+          .about-hero-sub { font-size: 12px; }
+          .about-section { padding: 32px 12px 0; }
+          .about-section-title { font-size: 18px; margin-bottom: 20px; }
+          .about-contact-card { padding: 16px 18px; }
+          .about-blog-empty { padding: 36px 20px; }
+        }
       `}</style>
     </div>
   )

@@ -29,7 +29,8 @@ export default function LandingHeader() {
         </span>
       </Link>
       <nav style={{ display: 'flex', gap: 4, marginLeft: 16 }}>
-        <Link to="/" style={navStyle('/')}>首页</Link>
+        {/* 窄屏隐藏「首页」导航 — 品牌点击已可回首页，节省空间防溢出 */}
+        <Link to="/" className="landing-nav-home" style={navStyle('/')}>首页</Link>
         <Link to="/about" style={navStyle('/about')}>关于我们</Link>
       </nav>
       <div style={{ flex: 1 }} />
@@ -144,6 +145,24 @@ export default function LandingHeader() {
         /* 手机：缩小 Header 内边距 */
         @media (max-width: 800px) {
           .landing-header { padding: 0 16px; }
+        }
+
+        /* 小屏手机：紧凑布局，防横向溢出 */
+        @media (max-width: 480px) {
+          .landing-header {
+            gap: 8px;
+            padding: 0 10px;
+            height: 48px;
+          }
+          .landing-header nav { margin-left: 6px; }
+          .landing-nav-home { display: none; }
+          .landing-brand span { font-size: 16px; }
+          .landing-auth-btn {
+            height: 30px;
+            padding: 0 14px;
+            font-size: 12px;
+            border-radius: 15px;
+          }
         }
       `}</style>
     </header>

@@ -152,6 +152,9 @@ export default function LandingPage() {
         /* ============================
            官网首页 — 全局样式
            ============================ */
+        /* 锚点平滑滚动（Hero「了解能力 ↓」跳转） */
+        html { scroll-behavior: smooth; }
+
         .landing-page {
           min-height: 100vh;
           display: flex;
@@ -412,6 +415,9 @@ export default function LandingPage() {
           .landing-hero-title { font-size: 30px; }
           .landing-hero-desc { font-size: 14px; letter-spacing: 2px; }
           .landing-hero-actions { flex-direction: column; align-items: center; }
+          .landing-cta { width: min(100%, 280px); }  /* 全宽按钮，方便拇指点按 */
+          /* 光晕降模糊半径与透明度，减轻移动端 GPU 负担 */
+          .landing-orb { filter: blur(60px); opacity: 0.22; }
           .landing-section { padding: 48px 16px 0; }
           .landing-section-title { font-size: 22px; }
           .landing-agent-grid,
@@ -419,6 +425,18 @@ export default function LandingPage() {
           .landing-cta-band-wrap { padding-bottom: 48px; }
           .landing-cta-band { padding: 36px 20px; }
           .landing-footer { gap: 10px; }
+        }
+
+        /* 小屏手机：进一步收缩 */
+        @media (max-width: 480px) {
+          .landing-hero { padding: 40px 12px 48px; }
+          .landing-hero-title { font-size: 26px; }
+          .landing-hero-sub { margin-bottom: 28px; }
+          .landing-orb { filter: blur(50px); }
+          .orb-3 { display: none; }  /* 隐藏第三个光晕，减渲染量 */
+          .landing-section { padding: 40px 12px 0; }
+          .landing-section-title { font-size: 20px; }
+          .landing-cta-band { padding: 32px 16px; border-radius: 16px; }
         }
       `}</style>
     </div>

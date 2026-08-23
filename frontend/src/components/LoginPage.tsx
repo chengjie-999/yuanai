@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, Navigate } from 'react-router-dom'
+import { useNavigate, Navigate, Link } from 'react-router-dom'
 import { login } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -92,6 +92,14 @@ export default function LoginPage() {
   const FormPanel = (
     <div className="login-form-panel">
       <div className="login-form-inner">
+        {/* 返回官网首页 */}
+        <Link to="/" className="login-back-home">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          返回首页
+        </Link>
+
         {/* 移动端显示的品牌标识 */}
         <div className="login-mobile-header">
           <Mascot size={56} />
@@ -178,6 +186,13 @@ export default function LoginPage() {
             <><span className="login-spinner"/> 登录中...</>
           ) : '登  录'}
         </button>
+
+        {/* 注册提示 — 暂不开放注册，联系获取账号 */}
+        <p className="login-no-register">
+          暂不开放注册，需要账号请联系我获取
+          <br />
+          <span>微信 <b>17852428208</b> · <a href="mailto:chengjie2017020@163.com">chengjie2017020@163.com</a></span>
+        </p>
       </div>
     </div>
   )
@@ -516,6 +531,37 @@ export default function LoginPage() {
           animation: login-spin 0.6s linear infinite;
         }
         @keyframes login-spin { to { transform: rotate(360deg); } }
+
+        /* 返回首页 */
+        .login-back-home {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 13px;
+          color: var(--text-secondary);
+          text-decoration: none;
+          margin-bottom: 24px;
+          transition: color 0.15s;
+        }
+        .login-back-home:hover { color: var(--accent); }
+
+        /* 注册提示 */
+        .login-no-register {
+          margin: 20px 0 0;
+          text-align: center;
+          font-size: 12px;
+          color: var(--text-muted);
+          line-height: 1.8;
+        }
+        .login-no-register b {
+          color: var(--text-secondary);
+          font-weight: 600;
+        }
+        .login-no-register a {
+          color: var(--accent);
+          text-decoration: none;
+        }
+        .login-no-register a:hover { text-decoration: underline; }
 
         /* ============================
            响应式

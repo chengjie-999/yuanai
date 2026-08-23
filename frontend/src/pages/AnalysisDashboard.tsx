@@ -32,7 +32,7 @@ export default function AnalysisDashboard() {
   if (error) return <div style={{ padding: 60, textAlign: 'center' }}>
     <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.3 }}>📊</div>
     <div style={{ color: 'var(--danger)', fontSize: 14, marginBottom: 8 }}>{error}</div>
-    <Link to="/" style={{ color: 'var(--accent)', fontSize: 13 }}>Back to Chat</Link>
+    <Link to="/chat" style={{ color: 'var(--accent)', fontSize: 13 }}>Back to Chat</Link>
   </div>
   if (!data) return null
 
@@ -50,7 +50,7 @@ export default function AnalysisDashboard() {
   return (
     <div style={{ minHeight: '100vh', background: '#1a1a2e' }}>
       <header style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 16, background: '#16213e', borderBottom: '1px solid #0f3460' }}>
-        <Link to="/" style={{ color: '#e94560', textDecoration: 'none', fontSize: 13 }}>Back</Link>
+        <Link to="/chat" style={{ color: '#e94560', textDecoration: 'none', fontSize: 13 }}>Back</Link>
         <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>Analysis Dashboard</span>
       </header>
 

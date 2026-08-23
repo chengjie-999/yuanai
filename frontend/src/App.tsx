@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import ChatPage from './components/ChatPage'
 import LoginPage from './components/LoginPage'
+import LandingPage from './components/LandingPage'
 import AdminPage from './components/AdminPage'
 import UserPage from './components/UserPage'
 import SettingsPage from './components/SettingsPage'
@@ -27,7 +28,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { token, loading, isAdmin } = useAuth()
   if (loading) return null
   if (!token) return <Navigate to="/login" replace />
-  if (!isAdmin) return <Navigate to="/" replace />
+  if (!isAdmin) return <Navigate to="/chat" replace />
   return <>{children}</>
 }
 
@@ -40,10 +41,10 @@ function AppLayout() {
 
   const goHome = useCallback(() => {
     setResetKey((k) => k + 1)
-    if (location.pathname !== '/') navigate('/')
+    if (location.pathname !== '/chat') navigate('/chat')
   }, [location.pathname, navigate])
 
-  const isActive = (path: string) => location.pathname === path || (path === '/admin' && location.pathname.startsWith('/admin'))
+  const isActive = (path: string) => location.pathname === path || (path === '/chat/admin' && location.pathname.startsWith('/chat/admin'))
 
   const navLinkStyle = (path: string) => ({
     background: 'transparent', border: 'none',
@@ -66,9 +67,9 @@ function AppLayout() {
           小元AI
         </span>
         <nav style={{ display: 'flex', gap: 0 }}>
-          <Link to="/" style={navLinkStyle('/')}>对话</Link>
+          <Link to="/chat" style={navLinkStyle('/chat')}>对话</Link>
           {isAdmin && (
-            <Link to="/admin" style={navLinkStyle('/admin')}>管理</Link>
+            <Link to="/chat/admin" style={navLinkStyle('/chat/admin')}>管理</Link>
           )}
         </nav>
         <div style={{ flex: 1 }} />
@@ -146,8 +147,10 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <Routes>
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
+            <Route path="/chat/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AuthProvider>
       </ThemeProvider>

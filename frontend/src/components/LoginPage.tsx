@@ -47,14 +47,14 @@ export default function LoginPage() {
       if (!data?.token) { setError('登录失败，服务器返回异常'); setLoading(false); return }
       handleLogin(data.token, data.user, remember)
       if (data.user?.theme && data.user.theme !== theme) setTheme(data.user.theme)
-      navigate('/', { replace: true })
+      navigate('/chat', { replace: true })
     } catch (e: any) {
       setError(e.message || '操作失败')
     }
     setLoading(false)
   }
 
-  if (token) return <Navigate to="/" replace />
+  if (token) return <Navigate to="/chat" replace />
 
   const BrandPanel = (
     <div className="login-brand">

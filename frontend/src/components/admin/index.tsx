@@ -49,7 +49,7 @@ function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
       <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>后台管理</h2>
       <div className="admin-tab-bar" style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', paddingBottom: 0, flexWrap: 'nowrap' }}>
         {TABS.map((t) => (
-          <button key={t.key} onClick={() => navigate(`/admin/${t.key}`)} style={{
+          <button key={t.key} onClick={() => navigate(`/chat/admin/${t.key}`)} style={{
             padding: '9px 16px', borderRadius: '8px 8px 0 0', border: 'none',
             background: currentTab === t.key ? 'var(--bg-primary)' : 'transparent',
             color: currentTab === t.key ? 'var(--accent)' : 'var(--text-secondary)',

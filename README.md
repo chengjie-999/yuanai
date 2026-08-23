@@ -105,7 +105,7 @@ skills/
 
 每个 Agent 气泡上方有彩色标签和身份标识，工具调用卡片显示 Agent 归属。
 
-当统筹委派子 Agent 时，消息中会出现 **打开面板 →** 按钮，点击在新标签页打开该 Agent 的**独立全屏操作页面**（`/agent/analysis`、`/agent/automation`、`/agent/knowledge`），提供完整的数据分析、浏览器自动化、知识库检索功能。
+当统筹委派子 Agent 时，消息中会出现 **打开面板 →** 按钮，点击在新标签页打开该 Agent 的**独立全屏操作页面**（`/chat/agent/analysis`、`/chat/agent/automation`、`/chat/agent/knowledge`），提供完整的数据分析、浏览器自动化、知识库检索功能。
 
 ### 前端路由
 
@@ -113,19 +113,20 @@ skills/
 
 | 路由 | 页面 | 权限 |
 |------|------|------|
+| `/` | 官网公开首页（免登录，聊天入口） | 公开 |
 | `/login` | 登录/注册 | 公开 |
-| `/` | 对话主页 | 需登录 |
-| `/user` | 个人信息 | 需登录 |
-| `/agent` | Agent 状态 | 需登录 |
-| `/agent/analysis` | 数据分析全屏面板 | 需登录 |
-| `/agent/automation` | 自动化全屏面板 | 需登录 |
-| `/agent/knowledge` | 知识库检索面板 | 需登录 |
-| `/admin/dashboard` | 仪表盘 | admin |
-| `/admin/users` | 用户管理 | admin |
-| `/admin/agents` | Agent 状态 | admin |
-| `/admin/sessions` | 会话记录 | admin |
-| `/admin/models` | 模型配置 | admin |
-| `/admin/*` | …其他 6 个管理 Tab | admin |
+| `/chat` | 对话主页 | 需登录 |
+| `/chat/user` | 个人信息 | 需登录 |
+| `/chat/agent` | Agent 状态 | 需登录 |
+| `/chat/agent/analysis` | 数据分析全屏面板 | 需登录 |
+| `/chat/agent/automation` | 自动化全屏面板 | 需登录 |
+| `/chat/agent/knowledge` | 知识库检索面板 | 需登录 |
+| `/chat/admin/dashboard` | 仪表盘 | admin |
+| `/chat/admin/users` | 用户管理 | admin |
+| `/chat/admin/agents` | Agent 状态 | admin |
+| `/chat/admin/sessions` | 会话记录 | admin |
+| `/chat/admin/models` | 模型配置 | admin |
+| `/chat/admin/*` | …其他 6 个管理 Tab | admin |
 
 ### WebSocket 桥接
 
@@ -137,24 +138,24 @@ skills/
 
 ## 功能模块
 
-### 后台管理（仅 admin，独立路由 `/admin/*`）
+### 后台管理（仅 admin，嵌套路由 `/chat/admin/*`）
 
 12 个 Tab，每个有独立 URL：
 
 | Tab | 路由 | 内容 |
 |-----|------|------|
-| 仪表盘 | `/admin/dashboard` | 用户数/会话数/消息数/在线Agent + 30天消息量图 |
-| 用户管理 | `/admin/users` | 创建/冻结/删除用户 |
-| Agent 状态 | `/admin/agents` | 在线状态 + 4 个子 Agent 团队卡片 + 实时活动记录 |
-| 会话记录 | `/admin/sessions` | 历史会话查询与查看 |
-| 模型配置 | `/admin/models` | 已配置模型列表 |
-| 网站管理 | `/admin/websites` | 添加/删除采集网站 |
-| 数据集 | `/admin/datasets` | 上传/查看/删除数据集 |
-| 知识库 | `/admin/knowledge` | 知识库文档管理 |
-| 文件管理 | `/admin/files` | 服务器文件浏览 |
-| 工具 | `/admin/tools` | 已注册工具列表 |
-| 代码监控 | `/admin/monitor` | Git 轮询 + 代码变更趋势图 + 文件类型分布 + 实时活动日志 |
-| 设置 | `/admin/settings` | 系统设置 |
+| 仪表盘 | `/chat/admin/dashboard` | 用户数/会话数/消息数/在线Agent + 30天消息量图 |
+| 用户管理 | `/chat/admin/users` | 创建/冻结/删除用户 |
+| Agent 状态 | `/chat/admin/agents` | 在线状态 + 4 个子 Agent 团队卡片 + 实时活动记录 |
+| 会话记录 | `/chat/admin/sessions` | 历史会话查询与查看 |
+| 模型配置 | `/chat/admin/models` | 已配置模型列表 |
+| 网站管理 | `/chat/admin/websites` | 添加/删除采集网站 |
+| 数据集 | `/chat/admin/datasets` | 上传/查看/删除数据集 |
+| 知识库 | `/chat/admin/knowledge` | 知识库文档管理 |
+| 文件管理 | `/chat/admin/files` | 服务器文件浏览 |
+| 工具 | `/chat/admin/tools` | 已注册工具列表 |
+| 代码监控 | `/chat/admin/monitor` | Git 轮询 + 代码变更趋势图 + 文件类型分布 + 实时活动日志 |
+| 设置 | `/chat/admin/settings` | 系统设置 |
 
 ### 工具系统
 
@@ -301,7 +302,7 @@ skills/                  Skill 配置中心（YAML 驱动，Agent 能力自动�
 
 frontend/               React 18 + TypeScript + React Router 前端
 ├── src/
-│   ├── App.tsx               路由主入口（BrowserRouter + AuthProvider）
+│   ├── App.tsx               路由主入口（BrowserRouter + AuthProvider；/ 公开首页，/chat/* 登录后应用）
 │   ├── contexts/
 │   │   └── AuthContext.tsx   认证上下文（token/user/login/logout）
 │   ├── pages/
@@ -310,6 +311,7 @@ frontend/               React 18 + TypeScript + React Router 前端
 │   │   └── AgentKnowledgePage.tsx   知识库全屏页
 │   └── components/
 │       ├── ChatPage.tsx           对话界面（群聊式多 Agent 气泡）
+│       ├── LandingPage.tsx        官网公开首页（免登录，聊天/后台入口）
 │       ├── AdminPage.tsx          后台管理（11 Tab，嵌套路由）
 │       ├── LoginPage.tsx          登录页
 │       ├── AgentStatus.tsx        顶部栏 Agent 在线指示灯

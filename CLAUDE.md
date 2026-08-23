@@ -100,7 +100,7 @@ config/settings.py       模型 / JWT / 数据库配置
 db/                      MySQL + Redis（云端）
 frontend/                React 18 + TypeScript + React Router 前端
 ├── src/
-│   ├── App.tsx               路由主入口（BrowserRouter + AuthProvider + 导航栏）
+│   ├── App.tsx               路由主入口（BrowserRouter + AuthProvider + 导航栏；/ 公开官网首页，/chat/* 登录后应用）
 │   ├── contexts/
 │   │   └── AuthContext.tsx   认证上下文
 │   ├── pages/
@@ -109,6 +109,7 @@ frontend/                React 18 + TypeScript + React Router 前端
 │   │   └── AgentKnowledgePage.tsx   知识库全屏页（/agent/knowledge）
 │   └── components/
 │       ├── ChatPage.tsx           对话界面（群聊式多 Agent 气泡）
+│       ├── LandingPage.tsx        官网公开首页（免登录，Hero/能力/特性/CTA，入口指向 /chat）
 │       ├── AdminPage.tsx          后台管理（11 Tab，嵌套路由 /admin/*）
 │       ├── LoginPage.tsx          登录页（/login）
 │       ├── AgentStatus.tsx        顶部栏 Agent 在线指示灯
@@ -119,7 +120,7 @@ data/                   数据目录
 
 ## 对话界面
 
-唯一业务入口。欢迎页居中显示输入框，历史对话以群聊形式展示：
+业务入口。域名根路径 `/` 是**免登录的官网公开首页**（LandingPage，静态内容 + 基础 SEO），聊天页在 `/chat`（ProtectedRoute 保护，未登录跳 `/login`，登录后落 `/chat`），首页 Header 按登录态显示「进入对话」/「登录」。聊天欢迎页居中显示输入框，历史对话以群聊形式展示：
 - 蓝色 = 小元AI（统筹）
 - 棕色/橙色 = Claude Code（本机桥接）
 - 紫色 = 数据分析 Agent
@@ -132,7 +133,7 @@ data/                   数据目录
 
 ## 后台管理
 
-13 个 Tab，每个有独立 URL 路由（`/admin/:tab`）：
+13 个 Tab，每个有独立 URL 路由（`/chat/admin/:tab`，嵌套在 AppLayout 内）：
 
 | Tab | 路由 | 内容 |
 |-----|------|------|

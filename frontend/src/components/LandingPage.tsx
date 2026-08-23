@@ -1,0 +1,540 @@
+import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
+import { SUB_AGENTS } from '../config/agents'
+import Mascot from './Mascot'
+
+/* ============================================================
+   小元AI 官网首页 — 公开页面（免登录）
+   区块：Header / Hero / 多智能体能力 / 特性展示 / CTA / Footer
+   零外部依赖：内联样式 + CSS 变量 + 内联 SVG 图标
+   ============================================================ */
+
+/* 特性卡静态内容（图标为 lucide 风格 stroke 路径） */
+const FEATURES = [
+  {
+    icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
+    title: '多模型智能对话',
+    desc: '对话为统一入口，自动识别意图并路由到最合适的模型与 Agent 处理。',
+  },
+  {
+    icon: 'M18 20V10M12 20V4M6 20v-6',
+    title: '数据分析与可视化',
+    desc: '数据集管理、统计分析、图表生成，结果直达交互式 3D 分析大屏。',
+  },
+  {
+    icon: 'M21 12a9 9 0 1 1-9-9M12 2v6m0 0l-2-2m2 2l2-2',
+    title: '网页数据采集',
+    desc: '网页爬取、数据抓取、内容提取，采集结果自动沉淀为可用数据集。',
+  },
+  {
+    icon: 'M4 4h16v16H4zM9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2',
+    title: '自动化任务执行',
+    desc: '浏览器控制、题目审核、截图监控，重复性工作交给 Agent 自动完成。',
+  },
+  {
+    icon: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z',
+    title: '知识库检索',
+    desc: '向量知识库秒级语义检索，让 Agent 基于你的文档给出有据可依的回答。',
+  },
+  {
+    icon: 'M4 17l6-6-6-6M12 19h8',
+    title: 'Claude Code 桥接',
+    desc: '云端对话直连本机 Claude Code，代码编写、终端命令、Git 操作一步到位。',
+  },
+]
+
+export default function LandingPage() {
+  const { token, loading, isAdmin } = useAuth()
+  const { isDark, toggle: toggleTheme } = useTheme()
+  const [visible, setVisible] = useState(false)
+
+  // 入场淡入动画（同 LoginPage 惯例）
+  useEffect(() => {
+    requestAnimationFrame(() => setVisible(true))
+  }, [])
+
+  return (
+    <div className={`landing-page ${visible ? 'visible' : ''}`}>
+      {/* ============ Header（sticky） ============ */}
+      <header className="landing-header">
+        <Link to="/" className="landing-brand" onClick={() => window.scrollTo({ top: 0 })}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: -0.3 }}>
+            小元AI
+          </span>
+        </Link>
+        <div style={{ flex: 1 }} />
+        <button onClick={toggleTheme} aria-label={isDark ? '切换亮色模式' : '切换暗色模式'} title={isDark ? '切换亮色模式' : '切换暗色模式'}
+          className="theme-toggle landing-toggle"
+          style={{
+            width: 44, height: 24, borderRadius: 12, border: 'none',
+            background: isDark ? '#45494a' : '#d0d7de',
+            cursor: 'pointer', position: 'relative', padding: 0, flexShrink: 0,
+            transition: 'background 0.3s',
+          }}
+        >
+          <span style={{
+            position: 'absolute', top: 2, left: isDark ? 22 : 2,
+            width: 20, height: 20, borderRadius: '50%',
+            background: isDark ? '#4da6ff' : '#ffffff',
+            transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+          }}>
+            {isDark ? (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            ) : (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            )}
+          </span>
+        </button>
+        {/* 登录态按钮：加载中渲染占位，有 token 显示"进入对话"，否则"登录" */}
+        {loading ? (
+          <span className="landing-auth-btn landing-auth-placeholder" />
+        ) : token ? (
+          <Link to="/chat" className="landing-auth-btn landing-auth-btn-primary">进入对话</Link>
+        ) : (
+          <Link to="/login" className="landing-auth-btn landing-auth-btn-ghost">登录</Link>
+        )}
+      </header>
+
+      {/* ============ Hero 区 ============ */}
+      <section className="landing-hero">
+        <div className="landing-orb orb-1" />
+        <div className="landing-orb orb-2" />
+        <div className="landing-orb orb-3" />
+        <div className="landing-hero-content">
+          <div className="landing-hero-mascot">
+            <Mascot size={96} />
+          </div>
+          <h1 className="landing-hero-title">小元AI</h1>
+          <p className="landing-hero-desc">云边协同 · 多智能体协作平台</p>
+          <p className="landing-hero-sub">数据分析 / 数据采集 / 自动化 / 多智能体协作</p>
+          <div className="landing-hero-actions">
+            <Link to="/chat" className="landing-cta landing-cta-primary">进入对话</Link>
+            <a href="#agents" className="landing-cta landing-cta-ghost">了解能力 ↓</a>
+          </div>
+        </div>
+      </section>
+
+      {/* ============ 多智能体能力 ============ */}
+      <section className="landing-section" id="agents">
+        <h2 className="landing-section-title">多智能体协同</h2>
+        <p className="landing-section-desc">
+          统筹 Agent 自动识别意图，把任务委派给最擅长的专业 Agent —— 一个对话入口，一支 Agent 团队
+        </p>
+        <div className="landing-agent-grid">
+          {SUB_AGENTS.map((agent, i) => (
+            <div key={agent.key} className="landing-agent-card" style={{ animationDelay: `${i * 0.08}s` }}>
+              <span className="landing-agent-dot" style={{ background: agent.color }} />
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 6px', color: 'var(--text-primary)' }}>
+                {agent.label}
+              </h3>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+                {agent.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ============ 特性展示 ============ */}
+      <section className="landing-section" id="features">
+        <h2 className="landing-section-title">核心能力</h2>
+        <p className="landing-section-desc">从对话到执行，覆盖数据分析、数据采集与自动化全链路</p>
+        <div className="landing-feature-grid">
+          {FEATURES.map((feat, i) => (
+            <div key={feat.title} className="landing-feature-card" style={{ animationDelay: `${i * 0.06}s` }}>
+              <span className="landing-feature-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={feat.icon}/>
+                </svg>
+              </span>
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 6px', color: 'var(--text-primary)' }}>
+                {feat.title}
+              </h3>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+                {feat.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ============ CTA 区 ============ */}
+      <section className="landing-section landing-cta-band-wrap">
+        <div className="landing-cta-band">
+          <h2 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 10px', color: '#fff' }}>
+            让 AI Agent 团队为你工作
+          </h2>
+          <p style={{ fontSize: 14, opacity: 0.85, margin: '0 0 24px', color: '#fff' }}>
+            一个对话入口，驱动数据分析、数据采集与自动化任务
+          </p>
+          <Link to="/chat" className="landing-cta landing-cta-light">立即开始</Link>
+        </div>
+      </section>
+
+      {/* ============ Footer ============ */}
+      <footer className="landing-footer">
+        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>小元AI</span>
+        <span style={{ color: 'var(--text-secondary)' }}>云边协同 · 多智能体协作平台</span>
+        <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>© 2026 小元AI</span>
+        {isAdmin && (
+          <Link to="/chat/admin" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>
+            管理后台
+          </Link>
+        )}
+      </footer>
+
+      <style>{`
+        /* ============================
+           官网首页 — 全局样式
+           ============================ */
+        .landing-page {
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          background: var(--bg-primary);
+          opacity: 0;
+          transition: opacity 0.5s ease;
+        }
+        .landing-page.visible { opacity: 1; }
+
+        /* ============================
+           Header
+           ============================ */
+        .landing-header {
+          position: sticky;
+          top: 0;
+          z-index: 50;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          height: 56px;
+          padding: 0 24px;
+          background: var(--bg-primary);
+          border-bottom: 1px solid var(--border);
+        }
+        .landing-brand {
+          text-decoration: none;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+
+        /* 登录态按钮 */
+        .landing-auth-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          height: 34px;
+          padding: 0 18px;
+          border-radius: 17px;
+          font-size: 13px;
+          font-weight: 600;
+          text-decoration: none;
+          white-space: nowrap;
+          transition: all 0.15s;
+        }
+        .landing-auth-btn-primary {
+          background: var(--accent);
+          color: #fff;
+          box-shadow: 0 2px 8px rgba(25,118,210,0.25);
+        }
+        .landing-auth-btn-primary:hover {
+          box-shadow: 0 4px 16px rgba(25,118,210,0.4);
+          transform: translateY(-1px);
+        }
+        .landing-auth-btn-ghost {
+          border: 1px solid var(--border);
+          background: transparent;
+          color: var(--text-primary);
+        }
+        .landing-auth-btn-ghost:hover {
+          border-color: var(--accent);
+          color: var(--accent);
+        }
+        /* 认证加载中的占位（避免布局抖动） */
+        .landing-auth-placeholder {
+          width: 74px;
+          background: var(--border);
+          opacity: 0.4;
+          pointer-events: none;
+        }
+        [data-theme="dark"] .landing-auth-btn-primary {
+          box-shadow: 0 2px 8px rgba(77,166,255,0.2);
+        }
+        [data-theme="dark"] .landing-auth-btn-primary:hover {
+          box-shadow: 0 4px 16px rgba(77,166,255,0.35);
+        }
+
+        /* ============================
+           Hero 区
+           ============================ */
+        .landing-hero {
+          position: relative;
+          background: linear-gradient(135deg, #1565c0 0%, #0d47a1 40%, #1a237e 100%);
+          overflow: hidden;
+          padding: 88px 24px 96px;
+        }
+        [data-theme="dark"] .landing-hero {
+          background: linear-gradient(135deg, #0d2137 0%, #0a1628 40%, #0f1a2e 100%);
+        }
+
+        /* 装饰光晕（复用登录页 orb 思路） */
+        .landing-orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(80px);
+          opacity: 0.3;
+          animation: orb-float 12s ease-in-out infinite;
+        }
+        [data-theme="dark"] .landing-orb { opacity: 0.18; }
+        @keyframes orb-float {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33%  { transform: translate(30px, -20px) scale(1.05); }
+          66%  { transform: translate(-20px, 15px) scale(0.95); }
+        }
+
+        .landing-hero-content {
+          position: relative;
+          z-index: 1;
+          max-width: 640px;
+          margin: 0 auto;
+          text-align: center;
+          color: #fff;
+        }
+        .landing-hero-mascot {
+          display: inline-block;
+          margin-bottom: 20px;
+          animation: logo-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        @keyframes logo-in {
+          from { opacity: 0; transform: scale(0.8); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        .landing-hero-title {
+          font-size: 44px;
+          font-weight: 800;
+          margin: 0 0 10px;
+          letter-spacing: 2px;
+          animation: fade-up 0.6s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        .landing-hero-desc {
+          font-size: 17px;
+          opacity: 0.9;
+          margin: 0 0 14px;
+          letter-spacing: 3px;
+          animation: fade-up 0.6s 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        .landing-hero-sub {
+          font-size: 13px;
+          opacity: 0.7;
+          margin: 0 0 36px;
+          animation: fade-up 0.6s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        @keyframes fade-up {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .landing-hero-actions {
+          display: flex;
+          justify-content: center;
+          gap: 14px;
+          animation: fade-up 0.6s 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        .landing-cta {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          height: 46px;
+          padding: 0 34px;
+          border-radius: 23px;
+          font-size: 15px;
+          font-weight: 700;
+          text-decoration: none;
+          transition: all 0.15s;
+        }
+        .landing-cta-primary {
+          background: #fff;
+          color: #1565c0;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+        }
+        .landing-cta-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+        }
+        .landing-cta-ghost {
+          border: 1px solid rgba(255,255,255,0.5);
+          color: #fff;
+          background: transparent;
+        }
+        .landing-cta-ghost:hover {
+          background: rgba(255,255,255,0.12);
+        }
+
+        /* ============================
+           通用 Section
+           ============================ */
+        .landing-section {
+          max-width: 960px;
+          margin: 0 auto;
+          padding: 72px 24px 0;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .landing-section-title {
+          font-size: 26px;
+          font-weight: 800;
+          margin: 0 0 10px;
+          color: var(--text-primary);
+          text-align: center;
+        }
+        .landing-section-desc {
+          font-size: 14px;
+          color: var(--text-secondary);
+          margin: 0 auto 40px;
+          text-align: center;
+          max-width: 520px;
+          line-height: 1.7;
+        }
+
+        /* ============================
+           多智能体卡片网格
+           ============================ */
+        .landing-agent-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+          gap: 16px;
+        }
+        .landing-agent-card {
+          position: relative;
+          padding: 20px 20px 20px 24px;
+          border-radius: 12px;
+          border: 1px solid var(--border);
+          background: var(--bg-secondary);
+          transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+          animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+          overflow: hidden;
+        }
+        .landing-agent-card:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+          border-color: var(--accent);
+        }
+        [data-theme="dark"] .landing-agent-card:hover {
+          box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .landing-agent-dot {
+          position: absolute;
+          left: 0; top: 0; bottom: 0;
+          width: 4px;
+          border-radius: 0 2px 2px 0;
+        }
+
+        /* ============================
+           特性卡片网格
+           ============================ */
+        .landing-feature-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 16px;
+        }
+        .landing-feature-card {
+          padding: 24px;
+          border-radius: 12px;
+          border: 1px solid var(--border);
+          background: var(--bg-secondary);
+          transition: transform 0.15s, box-shadow 0.15s;
+          animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        .landing-feature-card:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
+        [data-theme="dark"] .landing-feature-card:hover {
+          box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .landing-feature-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 44px; height: 44px;
+          border-radius: 10px;
+          background: var(--accent-light);
+          color: var(--accent);
+          margin-bottom: 14px;
+        }
+
+        /* ============================
+           CTA 带
+           ============================ */
+        .landing-cta-band-wrap { padding-bottom: 72px; }
+        .landing-cta-band {
+          background: linear-gradient(135deg, #1565c0 0%, #1a237e 100%);
+          border-radius: 20px;
+          padding: 48px 32px;
+          text-align: center;
+        }
+        [data-theme="dark"] .landing-cta-band {
+          background: linear-gradient(135deg, #0d2137 0%, #0f1a2e 100%);
+        }
+        .landing-cta-light {
+          background: #fff;
+          color: #1565c0;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+        }
+        .landing-cta-light:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+        }
+
+        /* ============================
+           Footer
+           ============================ */
+        .landing-footer {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 16px;
+          flex-wrap: wrap;
+          padding: 28px 24px 36px;
+          border-top: 1px solid var(--border);
+          font-size: 13px;
+        }
+
+        /* ============================
+           响应式
+           ============================ */
+        /* 平板：缩小 Hero 标题 */
+        @media (max-width: 1024px) {
+          .landing-hero { padding: 64px 24px 72px; }
+          .landing-hero-title { font-size: 36px; }
+        }
+
+        /* 手机：卡片单列、Hero 收缩 */
+        @media (max-width: 800px) {
+          .landing-header { padding: 0 16px; }
+          .landing-hero { padding: 48px 16px 56px; }
+          .landing-hero-title { font-size: 30px; }
+          .landing-hero-desc { font-size: 14px; letter-spacing: 2px; }
+          .landing-hero-actions { flex-direction: column; align-items: center; }
+          .landing-section { padding: 48px 16px 0; }
+          .landing-section-title { font-size: 22px; }
+          .landing-agent-grid,
+          .landing-feature-grid { grid-template-columns: 1fr; }
+          .landing-cta-band-wrap { padding-bottom: 48px; }
+          .landing-cta-band { padding: 36px 20px; }
+          .landing-footer { gap: 10px; }
+        }
+      `}</style>
+    </div>
+  )
+}

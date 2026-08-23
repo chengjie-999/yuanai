@@ -10,6 +10,12 @@ import ZoomableImage from './chat/ZoomableImage'
 
 type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string }
 
+/* 兼容历史消息：路由迁移后旧路径 /agent/... 顶层已不存在（会落到兜底路由跳首页），渲染时统一补 /chat 前缀 */
+function normalizePageLink(p: any): string | undefined {
+  if (typeof p === 'string' && p.startsWith('/agent') && !p.startsWith('/chat')) return '/chat' + p
+  return p
+}
+
 export default function ChatPage({ user }: { user?: any }) {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [currentSid, setCurrentSid] = useState<string>('')
@@ -69,7 +75,7 @@ export default function ChatPage({ user }: { user?: any }) {
         if (typeof content === 'string' && content.startsWith('\x00META\x00')) {
           const end = content.indexOf('\x00', 6)
           if (end > 6) {
-            try { const meta = JSON.parse(content.substring(6, end)); sender = meta.s; toolCalls = meta.t; reasoning = meta.r; pageLink = meta.p } catch {}
+            try { const meta = JSON.parse(content.substring(6, end)); sender = meta.s; toolCalls = meta.t; reasoning = meta.r; pageLink = normalizePageLink(meta.p) } catch {}
             content = content.substring(end + 1)
           }
         }
@@ -96,7 +102,7 @@ export default function ChatPage({ user }: { user?: any }) {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
       } else if (event.type === 'tool_start') {
         const ns = senderFromTool(event.data.name)
-        if (ns) { currentSender = ns; const sid =sidRef.current; const link =ns === 'analysis' && sid ? '/agent/dashboard/' + sid : ns === 'automation' ? '/agent/' + ns : undefined; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
+        if (ns) { currentSender = ns; const sid =sidRef.current; const link =ns === 'analysis' && sid ? '/chat/agent/dashboard/' + sid : ns === 'automation' ? '/chat/agent/' + ns : undefined; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
         else { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
       } else if (event.type === 'tool_end') {
         const del_name =event.data.name || ''

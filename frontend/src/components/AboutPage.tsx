@@ -4,7 +4,7 @@ import LandingHeader from './LandingHeader'
 
 /* ============================================================
    关于我 — 公开简历 + 博客页（免登录，/about）
-   匿名署名：以「数据分析师 · AI 应用开发者」身份展示
+   署名用网名「程林析」（不公开真实姓名）
    博客文章：POSTS 数组内维护（静态内容，加文章改这里）
    ============================================================ */
 
@@ -42,8 +42,19 @@ const SKILLS = [
   },
 ]
 
-/* 联系方式（公开信息；邮箱如有变更请直接修改） */
-const CONTACTS = [
+/* 联系方式（公开信息；如有变更请直接修改） */
+const CONTACTS: { icon: string; label: string; value: string; href?: string }[] = [
+  {
+    icon: 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6',
+    label: '邮箱',
+    value: 'chengjie2017020@163.com',
+    href: 'mailto:chengjie2017020@163.com',
+  },
+  {
+    icon: 'M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z',
+    label: '微信',
+    value: '17852428208（手机同号）',
+  },
   {
     icon: 'M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21',
     label: 'GitHub',
@@ -55,12 +66,6 @@ const CONTACTS = [
     label: 'Gitee',
     value: 'chengjie999',
     href: 'https://gitee.com/chengjie999',
-  },
-  {
-    icon: 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6',
-    label: '邮箱',
-    value: 'chengjiestipend@163.com',
-    href: 'mailto:chengjiestipend@163.com',
   },
 ]
 
@@ -81,7 +86,7 @@ export default function AboutPage() {
 
       {/* ============ 页头 ============ */}
       <section className="about-hero">
-        <h1 className="about-hero-title">关于我</h1>
+        <h1 className="about-hero-title">程林析</h1>
         <p className="about-hero-desc">数据分析师 · AI 应用开发者 · 小元AI 作者</p>
         <p className="about-hero-sub">用代码做分析，用 Agent 做自动化 —— 喜欢 Python，追求简洁而清晰的设计</p>
       </section>
@@ -158,19 +163,29 @@ export default function AboutPage() {
       <section className="about-section">
         <h2 className="about-section-title">联系方式</h2>
         <div className="about-contact-grid">
-          {CONTACTS.map((c) => (
-            <a key={c.label} href={c.href} target="_blank" rel="noopener noreferrer" className="about-contact-card">
-              <span className="about-skill-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d={c.icon}/>
-                </svg>
-              </span>
-              <div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.label}</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{c.value}</div>
-              </div>
-            </a>
-          ))}
+          {CONTACTS.map((c) => {
+            const inner = (
+              <>
+                <span className="about-skill-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d={c.icon}/>
+                  </svg>
+                </span>
+                <div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.label}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{c.value}</div>
+                </div>
+              </>
+            )
+            /* 有链接（邮箱/GitHub/Gitee）渲染 <a>，微信无链接渲染纯文本卡片 */
+            return c.href ? (
+              <a key={c.label} href={c.href} target="_blank" rel="noopener noreferrer" className="about-contact-card">
+                {inner}
+              </a>
+            ) : (
+              <div key={c.label} className="about-contact-card">{inner}</div>
+            )
+          })}
         </div>
       </section>
 

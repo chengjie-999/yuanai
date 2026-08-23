@@ -5,6 +5,7 @@ import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import ChatPage from './components/ChatPage'
 import LoginPage from './components/LoginPage'
 import LandingPage from './components/LandingPage'
+import AboutPage from './components/AboutPage'
 import AdminPage from './components/AdminPage'
 import UserPage from './components/UserPage'
 import SettingsPage from './components/SettingsPage'
@@ -148,6 +149,7 @@ export default function App() {
         <AuthProvider>
           <Routes>
             <Route path="/" element={<LandingPage />} />
+            <Route path="/about" element={<AboutPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/chat/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />

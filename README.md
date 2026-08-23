@@ -114,6 +114,7 @@ skills/
 | 路由 | 页面 | 权限 |
 |------|------|------|
 | `/` | 官网公开首页（免登录，聊天入口） | 公开 |
+| `/about` | 关于我（简历 + 博客，免登录） | 公开 |
 | `/login` | 登录/注册 | 公开 |
 | `/chat` | 对话主页 | 需登录 |
 | `/chat/user` | 个人信息 | 需登录 |
@@ -312,6 +313,8 @@ frontend/               React 18 + TypeScript + React Router 前端
 │   └── components/
 │       ├── ChatPage.tsx           对话界面（群聊式多 Agent 气泡）
 │       ├── LandingPage.tsx        官网公开首页（免登录，聊天/后台入口）
+│       ├── LandingHeader.tsx      公开页共享 Header（导航/主题/登录态按钮）
+│       ├── AboutPage.tsx          关于我（简历 + 博客，免登录）
 │       ├── AdminPage.tsx          后台管理（11 Tab，嵌套路由）
 │       ├── LoginPage.tsx          登录页
 │       ├── AgentStatus.tsx        顶部栏 Agent 在线指示灯

@@ -312,7 +312,7 @@ frontend/               React 18 + TypeScript + React Router 前端
 │   │   └── AgentKnowledgePage.tsx   知识库全屏页
 │   └── components/
 │       ├── ChatPage.tsx           对话界面（群聊式多 Agent 气泡）
-│       ├── LandingPage.tsx        官网公开首页（免登录，聊天/后台入口）
+│       ├── LandingPage.tsx        官网公开首页（免登录，聊天/后台/功能面板入口）
 │       ├── LandingHeader.tsx      公开页共享 Header（导航/主题/登录态按钮）
 │       ├── AboutPage.tsx          关于我（简历 + 博客，免登录）
 │       ├── AdminPage.tsx          后台管理（11 Tab，嵌套路由）

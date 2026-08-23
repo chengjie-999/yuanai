@@ -11,6 +11,7 @@ export const SUB_AGENTS = [
   { key: 'analysis', label: '数据分析 Agent', desc: '数据集管理、统计分析、图表生成', color: '#7b1fa2' },
   { key: 'collection', label: '数据采集 Agent', desc: '网页爬取、数据抓取、内容提取', color: '#00695c' },
   { key: 'automation', label: '自动化 Agent', desc: '浏览器控制、题目审核、截图监控', color: '#e65100' },
+  { key: 'medical', label: '生命科学 Agent', desc: '基因表达分析 · 火山图 · PubMed 文献检索', color: '#00897b' },
   { key: 'claude', label: 'Claude Code', desc: '本机代码编写、终端命令、Git 操作', color: '#d97757' },
 ]
 

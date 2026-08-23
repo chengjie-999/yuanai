@@ -34,6 +34,11 @@ const FEATURES = [
     desc: '浏览器控制、题目审核、截图监控，重复性工作交给 Agent 自动完成。',
   },
   {
+    icon: 'M10 2v7.5L4.5 18a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L14 9.5V2M8.5 2h7M7 16h10',
+    title: '生命科学分析',
+    desc: '基因表达分布分析、火山图、PubMed 文献检索、药物可行性评估。',
+  },
+  {
     icon: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z',
     title: '知识库检索',
     desc: '向量知识库秒级语义检索，让 Agent 基于你的文档给出有据可依的回答。',
@@ -42,6 +47,40 @@ const FEATURES = [
     icon: 'M4 17l6-6-6-6M12 19h8',
     title: 'Claude Code 桥接',
     desc: '云端对话直连本机 Claude Code，代码编写、终端命令、Git 操作一步到位。',
+  },
+]
+
+/* 功能入口 — 指向已实现的独立功能页（登录后直达） */
+const ENTRIES = [
+  {
+    icon: 'M18 20V10M12 20V4M6 20v-6',
+    title: '数据分析工作台',
+    desc: '数据集上传、一键统计分析、图表生成',
+    to: '/chat/agent/analysis',
+  },
+  {
+    icon: 'M21.21 15.89A10 10 0 1 1 8 2.83M22 12A10 10 0 0 0 12 2v10z',
+    title: 'RFM 客户分群大屏',
+    desc: '交互式 3D 客户价值分群散点',
+    to: '/chat/agent/rfm',
+  },
+  {
+    icon: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z',
+    title: '知识库检索',
+    desc: '文档知识库语义检索与查询',
+    to: '/chat/agent/knowledge',
+  },
+  {
+    icon: 'M4 4h16v16H4zM9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2',
+    title: '浏览器自动化',
+    desc: '浏览器控制、题目审核、截图监控',
+    to: '/chat/agent/automation',
+  },
+  {
+    icon: 'M3 4h18v12H3zM3 20h18M7 8h.01M7 12h.01M7 16h.01',
+    title: 'Agent 运行状态',
+    desc: '本机 Agent 在线状态与模型配置',
+    to: '/chat/agent',
   },
 ]
 
@@ -70,7 +109,7 @@ export default function LandingPage() {
           </div>
           <h1 className="landing-hero-title">小元AI</h1>
           <p className="landing-hero-desc">云边协同 · 多智能体协作平台</p>
-          <p className="landing-hero-sub">数据分析 / 数据采集 / 自动化 / 多智能体协作</p>
+          <p className="landing-hero-sub">数据分析 / 数据采集 / 自动化 / 生命科学 / 多智能体协作</p>
           <div className="landing-hero-actions">
             <Link to="/chat" className="landing-cta landing-cta-primary">进入对话</Link>
             <a href="#agents" className="landing-cta landing-cta-ghost">了解能力 ↓</a>
@@ -118,6 +157,34 @@ export default function LandingPage() {
                 {feat.desc}
               </p>
             </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ============ 功能入口（登录后直达各功能面板） ============ */}
+      <section className="landing-section" id="apps">
+        <h2 className="landing-section-title">功能入口</h2>
+        <p className="landing-section-desc">登录后直达各功能面板 —— 分析大屏、知识库、自动化等</p>
+        <div className="landing-entry-grid">
+          {ENTRIES.map((entry, i) => (
+            <Link key={entry.title} to={entry.to} className="landing-entry-card" style={{ animationDelay: `${i * 0.06}s` }}>
+              <span className="landing-feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={entry.icon}/>
+                </svg>
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 4px', color: 'var(--text-primary)' }}>
+                  {entry.title}
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                  {entry.desc}
+                </p>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="landing-entry-arrow">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </Link>
           ))}
         </div>
       </section>
@@ -361,6 +428,46 @@ export default function LandingPage() {
           background: var(--accent-light);
           color: var(--accent);
           margin-bottom: 14px;
+          flex-shrink: 0;
+        }
+
+        /* ============================
+           功能入口卡片
+           ============================ */
+        .landing-entry-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 14px;
+        }
+        .landing-entry-card {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 18px 20px;
+          border-radius: 12px;
+          border: 1px solid var(--border);
+          background: var(--bg-secondary);
+          text-decoration: none;
+          transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+          animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        .landing-entry-card .landing-feature-icon { margin-bottom: 0; }
+        .landing-entry-card:hover {
+          transform: translateY(-3px);
+          border-color: var(--accent);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
+        [data-theme="dark"] .landing-entry-card:hover {
+          box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .landing-entry-arrow {
+          color: var(--text-muted);
+          flex-shrink: 0;
+          transition: transform 0.15s, color 0.15s;
+        }
+        .landing-entry-card:hover .landing-entry-arrow {
+          transform: translateX(3px);
+          color: var(--accent);
         }
 
         /* ============================
@@ -421,7 +528,8 @@ export default function LandingPage() {
           .landing-section { padding: 48px 16px 0; }
           .landing-section-title { font-size: 22px; }
           .landing-agent-grid,
-          .landing-feature-grid { grid-template-columns: 1fr; }
+          .landing-feature-grid,
+          .landing-entry-grid { grid-template-columns: 1fr; }
           .landing-cta-band-wrap { padding-bottom: 48px; }
           .landing-cta-band { padding: 36px 20px; }
           .landing-footer { gap: 10px; }

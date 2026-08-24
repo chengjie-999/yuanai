@@ -92,6 +92,14 @@ export default function AgentDevicesTab() {
     if (f) uploadExeFile(f)
   }
 
+  // 上传期间刷新/关闭页面时弹浏览器确认，防止手滑中断
+  useEffect(() => {
+    if (!uploadBusy) return
+    const guard = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', guard)
+    return () => window.removeEventListener('beforeunload', guard)
+  }, [uploadBusy])
+
   const fetchDevices = async () => {
     setError('')
     try {
@@ -197,6 +205,7 @@ export default function AgentDevicesTab() {
           {uploadMsg && <div style={{ fontSize: 12, marginTop: 8, color: uploadMsg.startsWith('✓') ? 'var(--success)' : 'var(--danger)' }}>{uploadMsg}</div>}
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
             版本号自动生成 · 上传后立即生效：所有已安装的客户端会在托盘里提示「发现新版本」，点一下自动更新
+            <br />上传中请勿刷新或关闭页面（切换到其他页不影响，会在后台继续上传）
           </div>
         </div>
       </Card>

@@ -1,4 +1,4 @@
-import { useState, useCallback, lazy, Suspense } from 'react'
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
@@ -168,20 +168,45 @@ function AppLayout() {
   )
 }
 
+/* 预取常用页面代码：页面加载完成后空闲时间提前下载，切换页面时秒开 */
+function AppInner() {
+  const { token, isAdmin } = useAuth()
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (token) {
+        // 登录用户：预取聊天/个人/设置（admin 再预取后台）
+        import('./components/ChatPage')
+        import('./components/UserPage')
+        import('./components/SettingsPage')
+        if (isAdmin) import('./components/AdminPage')
+      } else {
+        // 访客：预取关于我与登录页（首页已加载）
+        import('./components/AboutPage')
+        import('./components/LoginPage')
+      }
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [token, isAdmin])
+
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/chat/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
-          <Suspense fallback={<PageLoading />}>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/chat/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-          </Suspense>
+          <AppInner />
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>

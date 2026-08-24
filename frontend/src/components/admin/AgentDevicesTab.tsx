@@ -49,6 +49,16 @@ export default function AgentDevicesTab() {
   const [newCodes, setNewCodes] = useState<string[]>([])
   const [bindUserId, setBindUserId] = useState<Record<number, string>>({})
 
+  // ---- 已发布安装包信息（version.json） ----
+  const [pkgInfo, setPkgInfo] = useState<{ version: string; size: number } | null>(null)
+
+  const loadPkgInfo = () => {
+    fetch('/downloads/version.json', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.version) setPkgInfo(d); else setPkgInfo(null) })
+      .catch(() => setPkgInfo(null))
+  }
+
   // ---- 安装包上传（拖拽 + XHR 带进度，发布即分发） ----
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadPct, setUploadPct] = useState(0)
@@ -71,7 +81,7 @@ export default function AgentDevicesTab() {
       setUploadBusy(false)
       try {
         const data = JSON.parse(xhr.responseText)
-        if (xhr.status === 200 && data.ok) setUploadMsg(`✓ 已发布 v${data.version}（${(data.size / 1024 / 1024).toFixed(0)}MB）`)
+        if (xhr.status === 200 && data.ok) { setUploadMsg(`✓ 已发布 v${data.version}（${(data.size / 1024 / 1024).toFixed(0)}MB）`); loadPkgInfo() }
         else setUploadMsg(data.detail || '上传失败')
       } catch { setUploadMsg(`上传失败 HTTP ${xhr.status}`) }
     }
@@ -112,6 +122,7 @@ export default function AgentDevicesTab() {
 
   useEffect(() => {
     fetchDevices()
+    loadPkgInfo()
     const t = setInterval(fetchDevices, 10000)
     return () => clearInterval(t)
   }, [])
@@ -168,6 +179,13 @@ export default function AgentDevicesTab() {
             </svg>
             下载（Windows）
           </a>
+          {pkgInfo ? (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              当前版本 <b style={{ color: 'var(--text-primary)' }}>v{pkgInfo.version}</b> · {(pkgInfo.size / 1024 / 1024).toFixed(0)}MB
+            </span>
+          ) : (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>尚未发布安装包</span>
+          )}
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             用户使用流程：下载 → 双击运行 → 弹出窗口粘贴安装码 → 完成（托盘常驻，可选开关各 Agent）
           </span>

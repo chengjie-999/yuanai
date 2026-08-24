@@ -208,14 +208,27 @@ class AgentTray:
         return base
 
     def _check_update_once(self, manual: bool = False):
-        """请求云端 version.json 比对版本；manual=True 为用户手动触发"""
+        """请求云端 version.json 比对（优先比文件大小，其次比版本号）；manual=True 为用户手动触发"""
         import urllib.request
         url = f"{self._version_base_url()}/downloads/version.json"
         with urllib.request.urlopen(url, timeout=8) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         latest = str(data.get("version", ""))
-        if latest and latest != AGENT_VERSION:
-            self._update_available = latest
+
+        # 文件大小优先：更新后 exe 被替换成云端同一文件，大小一致即判定为最新
+        remote_size = data.get("size")
+        has_new = False
+        if remote_size:
+            try:
+                local_size = os.path.getsize(sys.executable)
+                has_new = int(remote_size) != local_size
+            except OSError:
+                has_new = False
+        elif latest:
+            has_new = latest != AGENT_VERSION
+
+        if has_new:
+            self._update_available = latest or f"({remote_size})"
             try:
                 self._icon.update_menu()
             except Exception:

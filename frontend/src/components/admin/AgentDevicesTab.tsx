@@ -146,7 +146,9 @@ export default function AgentDevicesTab() {
                   fontFamily: 'monospace', fontSize: 14, padding: '6px 10px',
                   background: 'var(--bg-tertiary)', borderRadius: 6, letterSpacing: 1,
                 }}>{c}</span>
-                <CopyBtn text={installCommand(c)} />
+                {/* 傻瓜模式：默认复制纯安装码（exe 弹窗/托盘重注册直接用）；命令行方式保留备选 */}
+                <CopyBtn text={c} label="复制安装码" />
+                <CopyBtn text={installCommand(c)} label="复制命令行" />
               </div>
             ))}
           </div>
@@ -171,8 +173,9 @@ export default function AgentDevicesTab() {
                   <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: 12 }}>
                     {d.install_code}
                     {!d.registered && (
-                      <div style={{ marginTop: 4 }}>
-                        <CopyBtn text={installCommand(d.install_code)} />
+                      <div style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <CopyBtn text={d.install_code} label="复制安装码" />
+                        <CopyBtn text={installCommand(d.install_code)} label="复制命令行" />
                       </div>
                     )}
                   </td>

@@ -70,6 +70,7 @@ services:
         condition: service_healthy
     volumes:
       - app_data:/app/data
+      - ./downloads:/app/downloads
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s

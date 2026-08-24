@@ -64,3 +64,8 @@ utils/excel_env/
 # Excel/Office temp files
 ~$*.xlsx
 ~$*.docx
+
+# Agent 安装包运行时产物（网页上传生成，不入库）
+downloads/version.json
+downloads/yuanai-agent.exe
+downloads/*.uploading

@@ -1,8 +1,10 @@
 import base64
 from datetime import datetime, timedelta
 import os
+import json
+import shutil
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import Response
 from db.session import get_db
 from api.v1.middleware import require_admin
@@ -134,6 +136,55 @@ async def mint_agent_token(req: AgentTokenRequest, request: Request):
         return {"token": token, "user_id": user.id, "expires_days": req.expires_days}
     finally:
         sess.close()
+
+
+# ===================== Agent 安装包发布（网页上传，自动更新分发） =====================
+
+@router.post("/agent-exe-upload")
+async def upload_agent_exe(request: Request, version: str = Form(...), file: UploadFile = File(...)):
+    """上传本地 Agent 安装包（仅 admin）：写入 downloads/yuanai-agent.exe 并更新 version.json。
+    发布流程：打包 → 网页上传 → 所有客户端按 version.json 自动检查更新。"""
+    require_admin(request)
+    if not version.strip():
+        raise HTTPException(status_code=400, detail="请填写版本号")
+    if not (file.filename or "").lower().endswith(".exe"):
+        raise HTTPException(status_code=400, detail="仅支持 .exe 安装包")
+
+    downloads_dir = os.path.join(root_path(), "downloads")
+    os.makedirs(downloads_dir, exist_ok=True)
+    exe_path = os.path.join(downloads_dir, "yuanai-agent.exe")
+    tmp_path = exe_path + ".uploading"
+
+    # 流式分块写入（200MB 级文件不占内存）
+    size = 0
+    try:
+        with open(tmp_path, "wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+                size += len(chunk)
+                if size > 500 * 1024 * 1024:
+                    raise HTTPException(status_code=400, detail="安装包超过 500MB 上限")
+        if size == 0:
+            raise HTTPException(status_code=400, detail="文件为空")
+
+        # 原子替换 + 更新版本信息（version.json 供客户端自动更新检查）
+        os.replace(tmp_path, exe_path)
+        with open(os.path.join(downloads_dir, "version.json"), "w", encoding="utf-8") as f:
+            json.dump({
+                "version": version.strip(),
+                "exe": "/downloads/yuanai-agent.exe",
+                "size": size,
+            }, f, ensure_ascii=False, indent=2)
+        return {"ok": True, "version": version.strip(), "size": size}
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 # ===================== Agent 设备管理（机器识别） =====================

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, headers, API_BASE } from './shared'
+import { getToken } from '../../api'
 
 // 本机开发 → 代理到 8000；线上 → 当前站点 wss
 const getServerUrl = () =>
@@ -47,6 +48,40 @@ export default function AgentDevicesTab() {
   const [codeCount, setCodeCount] = useState(1)
   const [newCodes, setNewCodes] = useState<string[]>([])
   const [bindUserId, setBindUserId] = useState<Record<number, string>>({})
+
+  // ---- 安装包上传（XHR 带进度，发布即分发） ----
+  const [uploadVer, setUploadVer] = useState('')
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [uploadPct, setUploadPct] = useState(0)
+  const [uploadMsg, setUploadMsg] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const handleUploadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (!uploadVer.trim()) { setUploadMsg('请先填写版本号'); return }
+    setUploadBusy(true); setUploadPct(0); setUploadMsg('')
+    const fd = new FormData()
+    fd.append('version', uploadVer.trim())
+    fd.append('file', f)
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_BASE}/admin/agent-exe-upload`)
+    xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) setUploadPct(Math.round((ev.loaded / ev.total) * 100))
+    }
+    xhr.onload = () => {
+      setUploadBusy(false)
+      try {
+        const data = JSON.parse(xhr.responseText)
+        if (xhr.status === 200 && data.ok) setUploadMsg(`✓ 已发布 v${data.version}（${(data.size / 1024 / 1024).toFixed(0)}MB）`)
+        else setUploadMsg(data.detail || '上传失败')
+      } catch { setUploadMsg(`上传失败 HTTP ${xhr.status}`) }
+    }
+    xhr.onerror = () => { setUploadBusy(false); setUploadMsg('上传失败，网络错误') }
+    xhr.send(fd)
+  }
 
   const fetchDevices = async () => {
     setError('')
@@ -102,9 +137,9 @@ export default function AgentDevicesTab() {
     <>
       {error && <ErrorMsg msg={error} onRetry={fetchDevices} />}
 
-      {/* 下载安装包（傻瓜流程：下载 → 双击 → 弹窗输安装码） */}
+      {/* 安装包发布：下载 + 上传新版本（上传即发布，客户端自动更新） */}
       <Card>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>下载本机 Agent 安装包</div>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>本机 Agent 安装包</div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <a href="/downloads/yuanai-agent.exe" style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -119,6 +154,28 @@ export default function AgentDevicesTab() {
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             用户使用流程：下载 → 双击运行 → 弹出窗口粘贴安装码 → 完成（托盘常驻，可选开关各 Agent）
           </span>
+        </div>
+        {/* 上传新版本（发布即分发：客户端托盘自动检查 version.json 更新） */}
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px dashed var(--border)' }}>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: 'var(--text-primary)' }}>发布新版本</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={uploadVer} onChange={(e) => setUploadVer(e.target.value)}
+              placeholder="版本号（如 1.1.0）" style={{ ...inputStyle, width: 170 }} />
+            <input ref={fileRef} type="file" accept=".exe" hidden onChange={handleUploadFile} />
+            <button onClick={() => fileRef.current?.click()} disabled={uploadBusy}
+              style={{ ...btnPrimary, background: uploadBusy ? 'var(--text-muted)' : 'var(--accent)', cursor: uploadBusy ? 'not-allowed' : 'pointer' }}>
+              {uploadBusy ? `上传中 ${uploadPct}%` : '选择 exe 上传'}
+            </button>
+            {uploadMsg && <span style={{ fontSize: 12, color: uploadMsg.startsWith('✓') ? 'var(--success)' : 'var(--danger)' }}>{uploadMsg}</span>}
+          </div>
+          {uploadBusy && (
+            <div style={{ marginTop: 8, height: 6, borderRadius: 3, background: 'var(--bg-tertiary)', overflow: 'hidden', maxWidth: 420 }}>
+              <div style={{ height: '100%', width: `${uploadPct}%`, background: 'var(--accent)', transition: 'width 0.2s' }} />
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+            上传后立即生效：所有已安装的客户端会在托盘里提示「发现新版本」，点一下自动更新
+          </div>
         </div>
       </Card>
 

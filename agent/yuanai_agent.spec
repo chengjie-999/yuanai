@@ -56,7 +56,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='小元AI Agent',
+    name='yuanai-agent',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

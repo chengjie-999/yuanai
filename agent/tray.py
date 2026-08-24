@@ -9,8 +9,10 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -20,6 +22,9 @@ from pystray import MenuItem
 from PIL import Image, ImageDraw
 
 logger = logging.getLogger("agent.tray")
+
+# 当前版本（打包发布时更新；云端 downloads/version.json 由网页上传时写入）
+AGENT_VERSION = "1.0.0"
 
 # 状态颜色
 GREEN = (76, 175, 80)
@@ -161,6 +166,7 @@ class AgentTray:
         self._loop = None
         self._client = None
         self._restart = False  # 开关切换后触发重连
+        self._update_available = None  # 云端最新版本号（发现新版后设置）
 
     def run(self):
         """主入口：启动托盘（阻塞主线程）"""
@@ -178,8 +184,86 @@ class AgentTray:
         asyncio_thread = threading.Thread(target=self._start_agent_loop, daemon=True)
         asyncio_thread.start()
 
+        # 后台线程检查更新（启动 5 秒后，此后每 6 小时一次）
+        update_thread = threading.Thread(target=self._update_check_loop, daemon=True)
+        update_thread.start()
+
         # 托盘在主线程运行（阻塞）
         self._icon.run()
+
+    # ==================== 自动更新 ====================
+
+    def _update_check_loop(self):
+        """周期性检查云端 version.json，发现新版时更新托盘菜单提示"""
+        time.sleep(5)
+        while self._running:
+            try:
+                self._check_update_once()
+            except Exception as e:
+                logger.warning("检查更新失败: %s", e)
+            time.sleep(6 * 3600)  # 每 6 小时查一次
+
+    def _version_base_url(self) -> str:
+        base = self.server_url.replace("ws://", "http://").replace("wss://", "https://").rstrip("/")
+        return base
+
+    def _check_update_once(self, manual: bool = False):
+        """请求云端 version.json 比对版本；manual=True 为用户手动触发"""
+        import urllib.request
+        url = f"{self._version_base_url()}/downloads/version.json"
+        with urllib.request.urlopen(url, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        latest = str(data.get("version", ""))
+        if latest and latest != AGENT_VERSION:
+            self._update_available = latest
+            try:
+                self._icon.update_menu()
+            except Exception:
+                pass
+            self._icon.notify(f"发现新版本 v{latest}，托盘菜单点击「立即更新」即可自动升级", "小元AI Agent")
+        elif manual:
+            self._icon.notify(f"已是最新版本 v{AGENT_VERSION}", "小元AI Agent")
+
+    def _do_update(self):
+        """一键更新：下载新 exe → 写自替换脚本 → 退出自身 → 脚本替换并重启"""
+        import urllib.request
+        new_exe = os.path.join(_config_file().parent, "yuanai-agent.new")
+        bat = os.path.join(_config_file().parent, "update.bat")
+        exe_path = sys.executable
+        url = f"{self._version_base_url()}/downloads/yuanai-agent.exe"
+        self._icon.title = "小元AI Agent - 下载更新中..."
+
+        try:
+            # 分块下载（约 200MB）
+            with urllib.request.urlopen(url, timeout=120) as resp, open(new_exe, "wb") as out:
+                while True:
+                    chunk = resp.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+
+            # 自替换脚本：等待本进程退出 → 覆盖 → 重启 → 自删
+            with open(bat, "w", encoding="gbk") as f:
+                f.write(
+                    "@echo off\n"
+                    ":retry\n"
+                    "timeout /t 2 /nobreak >nul\n"
+                    f'copy /y "{new_exe}" "{exe_path}" >nul 2>&1\n'
+                    "if errorlevel 1 goto retry\n"
+                    f'if exist "{new_exe}" del "{new_exe}"\n'
+                    f'start "" "{exe_path}"\n'
+                    'del "%~f0"\n'
+                )
+            subprocess.Popen([bat], creationflags=0x08000000, close_fds=True)
+            self._running = False
+            self._icon.stop()
+        except Exception as e:
+            logger.error("自动更新失败: %s", e)
+            self._icon.title = f"小元AI Agent - 更新失败"
+            try:
+                self._icon.notify(f"更新失败：{e}\n请稍后重试或手动下载新版", "小元AI Agent")
+            except Exception:
+                pass
 
     def _build_menu(self):
         def open_web():
@@ -216,11 +300,21 @@ class AgentTray:
         items += [
             TrayMenu.SEPARATOR,
             MenuItem("开机自启", self._on_autostart_toggle, checked=lambda item: autostart_enabled()),
+            MenuItem("检查更新", lambda icon, item: threading.Thread(target=self._check_update_once, args=(True,), daemon=True).start()),
+        ]
+        # 发现新版时追加「立即更新」入口
+        if self._update_available:
+            items.append(MenuItem(f"立即更新 v{self._update_available}", self._on_update_click))
+        items += [
             MenuItem("打开 Web 对话", on_open_web, default=True),
             MenuItem("重新注册（换安装码）", on_reinstall),
             MenuItem("退出 Agent", on_exit),
         ]
         return TrayMenu(*items)
+
+    def _on_update_click(self, icon, item):
+        """点击立即更新：后台线程执行下载+自替换"""
+        threading.Thread(target=self._do_update, daemon=True).start()
 
     def _on_autostart_toggle(self, icon, item):
         """切换开机自启（exe 发布版有效）"""

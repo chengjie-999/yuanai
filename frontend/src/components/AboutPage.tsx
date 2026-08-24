@@ -3,9 +3,8 @@ import { Link } from 'react-router-dom'
 import LandingHeader from './LandingHeader'
 
 /* ============================================================
-   关于我 — 公开简历 + 博客页（免登录，/about）
+   关于我 — 公开简历页（免登录，/about）
    署名用网名「程林析」（不公开真实姓名）
-   博客文章：POSTS 数组内维护（静态内容，加文章改这里）
    ============================================================ */
 
 /* 技能栈（静态内容） */
@@ -68,9 +67,6 @@ const CONTACTS: { icon: string; label: string; value: string; href?: string }[] 
     href: 'https://gitee.com/chengjie999',
   },
 ]
-
-/* 博客文章列表（静态内容；新增文章往这里加 {title, date, desc} 即可） */
-const POSTS: { title: string; date: string; desc: string }[] = []
 
 export default function AboutPage() {
   const [visible, setVisible] = useState(false)
@@ -160,7 +156,7 @@ export default function AboutPage() {
       </section>
 
       {/* ============ 联系方式 ============ */}
-      <section className="about-section">
+      <section className="about-section about-last">
         <h2 className="about-section-title">联系方式</h2>
         <div className="about-contact-grid">
           {CONTACTS.map((c) => {
@@ -187,29 +183,6 @@ export default function AboutPage() {
             )
           })}
         </div>
-      </section>
-
-      {/* ============ 博客 ============ */}
-      <section className="about-section about-blog-wrap">
-        <h2 className="about-section-title">博客</h2>
-        {POSTS.length === 0 ? (
-          <div className="about-blog-empty">
-            <span style={{ fontSize: 32, opacity: 0.35 }}>📝</span>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 14 }}>文章整理中，敬请期待</p>
-          </div>
-        ) : (
-          <div className="about-blog-list">
-            {POSTS.map((post) => (
-              <div key={post.title} className="about-blog-item">
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{post.title}</h3>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{post.date}</span>
-                </div>
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '6px 0 0', lineHeight: 1.6 }}>{post.desc}</p>
-              </div>
-            ))}
-          </div>
-        )}
       </section>
 
       {/* ============ Footer ============ */}
@@ -285,6 +258,7 @@ export default function AboutPage() {
           color: var(--text-primary);
           text-align: center;
         }
+        .about-last { padding-bottom: 56px; }
 
         /* 简介卡片 */
         .about-intro-card {
@@ -387,31 +361,6 @@ export default function AboutPage() {
           box-shadow: 0 8px 24px rgba(0,0,0,0.4);
         }
 
-        /* 博客区 */
-        .about-blog-wrap { padding-bottom: 56px; }
-        .about-blog-empty {
-          padding: 48px;
-          border-radius: 14px;
-          border: 1px dashed var(--border);
-          background: var(--bg-secondary);
-          text-align: center;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 12px;
-        }
-        .about-blog-list {
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-        }
-        .about-blog-item {
-          padding: 20px 24px;
-          border-radius: 12px;
-          border: 1px solid var(--border);
-          background: var(--bg-secondary);
-        }
-
         /* Footer */
         .about-footer {
           display: flex;
@@ -436,7 +385,7 @@ export default function AboutPage() {
           .about-contact-grid { grid-template-columns: 1fr; }
           .about-intro-card,
           .about-project-card { padding: 22px 20px; }
-          .about-blog-wrap { padding-bottom: 40px; }
+          .about-last { padding-bottom: 40px; }
           .about-footer { gap: 10px; }
         }
 
@@ -449,7 +398,6 @@ export default function AboutPage() {
           .about-section { padding: 32px 12px 0; }
           .about-section-title { font-size: 18px; margin-bottom: 20px; }
           .about-contact-card { padding: 16px 18px; }
-          .about-blog-empty { padding: 36px 20px; }
         }
       `}</style>
     </div>

@@ -115,7 +115,7 @@ frontend/                React 18 + TypeScript + React Router 前端
 │       ├── ChatPage.tsx           对话界面（群聊式多 Agent 气泡）
 │       ├── LandingPage.tsx        官网公开首页（免登录，Hero/能力/特性/功能入口区/CTA；功能入口直达 /chat/agent/* 各面板）
 │       ├── LandingHeader.tsx      公开页共享 Header（首页/关于我们导航 + 主题 + 登录态按钮）
-│       ├── AboutPage.tsx          关于我（简历+博客，免登录，POSTS 数组扩展文章）
+│       ├── AboutPage.tsx          关于我（个人简历，免登录）
 │       ├── MedicalPage.tsx        医学与生命科学工作台（/chat/agent/medical：PubMed检索/物种导航/药物可行性）
 │       ├── CollectionRecordsPage.tsx 采集记录页（/chat/agent/records：列表/详情/删除）
 │       ├── AdminPage.tsx          后台管理（11 Tab，嵌套路由 /admin/*）
@@ -128,7 +128,7 @@ data/                   数据目录
 
 ## 对话界面
 
-业务入口。域名根路径 `/` 是**免登录的官网公开首页**（LandingPage，静态内容 + 基础 SEO），`/about` 是**关于我公开页**（简历 + 博客，匿名署名，文章在 AboutPage 的 POSTS 数组维护），两者共享 LandingHeader（首页/关于我们导航）。聊天页在 `/chat`（ProtectedRoute 保护，未登录跳 `/login`，登录后落 `/chat`），Header 按登录态显示「进入对话」/「登录」。聊天欢迎页居中显示输入框，历史对话以群聊形式展示：
+业务入口。域名根路径 `/` 是**免登录的官网公开首页**（LandingPage，静态内容 + 基础 SEO），`/about` 是**关于我公开页**（个人简历，匿名署名），两者共享 LandingHeader（首页/关于我们导航）。聊天页在 `/chat`（ProtectedRoute 保护，未登录跳 `/login`，登录后落 `/chat`），Header 按登录态显示「进入对话」/「登录」。聊天欢迎页居中显示输入框，历史对话以群聊形式展示：
 - 蓝色 = 小元AI（统筹）
 - 棕色/橙色 = Claude Code（本机桥接）
 - 紫色 = 数据分析 Agent

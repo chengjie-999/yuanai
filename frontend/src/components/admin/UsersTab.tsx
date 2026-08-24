@@ -10,6 +10,8 @@ export default function UsersTab() {
   const [showCreate, setShowCreate] = useState(false)
   const [newUsername, setNewUsername] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [newPassword2, setNewPassword2] = useState('')
+  const [showPw, setShowPw] = useState(false)
   const [newRole, setNewRole] = useState('user')
 
   const fetchUsers = async () => {
@@ -46,12 +48,13 @@ export default function UsersTab() {
   }
   const handleCreateUser = async () => {
     if (!newUsername.trim() || !newPassword.trim()) { setError('请填写用户名和密码'); return }
+    if (newPassword !== newPassword2) { setError('两次输入的密码不一致'); return }
     setError('')
     try {
       const res = await fetch(`${API_BASE}/admin/users/create`, { method: 'POST', headers: headers(), body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole }) })
       const data = await res.json()
       if (data.error) { setError(data.error); return }
-      setShowCreate(false); setNewUsername(''); setNewPassword('')
+      setShowCreate(false); setNewUsername(''); setNewPassword(''); setNewPassword2(''); setShowPw(false)
       fetchUsers()
     } catch { setError('创建失败') }
   }
@@ -63,12 +66,47 @@ export default function UsersTab() {
         {!showCreate ? <button onClick={() => setShowCreate(true)} style={btnPrimary}>+ 创建用户</button> : (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="用户名" style={{ ...inputStyle, width: 130 }} />
-            <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type="password" placeholder="密码" style={{ ...inputStyle, width: 130 }} />
+            {/* 密码输入 — 带小眼睛明文切换 */}
+            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+              <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type={showPw ? 'text' : 'password'} placeholder="密码" style={{ ...inputStyle, width: 130, paddingRight: 32 }} />
+              <button onClick={() => setShowPw(!showPw)} title={showPw ? '隐藏密码' : '显示密码'}
+                style={{ position: 'absolute', right: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-muted)', display: 'flex', lineHeight: 1 }}>
+                {showPw ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                  </svg>
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                )}
+              </button>
+            </div>
+            {/* 确认密码 — 与小眼睛共用明文切换 */}
+            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+              <input value={newPassword2} onChange={(e) => setNewPassword2(e.target.value)} type={showPw ? 'text' : 'password'} placeholder="确认密码" style={{ ...inputStyle, width: 130, paddingRight: 32, borderColor: newPassword2 && newPassword2 !== newPassword ? 'var(--danger)' : undefined }} />
+              <button onClick={() => setShowPw(!showPw)} title={showPw ? '隐藏密码' : '显示密码'}
+                style={{ position: 'absolute', right: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-muted)', display: 'flex', lineHeight: 1 }}>
+                {showPw ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                  </svg>
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                )}
+              </button>
+            </div>
             <select value={newRole} onChange={(e) => setNewRole(e.target.value)} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }}>
               <option value="user">user</option><option value="admin">admin</option>
             </select>
             <button onClick={handleCreateUser} style={btnPrimary}>确定</button>
-            <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>取消</button>
+            <button onClick={() => { setShowCreate(false); setNewPassword2(''); setShowPw(false) }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>取消</button>
           </div>
         )}
         <div style={{ flex: 1 }} />

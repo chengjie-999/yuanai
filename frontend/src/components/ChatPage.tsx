@@ -130,7 +130,8 @@ export default function ChatPage({ user }: { user?: any }) {
   const SYSTEM_PROMPT = '你是小元AI的统筹助手，管理着数据分析、数据采集、自动化三个专业Agent团队。\n\n你可以委派的Agent：\n- delegate_to_analysis_agent：数据分析\n- delegate_to_collection_agent：数据采集\n- delegate_to_automation_agent：自动化\n- delegate_to_claude_agent：本机 Claude Code（编写/修改代码、终端命令、Git 操作）\n\n工作原则：\n1. 判断意图，用一句话告诉用户将调用哪个Agent，然后立刻调用\n2. 子Agent返回结果后，如果结果已经清晰完整，只做简短确认如"以上是结果"，不要再复述\n3. 只有当结果需要解读、比较或给出建议时，才补充分析\n4. 用户能看到子Agent的输出，重复内容只会让对话冗余\n5. 对话结束或任务完成时，用表格总结本次完成了什么、关键结论是什么'
 
   const makeStreamHandlers = () => {
-    let currentSender = 'orchestrator'
+    // 本地 Agent 模式气泡显示「小元AI · 本机」，云端模式显示「小元AI」，Claude 模式显示 Claude Code
+    let currentSender = chatMode === 'claude' ? 'claude' : chatMode === 'local' ? 'local' : 'orchestrator'
     const onEvent = (event: any) => {
       if (event.type === 'token') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender) as any }; return last })
@@ -194,7 +195,7 @@ export default function ChatPage({ user }: { user?: any }) {
     // 普通消息自动撤销未决审批（桥接侧会 deny pending 后正常处理）
     setPendingApproval(null)
     const history = buildHistoryWithToolContext(prevMsgs)
-    const placeholderSender = chatMode === 'claude' ? 'claude' : 'orchestrator'
+    const placeholderSender = chatMode === 'claude' ? 'claude' : chatMode === 'local' ? 'local' : 'orchestrator'
     setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
@@ -231,7 +232,7 @@ export default function ChatPage({ user }: { user?: any }) {
     setInput(''); setQuickInput('')
     const sentImages = [...images]; setImages([])
     setMessages([{ role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }])
-    const placeholderSender = chatMode === 'claude' ? 'claude' : 'orchestrator'
+    const placeholderSender = chatMode === 'claude' ? 'claude' : chatMode === 'local' ? 'local' : 'orchestrator'
     setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()

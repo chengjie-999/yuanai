@@ -1,5 +1,6 @@
 export const AGENT_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   orchestrator: { label: '小元AI', color: '#1976d2', bg: '#f0f5ff' },
+  local: { label: '小元AI · 本机', color: '#2e7d32', bg: '#f0faf0' },
   analysis: { label: '数据分析 Agent', color: '#7b1fa2', bg: '#faf5ff' },
   collection: { label: '数据采集 Agent', color: '#00695c', bg: '#f0faf9' },
   automation: { label: '自动化 Agent', color: '#e65100', bg: '#fff8f0' },

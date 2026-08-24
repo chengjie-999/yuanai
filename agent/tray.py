@@ -72,6 +72,42 @@ def save_toggles(toggles: dict):
         logger.warning("保存 Agent 配置失败: %s", e)
 
 
+# ---- 开机自启（注册表 HKCU Run，仅冻结模式 exe 有效） ----
+_AUTOSTART_NAME = "小元AI Agent"
+
+
+def autostart_enabled() -> bool:
+    """查询开机自启是否开启"""
+    if not getattr(sys, "frozen", False):
+        return False
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
+            winreg.QueryValueEx(key, _AUTOSTART_NAME)
+        return True
+    except Exception:
+        return False
+
+
+def set_autostart(enable: bool):
+    """开启/关闭开机自启（写入/删除注册表 Run 键）"""
+    if not getattr(sys, "frozen", False):
+        logger.info("开发模式不支持开机自启（仅 exe 发布版可用）")
+        return
+    import winreg
+    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE)
+    if enable:
+        winreg.SetValueEx(key, _AUTOSTART_NAME, 0, winreg.REG_SZ, sys.executable)
+        logger.info("已开启开机自启: %s", sys.executable)
+    else:
+        try:
+            winreg.DeleteValue(key, _AUTOSTART_NAME)
+            logger.info("已关闭开机自启")
+        except FileNotFoundError:
+            pass
+    winreg.CloseKey(key)
+
+
 def _make_icon(color: tuple) -> Image.Image:
     """生成 32x32 纯色圆形图标"""
     img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
@@ -179,11 +215,17 @@ class AgentTray:
             ))
         items += [
             TrayMenu.SEPARATOR,
+            MenuItem("开机自启", self._on_autostart_toggle, checked=lambda item: autostart_enabled()),
             MenuItem("打开 Web 对话", on_open_web, default=True),
             MenuItem("重新注册（换安装码）", on_reinstall),
             MenuItem("退出 Agent", on_exit),
         ]
         return TrayMenu(*items)
+
+    def _on_autostart_toggle(self, icon, item):
+        """切换开机自启（exe 发布版有效）"""
+        enabled = autostart_enabled()
+        set_autostart(not enabled)
 
     def _make_toggle_action(self, key: str):
         """生成开关切换回调：翻转 → 持久化 → 重连生效"""

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar,
 } from 'recharts'
 import { Spinner, ErrorMsg, Card, CardHeader, Empty, headers, API_BASE } from './shared'
@@ -70,7 +70,6 @@ function OverviewItem({ label, value, unit }: {
 export default function MonitorTab() {
   const [status, setStatus] = useState<any>(null)
   const [changes, setChanges] = useState<any[]>([])
-  const [timeline, setTimeline] = useState<any[]>([])
   const [fileTypes, setFileTypes] = useState<any[]>([])
   const [mostChanged, setMostChanged] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -82,7 +81,6 @@ export default function MonitorTab() {
       .then(d => {
         setStatus(d.status)
         setChanges(d.changes || [])
-        setTimeline(d.timeline || [])
         setFileTypes(d.file_types || [])
         setMostChanged(d.most_changed || [])
         setError('')
@@ -154,14 +152,15 @@ export default function MonitorTab() {
     return () => clearInterval(interval)
   }, [])
 
+  // 每次变更的代码量：直接用变更记录的行数（新增/删除），比累积趋势直观
   const chartData = useMemo(() => {
-    return timeline.slice(-50).map((pt: any) => ({
-      time: fmtTime(pt.timestamp),
-      added: pt.cumulative_lines_added,
-      removed: pt.cumulative_lines_removed,
-      files: pt.cumulative_files,
-    }))
-  }, [timeline])
+    return changes.slice(0, 30).map((c: any) => ({
+      label: fmtTime(c.timestamp),
+      filepath: c.filepath,
+      added: c.lines_added || 0,
+      removed: c.lines_removed || 0,
+    })).reverse()
+  }, [changes])
 
   if (loading) return <Spinner />
 
@@ -286,36 +285,39 @@ export default function MonitorTab() {
       {/* Row 1: AreaChart + BarChart */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <Card>
-          <CardHeader title="累积行数变化趋势" />
+          <CardHeader title="每次变更的代码量（最近 30 次）" />
           <div style={{ padding: 16 }}>
             {chartData.length === 0 ? (
               <Empty msg="等待代码变更..." />
             ) : (
               <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="colorAdded" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={CHART_GREEN} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={CHART_GREEN} stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="colorRemoved" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={CHART_RED} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={CHART_RED} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
+                <BarChart data={chartData} barGap={0}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} interval="preserveStartEnd" />
                   <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Area
-                    type="monotone" dataKey="added" name="新增"
-                    stroke={CHART_GREEN} fill="url(#colorAdded)" strokeWidth={2}
+                  <Tooltip
+                    cursor={{ fill: 'var(--bg-tertiary)' }}
+                    content={({ active, payload }: any) => {
+                      if (!active || !payload || !payload.length) return null
+                      const d = payload[0]?.payload
+                      return (
+                        <div style={{
+                          background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                          borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--text-primary)',
+                          maxWidth: 280,
+                        }}>
+                          <div style={{ color: 'var(--text-muted)', marginBottom: 4, fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>
+                            {d.filepath}
+                          </div>
+                          <div style={{ color: CHART_GREEN }}>新增行: {d.added}</div>
+                          <div style={{ color: CHART_RED }}>删除行: {d.removed}</div>
+                        </div>
+                      )
+                    }}
                   />
-                  <Area
-                    type="monotone" dataKey="removed" name="删除"
-                    stroke={CHART_RED} fill="url(#colorRemoved)" strokeWidth={2}
-                  />
-                </AreaChart>
+                  <Bar dataKey="added" name="新增行" fill={CHART_GREEN} radius={[2, 2, 0, 0]} maxBarSize={10} />
+                  <Bar dataKey="removed" name="删除行" fill={CHART_RED} radius={[2, 2, 0, 0]} maxBarSize={10} />
+                </BarChart>
               </ResponsiveContainer>
             )}
           </div>

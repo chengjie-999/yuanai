@@ -42,10 +42,11 @@ function AppLayout() {
   const navigate = useNavigate()
   const [resetKey, setResetKey] = useState(0)
 
+  // 点击左上角品牌 → 回官网首页（聊天会话重置，回来时是全新欢迎页）
   const goHome = useCallback(() => {
     setResetKey((k) => k + 1)
-    if (location.pathname !== '/chat') navigate('/chat')
-  }, [location.pathname, navigate])
+    navigate('/')
+  }, [navigate])
 
   const isActive = (path: string) => location.pathname === path || (path === '/chat/admin' && location.pathname.startsWith('/chat/admin'))
 

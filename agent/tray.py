@@ -429,6 +429,13 @@ class AgentTray:
 
 
 def main():
+    # 冻结+窗口模式：无控制台，sys.stdout/stderr 为 None → 日志写入崩溃。
+    # 启动最早阶段先把它们指向空设备（log 文件仍正常写入）
+    if getattr(sys, "frozen", False):
+        for _name in ("stdout", "stderr"):
+            if getattr(sys, _name) is None:
+                setattr(sys, _name, open(os.devnull, "w", encoding="utf-8"))
+
     # 冻结模式脚本执行入口：分析/采集脚本子进程复用本 exe（自包含，无需系统 Python）
     if getattr(sys, "frozen", False) and len(sys.argv) >= 3 and sys.argv[1] == "--run-script":
         _script_path = sys.argv[2]
@@ -446,10 +453,17 @@ def main():
     p.add_argument("--agent-token", default=os.environ.get("AGENT_TOKEN", ""), help="Agent 认证 JWT token")
     args = p.parse_args()
 
+    # 文件日志（窗口模式下控制台不可见，靠 data/logs/agent_tray.log 排障）
+    _handlers = [logging.StreamHandler()]
+    if getattr(sys, "frozen", False):
+        _log_dir = os.path.join(os.path.dirname(_config_file()), "logs")
+        os.makedirs(_log_dir, exist_ok=True)
+        _handlers.append(logging.FileHandler(os.path.join(_log_dir, "agent_tray.log"), encoding="utf-8"))
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
+        handlers=_handlers,
     )
     logging.getLogger("websockets").setLevel(logging.WARNING)
 

@@ -19,8 +19,12 @@ python -m agent.main --install YUAN-XXXX-XXXX-XXXX --server-url ws://localhost:8
 # 本地 Agent 日常启动（自动读 data/agent_identity.json；旧模式 --agent-id 1 仍兼容）
 python -m agent.main
 
-# 本地 Agent（托盘模式，发布用）
+# 本地 Agent（托盘模式，发布用；首次启动无身份时弹窗引导输入安装码）
 python -m agent.main --tray
+
+# 一键启动（Windows 双击 start_agent.bat）
+# 发布版 exe：python -m PyInstaller agent/yuanai_agent.spec（产物 dist/小元AI Agent.exe，
+#   上传服务器 downloads/yuanai-agent.exe，后台「Agent 管理」与官网首页提供下载入口）
 ```
 
 ## 多智能体架构
@@ -62,7 +66,7 @@ agent/                  本地 Agent 运行时 ★
 ├── main.py              入口（--tray 托盘 / 默认命令行）
 ├── orchestrator.py      统筹 Agent（动态 delegate 工具，从 skills/ 自动发现）
 ├── ws_client.py         WebSocket 客户端（自动重连）
-├── tray.py              系统托盘程序（pystray）
+├── tray.py              系统托盘程序（pystray；首启安装码弹窗 + Agent 开关菜单 + 二合一 Claude 分支 + 冻结模式 --run-script 脚本执行入口）
 ├── verify.py            多智能体链路验证脚本
 ├── yuanai_agent.spec    PyInstaller 打包规格
 ├── agents/              子 Agent
@@ -163,7 +167,8 @@ data/                   数据目录
 
 ### 机器识别（每用户一台 PC）
 
-- 安装流程：后台「Agent 管理」签发安装码（`POST /admin/agent-codes`）→ 用户本机 `python -m agent.main --install <安装码>` → 云端注册设备（`POST /agent/register`，公开路径，安装码即凭证）→ 本机保存 `data/agent_identity.json`（agent_id + agent_secret）
+- 安装流程：后台「Agent 管理」签发安装码（`POST /admin/agent-codes`）→ 用户本机 `python -m agent.main --install <安装码>`（或 exe 双击后弹窗粘贴安装码）→ 云端注册设备（`POST /agent/register`，公开路径，安装码即凭证）→ 本机保存 `data/agent_identity.json`（agent_id + agent_secret）
+- **Agent 开关**：托盘菜单勾选启用哪些 Agent（数据分析/采集/自动化/生命科学/Claude Code），持久化 `data/agent_config.json`，切换即重连生效；统筹 Agent 按开关过滤委派工具（`Orchestrator(enabled_skills=..., enable_claude=...)`）
 - WS 鉴权两种凭据：JWT（旧模式，user_id==agent_id）或 agent_secret（机器模式，查 `agent_devices` 表）
 - 路由：`get_agent(user_id)` 先查旧模式直连，再查一对一绑定（`agent_devices.user_id`，30s 缓存）→ 转发到绑定的设备 socket
 - 一对一绑定：后台「Agent 管理」页操作（设备↔用户互不重复绑定，可解绑/冻结）

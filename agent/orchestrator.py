@@ -4,7 +4,7 @@ import re
 import json
 import asyncio
 import logging
-from typing import AsyncGenerator, List, Dict, Any
+from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -74,13 +74,19 @@ def _make_delegate_tool(skill_config, orch):
 class Orchestrator:
     """统筹 Agent：管理三个子 Agent，根据意图路由任务"""
 
-    def __init__(self):
+    def __init__(self, enabled_skills: Optional[List[str]] = None, enable_claude: bool = True):
+        """enabled_skills=None 表示全部启用；否则只委派列表内的 skill。enable_claude 控制本机 Claude Code 委派。"""
         self._analysis = None
         self._collection = None
         self._automation = None
         self._on_activity = None  # callback(activity_event) for live status updates
         self._on_event = None  # callback(event) 任意事件上报（如工具内 progress 心跳）
         self._agents = {}  # skill_name -> Agent 实例（动态创建）
+        self._enabled_skills = enabled_skills
+        self._enable_claude = enable_claude
+
+    def _skill_enabled(self, name: str) -> bool:
+        return self._enabled_skills is None or name in self._enabled_skills
 
     @property
     def analysis_agent(self):
@@ -109,13 +115,15 @@ class Orchestrator:
 
         tools = list(all_tools)
 
-        # 动态生成 delegate_* 工具（遍历 skills/ 目录自动发现）
+        # 动态生成 delegate_* 工具（遍历 skills/ 目录自动发现，按用户开关过滤）
         orch = self
         for skill in skill_registry.get_all():
-            tools.append(_make_delegate_tool(skill, orch))
+            if self._skill_enabled(skill.name):
+                tools.append(_make_delegate_tool(skill, orch))
 
-        # 本地 Claude Code 委派工具（异步，支持心跳）
-        tools.append(self._make_claude_tool())
+        # 本地 Claude Code 委派工具（异步，支持心跳；开关关闭时不注册）
+        if self._enable_claude:
+            tools.append(self._make_claude_tool())
 
         return tools
 
@@ -175,14 +183,15 @@ class Orchestrator:
                 if not has_general:
                     tools.extend(load_tools_for("general", "memory", "knowledge"))
                     has_general = True
-                tools.append(self._make_claude_tool())
+                if self._enable_claude:
+                    tools.append(self._make_claude_tool())
             elif cat.startswith("delegate_"):
                 if not has_general:
                     tools.extend(load_tools_for("general", "memory", "knowledge"))
                     has_general = True
                 skill_name = cat.replace("delegate_", "")
                 skill = skill_registry.get(skill_name)
-                if skill:
+                if skill and self._skill_enabled(skill_name):
                     tools.append(_make_delegate_tool(skill, self))
             elif cat == "general":
                 if not has_general:
@@ -197,10 +206,12 @@ class Orchestrator:
                 has_general = True
             orch = self
             for skill in skill_registry.get_all():
+                if not self._skill_enabled(skill.name):
+                    continue
                 found = any(t.name == f"delegate_to_{skill.name}_agent" for t in tools)
                 if not found:
                     tools.append(_make_delegate_tool(skill, orch))
-            if not any(t.name == "delegate_to_claude_agent" for t in tools):
+            if self._enable_claude and not any(t.name == "delegate_to_claude_agent" for t in tools):
                 tools.append(self._make_claude_tool())
 
         return tools

@@ -50,8 +50,8 @@ const FEATURES = [
   },
 ]
 
-/* 功能入口 — 指向已实现的独立功能页（登录后直达） */
-const ENTRIES = [
+/* 功能入口 — 指向已实现的独立功能页（登录后直达）或下载直链 */
+const ENTRIES: { icon: string; title: string; desc: string; to?: string; href?: string }[] = [
   {
     icon: 'M18 20V10M12 20V4M6 20v-6',
     title: '数据分析工作台',
@@ -93,6 +93,12 @@ const ENTRIES = [
     title: 'Agent 运行状态',
     desc: '本机 Agent 在线状态与模型配置',
     to: '/chat/agent',
+  },
+  {
+    icon: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3',
+    title: '下载本机 Agent',
+    desc: 'Windows 安装包 · 双击即用 · 托盘常驻',
+    href: '/downloads/yuanai-agent.exe',
   },
 ]
 
@@ -178,26 +184,38 @@ export default function LandingPage() {
         <h2 className="landing-section-title">功能入口</h2>
         <p className="landing-section-desc">登录后直达各功能面板 —— 分析大屏、知识库、自动化等</p>
         <div className="landing-entry-grid">
-          {ENTRIES.map((entry, i) => (
-            <Link key={entry.title} to={entry.to} className="landing-entry-card" style={{ animationDelay: `${i * 0.06}s` }}>
-              <span className="landing-feature-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d={entry.icon}/>
+          {ENTRIES.map((entry, i) => {
+            const inner = (
+              <>
+                <span className="landing-feature-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d={entry.icon}/>
+                  </svg>
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 4px', color: 'var(--text-primary)' }}>
+                    {entry.title}
+                  </h3>
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                    {entry.desc}
+                  </p>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="landing-entry-arrow">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
                 </svg>
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 4px', color: 'var(--text-primary)' }}>
-                  {entry.title}
-                </h3>
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                  {entry.desc}
-                </p>
-              </div>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="landing-entry-arrow">
-                <path d="M5 12h14M12 5l7 7-7 7"/>
-              </svg>
-            </Link>
-          ))}
+              </>
+            )
+            /* 站内页面用 Link；下载等外链用 <a> */
+            return entry.href ? (
+              <a key={entry.title} href={entry.href} className="landing-entry-card" style={{ animationDelay: `${i * 0.06}s` }}>
+                {inner}
+              </a>
+            ) : (
+              <Link key={entry.title} to={entry.to!} className="landing-entry-card" style={{ animationDelay: `${i * 0.06}s` }}>
+                {inner}
+              </Link>
+            )
+          })}
         </div>
       </section>
 

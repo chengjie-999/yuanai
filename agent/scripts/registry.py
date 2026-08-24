@@ -41,7 +41,9 @@ class _ScriptHandle:
 
     def run(self, **params) -> str:
         _purge_html_cache()
-        args = [sys.executable, self._filepath]
+        # 冻结模式（PyInstaller exe）：本 exe 不是 Python 解释器，通过 --run-script 入口复用自身执行脚本（自包含）
+        frozen = getattr(sys, "frozen", False)
+        args = [sys.executable, "--run-script", self._filepath] if frozen else [sys.executable, self._filepath]
         param_order = getattr(self, '_param_order', [])
         keys = param_order if param_order else sorted(params)
         for k in keys:
@@ -52,13 +54,16 @@ class _ScriptHandle:
                 args.append(val)
 
         try:
-            result = subprocess.run(
-                args,
-                capture_output=True, text=True, encoding="utf-8",
-                timeout=300,
-                cwd=PROJECT_ROOT,
-                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-            )
+            run_kwargs = {
+                "capture_output": True, "text": True, "encoding": "utf-8",
+                "timeout": 300,
+                "cwd": PROJECT_ROOT,
+                "env": {**os.environ, "PYTHONIOENCODING": "utf-8"},
+            }
+            # Windows 托盘模式下子进程不弹黑窗
+            if frozen and os.name == "nt":
+                run_kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+            result = subprocess.run(args, **run_kwargs)
             if result.returncode != 0:
                 return f"脚本执行失败 (exit={result.returncode}):\n{result.stderr[:1000]}"
 

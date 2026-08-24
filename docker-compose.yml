@@ -91,6 +91,7 @@ services:
     volumes:
       - ./deploy/ssl/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
       - ./deploy/ssl/privkey.key:/etc/nginx/ssl/privkey.key:ro
+      - ./downloads:/usr/share/nginx/html/downloads:ro
     depends_on:
       - backend
     healthcheck:

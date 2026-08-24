@@ -362,6 +362,10 @@ pytest test/ -v
 
 ## Claude Code 桥接（云端 ↔ 本机 Claude Code）
 
+**傻瓜流程（推荐）**：官网首页/后台「Agent 管理」下载 `yuanai-agent.exe` → 双击 → 弹窗粘贴安装码 → 完成（托盘常驻，托盘菜单可开关各 Agent）。
+
+**命令行流程**：
+
 1. 后台「Agent 管理」签发安装码
 2. 本机安装（需安装并登录 Claude Code CLI）：
 

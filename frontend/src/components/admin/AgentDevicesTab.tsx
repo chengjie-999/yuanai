@@ -102,6 +102,26 @@ export default function AgentDevicesTab() {
     <>
       {error && <ErrorMsg msg={error} onRetry={fetchDevices} />}
 
+      {/* 下载安装包（傻瓜流程：下载 → 双击 → 弹窗输安装码） */}
+      <Card>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>下载本机 Agent 安装包</div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <a href="/downloads/yuanai-agent.exe" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '8px 18px', borderRadius: 8, background: 'var(--accent)', color: '#fff',
+            textDecoration: 'none', fontSize: 13, fontWeight: 600,
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+            下载（Windows）
+          </a>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            用户使用流程：下载 → 双击运行 → 弹出窗口粘贴安装码 → 完成（托盘常驻，可选开关各 Agent）
+          </span>
+        </div>
+      </Card>
+
       {/* 生成安装码 */}
       <Card>
         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>签发安装码</div>
@@ -112,7 +132,7 @@ export default function AgentDevicesTab() {
             style={{ ...inputStyle, width: 80 }} />
           <button onClick={genCodes} style={btnPrimary}>生成</button>
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            发给用户后，对方在本机执行 <code>python -m agent.main --install 安装码</code>
+            发给用户后：已装安装包 → 托盘菜单「重新注册」输码；未装 → 命令行 <code>python -m agent.main --install 安装码</code>
           </span>
         </div>
         {newCodes.length > 0 && (

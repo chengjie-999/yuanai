@@ -49,21 +49,17 @@ export default function AgentDevicesTab() {
   const [newCodes, setNewCodes] = useState<string[]>([])
   const [bindUserId, setBindUserId] = useState<Record<number, string>>({})
 
-  // ---- 安装包上传（XHR 带进度，发布即分发） ----
-  const [uploadVer, setUploadVer] = useState('')
+  // ---- 安装包上传（拖拽 + XHR 带进度，发布即分发） ----
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadPct, setUploadPct] = useState(0)
   const [uploadMsg, setUploadMsg] = useState('')
+  const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const handleUploadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    e.target.value = ''
-    if (!f) return
-    if (!uploadVer.trim()) { setUploadMsg('请先填写版本号'); return }
+  const uploadExeFile = (f: File) => {
     setUploadBusy(true); setUploadPct(0); setUploadMsg('')
     const fd = new FormData()
-    fd.append('version', uploadVer.trim())
+    fd.append('version', '')  // 留空 = 后端自动按上传时间生成版本号
     fd.append('file', f)
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_BASE}/admin/agent-exe-upload`)
@@ -81,6 +77,19 @@ export default function AgentDevicesTab() {
     }
     xhr.onerror = () => { setUploadBusy(false); setUploadMsg('上传失败，网络错误') }
     xhr.send(fd)
+  }
+
+  const handleUploadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (f) uploadExeFile(f)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const f = e.dataTransfer.files?.[0]
+    if (f) uploadExeFile(f)
   }
 
   const fetchDevices = async () => {
@@ -155,26 +164,39 @@ export default function AgentDevicesTab() {
             用户使用流程：下载 → 双击运行 → 弹出窗口粘贴安装码 → 完成（托盘常驻，可选开关各 Agent）
           </span>
         </div>
-        {/* 上传新版本（发布即分发：客户端托盘自动检查 version.json 更新） */}
+        {/* 上传新版本（拖拽上传，发布即分发：客户端托盘自动检查 version.json 更新） */}
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px dashed var(--border)' }}>
           <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: 'var(--text-primary)' }}>发布新版本</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={uploadVer} onChange={(e) => setUploadVer(e.target.value)}
-              placeholder="版本号（如 1.1.0）" style={{ ...inputStyle, width: 170 }} />
-            <input ref={fileRef} type="file" accept=".exe" hidden onChange={handleUploadFile} />
-            <button onClick={() => fileRef.current?.click()} disabled={uploadBusy}
-              style={{ ...btnPrimary, background: uploadBusy ? 'var(--text-muted)' : 'var(--accent)', cursor: uploadBusy ? 'not-allowed' : 'pointer' }}>
-              {uploadBusy ? `上传中 ${uploadPct}%` : '选择 exe 上传'}
-            </button>
-            {uploadMsg && <span style={{ fontSize: 12, color: uploadMsg.startsWith('✓') ? 'var(--success)' : 'var(--danger)' }}>{uploadMsg}</span>}
+          <input ref={fileRef} type="file" accept=".exe" hidden onChange={handleUploadFile} />
+          <div
+            onClick={() => !uploadBusy && fileRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            style={{
+              border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius: 10, padding: '22px 16px', textAlign: 'center', cursor: uploadBusy ? 'not-allowed' : 'pointer',
+              background: dragOver ? 'var(--accent-light)' : 'var(--bg-secondary)',
+              transition: 'all 0.15s', maxWidth: 460,
+            }}
+          >
+            {uploadBusy ? (
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 8 }}>正在上传 {uploadPct}%</div>
+                <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-tertiary)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${uploadPct}%`, background: 'var(--accent)', transition: 'width 0.2s' }} />
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>📦</div>
+                <b style={{ color: 'var(--text-primary)' }}>把 yuanai-agent.exe 拖到这里</b>（或点击选择文件）
+              </div>
+            )}
           </div>
-          {uploadBusy && (
-            <div style={{ marginTop: 8, height: 6, borderRadius: 3, background: 'var(--bg-tertiary)', overflow: 'hidden', maxWidth: 420 }}>
-              <div style={{ height: '100%', width: `${uploadPct}%`, background: 'var(--accent)', transition: 'width 0.2s' }} />
-            </div>
-          )}
+          {uploadMsg && <div style={{ fontSize: 12, marginTop: 8, color: uploadMsg.startsWith('✓') ? 'var(--success)' : 'var(--danger)' }}>{uploadMsg}</div>}
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-            上传后立即生效：所有已安装的客户端会在托盘里提示「发现新版本」，点一下自动更新
+            版本号自动生成 · 上传后立即生效：所有已安装的客户端会在托盘里提示「发现新版本」，点一下自动更新
           </div>
         </div>
       </Card>

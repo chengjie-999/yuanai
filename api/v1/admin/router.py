@@ -141,12 +141,12 @@ async def mint_agent_token(req: AgentTokenRequest, request: Request):
 # ===================== Agent 安装包发布（网页上传，自动更新分发） =====================
 
 @router.post("/agent-exe-upload")
-async def upload_agent_exe(request: Request, version: str = Form(...), file: UploadFile = File(...)):
+async def upload_agent_exe(request: Request, version: str = Form(""), file: UploadFile = File(...)):
     """上传本地 Agent 安装包（仅 admin）：写入 downloads/yuanai-agent.exe 并更新 version.json。
-    发布流程：打包 → 网页上传 → 所有客户端按 version.json 自动检查更新。"""
+    发布流程：打包 → 网页拖拽上传 → 所有客户端按 version.json 自动检查更新。
+    版本号留空时自动按上传时间生成（客户端比对不同即提示更新）。"""
     require_admin(request)
-    if not version.strip():
-        raise HTTPException(status_code=400, detail="请填写版本号")
+    version = version.strip() or datetime.now().strftime("%Y%m%d-%H%M%S")
     if not (file.filename or "").lower().endswith(".exe"):
         raise HTTPException(status_code=400, detail="仅支持 .exe 安装包")
 
@@ -174,11 +174,11 @@ async def upload_agent_exe(request: Request, version: str = Form(...), file: Upl
         os.replace(tmp_path, exe_path)
         with open(os.path.join(downloads_dir, "version.json"), "w", encoding="utf-8") as f:
             json.dump({
-                "version": version.strip(),
+                "version": version,
                 "exe": "/downloads/yuanai-agent.exe",
                 "size": size,
             }, f, ensure_ascii=False, indent=2)
-        return {"ok": True, "version": version.strip(), "size": size}
+        return {"ok": True, "version": version, "size": size}
     finally:
         if os.path.exists(tmp_path):
             try:

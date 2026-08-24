@@ -1,24 +1,43 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
-import ChatPage from './components/ChatPage'
-import LoginPage from './components/LoginPage'
-import LandingPage from './components/LandingPage'
-import AboutPage from './components/AboutPage'
-import AdminPage from './components/AdminPage'
-import UserPage from './components/UserPage'
-import SettingsPage from './components/SettingsPage'
-import AgentPage from './components/AgentPage'
 import AgentStatus from './components/AgentStatus'
-import AgentAnalysisPage from './pages/AgentAnalysisPage'
-import AgentAutomationPage from './pages/AgentAutomationPage'
-import AgentKnowledgePage from './pages/AgentKnowledgePage'
-import RFMDashboard from './pages/RFMDashboard'
-import AnalysisDashboard from './pages/AnalysisDashboard'
-import MedicalPage from './components/MedicalPage'
-import CollectionRecordsPage from './components/CollectionRecordsPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
+
+/* 路由级懒加载：公开页访客无需下载聊天/后台代码，首屏体积大减 */
+const ChatPage = lazy(() => import('./components/ChatPage'))
+const LoginPage = lazy(() => import('./components/LoginPage'))
+const LandingPage = lazy(() => import('./components/LandingPage'))
+const AboutPage = lazy(() => import('./components/AboutPage'))
+const AdminPage = lazy(() => import('./components/AdminPage'))
+const UserPage = lazy(() => import('./components/UserPage'))
+const SettingsPage = lazy(() => import('./components/SettingsPage'))
+const AgentPage = lazy(() => import('./components/AgentPage'))
+const AgentAnalysisPage = lazy(() => import('./pages/AgentAnalysisPage'))
+const AgentAutomationPage = lazy(() => import('./pages/AgentAutomationPage'))
+const AgentKnowledgePage = lazy(() => import('./pages/AgentKnowledgePage'))
+const RFMDashboard = lazy(() => import('./pages/RFMDashboard'))
+const AnalysisDashboard = lazy(() => import('./pages/AnalysisDashboard'))
+const MedicalPage = lazy(() => import('./components/MedicalPage'))
+const CollectionRecordsPage = lazy(() => import('./components/CollectionRecordsPage'))
+
+/* 懒加载页面统一的加载占位（保持 Header 不闪） */
+function PageLoading() {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '15vh 0', color: 'var(--text-muted)', fontSize: 13, gap: 8,
+    }}>
+      <span style={{
+        width: 14, height: 14, border: '2px solid var(--border)',
+        borderTopColor: 'var(--accent)', borderRadius: '50%',
+        display: 'inline-block', animation: 'spin 0.8s linear infinite',
+      }} />
+      加载中...
+    </div>
+  )
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token, loading } = useAuth()
@@ -125,6 +144,7 @@ function AppLayout() {
       </header>
       <main style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         <ErrorBoundary>
+          <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/" element={<ChatPage key={resetKey} user={user} />} />
             <Route path="/user" element={<UserPage user={user} onLogout={logout} />} />
@@ -141,6 +161,7 @@ function AppLayout() {
               <AdminRoute><AdminPage isAdmin={isAdmin} /></AdminRoute>
             } />
           </Routes>
+          </Suspense>
         </ErrorBoundary>
       </main>
     </div>
@@ -152,6 +173,7 @@ export default function App() {
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
+          <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/about" element={<AboutPage />} />
@@ -159,6 +181,7 @@ export default function App() {
             <Route path="/chat/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>

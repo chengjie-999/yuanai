@@ -60,8 +60,12 @@ export default function ChatPage({ user }: { user?: any }) {
         if (!res.ok) return
         const data = await res.json()
         if (Array.isArray(data)) {
-          setLocalOnline(data.some((a: any) => !(a.capabilities || []).includes('claude_code')))
-          setClaudeOnline(data.some((a: any) => (a.capabilities || []).includes('claude_code')))
+          const hasLocal = data.some((a: any) => !(a.capabilities || []).includes('claude_code'))
+          const hasBridge = data.some((a: any) => (a.capabilities || []).includes('claude_code'))
+          setLocalOnline(hasLocal)
+          // 本机 Agent 是二合一进程（统筹 + Claude 分支），在线即可用 ⌘ 模式；
+          // 独立桥接进程在线时同样点亮
+          setClaudeOnline(hasBridge || hasLocal)
           setStatusKnown(true)
         }
       } catch { /* 忽略轮询失败，保持上次状态 */ }

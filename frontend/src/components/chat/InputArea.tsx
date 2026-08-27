@@ -82,14 +82,22 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               style={{ padding: '10px 24px', fontSize: 14, fontWeight: 600, borderRadius: 10, opacity: loading || !input.trim() || !currentSid ? 0.5 : 1 }}
             >{loading ? '...' : '发送'}</button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px 10px' }}>
+          <div className="chat-tool-row" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px 10px' }}>
             <button onClick={() => {
               const s = sessions.find(s => s.session_id === currentSid)
               downloadChat(messages, `${s?.title || 'chat'}.txt`)
-            }} title="下载聊天记录" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)', padding: '2px 4px', lineHeight: 1, opacity: 0.6, transition: 'opacity 0.15s' }}
+            }} title="下载聊天记录" aria-label="下载聊天记录"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '6px', lineHeight: 1, opacity: 0.6, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
               onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
-            >📥</button>
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            </button>
             {!sidebarOpen && (
               <button onClick={() => setSidebarOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12, padding: 0 }}>▶ 侧栏</button>
             )}

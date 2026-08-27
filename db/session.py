@@ -1,6 +1,6 @@
 import logging
 from urllib.parse import quote_plus
-from sqlalchemy import create_engine, Column, Integer, Text, TIMESTAMP, String, text
+from sqlalchemy import create_engine, Column, Integer, Text, TIMESTAMP, String, text, UniqueConstraint
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
@@ -38,6 +38,18 @@ class AIChat(Base):
     content = Column(Text, nullable=False)
     images = Column(Text, nullable=True)
     create_time = Column(TIMESTAMP, server_default=func.now())
+
+
+class AIChatFeedback(Base):
+    """AI 消息点赞表（消息无 id，以数组下标定位，会话内唯一）"""
+    __tablename__ = 'ai_chat_feedback'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(36), nullable=False, index=True)
+    message_index = Column(Integer, nullable=False)
+    liked = Column(Integer, default=0)   # 0=未赞 1=已赞
+    user_id = Column(Integer, nullable=True, index=True)
+    create_time = Column(TIMESTAMP, server_default=func.now())
+    __table_args__ = (UniqueConstraint('session_id', 'message_index', name='uq_feedback_session_index'),)
 
 
 class TaskImage(Base):
@@ -224,6 +236,7 @@ class AgentDatabase:
         sess = self.Session()
         try:
             sess.query(AIChat).filter_by(session_id=session_id).delete()
+            sess.query(AIChatFeedback).filter_by(session_id=session_id).delete()
             sess.query(ChatSession).filter_by(session_id=session_id).delete()
             sess.commit()
         finally:

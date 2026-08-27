@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, getStoredModel, API_BASE, getToken } from '../api'
+import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
@@ -35,6 +35,10 @@ export default function ChatPage({ user }: { user?: any }) {
   const [statusKnown, setStatusKnown] = useState(false)
   // Claude Code 桥接待审批命令
   const [pendingApproval, setPendingApproval] = useState<{ decision_id: string; tool_name: string; command: string } | null>(null)
+  // 消息点赞（下标 → 已赞）与修改编辑态（消息下标，null = 非编辑态）
+  const [likes, setLikes] = useState<Record<number, boolean>>({})
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const likePendingRef = useRef<Set<number>>(new Set())
   const messagesRef = useRef(messages)
   messagesRef.current = messages
   const sidRef = useRef(currentSid)
@@ -94,11 +98,16 @@ export default function ChatPage({ user }: { user?: any }) {
     setMessages([])
     setQuickInput('')
     setInput('')
+    setLikes({})
+    setEditingIndex(null)
   }
 
   const handleSelectSession = async (sid: string) => {
     setCurrentSid(sid)
     const history = await loadMessages(sid)
+    const likesData = await loadFeedback(sid)
+    setLikes(likesData)
+    setEditingIndex(null)
     if (history.length === 0) {
       setMessages([{ role: 'assistant', content: '你好！有什么可以帮你的？' }])
     } else {
@@ -185,31 +194,62 @@ export default function ChatPage({ user }: { user?: any }) {
     return { onEvent, onError }
   }
 
-  const handleSend = () => {
-    if (!input.trim() || loading || !currentSid) return
-    const sid = currentSid
-    const sentImages = images.length > 0 ? [...images] : undefined
-    const prevMsgs = [...messages]
-    setMessages((prev) => [...prev, { role: 'user', content: input, images: sentImages }])
-    setImages([]); setInput(''); setLoading(true)
+  // 通用发送链路：msgs 为发送时的完整消息数组（不含新的 assistant 占位气泡），
+  // 普通发送与「修改后截断重发」共用；sid 在发送时捕获，防止流式期间切换会话写错库。
+  // 注意：Claude 桥接模式按 cloud session_id 续接 claude 会话（无法回退），
+  // 修改重发等同「继续对话」，模型仍记得修改前的上下文。
+  const sendMessages = (msgs: ChatMessage[], prompt: string, sentImages?: string[], title?: string) => {
+    const sid = sidRef.current
+    setLoading(true)
     // 普通消息自动撤销未决审批（桥接侧会 deny pending 后正常处理）
     setPendingApproval(null)
-    const history = buildHistoryWithToolContext(prevMsgs)
+    const history = buildHistoryWithToolContext(msgs)
     const placeholderSender = chatMode === 'claude' ? 'claude' : chatMode === 'local' ? 'local' : 'orchestrator'
-    setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
+    setMessages([...msgs, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
     streamChat(
-      { model, temperature: 0.7, prompt: input, images: sentImages, history, system_prompt: SYSTEM_PROMPT,
+      { model, temperature: 0.7, prompt, images: sentImages, history, system_prompt: SYSTEM_PROMPT,
         session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud' },
       onEvent, onError,
       () => {
         setLoading(false)
         const msgs = messagesRef.current.map(encodeMsg)
-        saveMessages(sid, msgs, input.length > 50 ? input.slice(0, 50) + '...' : input)
+        saveMessages(sid, msgs, title || (prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt))
         refreshSessions()
       },
     )
+  }
+
+  const handleSend = () => {
+    if (!input.trim() || loading || !currentSid) return
+    const sentImages = images.length > 0 ? [...images] : undefined
+    const prevMsgs = [...messages, { role: 'user' as const, content: input, images: sentImages }]
+    setMessages(prevMsgs)
+    setImages([]); setInput('')
+    sendMessages(prevMsgs, input, sentImages)
+  }
+
+  // 修改用户消息：替换内容 → 截断其后所有消息 → 重新发送
+  const handleEditMessage = (index: number, newContent: string) => {
+    if (loading || !newContent.trim() || !currentSid) return
+    const base = [...messages]
+    base[index] = { ...base[index], content: newContent.trim() }
+    const truncated = base.slice(0, index + 1)
+    setMessages(truncated)
+    setEditingIndex(null)
+    sendMessages(truncated, newContent.trim(), base[index].images)
+  }
+
+  // 点赞 toggle：乐观更新 + 失败回滚 + pending 防并发（流式期间禁止索引操作）
+  const handleLike = async (index: number) => {
+    if (loading || likePendingRef.current.has(index) || !currentSid) return
+    const next = !likes[index]
+    likePendingRef.current.add(index)
+    setLikes((p) => ({ ...p, [index]: next }))
+    const ok = await setFeedback(currentSid, index, next)
+    if (!ok) setLikes((p) => ({ ...p, [index]: !next }))
+    likePendingRef.current.delete(index)
   }
 
   // 审批决议：走 Claude 桥接专用流，body 带 decision
@@ -265,7 +305,11 @@ export default function ChatPage({ user }: { user?: any }) {
         .chat-msg-bubble { max-width: 94% !important; font-size: 13px !important; padding: 8px 12px !important; }
         .chat-welcome h1 { font-size: 18px !important; }
         .chat-input-area textarea { font-size: 16px !important; }
+        .chat-tool-row { flex-wrap: wrap !important; gap: 6px !important; padding: 4px 10px 8px !important; }
+        .msg-edit-textarea { font-size: 16px !important; }
       }
+      /* 气泡内操作行常显（图标本身 0.65 → 1 hover 微反馈） */
+      .msg-actions { opacity: 1; }
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}
@@ -307,6 +351,8 @@ export default function ChatPage({ user }: { user?: any }) {
             chatMode={chatMode} setChatMode={setChatMode}
             localOnline={localOnline} claudeOnline={claudeOnline}
             pendingApproval={pendingApproval} handleDecision={handleDecision}
+            likes={likes} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
+            onEditMessage={handleEditMessage} onLike={handleLike}
           />
         )}
       </div>

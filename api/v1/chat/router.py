@@ -67,6 +67,12 @@ class MessagesRequest(BaseModel):
     session_id: str = Field(..., min_length=1, description="会话 ID")
 
 
+class FeedbackRequest(BaseModel):
+    session_id: str = Field(..., min_length=1, description="会话 ID")
+    message_index: int = Field(..., ge=0, description="消息下标（0 起，与前端数组一致）")
+    liked: bool = Field(..., description="是否点赞")
+
+
 
 
 def _get_db():
@@ -422,10 +428,15 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
         _verify_session_owner(db, req.session_id, user_id)
 
         sess = db.Session()
-        from db.session import AIChat
+        from db.session import AIChat, AIChatFeedback
         try:
             # 先删除该会话的全部旧消息，避免重复累积
             sess.query(AIChat).filter_by(session_id=req.session_id).delete()
+            # 同步清理孤儿点赞：消息被截断后，下标超出新消息范围的反馈行一并删除
+            sess.query(AIChatFeedback).filter(
+                AIChatFeedback.session_id == req.session_id,
+                AIChatFeedback.message_index >= len(req.messages),
+            ).delete(synchronize_session=False)
             count = 0
             for msg in req.messages:
                 record = AIChat(session_id=req.session_id, role=msg["role"], content=msg["content"])
@@ -457,4 +468,64 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
         raise
     except Exception as e:
         logger.error("保存消息失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
+@router.post("/feedback")
+async def set_message_feedback(req: FeedbackRequest, request: Request):
+    """点赞/取消点赞一条 AI 消息（按会话内消息下标定位）"""
+    try:
+        db = _get_db()
+        user_id = _get_user_id(request)
+        _verify_session_owner(db, req.session_id, user_id)
+
+        from db.session import AIChatFeedback
+        sess = db.Session()
+        try:
+            row = sess.query(AIChatFeedback).filter_by(
+                session_id=req.session_id, message_index=req.message_index,
+            ).first()
+            if row:
+                row.liked = 1 if req.liked else 0
+                row.user_id = user_id
+            else:
+                sess.add(AIChatFeedback(
+                    session_id=req.session_id,
+                    message_index=req.message_index,
+                    liked=1 if req.liked else 0,
+                    user_id=user_id,
+                ))
+            sess.commit()
+        except Exception:
+            sess.rollback()
+            raise
+        finally:
+            sess.close()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("保存消息反馈失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
+@router.get("/feedback")
+async def get_message_feedback(request: Request, session_id: str = Query(..., min_length=1, description="会话 ID")):
+    """获取会话内所有消息的点赞状态，返回 {消息下标: 是否已赞}"""
+    try:
+        db = _get_db()
+        user_id = _get_user_id(request)
+        _verify_session_owner(db, session_id, user_id)
+
+        from db.session import AIChatFeedback
+        sess = db.Session()
+        try:
+            rows = sess.query(AIChatFeedback).filter_by(session_id=session_id).all()
+            return {str(r.message_index): bool(r.liked) for r in rows}
+        finally:
+            sess.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("获取消息反馈失败: %s", e)
         raise HTTPException(status_code=500, detail=_SAFE_ERROR)

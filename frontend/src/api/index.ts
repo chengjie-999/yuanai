@@ -255,6 +255,31 @@ export async function saveMessages(sessionId: string, messages: { role: string; 
   } catch (e) { console.error('API 调用失败:', e) }
 }
 
+// ---- Feedback ----
+export async function loadFeedback(sessionId: string): Promise<Record<number, boolean>> {
+  try {
+    const res = await fetch(`${API_BASE}/chat/feedback?session_id=${encodeURIComponent(sessionId)}`, { headers: authHeaders() })
+    if (!res.ok) return {}
+    const data = await res.json()
+    const out: Record<number, boolean> = {}
+    if (data && typeof data === 'object') {
+      for (const k of Object.keys(data)) out[Number(k)] = !!data[k]
+    }
+    return out
+  } catch { return {} }
+}
+
+export async function setFeedback(sessionId: string, messageIndex: number, liked: boolean): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/chat/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ session_id: sessionId, message_index: messageIndex, liked }),
+    })
+    return res.ok
+  } catch { return false }
+}
+
 // ---- Stream Chat ----
 export function streamChat(
   params: {

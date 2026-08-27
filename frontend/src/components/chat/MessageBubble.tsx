@@ -1,19 +1,95 @@
+import { useEffect, useState } from 'react'
 import type { ChatMessage } from '../../types'
 import ToolCallCard from '../ToolCallCard'
 import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { LoadingDots, addToken } from './helpers'
 
-export default function MessageBubble({ msg, isLast, loading, user, setExpandedImage }: {
-  msg: ChatMessage; isLast: boolean; loading: boolean
+// 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
+const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSProperties => ({
+  background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: 6,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  color: inUserBubble ? 'rgba(255,255,255,0.9)' : (active ? 'var(--accent)' : 'var(--text-muted)'),
+  opacity: 0.65, transition: 'opacity 0.15s', minWidth: 26, minHeight: 26, lineHeight: 1,
+})
+
+const iconProps = { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+
+export default function MessageBubble({ msg, index, isLast, loading, liked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onLike }: {
+  msg: ChatMessage; index: number; isLast: boolean; loading: boolean
+  liked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
+  onEditStart: (i: number) => void
+  onEditConfirm: (i: number, content: string) => void
+  onEditCancel: () => void
+  onLike: (i: number) => void
 }) {
   const isUser = msg.role === 'user'
   const sender = !isUser ? (msg.sender || 'orchestrator') : null
   const agent = sender ? AGENT_CONFIG[sender] : null
+  const [copied, setCopied] = useState(false)
+  const [draft, setDraft] = useState(msg.content)
+  // 进入编辑态时预填原内容
+  useEffect(() => { if (editing) setDraft(msg.content) }, [editing])
+
+  const copyContent = async () => {
+    // 复制 msg.content 原样（AI 消息即 markdown 原文）
+    try { await navigator.clipboard.writeText(msg.content) }
+    catch {
+      const ta = document.createElement('textarea')
+      ta.value = msg.content
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  // 编辑态用保存/取消替换操作行；空内容的占位/工具气泡不显示操作行
+  const showActions = !editing && msg.content.trim().length > 0
+
+  // 气泡内操作行（常显，按钮本体 0.65 → 1 hover 微反馈）
+  const bubbleActions = showActions ? (
+    <div className="msg-actions" style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', marginTop: 6, marginBottom: -4 }}>
+      <button onClick={copyContent} title="复制" aria-label="复制"
+        style={iconBtnStyle(isUser, copied)}
+        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
+        {copied ? (
+          <svg {...iconProps}><polyline points="20 6 9 17 4 12" /></svg>
+        ) : (
+          <svg {...iconProps}>
+            <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+          </svg>
+        )}
+      </button>
+      {isUser ? (
+        <button onClick={() => onEditStart(index)} disabled={loading} title="修改" aria-label="修改"
+          style={iconBtnStyle(isUser)}
+          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
+          <svg {...iconProps}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
+        </button>
+      ) : (
+        <button onClick={() => onLike(index)} disabled={loading}
+          title={liked ? '取消点赞' : '点赞'} aria-label={liked ? '取消点赞' : '点赞'}
+          style={iconBtnStyle(false, !!liked)}
+          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
+          <svg {...iconProps} fill={liked ? 'currentColor' : 'none'}>
+            <path d="M7 10v12" />
+            <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z" />
+          </svg>
+        </button>
+      )}
+    </div>
+  ) : null
 
   return (
-    <div style={{
+    <div className="chat-msg-row" style={{
       marginBottom: 14,
       display: 'flex',
       flexDirection: 'column',
@@ -57,7 +133,31 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
           <LoadingDots />
         ) : isUser ? (
           <>
-            {msg.content}
+            {editing ? (
+              <div style={{ minWidth: 220 }}>
+                <textarea className="msg-edit-textarea" value={draft} autoFocus rows={3}
+                  onChange={(e) => setDraft(e.target.value)}
+                  style={{ width: '100%', boxSizing: 'border-box', background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 8,
+                    fontSize: 14, padding: '8px 10px', fontFamily: 'inherit', resize: 'vertical',
+                    display: 'block', outline: 'none' }} />
+                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 8 }}>
+                  <button onClick={onEditCancel} title="取消" aria-label="取消"
+                    style={{ ...iconBtnStyle(true), opacity: 0.9, background: 'rgba(255,255,255,0.15)' }}
+                    onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                    onMouseLeave={(e) => e.currentTarget.style.opacity = '0.9'}>
+                    <svg {...iconProps}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                  </button>
+                  <button onClick={() => onEditConfirm(index, draft)} disabled={!draft.trim()}
+                    title="保存" aria-label="保存"
+                    style={{ ...iconBtnStyle(true), background: '#fff', color: 'var(--accent)', opacity: draft.trim() ? 0.95 : 0.5 }}>
+                    <svg {...iconProps}><polyline points="20 6 9 17 4 12" /></svg>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>{msg.content}</>
+            )}
             {msg.images && msg.images.length > 0 && (
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>
                 {msg.images.map((img, j) => (
@@ -67,6 +167,7 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
                 ))}
               </div>
             )}
+            {bubbleActions}
           </>
         ) : (
           <>
@@ -133,6 +234,7 @@ export default function MessageBubble({ msg, isLast, loading, user, setExpandedI
                 ))}
               </div>
             )}
+            {bubbleActions}
           </>
         )}
       </div>

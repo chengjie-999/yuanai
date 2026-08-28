@@ -193,6 +193,16 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **审批流未启用**：依赖 claude-agent-sdk 的 `can_use_tool`，当前网络装不了该包（pypi.org 不通、清华源无包）。review 级命令目前靠提示词黑名单约束（同 Phase 1 delegate）
 - 验证：`python -m agent.verify_claude_bridge`（离线断言 agent→token→tool→done + 会话续接）
 
+## 语音对话
+
+火山引擎「AI 音视频互动方案」实时语音（豆包 App 同款：RTC + 豆包 ASR/TTS + 方舟 LLM）：
+
+- 流程：输入区 🎙️ 按钮 → `POST /api/v1/voice/start`（创建 room/task → StartVoiceChat 启动 AI 智能体入房 → 签发 RTC Token）→ 前端 `@volcengine/rtc` SDK joinRoom + 麦克风采集 → 挂断 `POST /api/v1/voice/end`（StopVoiceChat）
+- 后端纯 Python 零新依赖：`api/v1/voice/rtc_token.py`（VeRTC Token：JWT 风格 HMAC-SHA256，密钥 AppKey）、`v4_sign.py`（OpenAPI V4 签名，域 rtc.volcengineapi.com，Version=2024-12-01）
+- 前端 `VoiceCall.tsx` 悬浮通话卡（桌面居中 / 手机全屏）：音量波形（enableAudioPropertiesReport）、通话计时、Esc/挂断；SDK 动态 import 分包（约 2MB，点击才加载）
+- 配置：`.env` 的 VOLCANO_ACCESS_KEY/SECRET_KEY（IAM）、VOLCANO_RTC_APP_ID/APP_KEY（RTC 应用）、VOICE_LLM_ENDPOINT_ID（方舟接入点）、VOICE_ASR/TTS_APP_ID+ACCESS_TOKEN（豆包语音控制台）；未配置时 /voice/start 返回 503
+- **未联调**：StartVoiceChat 请求体字段（Config/ASRConfig/LLMConfig/TTSConfig）按官方 2024-12-01 文档编写，但本机网络无法访问官方文档页核实——首次上线需对照控制台/文档核对，调参集中在 `_build_start_body()`
+
 ## 工具系统
 
 - 通用工具：`yuanai_core/tools/` 自动发现，39 个（8 个模块，7 个类别：general/crawl/data/file/memory/knowledge/stats）

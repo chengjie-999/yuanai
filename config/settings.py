@@ -133,3 +133,18 @@ TOS_CONFIG = {
 
 BACKUP_DIR = os.getenv("BACKUP_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "backups"))
 BACKUP_RETENTION_COUNT = int(os.getenv("BACKUP_RETENTION_COUNT", "4"))
+
+# ===================== 语音对话（火山引擎 RTC） =====================
+# 前提：控制台开通「AI 音视频互动方案」→ 创建 RTC 应用（AppId/AppKey）
+#      → IAM 密钥管理创建 AK/SK → 豆包语音控制台开通 ASR/TTS（各自 AppId + AccessToken）
+VOLCANO_ACCESS_KEY = os.getenv("VOLCANO_ACCESS_KEY", "")        # IAM AccessKey（调用 OpenAPI）
+VOLCANO_SECRET_KEY = os.getenv("VOLCANO_SECRET_KEY", "")        # IAM SecretKey
+VOLCANO_RTC_APP_ID = os.getenv("VOLCANO_RTC_APP_ID", "")        # RTC 应用 AppId
+VOLCANO_RTC_APP_KEY = os.getenv("VOLCANO_RTC_APP_KEY", "")      # RTC 应用 AppKey（Token 签名密钥）
+VOICE_LLM_ENDPOINT_ID = os.getenv("VOICE_LLM_ENDPOINT_ID", "")  # 火山方舟推理接入点 ID（语音对话 LLM）
+VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "")              # 模型名（可空，方舟端点已绑定模型）
+VOICE_ASR_APP_ID = os.getenv("VOICE_ASR_APP_ID", "")            # 豆包语音控制台 ASR AppId
+VOICE_ASR_ACCESS_TOKEN = os.getenv("VOICE_ASR_ACCESS_TOKEN", "")  # 豆包语音控制台 ASR AccessToken
+VOICE_TTS_APP_ID = os.getenv("VOICE_TTS_APP_ID", "")            # 豆包语音控制台 TTS AppId
+VOICE_TTS_ACCESS_TOKEN = os.getenv("VOICE_TTS_ACCESS_TOKEN", "")  # 豆包语音控制台 TTS AccessToken
+VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "zh_female_tianmei_jingpin_mars_bigtts")  # 音色（控制台可选）

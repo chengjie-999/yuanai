@@ -22,6 +22,7 @@ from api.v1.agent.router import router as agent_router
 from api.v1.analysis.rfm import router as rfm_router
 from api.v1.monitor.router import router as monitor_router
 from api.v1.medical.router import router as medical_router
+from api.v1.voice.router import router as voice_router
 from api.v1.middleware import auth_middleware, rate_limit_middleware
 from api.v1.exceptions import AppError, app_error_handler
 from utils.data_path import root_path
@@ -61,6 +62,7 @@ app.include_router(agent_router, prefix="/api/v1", tags=["agent"])
 app.include_router(rfm_router, prefix="/api/v1", tags=["analysis"])
 app.include_router(monitor_router, prefix="/api/v1", tags=["monitor"])
 app.include_router(medical_router, prefix="/api/v1", tags=["medical"])
+app.include_router(voice_router, prefix="/api/v1", tags=["voice"])
 
 app.middleware("http")(rate_limit_middleware)  # 先限流
 app.middleware("http")(auth_middleware)        # 再鉴权

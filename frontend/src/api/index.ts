@@ -280,6 +280,35 @@ export async function setFeedback(sessionId: string, messageIndex: number, liked
   } catch { return false }
 }
 
+// ---- Voice ----
+export interface VoiceCreds {
+  app_id: string; room_id: string; user_id: string; rtc_token: string; task_id: string
+}
+
+export async function voiceStart(): Promise<VoiceCreds> {
+  const res = await fetch(`${API_BASE}/voice/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: '{}',
+  })
+  if (!res.ok) {
+    // 透出后端错误信息（503 未配置 / 502 RTC 调用失败）
+    const data = await safeJson(res)
+    throw new Error(data?.detail || `语音服务错误（${res.status}）`)
+  }
+  return await res.json()
+}
+
+export async function voiceEnd(roomId: string, taskId: string) {
+  try {
+    await fetch(`${API_BASE}/voice/end`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ room_id: roomId, task_id: taskId }),
+    })
+  } catch { /* 挂断尽力而为，失败不阻塞 UI */ }
+}
+
 // ---- Stream Chat ----
 export function streamChat(
   params: {

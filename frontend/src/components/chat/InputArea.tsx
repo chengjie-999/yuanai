@@ -20,6 +20,19 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   const [uploading, setUploading] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
 
+  // 麦克风权限必须在点击手势内同步申请：Chrome 的用户激活（约 5s）过期后
+  // getUserMedia 会被静默拒绝（NotAllowedError），连询问框都不弹。
+  // 先申请拿权限即释放，SDK 进房后重新采集时权限已在，不会再弹框。
+  const startVoiceCall = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach((t) => t.stop())
+      setVoiceOpen(true)
+    } catch {
+      alert('麦克风权限被拒绝：请点击浏览器地址栏左侧图标，将麦克风设为「允许」后重试')
+    }
+  }
+
   return (
     <div className="chat-input-area" style={{ padding: '12px 24px 20px', borderTop: '1px solid var(--border)' }}>
       <div className="chat-input-inner" style={{ maxWidth: 720, margin: '0 auto', width: '100%', boxShadow: '0 4px 24px var(--shadow-sm)' }}>
@@ -79,7 +92,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
               onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
             >📎</button>
-            <button onClick={() => setVoiceOpen(true)} title="语音通话" aria-label="语音通话"
+            <button onClick={startVoiceCall} title="语音通话" aria-label="语音通话"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', lineHeight: 1, opacity: 0.5, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
               onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}

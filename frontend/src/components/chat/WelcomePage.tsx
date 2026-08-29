@@ -5,6 +5,7 @@ import Mascot from '../Mascot'
 import type { SessionInfo } from './helpers'
 import type { ChatMode } from './ChatModeSelector'
 import ChatModeSelector from './ChatModeSelector'
+import VoiceCall from './VoiceCall'
 import { compressImage } from './imageUtils'
 
 export default function WelcomePage({ images, setImages, quickInput, setQuickInput, sendWithNewSession, sessions, onSelectSession, chatMode, setChatMode, localOnline, claudeOnline }: {
@@ -17,6 +18,7 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [voiceOpen, setVoiceOpen] = useState(false)
 
   return (
     <div className="chat-welcome" style={{
@@ -94,6 +96,16 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
                 onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                 onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
               >📎</button>
+              <button onClick={() => setVoiceOpen(true)} title="语音通话" aria-label="语音通话"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '8px', lineHeight: 1, opacity: 0.5, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                </svg>
+              </button>
               <button onClick={() => { if (quickInput.trim()) { const v = quickInput.trim(); setQuickInput(''); sendWithNewSession(v) } }} disabled={!quickInput.trim()}
                 className="btn btn-primary"
                 style={{ padding: '10px 24px', fontSize: 14, fontWeight: 600, opacity: !quickInput.trim() ? 0.5 : 1, borderRadius: 10 }}>发送</button>
@@ -105,6 +117,8 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
           </div>
         </div>
       </div>
+
+      {voiceOpen && <VoiceCall onClose={() => setVoiceOpen(false)} />}
 
       <div style={{ marginTop: 20, width: '100%', maxWidth: 520 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>

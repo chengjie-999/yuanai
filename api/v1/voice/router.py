@@ -101,11 +101,8 @@ def _build_start_body(app_id: str, room_id: str, task_id: str) -> dict:
             "EndPointId": VOICE_LLM_ENDPOINT_ID,
             "Temperature": 0.7,
             "HistoryLength": 10,
-            # SystemMessages 实测为 JSON 字符串（Go struct 字段类型 string），
-            # 编码后传入，格式 [{"Role":"system","Content":"..."}]
-            "SystemMessages": json.dumps(
-                [{"Role": "system", "Content": _SYSTEM_PROMPT}], ensure_ascii=False
-            ),
+            # SystemMessages 实测为字符串数组 []string（元素类型 string、外层 slice）
+            "SystemMessages": [_SYSTEM_PROMPT],
         }
         if VOICE_LLM_MODEL:
             llm_cfg["ModelName"] = VOICE_LLM_MODEL

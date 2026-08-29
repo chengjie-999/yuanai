@@ -79,8 +79,8 @@ def _call_rtc_api(action: str, body: dict) -> dict:
     return data
 
 
-def _build_start_body(app_id: str, room_id: str, task_id: str) -> dict:
-    """构造 StartVoiceChat 请求体（字段对应 2024-12-01 版本）"""
+def _build_start_body(app_id: str, room_id: str, task_id: str, rtc_user_id: str) -> dict:
+    """构造 StartVoiceChat 请求体（字段按实测逐项核对）"""
     from config.settings import (
         VOICE_LLM_ENDPOINT_ID, VOICE_LLM_MODEL,
         VOICE_ASR_APP_ID, VOICE_ASR_ACCESS_TOKEN,
@@ -124,6 +124,8 @@ def _build_start_body(app_id: str, room_id: str, task_id: str) -> dict:
             "BotName": "小元AI",
             # UserID 必须显式提供（实测为空时校验失败），沿用官方默认规则 voiceChat_{TaskId}
             "UserID": f"voiceChat_{task_id}",
+            # TargetUserID：智能体交互对象（客户端 UserId），字符串数组且仅支持一个（实测必填）
+            "TargetUserID": [rtc_user_id],
         },
     }
 
@@ -162,7 +164,7 @@ async def start_voice_chat(req: VoiceStartRequest, request: Request):
         # user_id 作为流 ID 的一部分需稳定字符串
         rtc_user_id = f"user{user_id}"
 
-        _call_rtc_api("StartVoiceChat", _build_start_body(app_id, room_id, task_id))
+        _call_rtc_api("StartVoiceChat", _build_start_body(app_id, room_id, task_id, rtc_user_id))
         token = generate_rtc_token(
             app_id=app_id,
             app_key=VOLCANO_RTC_APP_KEY,

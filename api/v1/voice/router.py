@@ -120,7 +120,11 @@ def _build_start_body(app_id: str, room_id: str, task_id: str) -> dict:
         "RoomId": room_id,
         "TaskId": task_id,
         "Config": config,
-        "AgentConfig": {"BotName": "小元AI"},
+        "AgentConfig": {
+            "BotName": "小元AI",
+            # UserID 必须显式提供（实测为空时校验失败），沿用官方默认规则 voiceChat_{TaskId}
+            "UserID": f"voiceChat_{task_id}",
+        },
     }
 
 

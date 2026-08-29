@@ -96,14 +96,20 @@ def _build_start_body(app_id: str, room_id: str, task_id: str) -> dict:
             },
         }
     if VOICE_LLM_ENDPOINT_ID:
-        config["LLMConfig"] = {
+        llm_cfg = {
             "Mode": "ArkV3",
             "EndPointId": VOICE_LLM_ENDPOINT_ID,
-            "ModelName": VOICE_LLM_MODEL or "",
             "Temperature": 0.7,
             "HistoryLength": 10,
-            "SystemMessages": [{"Role": "system", "Content": _SYSTEM_PROMPT}],
+            # SystemMessages 实测为 JSON 字符串（Go struct 字段类型 string），
+            # 编码后传入，格式 [{"Role":"system","Content":"..."}]
+            "SystemMessages": json.dumps(
+                [{"Role": "system", "Content": _SYSTEM_PROMPT}], ensure_ascii=False
+            ),
         }
+        if VOICE_LLM_MODEL:
+            llm_cfg["ModelName"] = VOICE_LLM_MODEL
+        config["LLMConfig"] = llm_cfg
     if VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN:
         config["TTSConfig"] = {
             "Provider": "volcano",

@@ -40,7 +40,7 @@ def generate_rtc_token(
     """生成进房 Token（publish + subscribe 双权限，默认 24 小时有效）"""
     now = int(time.time())
     expire_at = now + expire_seconds
-    header = {"alg": "HMAC-SHA256", "type": "JWT"}
+    header = {"alg": "HMAC-SHA256", "typ": "JWT"}
     payload = {
         "app_id": app_id,
         "room_id": room_id,

@@ -30,7 +30,7 @@ _TIMEOUT = 10  # OpenAPI 调用超时（秒）
 
 # 语音对话系统提示词（口语化，避免冗长输出）
 _SYSTEM_PROMPT = (
-    "你是小元AI的语音助手，与用户进行自然、简洁的中文口语对话。"
+    "你是小元，用户的语音助手，与用户进行自然、简洁的中文口语对话。"
     "回答尽量简短直接，一句话能说清的不说两句；遇到需要分析数据、"
     "采集网页或自动化操作的任务时，说明你会在文字对话中继续处理。"
 )
@@ -129,12 +129,12 @@ def _build_start_body(app_id: str, room_id: str, task_id: str, rtc_user_id: str)
         "TaskId": task_id,
         "Config": config,
         "AgentConfig": {
-            "BotName": "小元AI",
+            "BotName": "小元",
             # UserID 必须显式提供（实测为空时校验失败），沿用官方默认规则 voiceChat_{TaskId}
             "UserID": f"voiceChat_{task_id}",
             # TargetUserID：智能体交互对象（客户端 UserId），字符串数组且仅支持一个（实测必填）
             "TargetUserID": [rtc_user_id],
-            "WelcomeMessage": "你好，我是小元AI，有什么可以帮你的吗？",
+            "WelcomeMessage": "你好，我是小元，有什么可以帮你的吗？",
         },
     }
 

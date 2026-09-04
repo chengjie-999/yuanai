@@ -262,21 +262,32 @@ async def voice_tts(req: VoiceTtsRequest, request: Request):
         )
         with urllib.request.urlopen(r, timeout=20) as resp:
             raw = resp.read()
-        # 成功响应为 JSON：{"code":0,"message":"","data":"<base64 mp3>"}；失败同样 JSON
-        try:
-            payload = json.loads(raw.decode("utf-8"))
-        except Exception:
-            # 非 JSON：直接当音频返回（兼容可能的裸音频流响应）
-            if raw and raw[:1] != b"{":
-                return Response(content=raw, media_type="audio/mpeg")
-            raise HTTPException(status_code=502, detail="语音合成失败：响应格式异常")
-        if payload.get("code") != 0 or not payload.get("data"):
-            err = json.dumps(payload, ensure_ascii=False)[:300]
-            logger.error("TTS 合成失败: %s", err)
-            raise HTTPException(status_code=502, detail=f"语音合成失败：{err}")
+        # 响应为换行分隔的 JSON 流：每段 {"code":0,"data":"<base64 音频片段>"}，
+        # 末尾 {"code":20000000,"message":"OK","data":null} 结束标记
         import base64
-        audio = base64.b64decode(payload["data"])
-        return Response(content=audio, media_type="audio/mpeg")
+        audio_parts = []
+        for line in raw.split(b"\n"):
+            line = line.strip()
+            if not line or line[:1] != b"{":
+                continue
+            try:
+                payload = json.loads(line.decode("utf-8"))
+            except Exception:
+                continue
+            code = payload.get("code")
+            if code is None:
+                continue
+            if code == 20000000:
+                break  # 正常结束标记
+            if code != 0:
+                err = json.dumps(payload, ensure_ascii=False)[:300]
+                logger.error("TTS 合成失败: %s", err)
+                raise HTTPException(status_code=502, detail=f"语音合成失败：{err}")
+            if payload.get("data"):
+                audio_parts.append(base64.b64decode(payload["data"]))
+        if not audio_parts:
+            raise HTTPException(status_code=502, detail="语音合成失败：未返回音频")
+        return Response(content=b"".join(audio_parts), media_type="audio/mpeg")
     except HTTPException:
         raise
     except urllib.error.HTTPError as e:

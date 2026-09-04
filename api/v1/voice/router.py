@@ -153,6 +153,10 @@ class VoiceMessageRequest(BaseModel):
     content: str = Field(..., min_length=1, description="转录文本")
 
 
+class VoiceTtsRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=1000, description="要朗读的文本")
+
+
 @router.post("/start", response_model=VoiceStartResponse)
 async def start_voice_chat(req: VoiceStartRequest, request: Request):
     """创建语音房间：启动 AI 智能体入房并签发进房 Token"""
@@ -224,3 +228,51 @@ async def append_voice_message(req: VoiceMessageRequest, request: Request):
     except Exception as e:
         logger.error("追加语音转录消息失败: %s", e)
         raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
+@router.post("/tts")
+async def voice_tts(req: VoiceTtsRequest, request: Request):
+    """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型，返回 mp3 音频流"""
+    from config.settings import VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE
+    from fastapi.responses import Response
+    if not (VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN):
+        raise HTTPException(status_code=503, detail="语音合成未配置：请先配置 VOICE_TTS_* 凭据")
+    try:
+        body = {
+            "user": {"uid": f"tts_{getattr(request.state, 'user_id', 0)}"},
+            "req_params": {
+                "text": req.text,
+                "speaker": VOICE_TTS_VOICE,
+                "audio_params": {"format": "mp3", "sample_rate": 24000},
+            },
+        }
+        headers = {
+            "X-Api-App-Key": VOICE_TTS_APP_ID,
+            "X-Api-Access-Key": VOICE_TTS_ACCESS_TOKEN,
+            # 时长版资源（一次性合成按时长计费；联调前需在控制台开通语音合成大模型资源）
+            "X-Api-Resource-Id": "volc.bigtts.speech.duration",
+            "X-Api-Request-Id": uuid.uuid4().hex,
+            "X-Api-Connect-Id": uuid.uuid4().hex,
+            "Content-Type": "application/json",
+        }
+        url = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+        r = urllib.request.Request(
+            url, data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+            headers=headers, method="POST",
+        )
+        with urllib.request.urlopen(r, timeout=20) as resp:
+            audio = resp.read()
+        if not audio or audio[:1] == b"{":
+            err = audio.decode("utf-8", errors="replace")[:300] if audio else "空响应"
+            logger.error("TTS 合成失败: %s", err)
+            raise HTTPException(status_code=502, detail=f"语音合成失败：{err}")
+        return Response(content=audio, media_type="audio/mpeg")
+    except HTTPException:
+        raise
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace")[:300]
+        logger.error("TTS 合成失败(%s): %s", e.code, detail)
+        raise HTTPException(status_code=502, detail=f"语音合成失败（{e.code}）：{detail}")
+    except Exception as e:
+        logger.error("TTS 合成异常: %s", e)
+        raise HTTPException(status_code=500, detail="语音合成服务不可用，请稍后重试")

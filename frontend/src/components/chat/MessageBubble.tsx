@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChatMessage } from '../../types'
 import ToolCallCard from '../ToolCallCard'
 import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
-import { LoadingDots, addToken } from './helpers'
+import { voiceTts } from '../../api'
+import { LoadingDots, addToken, stripMarkdown } from './helpers'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
 const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSProperties => ({
@@ -29,8 +30,16 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
   const agent = sender ? AGENT_CONFIG[sender] : null
   const [copied, setCopied] = useState(false)
   const [draft, setDraft] = useState(msg.content)
+  // 朗读状态（AI 气泡）：获取中/播放中
+  const [speaking, setSpeaking] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   // 进入编辑态时预填原内容
   useEffect(() => { if (editing) setDraft(msg.content) }, [editing])
+  // 卸载时停止朗读
+  useEffect(() => () => {
+    audioRef.current?.pause()
+    audioRef.current = null
+  }, [])
 
   const copyContent = async () => {
     // 复制 msg.content 原样（AI 消息即 markdown 原文）
@@ -47,12 +56,53 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
     setTimeout(() => setCopied(false), 1500)
   }
 
+  // 朗读消息（豆包 TTS）：markdown 去符号后合成语音播放；再点一次停止
+  const toggleRead = async () => {
+    if (speaking) {
+      audioRef.current?.pause()
+      audioRef.current = null
+      setSpeaking(false)
+      return
+    }
+    setSpeaking(true)
+    try {
+      const text = stripMarkdown(msg.content).trim().slice(0, 1000)
+      if (!text) throw new Error('没有可朗读的内容')
+      const blob = await voiceTts(text)
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; setSpeaking(false) }
+      audio.onerror = () => { URL.revokeObjectURL(url); audioRef.current = null; setSpeaking(false) }
+      await audio.play()
+    } catch (err: any) {
+      setSpeaking(false)
+      alert(err?.message || '语音合成失败，请稍后重试')
+    }
+  }
+
   // 编辑态用保存/取消替换操作行；空内容的占位/工具气泡不显示操作行
   const showActions = !editing && msg.content.trim().length > 0
 
   // 气泡内操作行（常显，按钮本体 0.65 → 1 hover 微反馈）
   const bubbleActions = showActions ? (
     <div className="msg-actions" style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', marginTop: 6, marginBottom: -4 }}>
+      {!isUser && (
+        <button onClick={toggleRead} title={speaking ? '停止朗读' : '朗读'} aria-label={speaking ? '停止朗读' : '朗读'}
+          style={iconBtnStyle(false, speaking)}
+          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
+          {speaking ? (
+            <svg {...iconProps}><rect width="10" height="10" x="7" y="7" rx="2" /></svg>
+          ) : (
+            <svg {...iconProps}>
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            </svg>
+          )}
+        </button>
+      )}
       <button onClick={copyContent} title="复制" aria-label="复制"
         style={iconBtnStyle(isUser, copied)}
         onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}

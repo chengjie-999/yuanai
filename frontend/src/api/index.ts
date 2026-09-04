@@ -319,6 +319,19 @@ export async function voiceMessage(sessionId: string, role: 'user' | 'assistant'
   } catch { /* 转录持久化尽力而为 */ }
 }
 
+export async function voiceTts(text: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/voice/tts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ text }),
+  })
+  if (!res.ok) {
+    const data = await safeJson(res)
+    throw new Error(data?.detail || `语音合成错误（${res.status}）`)
+  }
+  return await res.blob()
+}
+
 // ---- Stream Chat ----
 export function streamChat(
   params: {

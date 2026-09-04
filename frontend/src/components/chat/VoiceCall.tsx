@@ -59,7 +59,7 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAs
   const [agentState, setAgentState] = useState(1) // conv 状态码（默认在听）
   const [agentDesc, setAgentDesc] = useState('')  // conv 描述（可能含错误信息）
   const [transcript, setTranscript] = useState<TranscriptItem[]>([])
-  const [speakTextReply, setSpeakTextReply] = useState(true)  // 朗读文字回复开关
+  const [speakTextReply, setSpeakTextReply] = useState(false)  // 朗读文字回复开关（默认关，避免与机器人语音重叠）
   const credsRef = useRef<{ room_id: string; task_id: string; user_id: string } | null>(null)
   const engineRef = useRef<any>(null)
   const sidRef = useRef<string | null>(null)

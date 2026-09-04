@@ -269,6 +269,12 @@ export default function ChatPage({ user }: { user?: any }) {
     return sid
   }
 
+  // 开始语音通话：清掉历史文字回复，避免通话时误朗读旧消息造成重音
+  const startVoiceCall = () => {
+    setLastAssistantText('')
+    setVoiceCallOpen(true)
+  }
+
   // 语音转录追加到聊天界面（文字流式回复期间跳过，避免 token 拼到转录气泡上；持久化由 VoiceCall 负责）
   const handleVoiceTranscript = (role: 'user' | 'assistant', content: string) => {
     if (loading) return
@@ -373,7 +379,7 @@ export default function ChatPage({ user }: { user?: any }) {
             sessions={sessions} onSelectSession={handleSelectSession}
             chatMode={chatMode} setChatMode={setChatMode}
             localOnline={localOnline} claudeOnline={claudeOnline}
-            onStartVoiceCall={() => setVoiceCallOpen(true)}
+            onStartVoiceCall={startVoiceCall}
           />
         ) : (
           <ChatView
@@ -389,7 +395,7 @@ export default function ChatPage({ user }: { user?: any }) {
             pendingApproval={pendingApproval} handleDecision={handleDecision}
             likes={likes} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
             onEditMessage={handleEditMessage} onLike={handleLike}
-            onStartVoiceCall={() => setVoiceCallOpen(true)}
+            onStartVoiceCall={startVoiceCall}
           />
         )}
       </div>

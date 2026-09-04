@@ -149,4 +149,4 @@ VOICE_TTS_APP_ID = os.getenv("VOICE_TTS_APP_ID", "")            # 豆包语音�
 VOICE_TTS_ACCESS_TOKEN = os.getenv("VOICE_TTS_ACCESS_TOKEN", "")  # 豆包语音控制台 TTS AccessToken
 VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "zh_female_xiaohe_uranus_bigtts")  # 气泡朗读音色（须为 2.0 系列，配 seed-tts-2.0 资源）
 VOICE_TTS_VOICE_BOT = os.getenv("VOICE_TTS_VOICE_BOT", "zh_female_qingxinnvsheng_mars_bigtts")  # 通话机器人音色（官方 1201 模板默认值，volcano_bidirection）
-VOICE_ASR_RESOURCE_ID = os.getenv("VOICE_ASR_RESOURCE_ID", "volc.bigasr.sauc.duration")  # ASR 大模型资源（官方模板默认时长版）
+VOICE_ASR_RESOURCE_ID = os.getenv("VOICE_ASR_RESOURCE_ID", "volc.bigasr.sauc.concurrent")  # ASR 大模型资源（本地实测：并发版已授权、时长版 403）

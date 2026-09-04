@@ -219,13 +219,13 @@ class AgentDatabase:
             session.close()
 
     def get_sessions(self, limit: int = 50, user_id: int = None) -> list:
-        """获取会话列表（按创建时间倒序）"""
+        """获取会话列表（按最后活跃时间倒序：旧对话发新消息后自动置顶）"""
         session = self.Session()
         try:
             q = session.query(ChatSession)
             if user_id is not None:
                 q = q.filter(ChatSession.user_id == user_id)
-            q = q.order_by(ChatSession.create_time.desc()).limit(limit).all()
+            q = q.order_by(ChatSession.update_time.desc()).limit(limit).all()
             return [{"session_id": s.session_id, "title": s.title, "model": s.model,
                      "create_time": str(s.create_time), "update_time": str(s.update_time)} for s in q]
         finally:

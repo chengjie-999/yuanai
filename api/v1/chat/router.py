@@ -451,9 +451,13 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
                     record.images = json.dumps(saved, ensure_ascii=False)
                 sess.add(record)
                 count += 1
+            # 更新会话：标题按需、update_time 每次必刷（会话列表按最后活跃排序依赖此字段）
+            from db.session import ChatSession
+            from sqlalchemy.sql import func
+            chat_update = {"update_time": func.now()}
             if req.title:
-                from db.session import ChatSession
-                sess.query(ChatSession).filter_by(session_id=req.session_id).update({"title": req.title})
+                chat_update["title"] = req.title
+            sess.query(ChatSession).filter_by(session_id=req.session_id).update(chat_update)
             sess.commit()
         except Exception:
             sess.rollback()

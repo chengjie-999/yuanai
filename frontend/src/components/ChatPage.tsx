@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, API_BASE, getToken } from '../api'
+import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, voiceMessage, getStoredModel, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
@@ -48,6 +48,9 @@ export default function ChatPage({ user }: { user?: any }) {
   messagesRef.current = messages
   const sidRef = useRef(currentSid)
   sidRef.current = currentSid
+  // 语音通话锚定的会话 + 文字流式期间暂存的语音转录（流结束 flush 进保存快照）
+  const voiceSessionRef = useRef<string | null>(null)
+  const pendingVoiceTranscriptsRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
 
   useEffect(() => {
     const onResize = () => {
@@ -219,10 +222,11 @@ export default function ChatPage({ user }: { user?: any }) {
       onEvent, onError,
       () => {
         setLoading(false)
-        const msgs = messagesRef.current.map(encodeMsg)
+        const finalMsgs = flushVoiceTranscripts(messagesRef.current)
+        const msgs = finalMsgs.map(encodeMsg)
         saveMessages(sid, msgs, title || (prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt))
-        // 记录最新 AI 回复全文（语音通话朗读用）
-        const lastA = [...messagesRef.current].reverse().find((m) => m.role === 'assistant' && m.content)
+        // 记录最新 AI 回复全文（语音通话朗读用；排除转录气泡：带 sender 的才是模型回复）
+        const lastA = [...finalMsgs].reverse().find((m) => m.role === 'assistant' && m.content && m.sender)
         if (lastA) setLastAssistantText(lastA.content)
         refreshSessions()
       },
@@ -260,10 +264,12 @@ export default function ChatPage({ user }: { user?: any }) {
     likePendingRef.current.delete(index)
   }
 
-  // 语音通话：欢迎页无会话时自动新建并切进聊天页，已有会话则直接复用
+  // 语音通话：欢迎页无会话时自动新建并切进聊天页，已有会话则直接复用。
+  // 通话开始时由 VoiceCall 调用一次，此后转录锚定返回的会话。
   const ensureVoiceSession = async (): Promise<string> => {
-    if (currentSid) return currentSid
+    if (currentSid) { voiceSessionRef.current = currentSid; return currentSid }
     const sid = await createSession()
+    voiceSessionRef.current = sid
     setCurrentSid(sid)
     refreshSessions()
     return sid
@@ -272,13 +278,36 @@ export default function ChatPage({ user }: { user?: any }) {
   // 开始语音通话：清掉历史文字回复，避免通话时误朗读旧消息造成重音
   const startVoiceCall = () => {
     setLastAssistantText('')
+    pendingVoiceTranscriptsRef.current = []
     setVoiceCallOpen(true)
   }
 
-  // 语音转录追加到聊天界面（文字流式回复期间跳过，避免 token 拼到转录气泡上；持久化由 VoiceCall 负责）
+  // 语音转录：持久化锚定通话会话；UI 仅追加到通话所属会话视图。
+  // 文字流式期间暂存队列（避免 token 拼到转录气泡 + 被全量保存抹掉），流结束 flush 进保存快照。
   const handleVoiceTranscript = (role: 'user' | 'assistant', content: string) => {
-    if (loading) return
+    const sid = voiceSessionRef.current
+    if (loading) {
+      pendingVoiceTranscriptsRef.current.push({ role, content })
+      return
+    }
+    if (sid) voiceMessage(sid, role, content)
+    if (sid && sid !== currentSid) return  // 用户切走了：只落库，展示等切回后 loadMessages 出现
     setMessages((prev) => [...prev, { role, content }])
+  }
+
+  // 文字流结束：把暂存的语音转录并入保存快照（进入 /chat/save 全量替换，避免被抹掉）
+  const flushVoiceTranscripts = (msgs: ChatMessage[]): ChatMessage[] => {
+    const queued = pendingVoiceTranscriptsRef.current.splice(0)
+    if (!queued.length) return msgs
+    const sid = voiceSessionRef.current
+    if (sid === currentSid) {
+      const withFlush = [...msgs, ...queued.map((q) => ({ role: q.role, content: q.content }))]
+      setMessages(withFlush)
+      return withFlush
+    }
+    // 已切到别的会话：不污染当前视图，逐条补持久化到通话会话
+    if (sid) queued.forEach((q) => voiceMessage(sid, q.role, q.content))
+    return msgs
   }
 
   // 语音通话结束：刷新会话列表（新会话标题/最近对话）
@@ -316,9 +345,10 @@ export default function ChatPage({ user }: { user?: any }) {
       onEvent, onError,
       () => {
         setLoading(false)
-        const msgs = messagesRef.current.map(encodeMsg)
+        const finalMsgs = flushVoiceTranscripts(messagesRef.current)
+        const msgs = finalMsgs.map(encodeMsg)
         saveMessages(sid, msgs, text.length > 50 ? text.slice(0, 50) + '...' : text)
-        const lastA = [...messagesRef.current].reverse().find((m) => m.role === 'assistant' && m.content)
+        const lastA = [...finalMsgs].reverse().find((m) => m.role === 'assistant' && m.content && m.sender)
         if (lastA) setLastAssistantText(lastA.content)
         refreshSessions()
       },

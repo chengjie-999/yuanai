@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { voiceStart, voiceEnd, voiceMessage } from '../../api'
+import { voiceStart, voiceEnd } from '../../api'
 
 type CallStatus = 'connecting' | 'active' | 'error'
 
@@ -62,10 +62,12 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAs
   const [speakTextReply, setSpeakTextReply] = useState(false)  // 朗读文字回复开关（默认关，避免与机器人语音重叠）
   const credsRef = useRef<{ room_id: string; task_id: string; user_id: string } | null>(null)
   const engineRef = useRef<any>(null)
-  const sidRef = useRef<string | null>(null)
   const transcriptEndRef = useRef<HTMLDivElement>(null)
   // 记录已朗读过的文字（初始化为挂载时的最新值，避免重播历史回复）
   const lastSpokenRef = useRef(lastAssistantText)
+  // 始终指向最新 props（mount effect 内闭包不冻结首帧值）
+  const propsRef = useRef({ ensureSession, onTranscript })
+  propsRef.current = { ensureSession, onTranscript }
 
   useEffect(() => {
     let disposed = false
@@ -84,24 +86,25 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAs
       }
     }
 
-    // 最终字幕：落聊天会话（懒解析 session，欢迎页自动新建）+ 通知父级更新聊天界面
+    // 最终字幕：卡片展示 + 通知父级（父级负责 UI 追加与持久化，走 propsRef 拿最新回调）
     const handleFinalTranscript = (role: 'user' | 'assistant', text: string) => {
       if (!text.trim()) return
       setTranscript((prev) => [...prev, { role, text }])
-      onTranscript(role, text)
-      ensureSession().then((sid) => {
-        sidRef.current = sid
-        voiceMessage(sid, role, text)
-      }).catch(() => { /* 会话解析失败仅影响持久化 */ })
+      propsRef.current.onTranscript(role, text)
     }
 
     const connect = async () => {
+      // 通话开始即解析会话（欢迎页自动新建并切进聊天页），后续转录由父级锚定该会话
+      propsRef.current.ensureSession().catch(() => { /* 会话解析失败仅影响转录落库 */ })
       try {
         const creds = await voiceStart()
         credsRef.current = { room_id: creds.room_id, task_id: creds.task_id, user_id: creds.user_id }
+        // connecting 阶段挂断：此时 teardown 已跑过但 credsRef 为空，重跑一次停掉机器人任务
+        if (disposed) { await teardown(); return }
 
         // 动态加载 RTC SDK（按需分包，不进主 bundle）
         const { default: VERTC, RoomProfileType } = await import('@volcengine/rtc')
+        if (disposed) { await teardown(); return }
         engine = VERTC.createEngine(creds.app_id)
         engineRef.current = engine
 
@@ -147,8 +150,10 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAs
 
         await engine.joinRoom(creds.rtc_token, creds.room_id, { userId: creds.user_id },
           { isAutoPublish: true, isAutoSubscribeAudio: true, roomProfileType: RoomProfileType.chat })
+        if (disposed) { await teardown(); return }
         await engine.startAudioCapture()
-        if (!disposed) setStatus('active')
+        if (disposed) { await teardown(); return }
+        setStatus('active')
       } catch (err: any) {
         console.error('语音通话连接失败:', err)
         if (!disposed) { setStatus('error'); setErrorMsg(err?.message || '连接失败，请重试') }
@@ -185,8 +190,7 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAs
     if (!lastAssistantText || lastAssistantText === lastSpokenRef.current) return
     const eng = engineRef.current
     const creds = credsRef.current
-    if (!eng || !creds) return
-    lastSpokenRef.current = lastAssistantText
+    if (!eng || !creds) return  // 引擎未就绪：不推进标记，就绪后可补发
     try {
       eng.sendUserBinaryMessage(
         `voiceChat_${creds.task_id}`,
@@ -196,6 +200,8 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAs
           Message: lastAssistantText,
         }), 'ctrl'),
       )
+      // 发送成功才推进，避免失败消息被永久消费
+      lastSpokenRef.current = lastAssistantText
     } catch (err) {
       console.warn('发送朗读命令失败:', err)
     }

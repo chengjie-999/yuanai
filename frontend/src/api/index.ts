@@ -311,11 +311,12 @@ export async function voiceEnd(roomId: string, taskId: string) {
 
 export async function voiceMessage(sessionId: string, role: 'user' | 'assistant', content: string) {
   try {
-    await fetch(`${API_BASE}/voice/message`, {
+    const res = await fetch(`${API_BASE}/voice/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ session_id: sessionId, role, content }),
     })
+    if (!res.ok) console.warn('语音转录落库失败:', res.status)
   } catch { /* 转录持久化尽力而为 */ }
 }
 

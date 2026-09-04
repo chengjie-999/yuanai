@@ -23,6 +23,29 @@ from api.v1.voice.v4_sign import v4_sign_request
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["voice"])
 
+_SAFE_ERROR = "请求处理失败，请稍后重试"
+
+
+def _get_db():
+    from db.session import get_db
+    return get_db()
+
+
+from api.v1.middleware import get_user_id as _get_user_id
+
+
+def _verify_session_owner(db, session_id: str, user_id: int):
+    """验证会话所有权，不是所有人则抛出 403（与 chat router 相同逻辑，后续抽共享模块）"""
+    sess = db.Session()
+    try:
+        from db.session import ChatSession
+        chat = sess.query(ChatSession).filter_by(session_id=session_id).first()
+        if chat and chat.user_id and chat.user_id != user_id:
+            raise HTTPException(status_code=403, detail="无权访问该会话")
+    finally:
+        sess.close()
+
+
 _RTC_API_HOST = "rtc.volcengineapi.com"
 _RTC_API_URL = f"https://{_RTC_API_HOST}"
 _ACTION_VERSION = "2024-12-01"
@@ -167,7 +190,7 @@ class VoiceTtsRequest(BaseModel):
 
 
 @router.post("/start", response_model=VoiceStartResponse)
-async def start_voice_chat(req: VoiceStartRequest, request: Request):
+def start_voice_chat(req: VoiceStartRequest, request: Request):
     """创建语音房间：启动 AI 智能体入房并签发进房 Token"""
     from config.settings import VOLCANO_RTC_APP_ID, VOLCANO_RTC_APP_KEY
     if not _voice_configured():
@@ -202,7 +225,7 @@ async def start_voice_chat(req: VoiceStartRequest, request: Request):
 
 
 @router.post("/end")
-async def end_voice_chat(req: VoiceEndRequest, request: Request):
+def end_voice_chat(req: VoiceEndRequest, request: Request):
     """结束语音对话：停止 AI 智能体任务"""
     from config.settings import VOLCANO_RTC_APP_ID
     if not _voice_configured():
@@ -222,7 +245,7 @@ async def end_voice_chat(req: VoiceEndRequest, request: Request):
 
 
 @router.post("/message")
-async def append_voice_message(req: VoiceMessageRequest, request: Request):
+def append_voice_message(req: VoiceMessageRequest, request: Request):
     """语音对话转录消息逐条追加到聊天会话（不动现有消息，首条用户消息自动定标题）"""
     try:
         db = _get_db()
@@ -240,7 +263,7 @@ async def append_voice_message(req: VoiceMessageRequest, request: Request):
 
 
 @router.post("/tts")
-async def voice_tts(req: VoiceTtsRequest, request: Request):
+def voice_tts(req: VoiceTtsRequest, request: Request):
     """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型 2.0，返回 mp3"""
     from config.settings import VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE
     from fastapi.responses import Response
@@ -293,7 +316,11 @@ async def voice_tts(req: VoiceTtsRequest, request: Request):
                 logger.error("TTS 合成失败: %s", err)
                 raise HTTPException(status_code=502, detail=f"语音合成失败：{err}")
             if payload.get("data"):
-                audio_parts.append(base64.b64decode(payload["data"]))
+                try:
+                    audio_parts.append(base64.b64decode(payload["data"]))
+                except Exception:
+                    # 单个坏分片跳过，不因一段损坏丢弃已合成的完整音频
+                    logger.warning("TTS 音频分片 base64 解码失败，跳过该段")
         if not audio_parts:
             raise HTTPException(status_code=502, detail="语音合成失败：未返回音频")
         return Response(content=b"".join(audio_parts), media_type="audio/mpeg")

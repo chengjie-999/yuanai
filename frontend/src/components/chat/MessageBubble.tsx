@@ -33,13 +33,24 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
   // 朗读状态（AI 气泡）：获取中/播放中
   const [speaking, setSpeaking] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  // 朗读序号：打断/重新朗读时递增，作废在途的合成请求
+  const readSeqRef = useRef(0)
   // 进入编辑态时预填原内容
   useEffect(() => { if (editing) setDraft(msg.content) }, [editing])
-  // 卸载时停止朗读
-  useEffect(() => () => {
-    audioRef.current?.pause()
+  // 统一停止朗读：暂停 + revoke blob URL + 复位（所有路径必须走这里，防泄漏）
+  const stopReading = () => {
+    const audio = audioRef.current
+    if (audio) {
+      try { audio.pause() } catch { /* 忽略 */ }
+      try { if (audio.src) URL.revokeObjectURL(audio.src) } catch { /* 忽略 */ }
+    }
     audioRef.current = null
-  }, [])
+    setSpeaking(false)
+  }
+  // 卸载时停止朗读
+  useEffect(() => () => stopReading()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    , [])
 
   const copyContent = async () => {
     // 复制 msg.content 原样（AI 消息即 markdown 原文）
@@ -56,28 +67,31 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
     setTimeout(() => setCopied(false), 1500)
   }
 
-  // 朗读消息（豆包 TTS）：markdown 去符号后合成语音播放；再点一次停止
+  // 朗读消息（豆包 TTS）：markdown 去符号后合成语音播放；再点一次打断（作废在途请求）
   const toggleRead = async () => {
     if (speaking) {
-      audioRef.current?.pause()
-      audioRef.current = null
-      setSpeaking(false)
+      readSeqRef.current += 1  // 作废在途合成请求
+      stopReading()
       return
     }
+    const seq = ++readSeqRef.current
     setSpeaking(true)
     try {
       const text = stripMarkdown(msg.content).trim().slice(0, 1000)
       if (!text) throw new Error('没有可朗读的内容')
       const blob = await voiceTts(text)
+      if (seq !== readSeqRef.current) return  // 已被打断：不创建音频
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
       audioRef.current = audio
-      audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; setSpeaking(false) }
-      audio.onerror = () => { URL.revokeObjectURL(url); audioRef.current = null; setSpeaking(false) }
+      audio.onended = () => stopReading()
+      audio.onerror = () => stopReading()
       await audio.play()
     } catch (err: any) {
-      setSpeaking(false)
-      alert(err?.message || '语音合成失败，请稍后重试')
+      if (seq === readSeqRef.current) {
+        stopReading()
+        alert(err?.message || '语音合成失败，请稍后重试')
+      }
     }
   }
 

@@ -88,12 +88,18 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
   const bubbleActions = showActions ? (
     <div className="msg-actions" style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', marginTop: 6, marginBottom: -4 }}>
       {!isUser && (
-        <button onClick={toggleRead} title={speaking ? '停止朗读' : '朗读'} aria-label={speaking ? '停止朗读' : '朗读'}
+        <button onClick={toggleRead} title={speaking ? '打断朗读' : '朗读'} aria-label={speaking ? '打断朗读' : '朗读'}
           style={iconBtnStyle(false, speaking)}
           onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
           onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
           {speaking ? (
-            <svg {...iconProps}><rect width="10" height="10" x="7" y="7" rx="2" /></svg>
+            // 朗读中：跳动波形动画，点击打断
+            <span className="msg-read-bars" style={{ display: 'flex', alignItems: 'flex-end', gap: 1.5, height: 13 }}>
+              <i style={{ width: 2, height: 5, background: 'var(--accent)', borderRadius: 1, animation: 'msgReadBar 0.9s ease-in-out infinite' }} />
+              <i style={{ width: 2, height: 11, background: 'var(--accent)', borderRadius: 1, animation: 'msgReadBar 0.9s ease-in-out 0.15s infinite' }} />
+              <i style={{ width: 2, height: 8, background: 'var(--accent)', borderRadius: 1, animation: 'msgReadBar 0.9s ease-in-out 0.3s infinite' }} />
+              <i style={{ width: 2, height: 12, background: 'var(--accent)', borderRadius: 1, animation: 'msgReadBar 0.9s ease-in-out 0.45s infinite' }} />
+            </span>
           ) : (
             <svg {...iconProps}>
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />

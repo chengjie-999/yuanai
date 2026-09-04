@@ -340,6 +340,11 @@ export default function ChatPage({ user }: { user?: any }) {
       }
       /* 气泡内操作行常显（图标本身 0.65 → 1 hover 微反馈） */
       .msg-actions { opacity: 1; }
+      /* 朗读中波形动画 */
+      @keyframes msgReadBar {
+        0%, 100% { transform: scaleY(0.45); opacity: 0.55; }
+        50% { transform: scaleY(1.15); opacity: 1; }
+      }
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}

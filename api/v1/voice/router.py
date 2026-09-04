@@ -232,7 +232,7 @@ async def append_voice_message(req: VoiceMessageRequest, request: Request):
 
 @router.post("/tts")
 async def voice_tts(req: VoiceTtsRequest, request: Request):
-    """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型，返回 mp3 音频流"""
+    """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型 2.0，返回 mp3"""
     from config.settings import VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE
     from fastapi.responses import Response
     if not (VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN):
@@ -249,8 +249,8 @@ async def voice_tts(req: VoiceTtsRequest, request: Request):
         headers = {
             "X-Api-App-Key": VOICE_TTS_APP_ID,
             "X-Api-Access-Key": VOICE_TTS_ACCESS_TOKEN,
-            # 时长版资源（一次性合成按时长计费；联调前需在控制台开通语音合成大模型资源）
-            "X-Api-Resource-Id": "volc.bigtts.speech.duration",
+            # 语音合成大模型 2.0（音色须为 2.0 系列，如 zh_female_xiaohe_uranus_bigtts）
+            "X-Api-Resource-Id": "seed-tts-2.0",
             "X-Api-Request-Id": uuid.uuid4().hex,
             "X-Api-Connect-Id": uuid.uuid4().hex,
             "Content-Type": "application/json",
@@ -261,11 +261,21 @@ async def voice_tts(req: VoiceTtsRequest, request: Request):
             headers=headers, method="POST",
         )
         with urllib.request.urlopen(r, timeout=20) as resp:
-            audio = resp.read()
-        if not audio or audio[:1] == b"{":
-            err = audio.decode("utf-8", errors="replace")[:300] if audio else "空响应"
+            raw = resp.read()
+        # 成功响应为 JSON：{"code":0,"message":"","data":"<base64 mp3>"}；失败同样 JSON
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except Exception:
+            # 非 JSON：直接当音频返回（兼容可能的裸音频流响应）
+            if raw and raw[:1] != b"{":
+                return Response(content=raw, media_type="audio/mpeg")
+            raise HTTPException(status_code=502, detail="语音合成失败：响应格式异常")
+        if payload.get("code") != 0 or not payload.get("data"):
+            err = json.dumps(payload, ensure_ascii=False)[:300]
             logger.error("TTS 合成失败: %s", err)
             raise HTTPException(status_code=502, detail=f"语音合成失败：{err}")
+        import base64
+        audio = base64.b64decode(payload["data"])
         return Response(content=audio, media_type="audio/mpeg")
     except HTTPException:
         raise

@@ -139,7 +139,13 @@ data/                   数据目录
 
 聊天图片：`data/chat_images/` 文件存储，经公开路由 `/api/v1/chat/image/{sid}/{fname}` 提供（`Cache-Control: immutable`，文件名含 UUID）。前端 `addToken` 对此路由**不拼接 JWT**——拼 token 会在每次登录后改变 URL，击穿浏览器缓存导致历史图片全部重新下载。
 
-消息气泡操作（气泡内部图标行，常显）：用户气泡 = 复制/修改（修改后截断其后所有消息并重发，复用 SSE 发送链路）；AI 气泡 = 复制（**markdown 原文**）/点赞。点赞后端持久化：`ai_chat_feedback` 表（会话内消息下标定位，Alembic 0004 迁移），`POST/GET /api/v1/chat/feedback` 读写，`/chat/save` 全量替换时清理下标越界的孤儿行。图标均为内联 SVG stroke（项目零图标库）。已知限制：Claude 桥接模式修改重发 = 续接对话（claude 会话无法回退）；消息无 id，点赞/修改按数组下标定位。
+消息气泡操作（气泡内部图标行，常显）：用户气泡 = 复制/修改（修改后截断其后所有消息并重发，复用 SSE 发送链路）；AI 气泡 = 复制（**markdown 原文**）/点赞。点赞后端持久化：`ai_chat_feedback` 表（会话内消息下标定位，Alembic 0004 迁移），`POST/GET /api/v1/chat/feedback` 读写，`/chat/save` 全量替换时清理下标越界的孤儿行。图标均为内联 SVG stroke（项目零图标库）。已知限制：Claude 桥接模式修改重发 = 续接对话（claude 会话无法回退）；消息无 id，点赞/修改按数组下标定位；语音转录（/voice/message append）与文字保存（/chat/save 全量替换）两条持久化路径并存无幂等键——根治需消息引入 id（架构债，见审查基线 6c154fd 之后再做）。
+
+## 开发经验教训（2026-09-04 全量代码审查沉淀）
+
+1. **跨文件复制私有 helper 必漏 import**：照抄 `_get_db/_verify_session_owner` 用法却不带定义 → 运行时 NameError，py_compile 查不出。复制后立即 grep 验证每个名字在本模块可解析，或提共享模块。
+2. **mount-only useEffect 冻结 props 闭包**：长生命周期 RTC 回调必须走 `propsRef.current = props` 每帧刷新模式（VoiceCall 已示范），否则 loading 守卫失效、会话反复新建。
+3. **同一数据实体只允许一条写入路径**：新增写路径前先问幂等键在哪。
 
 ## 后台管理
 

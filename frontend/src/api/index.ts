@@ -309,6 +309,16 @@ export async function voiceEnd(roomId: string, taskId: string) {
   } catch { /* 挂断尽力而为，失败不阻塞 UI */ }
 }
 
+export async function voiceMessage(sessionId: string, role: 'user' | 'assistant', content: string) {
+  try {
+    await fetch(`${API_BASE}/voice/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ session_id: sessionId, role, content }),
+    })
+  } catch { /* 转录持久化尽力而为 */ }
+}
+
 // ---- Stream Chat ----
 export function streamChat(
   params: {

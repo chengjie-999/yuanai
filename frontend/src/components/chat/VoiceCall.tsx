@@ -1,16 +1,71 @@
 import { useEffect, useRef, useState } from 'react'
-import { voiceStart, voiceEnd } from '../../api'
+import { voiceStart, voiceEnd, voiceMessage } from '../../api'
 
 type CallStatus = 'connecting' | 'active' | 'error'
 
-// 语音通话悬浮卡片：桌面居中卡片，手机全屏；挂断/关闭时自动 StopVoiceChat + 退房 + 销毁引擎
-export default function VoiceCall({ onClose }: { onClose: () => void }) {
+// 机器人状态（来自 RTC 数据流 conv 消息，AGENT_BRIEF 枚举）
+const AGENT_STATE_TEXT: Record<number, string> = {
+  0: '待机中',
+  1: '我在听，请说话',
+  2: '小元AI 正在思考…',
+  3: '小元AI 正在说话…',
+  4: '已打断',
+  5: '本轮结束',
+}
+
+interface TranscriptItem { role: 'user' | 'assistant'; text: string }
+
+/** TLV 解析：| type(4B) | length(4B 大端) | value |（官方 rtc-aigc-demo 协议） */
+function tlv2String(buf: ArrayBuffer): { type: string; value: string } {
+  const typeBytes = new Uint8Array(buf, 0, 4)
+  const lenBytes = new Uint8Array(buf, 4, 4)
+  let type = ''
+  for (let i = 0; i < 4; i++) type += String.fromCharCode(typeBytes[i])
+  const len = (lenBytes[0] << 24) | (lenBytes[1] << 16) | (lenBytes[2] << 8) | lenBytes[3]
+  const value = new TextDecoder().decode(new Uint8Array(buf, 8, len))
+  return { type, value }
+}
+
+/** TLV 编码（反向）：给机器人发命令用 */
+function string2tlv(str: string, type: string): ArrayBuffer {
+  const typeBuf = new Uint8Array(4)
+  for (let i = 0; i < 4; i++) typeBuf[i] = type.charCodeAt(i)
+  const valBuf = new TextEncoder().encode(str)
+  const buf = new Uint8Array(8 + valBuf.length)
+  buf.set(typeBuf, 0)
+  const len = valBuf.length
+  buf[4] = (len >> 24) & 0xff
+  buf[5] = (len >> 16) & 0xff
+  buf[6] = (len >> 8) & 0xff
+  buf[7] = len & 0xff
+  buf.set(valBuf, 8)
+  return buf.buffer
+}
+
+// 语音通话悬浮卡片：桌面居中卡片，手机全屏；挂断/关闭时自动 StopVoiceChat + 退房 + 销毁引擎。
+// 机器人通过 RTC 数据流实时推送字幕（subv）与状态（conv），最终字幕落入聊天会话。
+// 「朗读文字回复」开启时，通话期间聊天产生的 AI 文字回复会经 ctrl 命令让机器人朗读。
+export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAssistantText }: {
+  onClose: () => void
+  ensureSession: () => Promise<string>
+  onTranscript: (role: 'user' | 'assistant', content: string) => void
+  lastAssistantText: string
+}) {
   const [status, setStatus] = useState<CallStatus>('connecting')
   const [errorMsg, setErrorMsg] = useState('')
   const [seconds, setSeconds] = useState(0)
   const [botVolume, setBotVolume] = useState(0)   // AI 说话音量 0-255
   const [micVolume, setMicVolume] = useState(0)   // 麦克风音量 0-255
-  const credsRef = useRef<{ room_id: string; task_id: string } | null>(null)
+  const [agentState, setAgentState] = useState(1) // conv 状态码（默认在听）
+  const [agentDesc, setAgentDesc] = useState('')  // conv 描述（可能含错误信息）
+  const [transcript, setTranscript] = useState<TranscriptItem[]>([])
+  const [speakTextReply, setSpeakTextReply] = useState(true)  // 朗读文字回复开关
+  const credsRef = useRef<{ room_id: string; task_id: string; user_id: string } | null>(null)
+  const engineRef = useRef<any>(null)
+  const sidRef = useRef<string | null>(null)
+  const transcriptEndRef = useRef<HTMLDivElement>(null)
+  // 记录已朗读过的文字（初始化为挂载时的最新值，避免重播历史回复）
+  const lastSpokenRef = useRef(lastAssistantText)
 
   useEffect(() => {
     let disposed = false
@@ -29,14 +84,26 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       }
     }
 
+    // 最终字幕：落聊天会话（懒解析 session，欢迎页自动新建）+ 通知父级更新聊天界面
+    const handleFinalTranscript = (role: 'user' | 'assistant', text: string) => {
+      if (!text.trim()) return
+      setTranscript((prev) => [...prev, { role, text }])
+      onTranscript(role, text)
+      ensureSession().then((sid) => {
+        sidRef.current = sid
+        voiceMessage(sid, role, text)
+      }).catch(() => { /* 会话解析失败仅影响持久化 */ })
+    }
+
     const connect = async () => {
       try {
         const creds = await voiceStart()
-        credsRef.current = { room_id: creds.room_id, task_id: creds.task_id }
+        credsRef.current = { room_id: creds.room_id, task_id: creds.task_id, user_id: creds.user_id }
 
         // 动态加载 RTC SDK（按需分包，不进主 bundle）
-        const { default: VERTC } = await import('@volcengine/rtc')
+        const { default: VERTC, RoomProfileType } = await import('@volcengine/rtc')
         engine = VERTC.createEngine(creds.app_id)
+        engineRef.current = engine
 
         // 机器人入房发布音频流 = 通话真正建立
         engine.on(VERTC.events.onUserPublishStream, (e: any) => {
@@ -54,9 +121,32 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         engine.on(VERTC.events.onRemoteAudioPropertiesReport, (infos: any[]) => {
           setBotVolume(infos?.[0]?.audioPropertiesInfo?.linearVolume ?? 0)
         })
+        // 机器人数据流：字幕（subv）+ 状态（conv）——官方 rtc-aigc-demo 协议
+        engine.on(VERTC.events.onRoomBinaryMessageReceived, (e: any) => {
+          if (disposed) return
+          try {
+            const { type, value } = tlv2String(e.message as ArrayBuffer)
+            if (type === 'subv') {
+              const data = JSON.parse(value)?.data?.[0]
+              if (!data?.text) return
+              const role = data.userId === creds.user_id ? 'user' : 'assistant'
+              if (data.definite) {
+                handleFinalTranscript(role, data.text)
+              }
+            } else if (type === 'conv') {
+              const stage = JSON.parse(value)?.Stage
+              if (stage) {
+                setAgentState(stage.Code ?? 0)
+                setAgentDesc(typeof stage.Description === 'string' ? stage.Description : '')
+              }
+            }
+          } catch (err) {
+            console.warn('语音数据流解析失败:', err)
+          }
+        })
 
         await engine.joinRoom(creds.rtc_token, creds.room_id, { userId: creds.user_id },
-          { isAutoPublish: true, isAutoSubscribeAudio: true })
+          { isAutoPublish: true, isAutoSubscribeAudio: true, roomProfileType: RoomProfileType.chat })
         await engine.startAudioCapture()
         if (!disposed) setStatus('active')
       } catch (err: any) {
@@ -67,6 +157,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
     connect()
 
     return () => { disposed = true; teardown() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 通话计时
@@ -76,6 +167,11 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
     return () => clearInterval(t)
   }, [status])
 
+  // 字幕自动滚动
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [transcript])
+
   // Esc 挂断
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -83,22 +179,45 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // 朗读文字回复：通话期间聊天产生的 AI 文字回复，经 ctrl 命令让机器人朗读（官方协议）
+  useEffect(() => {
+    if (!speakTextReply || status !== 'active') return
+    if (!lastAssistantText || lastAssistantText === lastSpokenRef.current) return
+    const eng = engineRef.current
+    const creds = credsRef.current
+    if (!eng || !creds) return
+    lastSpokenRef.current = lastAssistantText
+    try {
+      eng.sendUserBinaryMessage(
+        `voiceChat_${creds.task_id}`,
+        string2tlv(JSON.stringify({
+          Command: 'ExternalTextToSpeech',
+          InterruptMode: 0,
+          Message: lastAssistantText,
+        }), 'ctrl'),
+      )
+    } catch (err) {
+      console.warn('发送朗读命令失败:', err)
+    }
+  }, [lastAssistantText, speakTextReply, status])
+
   const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
   const volume = Math.max(botVolume, micVolume)
   const bars = 16
+  const stateText = status === 'active' ? AGENT_STATE_TEXT[agentState] || '通话中' : ''
 
   return (
     <>
       <style>{`
         .voice-call-card {
           position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-          width: 320px; border-radius: 16px; z-index: 9999;
+          width: 340px; border-radius: 16px; z-index: 9999;
           background: var(--bg-primary); border: 1px solid var(--border);
           box-shadow: 0 12px 40px var(--shadow-md);
           display: flex; flex-direction: column; align-items: center;
-          padding: 28px 20px 24px; gap: 14px;
+          padding: 24px 18px 20px; gap: 10px;
         }
-        .voice-call-bars { display: flex; align-items: center; gap: 3px; height: 44px; }
+        .voice-call-bars { display: flex; align-items: center; gap: 3px; height: 36px; }
         .voice-call-bar {
           width: 4px; border-radius: 2px; background: var(--success);
           transition: height 0.12s ease;
@@ -107,9 +226,26 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         @keyframes voicePulse {
           0%, 100% { opacity: 0.35; } 50% { opacity: 1; }
         }
+        .voice-transcript {
+          width: 100%; flex: 1; min-height: 0; max-height: 180px; overflow-y: auto;
+          display: flex; flex-direction: column; gap: 6px; padding: 4px 2px;
+          text-align: left;
+        }
+        .voice-transcript-item {
+          font-size: 12px; line-height: 1.5; border-radius: 8px; padding: 5px 9px;
+          max-width: 92%; word-break: break-word;
+        }
+        .voice-transcript-item.user {
+          align-self: flex-end; background: var(--accent); color: #fff;
+        }
+        .voice-transcript-item.assistant {
+          align-self: flex-start; background: var(--bg-tertiary); color: var(--text-primary);
+        }
         @media (max-width: 768px) {
           .voice-call-card { width: 100vw; height: 100vh; max-height: 100vh; inset: 0;
-            top: 0; left: 0; transform: none; border-radius: 0; border: none; justify-content: center; }
+            top: 0; left: 0; transform: none; border-radius: 0; border: none; justify-content: flex-start;
+            padding-top: 12vh; }
+          .voice-transcript { max-height: 40vh; }
         }
       `}</style>
       <div className="voice-call-card" onClick={(e) => e.stopPropagation()}>
@@ -136,27 +272,41 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
 
         {status === 'active' && (
           <>
+            <div className="voice-transcript">
+              {transcript.map((item, i) => (
+                <div key={i} className={`voice-transcript-item ${item.role}`}>{item.text}</div>
+              ))}
+              <div ref={transcriptEndRef} />
+            </div>
             <div className="voice-call-bars">
               {Array.from({ length: bars }).map((_, i) => {
                 // 相位错开让波形更自然；音量低时进入呼吸动画
                 const idle = volume < 8
                 const phase = 0.55 + 0.45 * (((i * 53) % 11) / 11)
-                const h = idle ? 8 + 10 * (((i * 53) % 11) / 11) : 6 + Math.min(34, (volume / 255) * 34 * phase)
+                const h = idle ? 8 + 10 * (((i * 53) % 11) / 11) : 6 + Math.min(30, (volume / 255) * 30 * phase)
                 return <div key={i} className={`voice-call-bar${idle ? ' idle' : ''}`}
                   style={{ height: h, animationDelay: `${(i * 0.09) % 1.4}s` }} />
               })}
             </div>
-            <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{stateText}</div>
+            {agentDesc && agentDesc !== stateText && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', maxWidth: '100%', wordBreak: 'break-word' }}>{agentDesc}</div>
+            )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}
+              title="通话期间在聊天里发送文字，AI 的回复会用语音读出来">
+              <input type="checkbox" checked={speakTextReply}
+                onChange={(e) => setSpeakTextReply(e.target.checked)}
+                style={{ cursor: 'pointer', accentColor: 'var(--accent)' }} />
+              朗读文字回复
+            </label>
+            <div style={{ fontSize: 22, fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
               {fmt(seconds)}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              {botVolume >= 8 ? '小元AI 正在说话…' : '我在听，请说话'}
             </div>
             <button onClick={onClose} title="挂断" aria-label="挂断"
               style={{
                 width: 56, height: 56, borderRadius: '50%', border: 'none', cursor: 'pointer',
                 background: 'var(--danger)', color: '#fff', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', marginTop: 8, transition: 'transform 0.15s',
+                justifyContent: 'center', marginTop: 4, transition: 'transform 0.15s', flexShrink: 0,
               }}
               onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.08)')}
               onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}>

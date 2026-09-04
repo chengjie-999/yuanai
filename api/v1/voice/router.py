@@ -147,6 +147,12 @@ class VoiceEndRequest(BaseModel):
     task_id: str = Field(..., min_length=1, description="任务 ID（start 时下发）")
 
 
+class VoiceMessageRequest(BaseModel):
+    session_id: str = Field(..., min_length=1, description="聊天会话 ID")
+    role: str = Field(..., pattern="^(user|assistant)$", description="消息角色")
+    content: str = Field(..., min_length=1, description="转录文本")
+
+
 @router.post("/start", response_model=VoiceStartResponse)
 async def start_voice_chat(req: VoiceStartRequest, request: Request):
     """创建语音房间：启动 AI 智能体入房并签发进房 Token"""
@@ -200,3 +206,21 @@ async def end_voice_chat(req: VoiceEndRequest, request: Request):
     except Exception as e:
         logger.error("结束语音对话失败: %s", e)
         raise HTTPException(status_code=500, detail="语音服务停止失败，请稍后重试")
+
+
+@router.post("/message")
+async def append_voice_message(req: VoiceMessageRequest, request: Request):
+    """语音对话转录消息逐条追加到聊天会话（不动现有消息，首条用户消息自动定标题）"""
+    try:
+        db = _get_db()
+        user_id = _get_user_id(request)
+        _verify_session_owner(db, req.session_id, user_id)
+        db.add_chat(req.session_id, req.role, req.content)
+        from db.cache import clear_chat_cache
+        clear_chat_cache(req.session_id)
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("追加语音转录消息失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)

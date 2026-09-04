@@ -5,20 +5,19 @@ import Mascot from '../Mascot'
 import type { SessionInfo } from './helpers'
 import type { ChatMode } from './ChatModeSelector'
 import ChatModeSelector from './ChatModeSelector'
-import VoiceCall from './VoiceCall'
 import { compressImage } from './imageUtils'
 
-export default function WelcomePage({ images, setImages, quickInput, setQuickInput, sendWithNewSession, sessions, onSelectSession, chatMode, setChatMode, localOnline, claudeOnline }: {
+export default function WelcomePage({ images, setImages, quickInput, setQuickInput, sendWithNewSession, sessions, onSelectSession, chatMode, setChatMode, localOnline, claudeOnline, onStartVoiceCall }: {
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   quickInput: string; setQuickInput: (v: string | ((p: string) => string)) => void
   sendWithNewSession: (text: string) => void
   sessions: SessionInfo[]; onSelectSession: (sid: string) => void
   chatMode: ChatMode; setChatMode: (v: ChatMode) => void
   localOnline: boolean; claudeOnline: boolean
+  onStartVoiceCall: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
-  const [voiceOpen, setVoiceOpen] = useState(false)
 
   // 麦克风权限必须在点击手势内同步申请：Chrome 的用户激活（约 5s）过期后
   // getUserMedia 会被静默拒绝（NotAllowedError），连询问框都不弹。
@@ -27,7 +26,7 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       stream.getTracks().forEach((t) => t.stop())
-      setVoiceOpen(true)
+      onStartVoiceCall()
     } catch {
       alert('麦克风权限被拒绝：请点击浏览器地址栏左侧图标，将麦克风设为「允许」后重试')
     }
@@ -130,8 +129,6 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
           </div>
         </div>
       </div>
-
-      {voiceOpen && <VoiceCall onClose={() => setVoiceOpen(false)} />}
 
       <div style={{ marginTop: 20, width: '100%', maxWidth: 520 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>

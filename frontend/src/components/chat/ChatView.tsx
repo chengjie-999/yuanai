@@ -6,7 +6,7 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, chatMode, setChatMode, localOnline, claudeOnline, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onLike }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, chatMode, setChatMode, localOnline, claudeOnline, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onLike, onStartVoiceCall }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string) => void; handleSend: () => void
@@ -23,6 +23,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   setEditingIndex: (v: number | null) => void
   onEditMessage: (index: number, content: string) => void
   onLike: (index: number) => void
+  onStartVoiceCall: () => void
 }) {
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -68,7 +69,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
         sessions={sessions} messages={messages}
         chatMode={chatMode} setChatMode={setChatMode}
-        localOnline={localOnline} claudeOnline={claudeOnline} />
+        localOnline={localOnline} claudeOnline={claudeOnline}
+        onStartVoiceCall={onStartVoiceCall} />
     </>
   )
 }

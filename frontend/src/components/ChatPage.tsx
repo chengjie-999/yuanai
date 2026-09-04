@@ -6,6 +6,7 @@ import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
 import Sidebar from './chat/Sidebar'
 import WelcomePage from './chat/WelcomePage'
 import ChatView from './chat/ChatView'
+import VoiceCall from './chat/VoiceCall'
 import ZoomableImage from './chat/ZoomableImage'
 
 type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string }
@@ -38,6 +39,10 @@ export default function ChatPage({ user }: { user?: any }) {
   // 消息点赞（下标 → 已赞）与修改编辑态（消息下标，null = 非编辑态）
   const [likes, setLikes] = useState<Record<number, boolean>>({})
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  // 语音通话卡片（顶层渲染：欢迎页发起后切到聊天页时不随组件卸载）
+  const [voiceCallOpen, setVoiceCallOpen] = useState(false)
+  // 最近一条 AI 文字回复（供语音通话「朗读文字回复」朗读）
+  const [lastAssistantText, setLastAssistantText] = useState('')
   const likePendingRef = useRef<Set<number>>(new Set())
   const messagesRef = useRef(messages)
   messagesRef.current = messages
@@ -216,6 +221,9 @@ export default function ChatPage({ user }: { user?: any }) {
         setLoading(false)
         const msgs = messagesRef.current.map(encodeMsg)
         saveMessages(sid, msgs, title || (prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt))
+        // 记录最新 AI 回复全文（语音通话朗读用）
+        const lastA = [...messagesRef.current].reverse().find((m) => m.role === 'assistant' && m.content)
+        if (lastA) setLastAssistantText(lastA.content)
         refreshSessions()
       },
     )
@@ -252,6 +260,26 @@ export default function ChatPage({ user }: { user?: any }) {
     likePendingRef.current.delete(index)
   }
 
+  // 语音通话：欢迎页无会话时自动新建并切进聊天页，已有会话则直接复用
+  const ensureVoiceSession = async (): Promise<string> => {
+    if (currentSid) return currentSid
+    const sid = await createSession()
+    setCurrentSid(sid)
+    refreshSessions()
+    return sid
+  }
+
+  // 语音转录追加到聊天界面（文字流式回复期间跳过，避免 token 拼到转录气泡上；持久化由 VoiceCall 负责）
+  const handleVoiceTranscript = (role: 'user' | 'assistant', content: string) => {
+    if (loading) return
+    setMessages((prev) => [...prev, { role, content }])
+  }
+
+  // 语音通话结束：刷新会话列表（新会话标题/最近对话）
+  const handleVoiceCallEnd = () => {
+    refreshSessions()
+  }
+
   // 审批决议：走 Claude 桥接专用流，body 带 decision
   const handleDecision = (approve: boolean) => {
     const pa = pendingApproval
@@ -284,6 +312,8 @@ export default function ChatPage({ user }: { user?: any }) {
         setLoading(false)
         const msgs = messagesRef.current.map(encodeMsg)
         saveMessages(sid, msgs, text.length > 50 ? text.slice(0, 50) + '...' : text)
+        const lastA = [...messagesRef.current].reverse().find((m) => m.role === 'assistant' && m.content)
+        if (lastA) setLastAssistantText(lastA.content)
         refreshSessions()
       },
     )
@@ -338,6 +368,7 @@ export default function ChatPage({ user }: { user?: any }) {
             sessions={sessions} onSelectSession={handleSelectSession}
             chatMode={chatMode} setChatMode={setChatMode}
             localOnline={localOnline} claudeOnline={claudeOnline}
+            onStartVoiceCall={() => setVoiceCallOpen(true)}
           />
         ) : (
           <ChatView
@@ -353,10 +384,19 @@ export default function ChatPage({ user }: { user?: any }) {
             pendingApproval={pendingApproval} handleDecision={handleDecision}
             likes={likes} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
             onEditMessage={handleEditMessage} onLike={handleLike}
+            onStartVoiceCall={() => setVoiceCallOpen(true)}
           />
         )}
       </div>
 
+      {voiceCallOpen && (
+        <VoiceCall
+          onClose={() => { setVoiceCallOpen(false); handleVoiceCallEnd() }}
+          ensureSession={ensureVoiceSession}
+          onTranscript={handleVoiceTranscript}
+          lastAssistantText={lastAssistantText}
+        />
+      )}
 
       {expandedImage && (
         <ZoomableImage src={expandedImage} onClose={() => setExpandedImage(null)} />

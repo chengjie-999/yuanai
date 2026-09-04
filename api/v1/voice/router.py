@@ -80,40 +80,48 @@ def _call_rtc_api(action: str, body: dict) -> dict:
 
 
 def _build_start_body(app_id: str, room_id: str, task_id: str, rtc_user_id: str) -> dict:
-    """构造 StartVoiceChat 请求体（字段按实测逐项核对）"""
+    """构造 StartVoiceChat 请求体（对齐官方 rtc-server-demo-open 1201 大模型模板）"""
     from config.settings import (
-        VOICE_LLM_ENDPOINT_ID, VOICE_LLM_MODEL,
-        VOICE_ASR_APP_ID, VOICE_ASR_ACCESS_TOKEN,
-        VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE,
+        VOICE_LLM_ENDPOINT_ID,
+        VOICE_ASR_APP_ID, VOICE_ASR_ACCESS_TOKEN, VOICE_ASR_RESOURCE_ID,
+        VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE_BOT,
     )
     config: dict = {}
     if VOICE_ASR_APP_ID and VOICE_ASR_ACCESS_TOKEN:
         config["ASRConfig"] = {
             "Provider": "volcano",
+            "VolumeGain": 1,
             "ProviderParams": {
                 "Mode": "bigmodel",
-                "Credential": {"AppId": VOICE_ASR_APP_ID, "AccessToken": VOICE_ASR_ACCESS_TOKEN},
+                "AppId": VOICE_ASR_APP_ID,
+                "AccessToken": VOICE_ASR_ACCESS_TOKEN,
+                "ApiResourceId": VOICE_ASR_RESOURCE_ID,
+                "StreamMode": 1,
+                "end_window_size": 500,
+                "force_to_speech_time": 500,
+            },
+        }
+    if VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN:
+        config["TTSConfig"] = {
+            "IgnoreBracketText": [1, 2, 3, 4, 5],
+            "Provider": "volcano_bidirection",
+            "ProviderParams": {
+                "app": {"appid": VOICE_TTS_APP_ID, "token": VOICE_TTS_ACCESS_TOKEN},
+                "audio": {"voice_type": VOICE_TTS_VOICE_BOT, "pitch_rate": 1, "speech_rate": 1},
+                "ResourceId": "volc.service_type.10029",
             },
         }
     if VOICE_LLM_ENDPOINT_ID:
-        llm_cfg = {
+        config["LLMConfig"] = {
             "Mode": "ArkV3",
             "EndPointId": VOICE_LLM_ENDPOINT_ID,
-            "Temperature": 0.7,
-            "HistoryLength": 10,
-            # SystemMessages 实测为字符串数组 []string（元素类型 string、外层 slice）
+            "MaxTokens": 1024,
+            "Temperature": 0.1,
+            "TopP": 0.3,
+            "Prefill": True,
+            # 实测为字符串数组 []string
             "SystemMessages": [_SYSTEM_PROMPT],
-        }
-        if VOICE_LLM_MODEL:
-            llm_cfg["ModelName"] = VOICE_LLM_MODEL
-        config["LLMConfig"] = llm_cfg
-    if VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN:
-        config["TTSConfig"] = {
-            "Provider": "volcano",
-            "ProviderParams": {
-                "Credential": {"AppId": VOICE_TTS_APP_ID, "AccessToken": VOICE_TTS_ACCESS_TOKEN},
-                "Voice": VOICE_TTS_VOICE,
-            },
+            "HistoryLength": 3,
         }
     return {
         "AppId": app_id,
@@ -126,6 +134,7 @@ def _build_start_body(app_id: str, room_id: str, task_id: str, rtc_user_id: str)
             "UserID": f"voiceChat_{task_id}",
             # TargetUserID：智能体交互对象（客户端 UserId），字符串数组且仅支持一个（实测必填）
             "TargetUserID": [rtc_user_id],
+            "WelcomeMessage": "你好，我是小元AI，有什么可以帮你的吗？",
         },
     }
 

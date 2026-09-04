@@ -225,9 +225,7 @@ export default function ChatPage({ user }: { user?: any }) {
         const finalMsgs = flushVoiceTranscripts(messagesRef.current)
         const msgs = finalMsgs.map(encodeMsg)
         saveMessages(sid, msgs, title || (prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt))
-        // 记录最新 AI 回复全文（语音通话朗读用；排除转录气泡：带 sender 的才是模型回复）
-        const lastA = [...finalMsgs].reverse().find((m) => m.role === 'assistant' && m.content && m.sender)
-        if (lastA) setLastAssistantText(lastA.content)
+        noteLastAssistant(finalMsgs)
         refreshSessions()
       },
     )
@@ -295,6 +293,12 @@ export default function ChatPage({ user }: { user?: any }) {
     setMessages((prev) => [...prev, { role, content }])
   }
 
+  // 记录最新 AI 回复全文（语音通话朗读用；排除转录气泡：带 sender 的才是模型回复）
+  const noteLastAssistant = (msgs: ChatMessage[]) => {
+    const lastA = [...msgs].reverse().find((m) => m.role === 'assistant' && m.content && m.sender)
+    if (lastA) setLastAssistantText(lastA.content)
+  }
+
   // 文字流结束：把暂存的语音转录并入保存快照（进入 /chat/save 全量替换，避免被抹掉）
   const flushVoiceTranscripts = (msgs: ChatMessage[]): ChatMessage[] => {
     const queued = pendingVoiceTranscriptsRef.current.splice(0)
@@ -348,8 +352,7 @@ export default function ChatPage({ user }: { user?: any }) {
         const finalMsgs = flushVoiceTranscripts(messagesRef.current)
         const msgs = finalMsgs.map(encodeMsg)
         saveMessages(sid, msgs, text.length > 50 ? text.slice(0, 50) + '...' : text)
-        const lastA = [...finalMsgs].reverse().find((m) => m.role === 'assistant' && m.content && m.sender)
-        if (lastA) setLastAssistantText(lastA.content)
+        noteLastAssistant(finalMsgs)
         refreshSessions()
       },
     )

@@ -83,6 +83,7 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAs
         try { await engine.leaveRoom() } catch { /* 忽略 */ }
         try { engine.destroy() } catch { /* 忽略 */ }
         engine = null
+        engineRef.current = null  // 同步清理，避免朗读 effect 读到已销毁引擎
       }
     }
 

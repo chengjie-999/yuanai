@@ -16,6 +16,9 @@ const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSPropertie
 
 const iconProps = { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
 
+// 全局朗读互斥：同一时刻只允许一个气泡出声，新朗读自动打断旧的
+let globalStopReading: (() => void) | null = null
+
 export default function MessageBubble({ msg, index, isLast, loading, liked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onLike }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; editing?: boolean
@@ -46,6 +49,7 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
     }
     audioRef.current = null
     setSpeaking(false)
+    if (globalStopReading === stopReading) globalStopReading = null
   }
   // 卸载时停止朗读
   useEffect(() => () => stopReading()
@@ -75,6 +79,9 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
       return
     }
     const seq = ++readSeqRef.current
+    // 全局互斥：打断其它气泡正在播放的朗读
+    if (globalStopReading) globalStopReading()
+    globalStopReading = stopReading
     setSpeaking(true)
     try {
       const text = stripMarkdown(msg.content).trim().slice(0, 1000)

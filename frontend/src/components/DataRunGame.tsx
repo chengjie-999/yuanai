@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { useTheme } from '../contexts/ThemeContext'
 
 /* ============================================================
    小元数据冲刺 — 首页轻量跑酷小游戏（Canvas 零依赖）
@@ -14,12 +13,11 @@ interface Obstacle { x: number; w: number; h: number; kind: 'dirty' | 'outlier' 
 interface Dot { x: number; y: number; taken: boolean }
 
 const GRAVITY = 0.6
-const JUMP_V = -10.5
+const JUMP_V = 10.5
 const BASE_SPEED = 5
 const GROUND_H = 46  // 地面高度（距画布底部）
 
 export default function DataRunGame() {
-  const { isDark } = useTheme()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [state, setState] = useState<GameState>('attract')
   const [best, setBest] = useState(() => Number(localStorage.getItem('yuanai-run-high') || 0))
@@ -40,16 +38,17 @@ export default function DataRunGame() {
     const H = canvas.height
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
 
+    // Hero 恒为深蓝渐变底：固定深色调色板 + 半透明画布，与页面浑然一体
     const C = {
-      bg: isDark ? '#101623' : '#eef4ff',
-      ground: isDark ? '#1c2a44' : '#d8e4f8',
-      line: isDark ? '#33445f' : '#b7c8e2',
+      bg: 'rgba(13,26,48,0.45)',
+      ground: 'rgba(26,42,68,0.75)',
+      line: 'rgba(120,160,210,0.35)',
       char: '#4da6ff',
-      charDark: isDark ? '#7ab8ff' : '#1976d2',
+      charDark: '#6fb1ff',
       dirty: '#ef5350',
       outlier: '#ffa726',
-      dot: '#4caf50',
-      text: isDark ? '#c7d4ea' : '#47566e',
+      dot: '#66d36e',
+      text: 'rgba(210,225,250,0.9)',
     }
 
     // 游戏世界状态
@@ -84,7 +83,7 @@ export default function DataRunGame() {
     }
 
     const spawnDot = () => {
-      const y = GROUND_H - 34 - Math.random() * 30
+      const y = GROUND_H + 30 + Math.random() * 40
       world.dots.push({ x: W + 40, y, taken: false })
     }
 
@@ -135,9 +134,9 @@ export default function DataRunGame() {
         if (st === 'playing') {
           scoreRef.current = Math.floor(dist / 14)
         }
-        world.vy += GRAVITY * dt
+        world.vy -= GRAVITY * dt
         world.y += world.vy * dt
-        if (world.y >= GROUND_H) { world.y = GROUND_H; world.vy = 0; world.onGround = true }
+        if (world.y <= GROUND_H) { world.y = GROUND_H; world.vy = 0; world.onGround = true }
 
         // attract：自动跳（演示）
         if (st === 'attract') {
@@ -163,7 +162,7 @@ export default function DataRunGame() {
         for (const o of world.obstacles) {
           if (o.kind === 'gap') {
             // 空值坑：落地踩坑即失败
-            if (world.onGround && world.y >= GROUND_H - 1 &&
+            if (world.onGround && world.y <= GROUND_H + 1 &&
               o.x < cx + cw - 4 && o.x + o.w > cx + 4) {
               if (st === 'playing') gameOver()
             }
@@ -190,7 +189,7 @@ export default function DataRunGame() {
       ctx.fillRect(0, 0, W, H)
 
       // 远景数据流（飘动的 0/1）
-      ctx.fillStyle = isDark ? 'rgba(120,150,200,0.14)' : 'rgba(80,120,180,0.14)'
+      ctx.fillStyle = 'rgba(140,170,220,0.16)'
       for (let i = 0; i < 10; i++) {
         const fx = (W - ((dist * 0.5 + i * 97) % (W + 40))) + 20
         const fy = 26 + ((i * 53) % 52)
@@ -287,23 +286,14 @@ export default function DataRunGame() {
       ctx.stroke()
       ctx.lineWidth = 1
 
-      // 文案
-      ctx.fillStyle = C.text
-      ctx.font = '13px system-ui'
-      if (st === 'attract') {
-        ctx.fillText('点击或按空格，帮小元跳过脏数据收集数据点', 20, 22)
-      } else if (st === 'ready') {
-        ctx.fillText('准备 — 点击开始', 20, 22)
-      } else if (st === 'over') {
-        ctx.fillText('数据清洗失败！点击或按空格重来', 20, 22)
-      }
+      // 分数（右上角，极简）
       if (st === 'playing' || st === 'over') {
-        ctx.font = 'bold 14px system-ui'
-        ctx.fillText(`数据点 ${scoreRef.current}`, W - 110, 22)
+        ctx.fillStyle = C.text
+        ctx.font = 'bold 13px system-ui'
+        ctx.textAlign = 'right'
+        ctx.fillText(`数据点 ${scoreRef.current}`, W - 12, 22)
+        ctx.textAlign = 'left'
       }
-      ctx.font = '11px system-ui'
-      ctx.fillStyle = C.text
-      ctx.fillText(`最佳 ${Math.max(bestRef.current, scoreRef.current)}`, W - 110, 40)
     }
 
     const gameOver = () => {
@@ -321,7 +311,7 @@ export default function DataRunGame() {
       canvas.removeEventListener('pointerdown', onPointer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDark])
+  }, [])
 
   return (
     <canvas
@@ -329,8 +319,8 @@ export default function DataRunGame() {
       width={760}
       height={200}
       style={{
-        width: '100%', maxWidth: 760, height: 'auto', borderRadius: 12,
-        border: '1px solid var(--border)', background: isDark ? '#101623' : '#eef4ff',
+        width: '100%', height: 'auto', borderRadius: 12,
+        border: '1px solid rgba(255,255,255,0.16)', background: 'transparent',
         cursor: 'pointer', touchAction: 'manipulation', display: 'block',
       }}
       aria-label="小元数据冲刺小游戏"

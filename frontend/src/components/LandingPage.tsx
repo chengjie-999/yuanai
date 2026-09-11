@@ -125,15 +125,22 @@ export default function LandingPage() {
         <div className="landing-orb orb-2" />
         <div className="landing-orb orb-3" />
         <div className="landing-hero-content">
-          <div className="landing-hero-mascot">
-            <Mascot size={96} />
-          </div>
-          <h1 className="landing-hero-title">小元AI</h1>
-          <p className="landing-hero-desc">云边协同 · 多智能体协作平台</p>
-          <p className="landing-hero-sub">数据分析 / 数据采集 / 自动化 / 生命科学 / 多智能体协作</p>
-          <div className="landing-hero-actions">
-            <Link to="/chat" className="landing-cta landing-cta-primary">进入对话</Link>
-            <a href="#agents" className="landing-cta landing-cta-ghost">了解能力 ↓</a>
+          <div className="landing-hero-row">
+            <div className="landing-hero-game">
+              <DataRunGame />
+            </div>
+            <div className="landing-hero-main">
+              <div className="landing-hero-mascot">
+                <Mascot size={96} />
+              </div>
+              <h1 className="landing-hero-title">小元AI</h1>
+              <p className="landing-hero-desc">云边协同 · 多智能体协作平台</p>
+              <p className="landing-hero-sub">数据分析 / 数据采集 / 自动化 / 生命科学 / 多智能体协作</p>
+              <div className="landing-hero-actions">
+                <Link to="/chat" className="landing-cta landing-cta-primary">进入对话</Link>
+                <a href="#agents" className="landing-cta landing-cta-ghost">了解能力 ↓</a>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -235,19 +242,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ============ 小游戏区 ============ */}
-      <section className="landing-section" style={{ textAlign: 'center' }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 6px', color: 'var(--text-primary)' }}>
-          工作累了？来一局「小元数据冲刺」
-        </h2>
-        <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 18px' }}>
-          空格/点击起跳 · 跳过脏数据和异常值 · 收集数据点（同浏览器断网小恐龙玩法）
-        </p>
-        <div style={{ maxWidth: 760, margin: '0 auto' }}>
-          <DataRunGame />
-        </div>
-      </section>
-
       {/* ============ Footer ============ */}
       <footer className="landing-footer">
         <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>小元AI</span>
@@ -309,10 +303,28 @@ export default function LandingPage() {
         .landing-hero-content {
           position: relative;
           z-index: 1;
-          max-width: 640px;
+          max-width: 960px;
           margin: 0 auto;
           text-align: center;
           color: #fff;
+        }
+        /* 游戏在吉祥物左侧，窄屏自动堆叠 */
+        .landing-hero-row {
+          display: flex;
+          align-items: center;
+          gap: 36px;
+        }
+        .landing-hero-game {
+          flex: 0 1 430px;
+          min-width: 0;
+        }
+        .landing-hero-main {
+          flex: 1;
+          min-width: 0;
+        }
+        @media (max-width: 900px) {
+          .landing-hero-row { flex-direction: column; gap: 20px; }
+          .landing-hero-game { flex: none; width: 100%; max-width: 430px; }
         }
         .landing-hero-mascot {
           display: inline-block;

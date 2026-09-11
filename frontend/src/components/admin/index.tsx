@@ -72,8 +72,8 @@ function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
   const currentTab = location.pathname.split('/').pop() || 'dashboard'
 
   const itemBtnStyle = (active: boolean): React.CSSProperties => ({
-    width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: 8, border: 'none',
-    // 激活项实心 accent + 白字，层级最重；非激活透明底浅色字
+    width: '100%', textAlign: 'left', padding: '9px 12px 9px 30px', borderRadius: 8, border: 'none',
+    // 二级项相对分组标题右移缩进，层级区分；激活项实心 accent + 白字最重
     background: active ? 'var(--accent)' : 'transparent',
     color: active ? '#fff' : 'var(--text-secondary)',
     fontWeight: active ? 600 : 400, fontSize: 13, cursor: 'pointer',

@@ -133,13 +133,15 @@ export default function LandingPage() {
               <DataRunGame />
               <div className="landing-hero-actions" style={{ marginTop: 14 }}>
                 <Link to="/chat" className="landing-cta landing-cta-primary">进入对话</Link>
-                <a href="#agents" className="landing-cta landing-cta-ghost">了解能力 ↓</a>
               </div>
             </div>
             <div className="landing-hero-main">
               <h1 className="landing-hero-title">小元AI</h1>
               <p className="landing-hero-desc">云边协同 · 多智能体协作平台</p>
               <p className="landing-hero-sub">数据分析 / 数据采集 / 自动化 / 生命科学 / 多智能体协作</p>
+              <div className="landing-hero-actions" style={{ marginTop: 18, justifyContent: 'center' }}>
+                <a href="#agents" className="landing-cta landing-cta-ghost">了解能力 ↓</a>
+              </div>
             </div>
           </div>
         </div>

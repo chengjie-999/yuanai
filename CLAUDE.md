@@ -325,17 +325,21 @@ GitHub Actions（`.github/workflows/ci.yml`）：
 - `__script_name__` / `__script_tags__` / `__script_params__` — 脚本元数据，ScriptRegistry 自动发现
 - `__IMAGES__:path` — 图片输出（脚本 stdout），Registry 转为 base64 嵌入聊天
 - `__RESULT__:{json}` — 结构化结果（用于大屏展示），Registry 检测后缓存到文件，通过 `__DASHBOARD__:path` 回传
-- 协调器检测 `__DASHBOARD__` → 缓存至 Redis → 大屏页面读取渲染
+- `__PROGRESS__:{json}` — 脚本进度（可选，`{"current","total","message"}`）；registry 同时有 10s 时间心跳（存量脚本零改动也有进度）
+- 协调器检测 `__DASHBOARD__` → 缓存 Redis（TTL 1h）**并落库 analysis_history** → yield dashboard_event
 
 **大屏页面：**
 - `/agent/rfm` — RFM 3D 散点大屏（直连 API，不需要 Agent）
-- `/agent/dashboard/:sessionId` — 通用分析大屏（从 Redis 读取 Agent 执行结果，降级到直连 API）
-- 聊天中分析 Agent 消息的"打开面板"按钮指向 `/agent/dashboard/{sessionId}`
+- `/agent/dashboard/:sessionId` — **通用分析大屏**：任意 __RESULT__ JSON → KPI 卡/表格/段落/嵌套分组（已知键位中文适配，`frontend/src/pages/AnalysisDashboard.tsx` 的 KEY_LABELS）；plotly 图表走 iframe
+- 聊天中「打开面板」按钮由 **dashboard SSE 事件**触发挂载（数据就绪才出现，非 tool_start 预挂）
+- Redis 过期后 `GET /analysis/dashboard/{sid}` 从 analysis_history 恢复（带 recovered/created_at），数据不再 1 小时蒸发
 
 **分析 API：**
 - `POST /api/v1/analysis/rfm` — RFM 分析（支持 dataset_id 或默认示例文件）
-- `GET /api/v1/analysis/dashboard/{session_id}` — 读取 Agent 缓存的仪表盘数据
+- `GET /api/v1/analysis/dashboard/{session_id}` — 大屏数据（Redis → analysis_history 降级）
+- `GET /api/v1/analysis/history?session_id=` — 大屏历史列表
 - `GET /api/v1/analysis/rfm-chart/{filename}` — Plotly 3D 图表 HTML（公开路径，iframe 嵌入）
+- iframe 鉴权：`/api/v1/data/script-html`、`/api/v1/data/analysis-html` 支持 `?token=`（middleware `_extract_token`）
 
 **医学 API（`api/v1/medical/router.py`，JWT 保护）：**
 - `GET /api/v1/medical/species` — 物种→MeSH 导航列表

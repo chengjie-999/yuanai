@@ -15,17 +15,17 @@ import SettingsTab from './SettingsTab'
 import MonitorTab from './MonitorTab'
 
 // 后台导航：左侧边栏按维度分组（桌面），移动端回退横向滚动 chip
-const NAV_GROUPS: { label: string; items: { key: string; label: string }[] }[] = [
-  { label: '概览', items: [{ key: 'dashboard', label: '仪表盘' }] },
+const NAV_GROUPS: { label: string; icon: string; items: { key: string; label: string }[] }[] = [
+  { label: '概览', icon: '📊', items: [{ key: 'dashboard', label: '仪表盘' }] },
   {
-    label: '用户维度',
+    label: '用户维度', icon: '👥',
     items: [
       { key: 'users', label: '用户管理' },
       { key: 'sessions', label: '会话记录' },
     ],
   },
   {
-    label: 'Agent 维度',
+    label: 'Agent 维度', icon: '🤖',
     items: [
       { key: 'agents', label: 'Agent 状态' },
       { key: 'agent-devices', label: 'Agent 管理' },
@@ -33,7 +33,7 @@ const NAV_GROUPS: { label: string; items: { key: string; label: string }[] }[] =
     ],
   },
   {
-    label: '数据维度',
+    label: '数据维度', icon: '📦',
     items: [
       { key: 'datasets', label: '数据集' },
       { key: 'knowledge', label: '知识库' },
@@ -42,7 +42,7 @@ const NAV_GROUPS: { label: string; items: { key: string; label: string }[] }[] =
     ],
   },
   {
-    label: '系统维度',
+    label: '系统维度', icon: '⚙️',
     items: [
       { key: 'models', label: '模型配置' },
       { key: 'monitor', label: '代码监控' },
@@ -58,43 +58,60 @@ function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
   const currentTab = location.pathname.split('/').pop() || 'dashboard'
 
   const itemBtnStyle = (active: boolean): React.CSSProperties => ({
-    width: '100%', textAlign: 'left', padding: '8px 12px', borderRadius: 6, border: 'none',
-    background: active ? 'var(--accent-light)' : 'transparent',
-    color: active ? 'var(--accent)' : 'var(--text-secondary)',
+    width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: 8, border: 'none',
+    // 激活项实心 accent + 白字，层级最重；非激活透明底浅色字
+    background: active ? 'var(--accent)' : 'transparent',
+    color: active ? '#fff' : 'var(--text-secondary)',
     fontWeight: active ? 600 : 400, fontSize: 13, cursor: 'pointer',
-    whiteSpace: 'nowrap', transition: 'background 0.15s, color 0.15s',
+    whiteSpace: 'nowrap', marginBottom: 2,
+    transition: 'background 0.15s, color 0.15s',
   })
 
-  // 桌面侧边栏
+  // 桌面侧边栏：卡片容器 + 分组标题（emoji + 加粗）+ 组间分隔线
   const sidebar = (
-    <nav style={{ width: 172, flexShrink: 0, overflowY: 'auto', paddingRight: 4 }}>
-      {NAV_GROUPS.map((g) => (
-        <div key={g.label} style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', padding: '0 12px 6px', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+    <nav style={{
+      width: 200, flexShrink: 0, overflowY: 'auto', alignSelf: 'flex-start',
+      background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 12,
+      padding: '12px 8px', maxHeight: '100%',
+    }}>
+      {NAV_GROUPS.map((g, gi) => (
+        <div key={g.label} style={{
+          paddingTop: gi > 0 ? 12 : 0,
+          borderTop: gi > 0 ? '1px solid var(--border-light)' : 'none',
+          marginBottom: gi === NAV_GROUPS.length - 1 ? 0 : 6,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px 8px', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
+            <span style={{ fontSize: 14 }}>{g.icon}</span>
             {g.label}
           </div>
           {g.items.map((t) => (
             <button key={t.key} onClick={() => navigate(`/chat/admin/${t.key}`)}
-              style={itemBtnStyle(currentTab === t.key)}>{t.label}</button>
+              style={itemBtnStyle(currentTab === t.key)}
+              onMouseEnter={(e) => { if (currentTab !== t.key) e.currentTarget.style.background = 'var(--hover-bg)' }}
+              onMouseLeave={(e) => { if (currentTab !== t.key) e.currentTarget.style.background = 'transparent' }}
+            >{t.label}</button>
           ))}
         </div>
       ))}
     </nav>
   )
 
-  // 移动端横向滚动 chip（分组信息放 title）
+  // 移动端横向滚动 chip（分组信息放 title，chip 文本带分组 emoji 前缀）
   const mobileChips = (
     <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 4 }}>
-      {NAV_GROUPS.flatMap((g) => g.items).map((t) => (
-        <button key={t.key} onClick={() => navigate(`/chat/admin/${t.key}`)}
-          title={`${NAV_GROUPS.find((g) => g.items.some((i) => i.key === t.key))?.label} · ${t.label}`}
-          style={{
-            ...itemBtnStyle(currentTab === t.key),
-            width: 'auto', padding: '7px 14px', borderRadius: 16,
-            border: currentTab === t.key ? '1px solid var(--accent)' : '1px solid var(--border)',
-            flexShrink: 0,
-          }}>{t.label}</button>
-      ))}
+      {NAV_GROUPS.flatMap((g) => g.items).map((t) => {
+        const group = NAV_GROUPS.find((g) => g.items.some((i) => i.key === t.key))
+        return (
+          <button key={t.key} onClick={() => navigate(`/chat/admin/${t.key}`)}
+            title={`${group?.label} · ${t.label}`}
+            style={{
+              ...itemBtnStyle(currentTab === t.key),
+              width: 'auto', padding: '7px 14px', borderRadius: 16,
+              border: currentTab === t.key ? '1px solid var(--accent)' : '1px solid var(--border)',
+              flexShrink: 0,
+            }}>{group?.icon} {t.label}</button>
+        )
+      })}
     </div>
   )
 

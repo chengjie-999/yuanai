@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { trackVisit } from '../api'
+import DataRunGame from './DataRunGame'
 import { SUB_AGENTS } from '../config/agents'
 import Mascot from './Mascot'
 import LandingHeader from './LandingHeader'
@@ -231,6 +232,19 @@ export default function LandingPage() {
             一个对话入口，驱动数据分析、数据采集与自动化任务
           </p>
           <Link to="/chat" className="landing-cta landing-cta-light">立即开始</Link>
+        </div>
+      </section>
+
+      {/* ============ 小游戏区 ============ */}
+      <section className="landing-section" style={{ textAlign: 'center' }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 6px', color: 'var(--text-primary)' }}>
+          工作累了？来一局「小元数据冲刺」
+        </h2>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 18px' }}>
+          空格/点击起跳 · 跳过脏数据和异常值 · 收集数据点（同浏览器断网小恐龙玩法）
+        </p>
+        <div style={{ maxWidth: 760, margin: '0 auto' }}>
+          <DataRunGame />
         </div>
       </section>
 

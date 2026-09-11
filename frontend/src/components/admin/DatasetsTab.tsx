@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, CardHeader, btnDangerSm, headers, API_BASE } from './shared'
-import { uploadDataset } from '../../api'
+import { uploadDataset, fetchDatasetPreview } from '../../api'
 import AnalysisResultView from '../AnalysisResultView'
 
 export default function DatasetsTab() {
@@ -81,7 +81,12 @@ export default function DatasetsTab() {
               <tbody>
                 {datasets.map((d: any) => (
                   <tr key={d.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                    <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer' }} onClick={() => setPreview(d)}>{d.name}</td>
+                    <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer' }}
+                      onClick={async () => {
+                        // 列表接口不含行数据，预览走详情接口（含 preview_rows）
+                        const detail = await fetchDatasetPreview(d.id)
+                        setPreview(detail || d)
+                      }}>{d.name}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{d.file_type}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{d.file_size ? `${(d.file_size / 1024).toFixed(1)} KB` : '-'}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{d.row_count ?? '-'}</td>

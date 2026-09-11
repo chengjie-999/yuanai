@@ -75,6 +75,16 @@ class VisitLog(Base):
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
+class AnalysisHistory(Base):
+    """分析大屏结果历史（Redis 1h TTL 过期后从此恢复，数据不再蒸发）"""
+    __tablename__ = 'analysis_history'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(36), nullable=False, index=True)
+    dataset_id = Column(Integer, nullable=True)
+    result_json = Column(Text, nullable=False)
+    create_time = Column(TIMESTAMP, server_default=func.now())
+
+
 class User(Base):
     """用户表"""
     __tablename__ = 'users'
@@ -301,6 +311,30 @@ class AgentDatabase:
             session.commit()
         finally:
             session.close()
+
+    # --------------------------------------------------------------------------
+    # 分析大屏结果历史
+    # --------------------------------------------------------------------------
+    def add_analysis_history(self, session_id: str, result_json: str, dataset_id: int = None):
+        """保存分析大屏结果（每次分析追加一条；Redis TTL 过期后从此恢复）"""
+        sess = self.Session()
+        try:
+            sess.add(AnalysisHistory(session_id=session_id, dataset_id=dataset_id, result_json=result_json))
+            sess.commit()
+        finally:
+            sess.close()
+
+    def get_analysis_history(self, session_id: str, limit: int = 20) -> list:
+        """获取会话的分析大屏历史（最新在前）"""
+        sess = self.Session()
+        try:
+            rows = sess.query(AnalysisHistory).filter_by(session_id=session_id) \
+                .order_by(AnalysisHistory.id.desc()).limit(limit).all()
+            return [{"id": r.id, "session_id": r.session_id, "dataset_id": r.dataset_id,
+                     "result": json.loads(r.result_json) if r.result_json else {},
+                     "create_time": str(r.create_time)[:19]} for r in rows]
+        finally:
+            sess.close()
 
     # --------------------------------------------------------------------------
     # 任务图片记录

@@ -48,7 +48,8 @@ class ScriptDispatchAgent(AgentBase):
         self.registry = ScriptRegistry(self.script_dir)
 
     # —— 子类可选覆盖 ——
-    def run(self, prompt: str) -> str:
+    def run(self, prompt: str, progress_cb=None) -> str:
+        """progress_cb(current, total, message)：脚本执行进度回调（透传 registry）"""
         script_list = self.registry.list_for_llm()
         full_list = self._build_script_list(script_list)
 
@@ -73,7 +74,7 @@ class ScriptDispatchAgent(AgentBase):
         if script_name.startswith("builtin_"):
             return self._dispatch_builtin(script_name, params)
 
-        return self.registry.run(script_name, params)
+        return self.registry.run(script_name, progress_cb=progress_cb, **params)
 
     # —— 内部方法 ——
     def _build_script_list(self, script_list: str) -> str:

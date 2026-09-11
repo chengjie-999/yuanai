@@ -39,7 +39,7 @@ class _ScriptHandle:
 
     _SAFE_PARAM = re.compile(r'^[a-zA-Z0-9_\-一-鿿./: .,;!?@#$%^&*()+=<>\[\]{}|~`\'"]+$')
 
-    def run(self, **params) -> str:
+    def run(self, progress_cb=None, **params) -> str:
         _purge_html_cache()
         # 冻结模式（PyInstaller exe）：本 exe 不是 Python 解释器，通过 --run-script 入口复用自身执行脚本（自包含）
         frozen = getattr(sys, "frozen", False)
@@ -54,20 +54,68 @@ class _ScriptHandle:
                 args.append(val)
 
         try:
-            run_kwargs = {
-                "capture_output": True, "text": True, "encoding": "utf-8",
-                "timeout": 300,
+            popen_kwargs = {
+                "stdout": subprocess.PIPE, "stderr": subprocess.PIPE,
+                "text": True, "encoding": "utf-8",
                 "cwd": PROJECT_ROOT,
                 "env": {**os.environ, "PYTHONIOENCODING": "utf-8"},
+                "bufsize": 1,  # 行缓冲：脚本输出实时可见
             }
             # Windows 托盘模式下子进程不弹黑窗
             if frozen and os.name == "nt":
-                run_kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
-            result = subprocess.run(args, **run_kwargs)
-            if result.returncode != 0:
-                return f"脚本执行失败 (exit={result.returncode}):\n{result.stderr[:1000]}"
+                popen_kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+            proc = subprocess.Popen(args, **popen_kwargs)
 
-            output = result.stdout.strip() or "(脚本无输出)"
+            # 流式读输出（读线程跨平台）：stdout 识别 __PROGRESS__:{json} 协议；
+            # 时间心跳 10s 一次（存量脚本零改动也有进度反馈）
+            stdout_lines: List[str] = []
+            stderr_lines: List[str] = []
+
+            def _read_stream(stream, sink, is_stdout):
+                try:
+                    for line in iter(stream.readline, ""):
+                        sink.append(line)
+                        if is_stdout:
+                            m = re.search(r"__PROGRESS__:(\{.*\})", line)
+                            if m:
+                                try:
+                                    d = json.loads(m.group(1))
+                                    if progress_cb:
+                                        progress_cb(d.get("current", 0), d.get("total", 0), d.get("message", ""))
+                                except Exception:
+                                    pass
+                except (ValueError, OSError):
+                    pass
+
+            import threading
+            t_out = threading.Thread(target=_read_stream, args=(proc.stdout, stdout_lines, True), daemon=True)
+            t_err = threading.Thread(target=_read_stream, args=(proc.stderr, stderr_lines, False), daemon=True)
+            t_out.start()
+            t_err.start()
+
+            start_time = time.time()
+            last_beat = start_time
+            while True:
+                if proc.poll() is not None:
+                    break
+                elapsed = time.time() - start_time
+                if elapsed > 300:
+                    proc.kill()
+                    proc.wait()
+                    return "脚本执行超时（300 秒），已终止"
+                if progress_cb and time.time() - last_beat >= 10:
+                    progress_cb(0, 0, f"分析中（已运行 {int(elapsed)} 秒）...")
+                    last_beat = time.time()
+                time.sleep(0.2)
+
+            t_out.join(timeout=5)
+            t_err.join(timeout=5)
+
+            if proc.returncode != 0:
+                err_text = "".join(stderr_lines)
+                return f"脚本执行失败 (exit={proc.returncode}):\n{err_text[:1000]}"
+
+            output = "".join(stdout_lines).strip() or "(脚本无输出)"
 
             # extract __RESULT__:json line
             result_match = re.search(r'__RESULT__:(.+)$', output, re.MULTILINE)

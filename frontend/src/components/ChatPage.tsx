@@ -162,8 +162,18 @@ export default function ChatPage({ user }: { user?: any }) {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
       } else if (event.type === 'tool_start') {
         const ns = senderFromTool(event.data.name)
-        if (ns) { currentSender = ns; const sid =sidRef.current; const link =ns === 'analysis' && sid ? '/chat/agent/dashboard/' + sid : ns === 'automation' ? '/chat/agent/' + ns : undefined; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
+        if (ns) { currentSender = ns; const link =ns === 'automation' ? '/chat/agent/' + ns : undefined; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
         else { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
+      } else if (event.type === 'dashboard') {
+        // 分析大屏数据就绪：给最近一条 analysis 气泡挂「打开面板」（数据没就绪不挂，避免死链）
+        const dsid = event.data?.session_id || sidRef.current
+        setMessages((prev) => {
+          const last = [...prev]
+          for (let i = last.length - 1; i >= 0; i--) {
+            if (last[i].sender === 'analysis') { last[i] = { ...last[i], pageLink: '/chat/agent/dashboard/' + dsid }; break }
+          }
+          return last
+        })
       } else if (event.type === 'tool_end') {
         const del_name =event.data.name || ''
         const isDel =!!senderFromTool(del_name)

@@ -22,12 +22,16 @@ def is_public(path: str) -> bool:
 
 
 def _extract_token(request: Request) -> str:
-    """从 Authorization header（优先）或 WebSocket query 参数提取 token"""
+    """从 Authorization header（优先）或 query 参数提取 token。
+    query token 仅对无法携带 header 的场景开放：WebSocket 升级、iframe 加载的图表资源。"""
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         return auth[7:]
+    path = request.url.path
     # WebSocket 升级请求无法携带 Authorization header，只能通过 query 参数
-    if request.url.path.startswith("/api/v1/agent/ws"):
+    # iframe src 同理（MessageBubble/AnalysisResultView/大屏的 plotly 图表）
+    if path.startswith("/api/v1/agent/ws") or path.startswith("/api/v1/data/script-html") \
+            or path.startswith("/api/v1/data/analysis-html"):
         return request.query_params.get("token", "")
     return ""
 

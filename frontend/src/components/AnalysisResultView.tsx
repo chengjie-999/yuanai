@@ -1,4 +1,5 @@
-import { API_BASE } from '../api'
+import { API_BASE, getToken } from '../api'
+import { addToken } from './chat/helpers'
 
 const thStyle: React.CSSProperties = {
   padding: '4px 6px', textAlign: 'left', fontSize: 10,
@@ -10,12 +11,28 @@ const tdStyle: React.CSSProperties = {
   borderBottom: '1px solid var(--border-light)', whiteSpace: 'nowrap',
 }
 
-function exportUrl(dsId: number, format: string) {
-  return `${API_BASE}/data/export/${dsId}?format=${format}`
-}
-
 export default function AnalysisResultView({ analysis }: { analysis: any }) {
   const { id, name, row_count, columns, num_cols, describe, missing, corr, corr_labels, charts, time_series } = analysis
+
+  // 导出走 blob fetch 带 Authorization（<a href download> 无法带 token 会 401）
+  const handleExport = async (format: 'excel' | 'html') => {
+    try {
+      const res = await fetch(`${API_BASE}/data/export/${id}?format=${format}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!res.ok) { alert('导出失败'); return }
+      const blob = await res.blob()
+      const ext = format === 'excel' ? 'xlsx' : 'html'
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${name || 'dataset'}_分析报告.${ext}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch { alert('导出失败') }
+  }
 
   return (
     <div>
@@ -28,16 +45,16 @@ export default function AnalysisResultView({ analysis }: { analysis: any }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          <a href={exportUrl(id, 'excel')} download
+          <button onClick={() => handleExport('excel')}
             style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)',
-              background: 'var(--bg-secondary)', color: 'var(--text-secondary)', textDecoration: 'none', cursor: 'pointer' }}>
+              background: 'var(--bg-secondary)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
             📥 Excel
-          </a>
-          <a href={exportUrl(id, 'html')} download
+          </button>
+          <button onClick={() => handleExport('html')}
             style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)',
-              background: 'var(--bg-secondary)', color: 'var(--text-secondary)', textDecoration: 'none', cursor: 'pointer' }}>
+              background: 'var(--bg-secondary)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
             🌐 HTML
-          </a>
+          </button>
         </div>
       </div>
 
@@ -160,7 +177,7 @@ export default function AnalysisResultView({ analysis }: { analysis: any }) {
                   {ch.name}
                 </div>
                 {ch.html_url ? (
-                  <iframe src={ch.html_url} style={{ width: '100%', height: 300, border: 'none' }} />
+                  <iframe src={addToken(ch.html_url)} style={{ width: '100%', height: 300, border: 'none' }} />
                 ) : ch.data ? (
                   <img src={`data:image/png;base64,${ch.data}`} style={{ width: '100%', display: 'block' }} alt={ch.name} />
                 ) : null}

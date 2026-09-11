@@ -120,7 +120,19 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)):
             df = None
 
         if df is not None:
-            row_count = len(df) if ext != ".json" else sum(1 for _ in open(fpath, encoding="utf-8"))
+            if ext in (".xlsx", ".xls"):
+                # 全量数行（预览只读了 100 行，len(df) 会低估 xlsx 真实行数）
+                try:
+                    import openpyxl
+                    wb = openpyxl.load_workbook(fpath, read_only=True)
+                    row_count = max((wb.active.max_row or 1) - 1, 0)
+                    wb.close()
+                except Exception:
+                    row_count = len(df)
+            elif ext == ".json":
+                row_count = sum(1 for _ in open(fpath, encoding="utf-8"))
+            else:
+                row_count = len(df)
             columns_info = [{"name": str(c), "dtype": str(df[c].dtype)} for c in df.columns]
             for c in df.select_dtypes(include=["datetime64", "datetimetz"]).columns:
                 df[c] = df[c].astype(str)

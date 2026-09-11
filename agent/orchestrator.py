@@ -58,9 +58,14 @@ def _make_delegate_tool(skill_config, orch):
     skill_desc = skill_config.description
 
     def delegate_fn(prompt: str) -> str:
+        from yuanai_core.core.schemas import progress
+        from yuanai_core.rag import current_request_id
         orch._emit_activity(f"委派{skill_display}", prompt[:80])
         agent = orch._get_or_create_agent(skill_config)
-        result = agent.run(prompt)
+        # 脚本执行进度回调 → 云端 SSE progress 事件（10s 心跳，重置 300s 超时）
+        rid = current_request_id.get() or ""
+        progress_cb = lambda cur, total, msg: orch._emit_event(progress(cur, total, msg, rid))  # noqa: E731
+        result = agent.run(prompt, progress_cb=progress_cb)
         orch._emit_activity(f"{skill_display}已完成", "")
         return result
 
@@ -369,6 +374,12 @@ class Orchestrator:
                                 rds.setex(cache_key, 3600, json.dumps(dash_data, ensure_ascii=False))
                             except Exception:
                                 pass
+                            # 持久化到 analysis_history（Redis TTL 过期后恢复用）
+                            try:
+                                from db.session import get_db as _db, AnalysisHistory
+                                _db().add_analysis_history(req.session_id, json.dumps(dash_data, ensure_ascii=False))
+                            except Exception as e:
+                                logger.warning("analysis history persist failed: %s", e)
                             yield dashboard_event(req.session_id, rid)
                         except Exception as e:
                             logger.warning("dashboard parse failed: %s", e)

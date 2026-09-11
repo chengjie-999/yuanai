@@ -134,6 +134,7 @@ async def serve_rfm_chart(filename: str):
 
 @router.get("/dashboard/{session_id}")
 async def get_dashboard_data(session_id: str):
+    """大屏数据：优先 Redis 缓存（TTL 1h）；过期后从 analysis_history 恢复最新结果（数据不再蒸发）"""
     try:
         from db.redis_client import get_redis
         rds = get_redis()
@@ -142,4 +143,25 @@ async def get_dashboard_data(session_id: str):
             return JSONResponse(content=_json.loads(data))
     except Exception:
         pass
+    # Redis miss/故障 → 历史表恢复
+    try:
+        from db.session import get_db
+        history = get_db().get_analysis_history(session_id, limit=1)
+        if history:
+            result = dict(history[0]["result"])
+            result["recovered"] = True
+            result["created_at"] = history[0]["create_time"]
+            return JSONResponse(content=result)
+    except Exception:
+        pass
     raise HTTPException(status_code=404, detail="dashboard data not found")
+
+
+@router.get("/history")
+async def get_dashboard_history(request: Request, session_id: str):
+    """分析大屏历史列表（最新在前，用于过期提示与回溯）"""
+    try:
+        from db.session import get_db
+        return {"history": get_db().get_analysis_history(session_id, limit=20)}
+    except Exception:
+        raise HTTPException(status_code=500, detail="history query failed")

@@ -128,6 +128,10 @@ export default function LandingPage() {
           <div className="landing-hero-row">
             <div className="landing-hero-game">
               <DataRunGame />
+              <div className="landing-hero-actions" style={{ marginTop: 14 }}>
+                <Link to="/chat" className="landing-cta landing-cta-primary">进入对话</Link>
+                <a href="#agents" className="landing-cta landing-cta-ghost">了解能力 ↓</a>
+              </div>
             </div>
             <div className="landing-hero-main">
               <div className="landing-hero-mascot">
@@ -136,10 +140,6 @@ export default function LandingPage() {
               <h1 className="landing-hero-title">小元AI</h1>
               <p className="landing-hero-desc">云边协同 · 多智能体协作平台</p>
               <p className="landing-hero-sub">数据分析 / 数据采集 / 自动化 / 生命科学 / 多智能体协作</p>
-              <div className="landing-hero-actions">
-                <Link to="/chat" className="landing-cta landing-cta-primary">进入对话</Link>
-                <a href="#agents" className="landing-cta landing-cta-ghost">了解能力 ↓</a>
-              </div>
             </div>
           </div>
         </div>

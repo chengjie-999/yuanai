@@ -12,10 +12,11 @@ type GameState = 'attract' | 'ready' | 'playing' | 'over'
 interface Obstacle { x: number; w: number; h: number; kind: 'dirty' | 'outlier' | 'gap' }
 interface Dot { x: number; y: number; taken: boolean }
 
-const GRAVITY = 0.6
-const JUMP_V = 10.5
+const GRAVITY = 0.9
+const JUMP_V = 13.5
 const BASE_SPEED = 5
-const GROUND_H = 46  // 地面高度（距画布底部）
+const GROUND_H = 92  // 地面高度（距画布底部）
+const BALL_R = 15    // 角色滚动球半径
 
 export default function DataRunGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -83,7 +84,7 @@ export default function DataRunGame() {
     }
 
     const spawnDot = () => {
-      const y = GROUND_H + 30 + Math.random() * 40
+      const y = GROUND_H + 45 + Math.random() * 55
       world.dots.push({ x: W + 40, y, taken: false })
     }
 
@@ -156,9 +157,9 @@ export default function DataRunGame() {
           if (Math.random() < 0.4) spawnDot()
         }
 
-        // 碰撞
-        const cx = 64, cw = 26, ch = 30
-        const cy = H - world.y - ch
+        // 碰撞（球 AABB）
+        const cx = 64, cw = BALL_R * 2, ch = BALL_R * 2
+        const cy = H - world.y - BALL_R * 2
         for (const o of world.obstacles) {
           if (o.kind === 'gap') {
             // 空值坑：落地踩坑即失败
@@ -175,7 +176,7 @@ export default function DataRunGame() {
           }
         }
         for (const d of world.dots) {
-          if (!d.taken && Math.abs(d.x - cx) < 26 && Math.abs(d.y - (cy + ch / 2)) < 30) {
+          if (!d.taken && Math.abs(d.x - cx) < 30 && Math.abs(d.y - (cy + BALL_R)) < 42) {
             d.taken = true
             if (st === 'playing') { scoreRef.current += 15 }
           }
@@ -185,14 +186,13 @@ export default function DataRunGame() {
       // ---- 渲染 ----
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, W, H)
-      ctx.fillStyle = C.bg
-      ctx.fillRect(0, 0, W, H)
+      // 画布全透明：Hero 深蓝渐变直接透出，游戏与页面背景相融
 
-      // 远景数据流（飘动的 0/1）
+      // 远景数据流（飘动的 0/1，散布于加高后的整幅画布）
       ctx.fillStyle = 'rgba(140,170,220,0.16)'
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 14; i++) {
         const fx = (W - ((dist * 0.5 + i * 97) % (W + 40))) + 20
-        const fy = 26 + ((i * 53) % 52)
+        const fy = 30 + ((i * 83) % (H - GROUND_H - 40))
         ctx.font = '11px monospace'
         ctx.fillText(i % 2 ? '1' : '0', fx, fy)
       }
@@ -251,40 +251,24 @@ export default function DataRunGame() {
         }
       }
 
-      // 小元角色
-      const cx2 = 64
-      const cy2 = H - world.y - 30
+      // 小元角色：滚动球（白色标记点随滚动旋转）
+      const bx = 64
+      const by = H - world.y - BALL_R
+      const rollAngle = dist / BALL_R
       ctx.fillStyle = C.charDark
-      // 身体（圆角方块）
       ctx.beginPath()
-      ctx.roundRect(cx2, cy2, 26, 30, 7)
+      ctx.arc(bx, by, BALL_R, 0, Math.PI * 2)
       ctx.fill()
-      // 天线
-      ctx.strokeStyle = C.charDark
+      // 高光
+      ctx.fillStyle = 'rgba(255,255,255,0.28)'
       ctx.beginPath()
-      ctx.moveTo(cx2 + 13, cy2)
-      ctx.lineTo(cx2 + 13, cy2 - 7)
-      ctx.stroke()
-      ctx.fillStyle = C.dot
-      ctx.beginPath()
-      ctx.arc(cx2 + 13, cy2 - 9, 3, 0, Math.PI * 2)
+      ctx.arc(bx - 4, by - 6, BALL_R - 8, 0, Math.PI * 2)
       ctx.fill()
-      // 眼睛
-      ctx.fillStyle = '#fff'
-      ctx.beginPath(); ctx.arc(cx2 + 9, cy2 + 12, 3.4, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(cx2 + 18, cy2 + 12, 3.4, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#223'
-      ctx.beginPath(); ctx.arc(cx2 + 9.6, cy2 + 12.6, 1.7, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(cx2 + 18.6, cy2 + 12.6, 1.7, 0, Math.PI * 2); ctx.fill()
-      // 腿（跑步摆动）
-      const legSwing = Math.sin(now / 60) * (world.onGround ? 4 : 1.5)
-      ctx.strokeStyle = C.charDark
-      ctx.lineWidth = 3
+      // 滚动标记点
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'
       ctx.beginPath()
-      ctx.moveTo(cx2 + 7, cy2 + 30); ctx.lineTo(cx2 + 7 + legSwing, cy2 + 37)
-      ctx.moveTo(cx2 + 19, cy2 + 30); ctx.lineTo(cx2 + 19 - legSwing, cy2 + 37)
-      ctx.stroke()
-      ctx.lineWidth = 1
+      ctx.arc(bx + Math.cos(rollAngle) * (BALL_R - 5), by + Math.sin(rollAngle) * (BALL_R - 5), 4, 0, Math.PI * 2)
+      ctx.fill()
 
       // 分数（右上角，极简）
       if (st === 'playing' || st === 'over') {
@@ -317,11 +301,11 @@ export default function DataRunGame() {
     <canvas
       ref={canvasRef}
       width={760}
-      height={200}
+      height={400}
       style={{
         width: '100%', height: 'auto', borderRadius: 12,
-        border: '1px solid rgba(255,255,255,0.16)', background: 'transparent',
-        cursor: 'pointer', touchAction: 'manipulation', display: 'block',
+        background: 'transparent', cursor: 'pointer',
+        touchAction: 'manipulation', display: 'block',
       }}
       aria-label="小元数据冲刺小游戏"
     />

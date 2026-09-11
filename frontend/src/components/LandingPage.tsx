@@ -315,7 +315,7 @@ export default function LandingPage() {
           gap: 36px;
         }
         .landing-hero-game {
-          flex: 0 1 430px;
+          flex: 0 0 440px;  /* 不压缩：游戏不挤压吉祥物与文案 */
           min-width: 0;
         }
         .landing-hero-main {

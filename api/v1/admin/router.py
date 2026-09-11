@@ -512,23 +512,7 @@ async def admin_agent_summary(request: Request):
 
 # ===================== 模型配置 =====================
 
-
-def _read_models_file() -> dict:
-    import json, os
-    from utils.data_path import root_path
-    path = os.path.join(root_path(), "data", "models.json")
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-def _write_models_file(data: dict):
-    import json, os
-    from utils.data_path import root_path
-    path = os.path.join(root_path(), "data", "models.json")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+from api.v1.models_file import read_models_file as _read_models_file, write_models_file as _write_models_file
 
 class ModelUpsert(BaseModel):
     model_id: str

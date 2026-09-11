@@ -13,19 +13,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _read_models_file() -> dict:
-    path = _os.path.join(_root_path(), "data", "models.json")
-    if _os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return _json.load(f)
-    return {}
-
-
-def _write_models_file(data: dict):
-    path = _os.path.join(_root_path(), "data", "models.json")
-    _os.makedirs(_os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        _json.dump(data, f, ensure_ascii=False, indent=2)
+from api.v1.models_file import read_models_file as _read_models_file, write_models_file as _write_models_file
 
 MAX_LOGIN_ATTEMPTS = 5
 LOCK_MINUTES = 15

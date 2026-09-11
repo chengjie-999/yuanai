@@ -23,28 +23,8 @@ from api.v1.voice.v4_sign import v4_sign_request
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["voice"])
 
-_SAFE_ERROR = "请求处理失败，请稍后重试"
-
-
-def _get_db():
-    from db.session import get_db
-    return get_db()
-
-
+from api.v1.db_helpers import get_db as _get_db, verify_session_owner as _verify_session_owner, SAFE_ERROR as _SAFE_ERROR
 from api.v1.middleware import get_user_id as _get_user_id
-
-
-def _verify_session_owner(db, session_id: str, user_id: int):
-    """验证会话所有权，不是所有人则抛出 403（与 chat router 相同逻辑，后续抽共享模块）"""
-    sess = db.Session()
-    try:
-        from db.session import ChatSession
-        chat = sess.query(ChatSession).filter_by(session_id=session_id).first()
-        if chat and chat.user_id and chat.user_id != user_id:
-            raise HTTPException(status_code=403, detail="无权访问该会话")
-    finally:
-        sess.close()
-
 
 _RTC_API_HOST = "rtc.volcengineapi.com"
 _RTC_API_URL = f"https://{_RTC_API_HOST}"

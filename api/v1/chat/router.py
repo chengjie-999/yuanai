@@ -75,24 +75,8 @@ class FeedbackRequest(BaseModel):
 
 
 
-def _get_db():
-    from db.session import get_db
-    return get_db()
-
-
+from api.v1.db_helpers import get_db as _get_db, verify_session_owner as _verify_session_owner
 from api.v1.middleware import get_user_id as _get_user_id
-
-
-def _verify_session_owner(db, session_id: str, user_id: int):
-    """验证会话所有权，不是所有人则抛出 403"""
-    sess = db.Session()
-    try:
-        from db.session import ChatSession
-        chat = sess.query(ChatSession).filter_by(session_id=session_id).first()
-        if chat and chat.user_id and chat.user_id != user_id:
-            raise HTTPException(status_code=403, detail="无权访问该会话")
-    finally:
-        sess.close()
 
 
 async def _bridge_sse(queue: asyncio.Queue, request_id: str):

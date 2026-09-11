@@ -12,10 +12,10 @@ type GameState = 'attract' | 'ready' | 'playing' | 'over'
 interface Obstacle { x: number; w: number; h: number; kind: 'dirty' | 'outlier' | 'gap' }
 interface Dot { x: number; y: number; taken: boolean }
 
-const GRAVITY = 0.9
-const JUMP_V = 13.5
+const GRAVITY = 0.6
+const JUMP_V = 10.5
 const BASE_SPEED = 5
-const GROUND_H = 92  // 地面高度（距画布底部）
+const GROUND_H = 46  // 地面高度（距画布底部）
 const BALL_R = 15    // 角色滚动球半径
 
 export default function DataRunGame() {
@@ -84,7 +84,7 @@ export default function DataRunGame() {
     }
 
     const spawnDot = () => {
-      const y = GROUND_H + 45 + Math.random() * 55
+      const y = GROUND_H + 25 + Math.random() * 30
       world.dots.push({ x: W + 40, y, taken: false })
     }
 
@@ -301,7 +301,7 @@ export default function DataRunGame() {
     <canvas
       ref={canvasRef}
       width={760}
-      height={280}
+      height={200}
       style={{
         width: '100%', height: 'auto', borderRadius: 12,
         background: 'transparent', cursor: 'pointer',

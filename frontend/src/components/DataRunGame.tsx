@@ -301,7 +301,7 @@ export default function DataRunGame() {
     <canvas
       ref={canvasRef}
       width={760}
-      height={400}
+      height={280}
       style={{
         width: '100%', height: 'auto', borderRadius: 12,
         background: 'transparent', cursor: 'pointer',

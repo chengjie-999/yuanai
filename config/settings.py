@@ -67,6 +67,36 @@ def _load_agent_models() -> dict:
 
 AGENT_MODEL_MAP = _load_agent_models()
 
+# Agent 音色分配 — 气泡朗读按消息归属 Agent 选音色（均实测有效；须为 2.0 系列配 seed-tts-2.0）
+_DEFAULT_AGENT_VOICE_MAP = {
+    "orchestrator": "zh_male_shaonianzixin_uranus_bigtts",   # 小元：少年梓辛（小男孩）
+    "local": "zh_male_shaonianzixin_uranus_bigtts",          # 本机小元：同音
+    "analysis": "zh_female_xiaohe_uranus_bigtts",            # 数据分析：小鹤（女声）
+    "collection": "zh_male_kailangdidi_uranus_bigtts",       # 数据采集：开朗弟弟
+    "automation": "zh_female_qingxinnvsheng_uranus_bigtts",  # 自动化：清新女生
+    "claude": "zh_male_yangguangqingnian_uranus_bigtts",     # Claude Code：阳光青年
+}
+
+
+def _load_agent_voices() -> dict:
+    """从 models.json 读取自定义 Agent 音色分配，合并到默认映射"""
+    result = dict(_DEFAULT_AGENT_VOICE_MAP)
+    try:
+        custom_path = _Path(__file__).parent.parent / "data" / "models.json"
+        if custom_path.exists():
+            with open(custom_path, "r", encoding="utf-8") as f:
+                data = _json.load(f)
+            if isinstance(data, dict):
+                custom = data.get("_agent_voices", {})
+                if isinstance(custom, dict):
+                    result.update(custom)
+    except Exception:
+        pass
+    return result
+
+
+AGENT_VOICE_MAP = _load_agent_voices()
+
 # ===================== 鉴权配置 =====================
 
 _jwt = os.getenv("JWT_SECRET_KEY")
@@ -148,5 +178,5 @@ VOICE_ASR_ACCESS_TOKEN = os.getenv("VOICE_ASR_ACCESS_TOKEN", "")  # 豆包语音
 VOICE_TTS_APP_ID = os.getenv("VOICE_TTS_APP_ID", "")            # 豆包语音控制台 TTS AppId
 VOICE_TTS_ACCESS_TOKEN = os.getenv("VOICE_TTS_ACCESS_TOKEN", "")  # 豆包语音控制台 TTS AccessToken
 VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "zh_female_xiaohe_uranus_bigtts")  # 气泡朗读音色（须为 2.0 系列，配 seed-tts-2.0 资源）
-VOICE_TTS_VOICE_BOT = os.getenv("VOICE_TTS_VOICE_BOT", "zh_female_qingxinnvsheng_mars_bigtts")  # 通话机器人音色（官方 1201 模板默认值，volcano_bidirection）
+VOICE_TTS_VOICE_BOT = os.getenv("VOICE_TTS_VOICE_BOT", "zh_male_shaonianzixin_uranus_bigtts")  # 通话机器人音色（主智能体小元：少年梓辛小男孩；uranus 音色在 bidirection 通道待通话实测，无声则回退 mars 系列）
 VOICE_ASR_RESOURCE_ID = os.getenv("VOICE_ASR_RESOURCE_ID", "volc.bigasr.sauc.concurrent")  # ASR 大模型资源（本地实测：并发版已授权、时长版 403）

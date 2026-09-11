@@ -196,6 +196,11 @@ class AgentModelUpdate(BaseModel):
     model_id: str   # 分配给该角色的模型 ID
 
 
+def _read_agent_models() -> dict:
+    """读取 models.json 中的自定义 Agent 模型分配（原缺失定义，运行时 NameError 已修复）"""
+    return _read_models_file().get("_agent_models", {})
+
+
 @router.get("/agent-models")
 def get_agent_models(request: Request):
     """获取 Agent 角色 → 模型分配"""
@@ -220,6 +225,39 @@ def update_agent_models(req: AgentModelUpdate, request: Request):
     data["_agent_models"] = agent_models
     _write_models_file(data)
     return {"ok": True, "role": req.role, "model_id": req.model_id}
+
+
+class AgentVoiceUpdate(BaseModel):
+    role: str       # orchestrator / local / analysis / collection / automation / claude
+    voice_id: str   # 分配给该角色的 TTS 音色 ID（2.0 系列）
+
+
+@router.get("/agent-voices")
+def get_agent_voices(request: Request):
+    """获取 Agent 角色 → 音色分配"""
+    from config.settings import AGENT_VOICE_MAP
+    custom = _read_models_file().get("_agent_voices", {})
+    merged = dict(AGENT_VOICE_MAP)
+    if isinstance(custom, dict):
+        merged.update(custom)
+    return {"agent_voices": merged}
+
+
+@router.put("/agent-voices")
+def update_agent_voices(req: AgentVoiceUpdate, request: Request):
+    """更新 Agent 角色 → 音色分配（写入 models.json 的 _agent_voices）"""
+    from config.settings import AGENT_VOICE_MAP
+    valid_roles = list(AGENT_VOICE_MAP.keys())
+    if req.role not in valid_roles:
+        raise HTTPException(status_code=400, detail=f"无效角色: {req.role}，可选: {valid_roles}")
+    data = _read_models_file()
+    agent_voices = data.get("_agent_voices", {})
+    if not isinstance(agent_voices, dict):
+        agent_voices = {}
+    agent_voices[req.role] = req.voice_id
+    data["_agent_voices"] = agent_voices
+    _write_models_file(data)
+    return {"ok": True, "role": req.role, "voice_id": req.voice_id}
 
 
 class ApiKeyBody(BaseModel):

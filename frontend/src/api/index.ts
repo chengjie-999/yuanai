@@ -155,6 +155,27 @@ export async function updateAgentModel(role: string, model_id: string): Promise<
   } catch { return false }
 }
 
+// ---- Agent Voices ----
+export async function fetchAgentVoices(): Promise<Record<string, string>> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/agent-voices`, { headers: authHeaders() })
+    if (!res.ok) return {}
+    const data = await res.json()
+    return data.agent_voices || {}
+  } catch { return {} }
+}
+
+export async function updateAgentVoice(role: string, voice_id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/agent-voices`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ role, voice_id }),
+    })
+    return res.ok
+  } catch { return false }
+}
+
 // ---- Auth ----
 export async function login(username: string, password: string) {
   const res = await fetch(`${API_BASE}/auth/login`, {
@@ -320,11 +341,11 @@ export async function voiceMessage(sessionId: string, role: 'user' | 'assistant'
   } catch { /* 转录持久化尽力而为 */ }
 }
 
-export async function voiceTts(text: string): Promise<Blob> {
+export async function voiceTts(text: string, sender?: string): Promise<Blob> {
   const res = await fetch(`${API_BASE}/voice/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, sender }),
   })
   if (!res.ok) {
     const data = await safeJson(res)

@@ -86,7 +86,7 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
     try {
       const text = stripMarkdown(msg.content).trim().slice(0, 1000)
       if (!text) throw new Error('没有可朗读的内容')
-      const blob = await voiceTts(text)
+      const blob = await voiceTts(text, sender || undefined)
       if (seq !== readSeqRef.current) return  // 已被打断：不创建音频
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)

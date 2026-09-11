@@ -149,23 +149,23 @@ data/                   数据目录
 
 ## 后台管理
 
-13 个 Tab，每个有独立 URL 路由（`/chat/admin/:tab`，嵌套在 AppLayout 内）：
+13 个页面，每个有独立 URL 路由（`/chat/admin/:tab`，嵌套在 AppLayout 内）。导航为**左侧边栏按维度分组**（桌面 ≥769px；移动端回退顶部横向滚动 chip），分组结构在 `frontend/src/components/admin/index.tsx` 的 `NAV_GROUPS`：
 
-| Tab | 路由 | 内容 |
-|-----|------|------|
-| 仪表盘 | `/admin/dashboard` | 用户数/会话数/消息数/在线Agent + 30天消息量图 |
-| 用户管理 | `/admin/users` | 创建/冻结/删除用户 |
-| 网站管理 | `/admin/websites` | 添加/删除采集网站 |
-| Agent 状态 | `/admin/agents` | 在线状态 + 4 个子 Agent 团队卡片 + 实时活动记录 |
-| Agent 管理 | `/admin/agent-devices` | 签发安装码、设备列表、一对一绑定、解绑/冻结 |
-| 会话记录 | `/admin/sessions` | 历史会话查询 |
-| 模型配置 | `/admin/models` | 已配置模型列表 |
-| 数据集 | `/admin/datasets` | 上传/查看/删除数据集 |
-| 知识库 | `/admin/knowledge` | 知识库文档管理 |
-| 文件管理 | `/admin/files` | 服务器文件浏览 |
-| 工具 | `/admin/tools` | 已注册工具列表 |
-| 代码监控 | `/admin/monitor` | Git 轮询 + 代码变更趋势图 + 文件类型分布 + 实时活动日志 |
-| 设置 | `/admin/settings` | 系统设置 |
+| 分组 | 页面 | 路由 | 内容 |
+|------|------|------|------|
+| 概览 | 仪表盘 | `/admin/dashboard` | 用户数/会话数/消息数/在线Agent + 30天消息量图 |
+| 用户维度 | 用户管理 | `/admin/users` | 创建/冻结/删除用户 |
+| 用户维度 | 会话记录 | `/admin/sessions` | 历史会话查询 |
+| Agent 维度 | Agent 状态 | `/admin/agents` | 在线状态 + 子 Agent 团队卡片 + 实时活动记录 |
+| Agent 维度 | Agent 管理 | `/admin/agent-devices` | 签发安装码、设备列表、一对一绑定、解绑/冻结 |
+| Agent 维度 | 工具 | `/admin/tools` | 已注册工具列表 |
+| 数据维度 | 数据集 | `/admin/datasets` | 上传/查看/删除数据集 |
+| 数据维度 | 知识库 | `/admin/knowledge` | 知识库文档管理 |
+| 数据维度 | 网站管理 | `/admin/websites` | 添加/删除采集网站 |
+| 数据维度 | 文件管理 | `/admin/files` | 服务器文件浏览 |
+| 系统维度 | 模型配置 | `/admin/models` | 已配置模型列表 |
+| 系统维度 | 代码监控 | `/admin/monitor` | Git 轮询 + 代码变更趋势图 + 文件类型分布 + 实时活动日志 |
+| 系统维度 | 设置 | `/admin/settings` | 系统设置 |
 
 ## WebSocket 桥接
 
@@ -204,10 +204,12 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 火山引擎「AI 音视频互动方案」实时语音（豆包 App 同款：RTC + 豆包 ASR/TTS + 方舟 LLM）：
 
 - 流程：输入区 🎙️ 按钮 → `POST /api/v1/voice/start`（创建 room/task → StartVoiceChat 启动 AI 智能体入房 → 签发 RTC Token）→ 前端 `@volcengine/rtc` SDK joinRoom + 麦克风采集 → 挂断 `POST /api/v1/voice/end`（StopVoiceChat）
-- 后端纯 Python 零新依赖：`api/v1/voice/rtc_token.py`（VeRTC Token：JWT 风格 HMAC-SHA256，密钥 AppKey）、`v4_sign.py`（OpenAPI V4 签名，域 rtc.volcengineapi.com，Version=2024-12-01）
-- 前端 `VoiceCall.tsx` 悬浮通话卡（桌面居中 / 手机全屏）：音量波形（enableAudioPropertiesReport）、通话计时、Esc/挂断；SDK 动态 import 分包（约 2MB，点击才加载）
-- 配置：`.env` 的 VOLCANO_ACCESS_KEY/SECRET_KEY（IAM）、VOLCANO_RTC_APP_ID/APP_KEY（RTC 应用）、VOICE_LLM_ENDPOINT_ID（方舟接入点）、VOICE_ASR/TTS_APP_ID+ACCESS_TOKEN（豆包语音控制台）；未配置时 /voice/start 返回 503
-- **未联调**：StartVoiceChat 请求体字段（Config/ASRConfig/LLMConfig/TTSConfig）按官方 2024-12-01 文档编写，但本机网络无法访问官方文档页核实——首次上线需对照控制台/文档核对，调参集中在 `_build_start_body()`
+- 后端纯 Python 零新依赖：`api/v1/voice/rtc_token.py`（VeRTC Token「001」新版二进制格式，密钥 AppKey）、`v4_sign.py`（OpenAPI V4 签名，域 rtc.volcengineapi.com，Version=2024-12-01）
+- 请求体已对齐官方 rtc-server-demo-open 1201 大模型模板（ASR 直接字段 + ApiResourceId=并发版；TTS 走 volcano_bidirection + volc.service_type.10029）；联调参数集中在 `_build_start_body()`
+- 前端 `VoiceCall.tsx` 悬浮通话卡（桌面居中 / 手机全屏）：音量波形、通话计时、机器人状态/字幕实时展示（subv/conv 协议）、转录落聊天会话；SDK 动态 import 分包（约 2MB，点击才加载）
+- 配置：`.env` 的 VOLCANO_ACCESS_KEY/SECRET_KEY（IAM）、VOLCANO_RTC_APP_ID/APP_KEY（RTC 应用）、VOICE_LLM_ENDPOINT_ID（方舟接入点）、VOICE_ASR/TTS_APP_ID+ACCESS_TOKEN（豆包语音控制台）、VOICE_ASR_RESOURCE_ID（须并发版）、VOICE_TTS_VOICE_BOT（通话机器人音色，主智能体=少年梓辛小男孩）；未配置时 /voice/start 返回 503
+- **气泡朗读（豆包同款）**：AI 消息喇叭图标 → `POST /api/v1/voice/tts`（seed-tts-2.0 单向流式，响应为换行分隔 JSON 流 + base64 mp3）→ 浏览器播放，播放中波形动画可打断
+- **每 Agent 独立音色**：`config/settings.py` 的 `AGENT_VOICE_MAP`（6 键：orchestrator/local/analysis/collection/automation/claude，默认小元=少年梓辛）；用户设置页（/chat/settings）「语音音色」卡经 `GET/PUT /api/v1/auth/agent-voices` 改 models.json 的 `_agent_voices` 键；`voice_tts` 按消息 sender 查表选音色。**音色须为 2.0 uranus 系列**（1.0 mars 会 55000000 不匹配），预置 12 个音色全部本地实测有效
 
 ## 工具系统
 

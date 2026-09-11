@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getStoredModel, setStoredModel, fetchModels } from '../api'
 import { fetchAgentModels, updateAgentModel, fetchApiKeys, saveApiKey, deleteApiKey } from '../api'
+import { fetchAgentVoices, updateAgentVoice } from '../api'
 
 const C = {
   card: { background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' } as const,
@@ -30,11 +31,39 @@ const ROLE_DESC: Record<string, string> = {
   audit: 'AI 内容审核与质量判定',
 }
 
+// 语音音色：消息气泡朗读时按 Agent 使用不同声音（全部本地实测有效，须配 seed-tts-2.0）
+const VOICE_ROLE_LABELS: Record<string, string> = {
+  orchestrator: '小元（统筹）',
+  local: '小元 · 本机',
+  analysis: '数据分析 Agent',
+  collection: '数据采集 Agent',
+  automation: '自动化 Agent',
+  claude: 'Claude Code',
+}
+
+const VOICE_OPTIONS = [
+  { value: 'zh_male_shaonianzixin_uranus_bigtts', label: '少年梓辛（小男孩）' },
+  { value: 'zh_male_naiqimengwa_uranus_bigtts', label: '奶气萌娃（小男孩）' },
+  { value: 'zh_male_tiancaitongsheng_uranus_bigtts', label: '天才童声（小男孩）' },
+  { value: 'zh_male_kailangdidi_uranus_bigtts', label: '开朗弟弟（少年）' },
+  { value: 'zh_male_linjiananhai_uranus_bigtts', label: '邻家男孩（少年）' },
+  { value: 'zh_male_kailangxuezhang_uranus_bigtts', label: '开朗学长（男）' },
+  { value: 'zh_male_huolixiaoge_uranus_bigtts', label: '活力小哥（男）' },
+  { value: 'zh_male_wenrouxiaoge_uranus_bigtts', label: '温柔小哥（男）' },
+  { value: 'zh_male_qingshuangnanda_uranus_bigtts', label: '清爽男大（男）' },
+  { value: 'zh_male_yangguangqingnian_uranus_bigtts', label: '阳光青年（男）' },
+  { value: 'zh_female_xiaohe_uranus_bigtts', label: '小鹤（女声）' },
+  { value: 'zh_female_qingxinnvsheng_uranus_bigtts', label: '清新女生（女声）' },
+]
+
 export default function SettingsPage() {
   const [chatModel, setChatModel] = useState(getStoredModel())
   const [models, setModels] = useState<Record<string, { label: string; provider: string }>>({})
   const [agentModels, setAgentModels] = useState<Record<string, string>>({})
   const [savingRole, setSavingRole] = useState('')
+  // 语音音色
+  const [agentVoices, setAgentVoices] = useState<Record<string, string>>({})
+  const [savingVoiceRole, setSavingVoiceRole] = useState('')
   // api keys
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
   const [showAddKey, setShowAddKey] = useState(false)
@@ -47,6 +76,7 @@ export default function SettingsPage() {
     fetchModels().then(setModels)
     fetchAgentModels().then(setAgentModels)
     fetchApiKeys().then(setApiKeys)
+    fetchAgentVoices().then(setAgentVoices)
   }, [])
   const refreshKeys = () => fetchApiKeys().then(setApiKeys)
 
@@ -55,6 +85,13 @@ export default function SettingsPage() {
     setAgentModels(prev => ({ ...prev, [role]: modelId }))
     await updateAgentModel(role, modelId)
     setSavingRole('')
+  }
+
+  const handleRoleVoice = async (role: string, voiceId: string) => {
+    setSavingVoiceRole(role)
+    setAgentVoices(prev => ({ ...prev, [role]: voiceId }))
+    await updateAgentVoice(role, voiceId)
+    setSavingVoiceRole('')
   }
 
   const modelOptions = Object.entries(models).map(([id, v]) => ({
@@ -179,6 +216,31 @@ export default function SettingsPage() {
                 <option value="" disabled>选择模型...</option>
                 {modelOptions.map(m => (
                   <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+
+        {/* ---- 语音音色 ---- */}
+        <div style={C.card}>
+          <div style={C.title}>
+            语音音色
+            <span style={C.sub}>　消息气泡「朗读」时每个 Agent 使用的声音（通话中小元的音色在服务器 .env 配置）</span>
+          </div>
+          {Object.entries(VOICE_ROLE_LABELS).map(([role, label]) => (
+            <div key={role} style={{ ...C.row, background: savingVoiceRole === role ? 'var(--accent-light)' : undefined, transition: 'background 0.3s' }}>
+              <div style={{ flex: 1 }}>
+                <div style={C.label}>{label}</div>
+              </div>
+              <select
+                value={agentVoices[role] || ''}
+                onChange={e => handleRoleVoice(role, e.target.value)}
+                style={C.select}
+              >
+                <option value="" disabled>选择音色...</option>
+                {VOICE_OPTIONS.map(v => (
+                  <option key={v.value} value={v.value}>{v.label}</option>
                 ))}
               </select>
             </div>

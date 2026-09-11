@@ -187,6 +187,7 @@ class VoiceMessageRequest(BaseModel):
 
 class VoiceTtsRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=1000, description="要朗读的文本")
+    sender: str = Field(None, description="消息归属 Agent（orchestrator/analysis/collection/automation/claude/local），缺省用默认音色")
 
 
 @router.post("/start", response_model=VoiceStartResponse)
@@ -264,17 +265,19 @@ def append_voice_message(req: VoiceMessageRequest, request: Request):
 
 @router.post("/tts")
 def voice_tts(req: VoiceTtsRequest, request: Request):
-    """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型 2.0，返回 mp3"""
-    from config.settings import VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE
+    """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型 2.0，按消息归属 Agent 选音色"""
+    from config.settings import VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE, AGENT_VOICE_MAP
     from fastapi.responses import Response
     if not (VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN):
         raise HTTPException(status_code=503, detail="语音合成未配置：请先配置 VOICE_TTS_* 凭据")
     try:
+        # 音色按 Agent 查表（用户设置页可改），未知 sender 回退 env 默认音色
+        speaker = AGENT_VOICE_MAP.get(req.sender, VOICE_TTS_VOICE) if req.sender else VOICE_TTS_VOICE
         body = {
             "user": {"uid": f"tts_{getattr(request.state, 'user_id', 0)}"},
             "req_params": {
                 "text": req.text,
-                "speaker": VOICE_TTS_VOICE,
+                "speaker": speaker,
                 "audio_params": {"format": "mp3", "sample_rate": 24000},
             },
         }

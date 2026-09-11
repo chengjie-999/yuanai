@@ -124,6 +124,15 @@ def _fix_history_for_api(history: list) -> list:
 async def chat_stream(req: ChatRequest, request: Request):
     """SSE 流式聊天（优先走本地 Agent，离线时回退到云端直接调用）"""
     try:
+        # 每日消息配额（成本护栏）：admin 不限，user 超限拒绝；Redis 不可用时宽松放行
+        user_id = _get_user_id(request)
+        from config.settings import DAILY_MESSAGE_QUOTA
+        if DAILY_MESSAGE_QUOTA > 0 and getattr(request.state, "role", "") != "admin":
+            from datetime import datetime
+            from api.v1.db_helpers import check_daily_quota
+            if not check_daily_quota(f"msg:{user_id}", DAILY_MESSAGE_QUOTA):
+                raise HTTPException(status_code=429, detail=f"今日消息额度已用完（{DAILY_MESSAGE_QUOTA} 条/天），请明天再来")
+
         model = req.model
         # DeepSeek V4 不支持图片 → 自动切到豆包多模态
         if req.images and 'deepseek' in model:

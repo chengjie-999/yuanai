@@ -274,6 +274,13 @@ skills/
 - 登录限流 5次/60s，通用 API 60次/60s，上传 10次/60s
 - Nginx 层安全响应头（CSP/HSTS/X-Frame-Options 等）
 
+## 成本护栏（2026-09-11）
+
+- 注册默认关闭：`REGISTER_OPEN`（.env，默认 false；用户由管理员后台创建，或开关打开后走 /auth/register 恢复注册逻辑）
+- 每日消息配额：`DAILY_MESSAGE_QUOTA`（默认 50 条/用户/天，admin 不限；/chat/stream 入口 Redis 计数 `quota:msg:{uid}:{date}`，Redis 故障降级放行）
+- 语音总开关：`VOICE_ENABLED`（voice/start 与 voice/tts 检查，关闭返回 503）
+- 网站访问统计：`visit_log` 表（Alembic 0005）+ 公开 `POST /api/v1/stats/visit`（前端 LandingPage/AboutPage 埋点，全局限流保护）+ 后台仪表盘 PV/UV/7 天趋势
+
 ## 数据库迁移
 
 使用 Alembic 管理增量迁移（替代原来的原始 ALTER TABLE + try/except）。

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import LandingHeader from './LandingHeader'
+import { trackVisit } from '../api'
 
 /* ============================================================
    关于我 — 公开简历页（免登录，/about）
@@ -74,6 +75,7 @@ export default function AboutPage() {
   // 入场淡入动画（同 LandingPage 惯例）
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true))
+    trackVisit(window.location.pathname)  // 访问埋点
   }, [])
 
   return (

@@ -59,6 +59,32 @@ async def admin_dashboard(request: Request):
         ds_dir = os.path.join(root_path(), "data", "datasets")
         dataset_count = len(os.listdir(ds_dir)) if os.path.isdir(ds_dir) else 0
 
+        # 网站访问统计（前端埋点 visit_log 表）
+        from db.session import VisitLog
+        visits = {}
+        if True:
+            today_pv = sess.query(func.count(VisitLog.id)).filter(
+                func.date(VisitLog.create_time) == today).scalar() or 0
+            today_uv = sess.query(func.count(func.distinct(VisitLog.ip))).filter(
+                func.date(VisitLog.create_time) == today).scalar() or 0
+            seven_days_ago = dt.utcnow() - timedelta(days=6)
+            visits_daily = (
+                sess.query(
+                    func.date(VisitLog.create_time).label("date"),
+                    func.count(VisitLog.id).label("pv"),
+                    func.count(func.distinct(VisitLog.ip)).label("uv"),
+                )
+                .filter(VisitLog.create_time >= seven_days_ago)
+                .group_by(func.date(VisitLog.create_time))
+                .order_by(func.date(VisitLog.create_time))
+                .all()
+            )
+            visits = {
+                "today_pv": today_pv,
+                "today_uv": today_uv,
+                "daily": [{"date": str(d), "pv": p, "uv": u} for d, p, u in visits_daily],
+            }
+
         return {
             "users": user_count,
             "sessions": session_count,
@@ -68,6 +94,7 @@ async def admin_dashboard(request: Request):
             "avg_messages": avg_msgs,
             "datasets": dataset_count,
             "daily_messages": daily_messages,
+            "visits": visits,
         }
     finally:
         sess.close()

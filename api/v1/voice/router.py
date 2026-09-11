@@ -173,7 +173,9 @@ class VoiceTtsRequest(BaseModel):
 @router.post("/start", response_model=VoiceStartResponse)
 def start_voice_chat(req: VoiceStartRequest, request: Request):
     """创建语音房间：启动 AI 智能体入房并签发进房 Token"""
-    from config.settings import VOLCANO_RTC_APP_ID, VOLCANO_RTC_APP_KEY
+    from config.settings import VOLCANO_RTC_APP_ID, VOLCANO_RTC_APP_KEY, VOICE_ENABLED
+    if not VOICE_ENABLED:
+        raise HTTPException(status_code=503, detail="语音功能已关闭（管理员可在 .env 的 VOICE_ENABLED 开启）")
     if not _voice_configured():
         raise HTTPException(
             status_code=503,
@@ -246,8 +248,10 @@ def append_voice_message(req: VoiceMessageRequest, request: Request):
 @router.post("/tts")
 def voice_tts(req: VoiceTtsRequest, request: Request):
     """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型 2.0，按消息归属 Agent 选音色"""
-    from config.settings import VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE, AGENT_VOICE_MAP
+    from config.settings import VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE, AGENT_VOICE_MAP, VOICE_ENABLED
     from fastapi.responses import Response
+    if not VOICE_ENABLED:
+        raise HTTPException(status_code=503, detail="语音功能已关闭")
     if not (VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN):
         raise HTTPException(status_code=503, detail="语音合成未配置：请先配置 VOICE_TTS_* 凭据")
     try:

@@ -301,6 +301,17 @@ export async function setFeedback(sessionId: string, messageIndex: number, liked
   } catch { return false }
 }
 
+// ---- Stats ----
+export async function trackVisit(path: string) {
+  try {
+    await fetch(`${API_BASE}/stats/visit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    })
+  } catch { /* 埋点失败不影响体验 */ }
+}
+
 // ---- Voice ----
 export interface VoiceCreds {
   app_id: string; room_id: string; user_id: string; rtc_token: string; task_id: string
@@ -388,7 +399,14 @@ export function streamChat(
   })
     .then(async (response) => {
       if (!response.ok) {
-        onError(`HTTP ${response.status}: ${await response.text()}`)
+        // 提取后端错误详情（配额 429 等业务提示直接展示给用户）
+        const text = await response.text()
+        let msg = text
+        try {
+          const data = JSON.parse(text)
+          if (data?.detail) msg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)
+        } catch { /* 非 JSON 用原文 */ }
+        onError(msg)
         return
       }
       const reader = response.body?.getReader()

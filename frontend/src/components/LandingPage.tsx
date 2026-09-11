@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { trackVisit } from '../api'
 import { SUB_AGENTS } from '../config/agents'
 import Mascot from './Mascot'
 import LandingHeader from './LandingHeader'
@@ -109,6 +110,7 @@ export default function LandingPage() {
   // 入场淡入动画（同 LoginPage 惯例）
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true))
+    trackVisit(window.location.pathname)  // 访问埋点
   }, [])
 
   return (

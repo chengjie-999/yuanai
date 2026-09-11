@@ -65,6 +65,16 @@ class TaskImage(Base):
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
+class VisitLog(Base):
+    """网站访问日志（前端埋点上报，后台仪表盘统计 PV/UV）"""
+    __tablename__ = 'visit_log'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    path = Column(String(200), nullable=False, default='/')
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(300), nullable=True)
+    create_time = Column(TIMESTAMP, server_default=func.now())
+
+
 class User(Base):
     """用户表"""
     __tablename__ = 'users'

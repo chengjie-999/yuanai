@@ -163,6 +163,53 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
         </Card>
       )}
 
+      {/* 网站访问统计（埋点 visit_log） */}
+      {isAdmin && data?.visits && (
+        <Card style={{ marginBottom: 24, padding: '20px 24px' }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px', color: 'var(--text-primary)' }}>网站访问</h3>
+          <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
+            <div>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>今日 PV</span>
+              <div style={{ fontSize: 22, fontWeight: 700, color: CHART_GREEN }}>{data.visits.today_pv}</div>
+            </div>
+            <div>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>今日 UV</span>
+              <div style={{ fontSize: 22, fontWeight: 700, color: CHART_BLUE }}>{data.visits.today_uv}</div>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={120}>
+            <AreaChart data={(data.visits.daily || []).map((d: any) => ({ ...d, label: (d.date || '').slice(5) }))} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="dashVisitGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={CHART_GREEN} stopOpacity={0.35} />
+                  <stop offset="95%" stopColor={CHART_GREEN} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickLine={false} allowDecimals={false} />
+              <Tooltip
+                cursor={{ stroke: 'var(--border)' }}
+                content={({ active, payload }: any) => {
+                  if (!active || !payload?.length) return null
+                  const d = payload[0]?.payload
+                  return (
+                    <div style={{
+                      background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                      borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--text-primary)',
+                    }}>
+                      <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>{d.date}</div>
+                      <div style={{ color: CHART_GREEN, fontWeight: 600 }}>PV {d.pv} · UV {d.uv}</div>
+                    </div>
+                  )
+                }}
+              />
+              <Area type="monotone" dataKey="pv" name="PV" stroke={CHART_GREEN} strokeWidth={2} fill="url(#dashVisitGrad)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
       {/* Agent 在线状态 */}
       {agents.length > 0 && (
         <Card>

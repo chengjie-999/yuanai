@@ -97,6 +97,11 @@ def _load_agent_voices() -> dict:
 
 AGENT_VOICE_MAP = _load_agent_voices()
 
+# ===================== 成本护栏（注册/配额/功能开关） =====================
+REGISTER_OPEN = os.getenv("REGISTER_OPEN", "false").lower() == "true"   # 公开注册开关（默认关，用户由管理员后台创建）
+DAILY_MESSAGE_QUOTA = int(os.getenv("DAILY_MESSAGE_QUOTA", "50"))       # 每用户每日消息配额（admin 不限；0 = 不限）
+VOICE_ENABLED = os.getenv("VOICE_ENABLED", "true").lower() == "true"    # 语音通话/朗读功能总开关
+
 # ===================== 鉴权配置 =====================
 
 _jwt = os.getenv("JWT_SECRET_KEY")

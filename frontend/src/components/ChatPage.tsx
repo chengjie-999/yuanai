@@ -204,7 +204,7 @@ export default function ChatPage({ user }: { user?: any }) {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `请求失败: ${errMsg}` }; return last }); setLoading(false)
       }
     }
-    const onError = () => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: '网络异常，请检查连接' }; return last }); setLoading(false) }
+    const onError = (msg?: string) => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: msg || '网络异常，请检查连接' }; return last }); setLoading(false) }
     return { onEvent, onError }
   }
 

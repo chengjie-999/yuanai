@@ -48,8 +48,15 @@ class RegisterRequest(AuthRequest):
 
 @router.post("/register")
 def register(req: RegisterRequest):
-    """注册新用户"""
-    raise HTTPException(status_code=403, detail="注册功能暂不开放，请联系管理员创建账号")
+    """注册新用户（REGISTER_OPEN=true 时开放，默认关闭由管理员创建）"""
+    from config.settings import REGISTER_OPEN
+    if not REGISTER_OPEN:
+        raise HTTPException(status_code=403, detail="注册功能暂不开放，请联系管理员创建账号")
+    db = get_db()
+    result = db.register_user(req.username, req.password, role="user")
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
 
 
 @router.post("/login")

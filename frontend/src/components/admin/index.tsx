@@ -14,18 +14,30 @@ import ToolsTab from './ToolsTab'
 import SettingsTab from './SettingsTab'
 import MonitorTab from './MonitorTab'
 
+// 分组图标：内联 SVG stroke（lucide 风格，项目零图标库），随文字颜色
+const GIcon = ({ d }: { d: React.ReactNode }) => (
+  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+)
+
 // 后台导航：左侧边栏按维度分组（桌面），移动端回退横向滚动 chip
-const NAV_GROUPS: { label: string; icon: string; items: { key: string; label: string }[] }[] = [
-  { label: '概览', icon: '📊', items: [{ key: 'dashboard', label: '仪表盘' }] },
+const NAV_GROUPS: { label: string; icon: React.ReactNode; items: { key: string; label: string }[] }[] = [
   {
-    label: '用户维度', icon: '👥',
+    label: '概览',
+    icon: <GIcon d={<><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></>} />,
+    items: [{ key: 'dashboard', label: '仪表盘' }],
+  },
+  {
+    label: '用户维度',
+    icon: <GIcon d={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>} />,
     items: [
       { key: 'users', label: '用户管理' },
       { key: 'sessions', label: '会话记录' },
     ],
   },
   {
-    label: 'Agent 维度', icon: '🤖',
+    label: 'Agent 维度',
+    icon: <GIcon d={<><path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" /></>} />,
     items: [
       { key: 'agents', label: 'Agent 状态' },
       { key: 'agent-devices', label: 'Agent 管理' },
@@ -33,7 +45,8 @@ const NAV_GROUPS: { label: string; icon: string; items: { key: string; label: st
     ],
   },
   {
-    label: '数据维度', icon: '📦',
+    label: '数据维度',
+    icon: <GIcon d={<><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 21 19V5" /><path d="M3 12A9 3 0 0 0 21 12" /></>} />,
     items: [
       { key: 'datasets', label: '数据集' },
       { key: 'knowledge', label: '知识库' },
@@ -42,7 +55,8 @@ const NAV_GROUPS: { label: string; icon: string; items: { key: string; label: st
     ],
   },
   {
-    label: '系统维度', icon: '⚙️',
+    label: '系统维度',
+    icon: <GIcon d={<><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></>} />,
     items: [
       { key: 'models', label: '模型配置' },
       { key: 'monitor', label: '代码监控' },
@@ -80,8 +94,8 @@ function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
           borderTop: gi > 0 ? '1px solid var(--border-light)' : 'none',
           marginBottom: gi === NAV_GROUPS.length - 1 ? 0 : 6,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px 8px', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
-            <span style={{ fontSize: 14 }}>{g.icon}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px 8px', fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
+            <span style={{ display: 'flex', alignItems: 'center' }}>{g.icon}</span>
             {g.label}
           </div>
           {g.items.map((t) => (
@@ -109,7 +123,7 @@ function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
               width: 'auto', padding: '7px 14px', borderRadius: 16,
               border: currentTab === t.key ? '1px solid var(--accent)' : '1px solid var(--border)',
               flexShrink: 0,
-            }}>{group?.icon} {t.label}</button>
+            }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{group?.icon} {t.label}</span></button>
         )
       })}
     </div>

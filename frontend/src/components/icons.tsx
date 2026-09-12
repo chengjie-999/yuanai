@@ -157,3 +157,18 @@ export const LoaderIcon = (p: IconProps) => <Svg {...p}><path d="M21 12a9 9 0 1 
 
 /* 书籍（知识库） */
 export const BookIcon = (p: IconProps) => <Svg {...p}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></Svg>
+
+/* 星球（知识星球） */
+export const PlanetIcon = (p: IconProps) => <Svg {...p}><circle cx="12" cy="12" r="10" /><path d="M14.8 9A21.1 21.1 0 0 0 12 3 21.1 21.1 0 0 0 9.2 9" /><path d="M14.8 15A21.1 21.1 0 0 1 12 21 21.1 21.1 0 0 1 9.2 15" /><path d="M3 15h18" /><path d="M3 9h18" /></Svg>
+
+/* 思维导图（分支树） */
+export const MapIcon = (p: IconProps) => <Svg {...p}><circle cx="4" cy="12" r="2.5" /><circle cx="10" cy="6" r="2" /><circle cx="10" cy="18" r="2" /><circle cx="17" cy="12" r="2" /><path d="M6.3 11.2 8 6.6M6.3 12.8 8 17.4M12 6.8V10M12 14v.9M15 12h1.5" /></Svg>
+
+/* 笔记（文档） */
+export const NoteIcon = (p: IconProps) => <Svg {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" x2="16" y1="13" y2="13" /><line x1="8" x2="16" y1="17" y2="17" /></Svg>
+
+/* 铅笔（编辑） */
+export const EditIcon = (p: IconProps) => <Svg {...p}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></Svg>
+
+/* 魔棒（AI 生成） */
+export const WandIcon = (p: IconProps) => <Svg {...p}><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z" /><path d="m14 7 3 3" /><path d="M5 6v4" /><path d="M19 14v4" /><path d="M10 2v2" /><path d="M7 8H3" /><path d="M21 16h-4" /><path d="M11 3H9" /></Svg>

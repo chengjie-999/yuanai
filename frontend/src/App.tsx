@@ -21,6 +21,7 @@ const RFMDashboard = lazy(() => import('./pages/RFMDashboard'))
 const AnalysisDashboard = lazy(() => import('./pages/AnalysisDashboard'))
 const MedicalPage = lazy(() => import('./components/MedicalPage'))
 const CollectionRecordsPage = lazy(() => import('./components/CollectionRecordsPage'))
+const PlanetPage = lazy(() => import('./pages/PlanetPage'))
 
 /* 懒加载页面统一的加载占位（保持 Header 不闪） */
 function PageLoading() {
@@ -91,6 +92,7 @@ function AppLayout() {
         </span>
         <nav style={{ display: 'flex', gap: 0 }}>
           <Link to="/chat" style={navLinkStyle('/chat')}>对话</Link>
+          <Link to="/chat/planet" style={navLinkStyle('/chat/planet')}>知识星球</Link>
           {isAdmin && (
             <Link to="/chat/admin" style={navLinkStyle('/chat/admin')}>管理</Link>
           )}
@@ -157,6 +159,7 @@ function AppLayout() {
             <Route path="/agent/dashboard/:sessionId" element={<AnalysisDashboard />} />
             <Route path="/agent/medical" element={<MedicalPage />} />
             <Route path="/agent/records" element={<CollectionRecordsPage />} />
+            <Route path="/planet" element={<PlanetPage />} />
             <Route path="/admin/*" element={
               <AdminRoute><AdminPage isAdmin={isAdmin} /></AdminRoute>
             } />
@@ -178,6 +181,7 @@ function AppInner() {
         import('./components/ChatPage')
         import('./components/UserPage')
         import('./components/SettingsPage')
+        import('./pages/PlanetPage')
         if (isAdmin) import('./components/AdminPage')
       } else {
         // 访客：预取关于我与登录页（首页已加载）

@@ -314,6 +314,62 @@ def deindex_map(db, uid: int, pid: int, mid: int):
         print(f"⚠️ 导图 {mid} 去索引失败: {e}")
 
 
+# ---------------- LLM 文章化转换 ----------------
+
+def run_convert(job_id: int, uid: int, mid: int) -> None:
+    """转换执行体（在 planet 线程池中运行）：读 tree.json → 分箱生成 → 落笔记行 + 索引"""
+    from config.settings import PLANET_ARTICLE_MODEL
+    from yuanai_core.planet_convert import convert_tree
+
+    db = _db()
+    m = db.get_map(mid, user_id=uid)
+    if not m:
+        db.update_job(job_id, uid, status="failed", error="导图不存在")
+        return
+    pid = m["planet_id"]
+
+    def progress(done: int, total: int, msg: str):
+        db.update_job(job_id, uid, progress=int(done / max(total, 1) * 100),
+                      done_steps=done, total_steps=total, message=msg[:500])
+
+    try:
+        db.update_map(mid, uid, status="converting", error="")
+        tpath = os.path.join(map_dir(uid, pid, mid), "tree.json")
+        with open(tpath, encoding="utf-8") as f:
+            tree = json.load(f)
+
+        result = convert_tree(
+            tree, model=PLANET_ARTICLE_MODEL,
+            image_base=f"/api/v1/planet/asset/{pid}/{mid}",
+            on_progress=progress,
+        )
+        content = result["content"]
+        if not content:
+            raise RuntimeError("转换结果为空")
+
+        summary = content.strip().splitlines()[0][:200]
+        # 覆盖旧 AI 笔记；保留用户手改笔记（写入前由路由弹确认）
+        old = db.get_note(m.get("note_id") or 0, user_id=uid)
+        title = f"{m['title']} · 笔记"
+        if old and old.get("source") == "ai":
+            db.update_note(old["id"], uid, content=content, title=title,
+                           summary=summary, source="ai")
+            db.update_map(mid, uid, status="ready")
+        else:
+            nid = db.add_note(uid, pid, mid, title, content, source="ai",
+                              model=PLANET_ARTICLE_MODEL, summary=summary)
+            db.update_map(mid, uid, status="ready", note_id=nid)
+
+        # 向量索引（Milvus 不可用时内部降级跳过）
+        index_note(db, uid, pid, mid, content)
+
+        db.update_job(job_id, uid, status="done", progress=100, message="笔记生成完成",
+                      result_json=json.dumps({"warnings": result["warnings"]}, ensure_ascii=False))
+    except Exception as e:
+        db.update_map(mid, uid, status="failed", error=str(e)[:500])
+        db.update_job(job_id, uid, status="failed", error=str(e)[:1000])
+
+
 # ---------------- 删除级联 ----------------
 
 def delete_planet_cascade(uid: int, pid: int):

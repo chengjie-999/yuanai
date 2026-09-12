@@ -35,6 +35,9 @@ DEFAULT_MODEL = "deepseek-v4-flash"
 VISION_MODEL = "doubao-seed-2-0-pro-260215"  # DeepSeek V4 不支持图片，识图自动切豆包
 DEFAULT_TEMPERATURE = 0.7
 
+# 知识星球「导图 → 文章化笔记」转换模型（注意：必须显式传模型名，call_llm 默认名会炸）
+PLANET_ARTICLE_MODEL = os.getenv("PLANET_ARTICLE_MODEL", DEFAULT_MODEL)
+
 # Agent 模型分配 — 统一入口，消除代码中 15+ 处硬编码
 _DEFAULT_AGENT_MODEL_MAP = {
     # 通用快模型 — 意图识别 / 任务路由 / 简单爬取

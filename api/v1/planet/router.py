@@ -165,6 +165,21 @@ def delete_map(request: Request, mid: int):
     return {"ok": True}
 
 
+@router.post("/maps/{mid}/convert")
+def convert_map(request: Request, mid: int):
+    """启动「导图 → 文章化笔记」转换任务，立即返回 job_id（前端轮询进度）"""
+    uid = _uid(request)
+    m = store.owned_map(mid, uid)
+    if m["status"] == "converting":
+        raise HTTPException(status_code=409, detail="该导图正在转换中")
+    if get_db().has_running_job(uid, "convert"):
+        raise HTTPException(status_code=409, detail="已有转换任务进行中，请稍候（防连点烧钱）")
+    job_id = get_db().create_job(uid, "convert", planet_id=m["planet_id"], map_id=mid)
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(_planet_executor, store.run_convert, job_id, uid, mid)
+    return {"ok": True, "job_id": job_id}
+
+
 # ====================== 笔记 ======================
 
 @router.get("/notes")

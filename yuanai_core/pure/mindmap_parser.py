@@ -506,10 +506,11 @@ def parse_any(filename: str, data: bytes) -> dict:
 
 # ====================== 树 → 大纲 / 降级 ======================
 
-def tree_to_outline_md(tree) -> str:
+def tree_to_outline_md(tree, image_base: str = "") -> str:
     """树 → 缩进 Markdown 大纲（导图大纲视图 + LLM 输入共用）。
 
-    一级分支 #，二级 ##，更深层用缩进列表；节点备注附（备注：…）。
+    一级分支 #，二级 ##，更深层用缩进列表；节点备注附（备注：…）；
+    image_base 非空时图片以（图片: {image_base}/{src}）标注（供 LLM 转换定位图片）。
     """
     children = tree["children"] if isinstance(tree, dict) and "children" in tree else tree
     title = tree.get("meta", {}).get("title", "") if isinstance(tree, dict) else ""
@@ -524,20 +525,24 @@ def tree_to_outline_md(tree) -> str:
         if node.get("content"):
             first = node["content"].strip().splitlines()[0][:120]
             lines.append(f"{prefix}（备注：{first}）")
+        if image_base and node.get("images"):
+            for img in node["images"]:
+                lines.append(f"{prefix}（图片: {image_base.rstrip('/')}/{img['src']}）")
 
-    def walk(nodes, level: int, indent: int):
+    def walk(nodes, indent: int):
         for n in nodes:
-            if level + offset <= 2:
-                lines.append("#" * max(level + offset, 1) + " " + n["title"])
+            depth = (n.get("level", 1) or 1) + offset  # 按节点自身层级，子视图深度不乱
+            if depth <= 2:
+                lines.append("#" * max(depth, 1) + " " + n["title"])
                 note_line("", n)
-                walk(n["children"], level + 1, 0)
+                walk(n["children"], 0)
             else:
                 prefix = "  " * indent + "- "
                 lines.append(prefix + n["title"])
                 note_line(prefix + "  ", n)
-                walk(n["children"], level + 1, indent + 1)
+                walk(n["children"], indent + 1)
 
-    walk(children, 1, 0)
+    walk(children, 0)
     return "\n".join(lines)
 
 

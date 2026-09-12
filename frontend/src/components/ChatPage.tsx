@@ -9,6 +9,7 @@ import ChatView from './chat/ChatView'
 import VoiceCall from './chat/VoiceCall'
 import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
+import { ChevronLeftIcon, ChevronRightIcon } from './icons'
 
 type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string }
 
@@ -355,17 +356,17 @@ export default function ChatPage({ user }: { user?: any }) {
 
       {sidebarOpen && <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 
-      <div onClick={() => setSidebarOpen(!sidebarOpen)}
+      <div onClick={() => setSidebarOpen(!sidebarOpen)} className="yuan-tip" data-tip={sidebarOpen ? '收起侧栏' : '展开侧栏'} aria-label={sidebarOpen ? '收起侧栏' : '展开侧栏'}
         style={{
           position: 'absolute', left: isMobile ? 0 : (sidebarOpen ? 258 : 0), top: 64, zIndex: 10,
           padding: '12px 4px', borderRadius: '0 8px 8px 0',
-          background: 'var(--bg-primary)', cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)',
+          background: 'var(--bg-primary)', cursor: 'pointer', color: 'var(--text-secondary)',
           border: '1px solid var(--border)',
           borderLeft: (!isMobile && sidebarOpen) ? 'none' : '1px solid var(--border)',
           boxShadow: (!isMobile && sidebarOpen) ? '1px 1px 4px var(--shadow-sm)' : '0 1px 3px var(--shadow-sm)',
-          lineHeight: 1, transition: 'left 0.2s',
+          lineHeight: 1, transition: 'left 0.2s', display: 'flex', alignItems: 'center',
         }}
-      >{sidebarOpen ? '◀' : '▶'}</div>
+      >{sidebarOpen ? <ChevronLeftIcon size={12} /> : <ChevronRightIcon size={12} />}</div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {!currentSid ? (

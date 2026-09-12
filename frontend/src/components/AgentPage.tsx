@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { API_BASE, headers, safeJson } from '../api'
 import { SUB_AGENTS } from '../config/agents'
 import { ErrorBoundary } from './ErrorBoundary'
+import { XIcon } from './icons'
 
 export default function AgentPage({ userId }: { userId?: number }) {
   const [agents, setAgents] = useState<any[]>([])
@@ -186,7 +187,10 @@ function ModelsCard() {
               <td style={{ padding: "10px 14px", fontFamily: 'monospace', fontSize: 11, color: 'var(--text-secondary)' }}>{id}</td>
               <td style={{ padding: "10px 14px", color: "var(--text-secondary)", fontSize: 12 }}>{info.provider as string}</td>
               <td style={{ padding: "10px 14px" }}>
-                {!info.builtin && <button onClick={() => handleDelete(id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)', padding: 0 }}>x</button>}
+                {!info.builtin && <button onClick={() => handleDelete(id)} title="删除" aria-label="删除"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', lineHeight: 1, display: 'flex' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--danger)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}><XIcon size={13} /></button>}
               </td>
             </tr>
           )})}

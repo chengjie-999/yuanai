@@ -5,6 +5,7 @@ import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { voiceTts } from '../../api'
 import { LoadingDots, addToken, stripMarkdown } from './helpers'
+import { BarChartIcon, BotIcon, ClipboardIcon } from '../icons'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
 const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSProperties => ({
@@ -109,7 +110,7 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
   const bubbleActions = showActions ? (
     <div className="msg-actions" style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', marginTop: 6, marginBottom: -4 }}>
       {!isUser && (
-        <button onClick={toggleRead} title={speaking ? '打断朗读' : '朗读'} aria-label={speaking ? '打断朗读' : '朗读'}
+        <button onClick={toggleRead} className="yuan-tip" data-tip={speaking ? '打断朗读' : '朗读'} aria-label={speaking ? '打断朗读' : '朗读'}
           style={iconBtnStyle(false, speaking)}
           onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
           onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
@@ -130,7 +131,7 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
           )}
         </button>
       )}
-      <button onClick={copyContent} title="复制" aria-label="复制"
+      <button onClick={copyContent} className="yuan-tip" data-tip="复制" aria-label="复制"
         style={iconBtnStyle(isUser, copied)}
         onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
         onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
@@ -144,7 +145,7 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
         )}
       </button>
       {isUser ? (
-        <button onClick={() => onEditStart(index)} disabled={loading} title="修改" aria-label="修改"
+        <button onClick={() => onEditStart(index)} disabled={loading} className="yuan-tip" data-tip="修改" aria-label="修改"
           style={iconBtnStyle(isUser)}
           onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
           onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
@@ -152,7 +153,7 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
         </button>
       ) : (
         <button onClick={() => onLike(index)} disabled={loading}
-          title={liked ? '取消点赞' : '点赞'} aria-label={liked ? '取消点赞' : '点赞'}
+          className="yuan-tip" data-tip={liked ? '取消点赞' : '点赞'} aria-label={liked ? '取消点赞' : '点赞'}
           style={iconBtnStyle(false, !!liked)}
           onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
           onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
@@ -219,14 +220,14 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
                     fontSize: 14, padding: '8px 10px', fontFamily: 'inherit', resize: 'vertical',
                     display: 'block', outline: 'none' }} />
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 8 }}>
-                  <button onClick={onEditCancel} title="取消" aria-label="取消"
+                  <button onClick={onEditCancel} className="yuan-tip" data-tip="取消" aria-label="取消"
                     style={{ ...iconBtnStyle(true), opacity: 0.9, background: 'rgba(255,255,255,0.15)' }}
                     onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                     onMouseLeave={(e) => e.currentTarget.style.opacity = '0.9'}>
                     <svg {...iconProps}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
                   </button>
                   <button onClick={() => onEditConfirm(index, draft)} disabled={!draft.trim()}
-                    title="保存" aria-label="保存"
+                    className="yuan-tip" data-tip="保存" aria-label="保存"
                     style={{ ...iconBtnStyle(true), background: '#fff', color: 'var(--accent)', opacity: draft.trim() ? 0.95 : 0.5 }}>
                     <svg {...iconProps}><polyline points="20 6 9 17 4 12" /></svg>
                   </button>
@@ -279,14 +280,14 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
               <a href={msg.pageLink} target="_blank" rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                  display: 'inline-block', marginTop: 6, padding: '5px 12px',
+                  display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
                   borderRadius: 6, background: agent?.color || 'var(--accent)',
                   color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
                   transition: 'opacity 0.15s',
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-              >{msg.sender === 'analysis' ? '📊' : msg.sender === 'automation' ? '🤖' : '📋'} 打开面板 →</a>
+              >{msg.sender === 'analysis' ? <BarChartIcon size={13} /> : msg.sender === 'automation' ? <BotIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</a>
             )}
             {msg.images && msg.images.length > 0 && (
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>

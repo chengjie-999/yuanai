@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchDatasets, fetchDatasetAnalysis, uploadDataset, API_BASE } from '../../../api'
 import AnalysisResultView from '../../AnalysisResultView'
+import { UploadIcon, DownloadIcon } from '../../icons'
 
 export default function AnalysisPanel() {
   const [datasets, setDatasets] = useState<any[]>([])
@@ -108,12 +109,12 @@ export default function AnalysisPanel() {
             ))}
           </select>
           <button onClick={() => fileRef.current?.click()} disabled={uploading}
-            style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}>
-            {uploading ? '上传中...' : '📤 上传'}
+            style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+            {uploading ? '上传中...' : <><UploadIcon size={13} /> 上传</>}
           </button>
           <button onClick={handleExport} disabled={!selectedId || exporting}
-            style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: selectedId ? 'var(--accent)' : 'var(--text-muted)', cursor: selectedId && !exporting ? 'pointer' : 'not-allowed', fontSize: 12, whiteSpace: 'nowrap' }}>
-            {exporting ? '导出中...' : '⬇ 导出'}
+            style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: selectedId ? 'var(--accent)' : 'var(--text-muted)', cursor: selectedId && !exporting ? 'pointer' : 'not-allowed', fontSize: 12, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+            {exporting ? '导出中...' : <><DownloadIcon size={13} /> 导出</>}
           </button>
         </div>
         {tip && (

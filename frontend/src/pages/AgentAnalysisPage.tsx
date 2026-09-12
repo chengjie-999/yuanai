@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import AnalysisPanel from '../components/chat/panels/AnalysisPanel'
 import { AGENT_CONFIG } from '../config/agents'
+import { ArrowLeftIcon, BarChartIcon } from '../components/icons'
 
 export default function AgentAnalysisPage() {
   const agent = AGENT_CONFIG.analysis
@@ -14,9 +15,9 @@ export default function AgentAnalysisPage() {
         <Link to="/chat" style={{
           fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
           padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
-          flexShrink: 0,
-        }}>← 返回</Link>
-        <span style={{ fontSize: 18, lineHeight: 1 }}>📊</span>
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+        }}><ArrowLeftIcon size={12} /> 返回</Link>
+        <span style={{ lineHeight: 1, color: agent.color, display: 'flex' }}><BarChartIcon size={18} /></span>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: agent.color }}>数据分析 Agent</div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>数据集管理、统计分析、图表生成</div>

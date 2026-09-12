@@ -1,5 +1,6 @@
 import type { SessionInfo } from './helpers'
 import { groupSessions } from './helpers'
+import { PlusIcon, TrashIcon } from '../icons'
 
 export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete }: {
   sessions: SessionInfo[]; currentSid: string; sidebarOpen: boolean; isMobile: boolean
@@ -14,15 +15,16 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
       transition: isMobile ? 'left 0.25s ease' : 'width 0.2s',
     }}>
       <div style={{ padding: '12px 12px 8px', flexShrink: 0 }}>
-        <button onClick={onNewSession}
+        <button onClick={onNewSession} aria-label="新对话"
           style={{
             width: '100%', padding: '10px 0', borderRadius: 8,
             border: '1px solid var(--border)', background: 'var(--bg-input)',
             cursor: 'pointer', fontSize: 14, color: 'var(--text-primary)',
             transition: 'border-color 0.15s',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, lineHeight: 1,
           }}
         >
-          + 新对话
+          <PlusIcon size={15} /> 新对话
         </button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px' }}>
@@ -42,11 +44,11 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                   {s.title.startsWith('🔧') ? <>{s.title}</> : s.title}
                 </span>
-                <span onClick={(e) => onDelete(e, s.session_id)}
-                  style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', fontSize: 13, flexShrink: 0, opacity: 0, transition: 'opacity 0.12s' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '0')}
-                >✕</span>
+                <span onClick={(e) => onDelete(e, s.session_id)} title="删除对话" aria-label="删除对话"
+                  style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', flexShrink: 0, opacity: 0, transition: 'opacity 0.12s', display: 'flex', alignItems: 'center' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--danger)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0'; e.currentTarget.style.color = 'var(--text-muted)' }}
+                ><TrashIcon size={13} /></span>
               </div>
             ))}
           </div>

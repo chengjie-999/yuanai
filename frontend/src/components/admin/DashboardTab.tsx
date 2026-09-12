@@ -3,6 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { Spinner, ErrorMsg, Card, CardHeader, headers, API_BASE } from './shared'
+import { TrendingUpIcon, TrendingDownIcon } from '../icons'
 
 const CHART_BLUE = '#42a5f5'
 const CHART_GREEN = '#4caf50'
@@ -27,8 +28,10 @@ function StatCard({ label, value, color, trend }: {
           fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8,
           background: trend.up ? `${CHART_GREEN}18` : `${CHART_RED}18`,
           color: trend.up ? CHART_GREEN : CHART_RED, alignSelf: 'center',
+          display: 'flex', alignItems: 'center', gap: 3, lineHeight: 1,
         }}>
-          {trend.up ? '↑' : '↓'} {trend.text}
+          {trend.up ? <TrendingUpIcon size={11} /> : <TrendingDownIcon size={11} />}
+          {trend.text}
         </div>
       )}
     </div>

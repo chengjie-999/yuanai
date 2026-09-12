@@ -34,13 +34,13 @@ export default function WebsitesTab() {
     <>
       {error && <ErrorMsg msg={error} />}
       <div style={{ marginBottom: 12 }}>
-        {!showAdd ? <button onClick={() => setShowAdd(true)} style={btnPrimary}>+ 添加网站</button> : (
+        {!showAdd ? <button onClick={() => setShowAdd(true)} title="添加网站" aria-label="添加网站" style={btnPrimary}>+ 添加网站</button> : (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="名称" style={{ ...inputStyle, width: 130 }} />
             <input value={newUrl} onChange={(e) => setNewUrl(e.target.value)} placeholder="URL（多个用逗号分隔）" style={{ ...inputStyle, width: 320 }} />
             <input value={newRemark} onChange={(e) => setNewRemark(e.target.value)} placeholder="备注（可选）" style={{ ...inputStyle, width: 150 }} />
-            <button onClick={handleAdd} style={btnPrimary}>确定</button>
-            <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>取消</button>
+            <button onClick={handleAdd} title="确定" aria-label="确定" style={btnPrimary}>确定</button>
+            <button onClick={() => setShowAdd(false)} title="取消" aria-label="取消" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>取消</button>
           </div>
         )}
       </div>
@@ -59,10 +59,10 @@ export default function WebsitesTab() {
                     <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>{w.name}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--accent)', fontSize: 12 }}>
                       <div style={{ wordBreak: 'break-all' }}>{urls[0]}</div>
-                      {urls.length > 1 && (isExpanded ? urls.slice(1).map((u, i) => <div key={i} style={{ marginTop: 2, opacity: 0.8, wordBreak: 'break-all' }}>{u}</div>) : <span onClick={() => setExpanded((p) => ({ ...p, [w.id]: true }))} style={{ cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)' }}>+{urls.length - 1} 个更多</span>)}
+                      {urls.length > 1 && (isExpanded ? urls.slice(1).map((u, i) => <div key={i} style={{ marginTop: 2, opacity: 0.8, wordBreak: 'break-all' }}>{u}</div>) : <span onClick={() => setExpanded((p) => ({ ...p, [w.id]: true }))} title="展开更多" aria-label="展开更多" style={{ cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)' }}>+{urls.length - 1} 个更多</span>)}
                     </td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{w.remark || '-'}</td>
-                    <td style={{ padding: '10px 14px' }}><button onClick={() => handleDelete(w.id, w.name)} style={btnDangerSm}>删除</button></td>
+                    <td style={{ padding: '10px 14px' }}><button onClick={() => handleDelete(w.id, w.name)} title="删除" aria-label="删除" style={btnDangerSm}>删除</button></td>
                   </tr>)
               })}
             </tbody>

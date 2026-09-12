@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, badge, headers, API_BASE } from './shared'
 import { freezeUser } from '../../api'
+import { XIcon } from '../icons'
 
 export default function UsersTab() {
   const [users, setUsers] = useState<any[]>([])
@@ -63,7 +64,7 @@ export default function UsersTab() {
     <>
       {error && <ErrorMsg msg={error} onRetry={fetchUsers} />}
       <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        {!showCreate ? <button onClick={() => setShowCreate(true)} style={btnPrimary}>+ 创建用户</button> : (
+        {!showCreate ? <button onClick={() => setShowCreate(true)} title="创建用户" aria-label="创建用户" style={btnPrimary}>+ 创建用户</button> : (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="用户名" style={{ ...inputStyle, width: 130 }} />
             {/* 密码输入 — 带小眼睛明文切换 */}
@@ -105,8 +106,8 @@ export default function UsersTab() {
             <select value={newRole} onChange={(e) => setNewRole(e.target.value)} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }}>
               <option value="user">user</option><option value="admin">admin</option>
             </select>
-            <button onClick={handleCreateUser} style={btnPrimary}>确定</button>
-            <button onClick={() => { setShowCreate(false); setNewPassword2(''); setShowPw(false) }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>取消</button>
+            <button onClick={handleCreateUser} title="确定" aria-label="确定" style={btnPrimary}>确定</button>
+            <button onClick={() => { setShowCreate(false); setNewPassword2(''); setShowPw(false) }} title="取消" aria-label="取消" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>取消</button>
           </div>
         )}
         <div style={{ flex: 1 }} />
@@ -131,8 +132,8 @@ export default function UsersTab() {
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.create_time?.slice(0, 10)}</td>
                     <td style={{ padding: '10px 14px' }}>
                       {!isAdminRole && <div style={{ display: 'flex', gap: 4 }}>
-                        {isFrozen ? <button onClick={() => handleFreeze(u.id, 0)} style={{ fontSize: 12, padding: '4px 10px', color: 'var(--success)', border: '1px solid var(--success)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>解冻</button> : <FreezeBtn userId={u.id} onFreeze={handleFreeze} />}
-                        <button onClick={() => handleDeleteUser(u.id, u.username)} style={btnDangerSm}>删除</button>
+                        {isFrozen ? <button onClick={() => handleFreeze(u.id, 0)} title="解冻" aria-label="解冻" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--success)', border: '1px solid var(--success)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>解冻</button> : <FreezeBtn userId={u.id} onFreeze={handleFreeze} />}
+                        <button onClick={() => handleDeleteUser(u.id, u.username)} title="删除" aria-label="删除" style={btnDangerSm}>删除</button>
                       </div>}
                     </td>
                   </tr>)
@@ -147,13 +148,13 @@ export default function UsersTab() {
 
 function FreezeBtn({ userId, onFreeze }: { userId: number; onFreeze: (id: number, days: number) => void }) {
   const [open, setOpen] = useState(false); const [days, setDays] = useState(7)
-  if (!open) return <button onClick={() => setOpen(true)} style={{ fontSize: 12, padding: '4px 10px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>冻结</button>
+  if (!open) return <button onClick={() => setOpen(true)} title="冻结" aria-label="冻结" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>冻结</button>
   return (
     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
       <input type="number" min={1} max={365} value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ width: 48, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 12, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>天</span>
-      <button onClick={() => { onFreeze(userId, days); setOpen(false) }} style={{ fontSize: 11, padding: '4px 8px', color: '#fff', background: 'var(--danger)', border: 'none', borderRadius: 4, cursor: 'pointer' }}>确定</button>
-      <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)', padding: '2px 4px' }}>✕</button>
+      <button onClick={() => { onFreeze(userId, days); setOpen(false) }} title="确定" aria-label="确定" style={{ fontSize: 11, padding: '4px 8px', color: '#fff', background: 'var(--danger)', border: 'none', borderRadius: 4, cursor: 'pointer' }}>确定</button>
+      <button onClick={() => setOpen(false)} title="关闭" aria-label="关闭" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><XIcon size={13} /></button>
     </div>
   )
 }

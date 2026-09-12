@@ -4,6 +4,7 @@ import { login } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import Mascot from './Mascot'
+import { ArrowLeftIcon, XIcon } from './icons'
 
 /* ============================================================
    小元AI 登录页 — 左右分栏布局（桌面端），移动端退化为卡片
@@ -93,10 +94,8 @@ export default function LoginPage() {
     <div className="login-form-panel">
       <div className="login-form-inner">
         {/* 返回官网首页 */}
-        <Link to="/" className="login-back-home">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
+        <Link to="/" className="login-back-home" aria-label="返回首页">
+          <ArrowLeftIcon size={14} />
           返回首页
         </Link>
 
@@ -113,7 +112,7 @@ export default function LoginPage() {
             <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
           </svg>
           <span>{error || ''}</span>
-          <button onClick={() => setError('')} className="login-error-close">×</button>
+          <button onClick={() => setError('')} className="login-error-close" title="关闭" aria-label="关闭"><XIcon size={14} /></button>
         </div>
 
         {/* 用户名 */}
@@ -387,7 +386,7 @@ export default function LoginPage() {
         .login-error span { flex: 1; }
         .login-error-close {
           background: none; border: none; color: #fff; cursor: pointer;
-          font-size: 18px; padding: 0 2px; line-height: 1; opacity: 0.7;
+          padding: 2px; line-height: 1; opacity: 0.7; display: flex;
         }
         .login-error-close:hover { opacity: 1; }
 

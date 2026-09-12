@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { CheckIcon, XIcon } from '../icons'
 
 interface Props {
   decisionId: string
@@ -37,14 +38,16 @@ export default function ApprovalCard({ decisionId, toolName, command, onDecision
       <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
         <button onClick={() => onDecision(true)}
           style={{
-            padding: '6px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            padding: '6px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
             background: '#4caf50', color: '#fff', fontWeight: 600, fontSize: 13,
-          }}>✓ 同意执行</button>
+            display: 'flex', alignItems: 'center', gap: 5, lineHeight: 1,
+          }}><CheckIcon size={14} /> 同意执行</button>
         <button onClick={() => onDecision(false)}
           style={{
-            padding: '6px 18px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
+            padding: '6px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
             background: 'transparent', border: '1px solid var(--danger)', color: 'var(--danger)',
-          }}>✕ 拒绝</button>
+            display: 'flex', alignItems: 'center', gap: 5, lineHeight: 1,
+          }}><XIcon size={14} /> 拒绝</button>
         <span style={{ color: 'var(--text-muted)', fontSize: 12, marginLeft: 'auto' }}>
           {remaining > 0 ? `${remaining}s 后自动拒绝` : '已超时'}
         </span>

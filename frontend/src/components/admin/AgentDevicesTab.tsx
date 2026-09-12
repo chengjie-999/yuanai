@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, headers, API_BASE } from './shared'
 import { getToken } from '../../api'
+import { PackageIcon } from '../icons'
 
 // 本机开发 → 代理到 8000；线上 → 当前站点 wss
 const getServerUrl = () =>
@@ -29,7 +30,7 @@ function CopyBtn({ text, label = '复制安装命令' }: { text: string; label?:
     setTimeout(() => setCopied(false), 1500)
   }
   return (
-    <button onClick={copy}
+    <button onClick={copy} title={copied ? '已复制' : label} aria-label={copied ? '已复制' : label}
       style={{
         padding: '3px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12,
         border: '1px solid var(--border)', background: copied ? '#4caf5022' : 'var(--bg-tertiary)',
@@ -215,7 +216,7 @@ export default function AgentDevicesTab() {
               </div>
             ) : (
               <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                <div style={{ fontSize: 22, marginBottom: 4 }}>📦</div>
+                <div style={{ marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><PackageIcon size={22} /></div>
                 <b style={{ color: 'var(--text-primary)' }}>把 yuanai-agent.exe 拖到这里</b>（或点击选择文件）
               </div>
             )}
@@ -236,7 +237,7 @@ export default function AgentDevicesTab() {
           <input type="number" min={1} max={50} value={codeCount}
             onChange={(e) => setCodeCount(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
             style={{ ...inputStyle, width: 80 }} />
-          <button onClick={genCodes} style={btnPrimary}>生成</button>
+          <button onClick={genCodes} title="生成安装码" aria-label="生成安装码" style={btnPrimary}>生成</button>
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             发给用户后：已装安装包 → 托盘菜单「重新注册」输码；未装 → 命令行 <code>python -m agent.main --install 安装码</code>
           </span>
@@ -304,7 +305,7 @@ export default function AgentDevicesTab() {
                           <option value="">选择用户…</option>
                           {users.map((u) => <option key={u.id} value={u.id}>{u.username} (#{u.id})</option>)}
                         </select>
-                        <button onClick={() => handleBind(d.agent_id)}
+                        <button onClick={() => handleBind(d.agent_id)} title="绑定用户" aria-label="绑定用户"
                           style={{ ...btnPrimary, padding: '4px 12px', fontSize: 12 }}>绑定</button>
                       </div>
                     ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
@@ -319,10 +320,10 @@ export default function AgentDevicesTab() {
                   <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text-muted)' }}>{d.last_seen || '-'}</td>
                   <td style={{ padding: '8px 10px' }}>
                     {d.user_id && (
-                      <button onClick={() => postJson(`${API_BASE}/admin/agent-unbind`, { agent_id: d.agent_id })}
+                      <button onClick={() => postJson(`${API_BASE}/admin/agent-unbind`, { agent_id: d.agent_id })} title="解绑" aria-label="解绑"
                         style={{ ...btnDangerSm, marginRight: 6 }}>解绑</button>
                     )}
-                    <button onClick={() => postJson(`${API_BASE}/admin/agent-freeze`, { agent_id: d.agent_id, enabled: d.enabled ? 0 : 1 })}
+                    <button onClick={() => postJson(`${API_BASE}/admin/agent-freeze`, { agent_id: d.agent_id, enabled: d.enabled ? 0 : 1 })} title={d.enabled ? '冻结' : '解冻'} aria-label={d.enabled ? '冻结' : '解冻'}
                       style={{ ...btnDangerSm, background: d.enabled ? undefined : '#4caf50' }}>
                       {d.enabled ? '冻结' : '解冻'}
                     </button>

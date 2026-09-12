@@ -42,7 +42,7 @@ export default function AgentsTab() {
       </div>
 
       <Card>
-        <CardHeader title={`Agent 列表 (${agents.length})`} action={<button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--accent)' }}>刷新</button>} />
+        <CardHeader title={`Agent 列表 (${agents.length})`} action={<button onClick={load} title="刷新" aria-label="刷新" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--accent)' }}>刷新</button>} />
         {agents.length === 0 ? <Empty msg="暂无 Agent 连接" /> : (
           agents.map((a) => (
             <div key={a.agent_id} style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: 12 }}>

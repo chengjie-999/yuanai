@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import AutomationPanel from '../components/chat/panels/AutomationPanel'
 import { AGENT_CONFIG } from '../config/agents'
 import { API_BASE } from '../api'
+import { ArrowLeftIcon, BotIcon } from '../components/icons'
 
 export default function AgentAutomationPage() {
   const agent = AGENT_CONFIG.automation
@@ -40,9 +41,9 @@ export default function AgentAutomationPage() {
         <Link to="/chat" style={{
           fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
           padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
-          flexShrink: 0,
-        }}>← 返回</Link>
-        <span style={{ fontSize: 18, lineHeight: 1 }}>🤖</span>
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+        }}><ArrowLeftIcon size={12} /> 返回</Link>
+        <span style={{ lineHeight: 1, color: agent.color, display: 'flex' }}><BotIcon size={18} /></span>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: agent.color, display: 'flex', alignItems: 'center', gap: 8 }}>
             自动化 Agent

@@ -50,7 +50,7 @@ export default function SessionsTab() {
                   <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{s.message_count ?? '-'}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{s.create_time?.slice(0, 16)}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{s.update_time?.slice(0, 16)}</td>
-                  <td style={{ padding: '10px 14px' }}><button onClick={() => handleDelete(s.session_id)} style={btnDangerSm}>删除</button></td>
+                  <td style={{ padding: '10px 14px' }}><button onClick={() => handleDelete(s.session_id)} title="删除" aria-label="删除" style={btnDangerSm}>删除</button></td>
                 </tr>
               ))}
             </tbody>

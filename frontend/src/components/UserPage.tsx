@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { updateProfile, changePassword } from '../api'
+import { XIcon } from './icons'
 
 const C = {
   card: { background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' } as const,
@@ -136,7 +137,7 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
               <h2 style={{ fontSize: 17, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
                 {pwStep === 2 ? '修改完成' : pwStep === 1 ? '设置新密码' : '修改密码'}
               </h2>
-              <button onClick={resetPw} style={{ background: 'none', border: 'none', fontSize: 20, color: 'var(--text-muted)', cursor: 'pointer', padding: 0, lineHeight: 1 }}>✕</button>
+              <button onClick={resetPw} title="关闭" aria-label="关闭" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', lineHeight: 1, display: 'flex' }}><XIcon size={16} /></button>
             </div>
             <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
               {pwStep === 0 && (

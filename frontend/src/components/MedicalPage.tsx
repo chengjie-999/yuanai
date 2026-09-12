@@ -8,6 +8,7 @@ import {
   type MedicalSpecies,
   type FeasibilityResult,
 } from '../api/medical'
+import { ArrowLeftIcon } from './icons'
 
 /* ============================================================
    医学与生命科学页 — 路由级组件（后续挂载到 /chat/agent/medical）
@@ -138,9 +139,13 @@ export default function MedicalPage() {
         <Link to="/chat" style={{
           fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
           padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
-          flexShrink: 0,
-        }}>← 返回</Link>
-        <span style={{ fontSize: 18, lineHeight: 1 }}>🧬</span>
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+        }}><ArrowLeftIcon size={12} /> 返回</Link>
+        <span style={{ fontSize: 18, lineHeight: 1, color: MEDICAL_COLOR, display: 'flex' }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d={ICONS.flask} />
+          </svg>
+        </span>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: MEDICAL_COLOR }}>医学与生命科学</div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>PubMed 文献检索 · 物种导航 · 药物可行性评估</div>

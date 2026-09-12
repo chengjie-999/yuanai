@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { API_BASE, getToken } from '../api'
 import { addToken } from '../components/chat/helpers'
+import { ArrowLeftIcon, BarChartIcon } from '../components/icons'
 
 /* ============================================================
    通用分析大屏：任意分析脚本的 __RESULT__ JSON → 统一渲染
@@ -162,9 +163,9 @@ export default function AnalysisDashboard() {
   if (loading) return <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-secondary)' }}>加载中…</div>
   if (error) return (
     <div style={{ padding: 60, textAlign: 'center' }}>
-      <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.3 }}>📊</div>
+      <div style={{ marginBottom: 12, opacity: 0.3, color: 'var(--text-muted)', display: 'flex', justifyContent: 'center' }}><BarChartIcon size={40} /></div>
       <div style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 16 }}>{error}</div>
-      <Link to="/chat" style={{ color: 'var(--accent)', fontSize: 13 }}>返回对话</Link>
+      <Link to="/chat" style={{ color: 'var(--accent)', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4, lineHeight: 1 }}><ArrowLeftIcon size={13} /> 返回对话</Link>
     </div>
   )
   if (!data) return null
@@ -176,7 +177,7 @@ export default function AnalysisDashboard() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
       <header style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg-primary)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-        <Link to="/chat" style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: 13 }}>返回</Link>
+        <Link to="/chat" style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1 }}><ArrowLeftIcon size={13} /> 返回</Link>
         <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>分析大屏</span>
         {created_at && (
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>

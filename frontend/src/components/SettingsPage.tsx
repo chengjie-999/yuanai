@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getStoredModel, setStoredModel, fetchModels } from '../api'
 import { fetchAgentModels, updateAgentModel, fetchApiKeys, saveApiKey, deleteApiKey } from '../api'
 import { fetchAgentVoices, updateAgentVoice } from '../api'
+import { XIcon } from './icons'
 
 const C = {
   card: { background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' } as const,
@@ -109,7 +110,8 @@ export default function SettingsPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
           <h2 style={{ fontSize: 17, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>添加 API Key</h2>
           <button onClick={() => { setShowAddKey(false); setNewProvider(''); setNewKey(''); setKeyMsg('') }}
-            style={{ background: 'none', border: 'none', fontSize: 20, color: 'var(--text-muted)', cursor: 'pointer', padding: 0, lineHeight: 1 }}>✕</button>
+            title="关闭" aria-label="关闭"
+            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', lineHeight: 1, display: 'flex' }}><XIcon size={16} /></button>
         </div>
         <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
           <div style={{ marginBottom: 20 }}>

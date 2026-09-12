@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, safeJson, headers, API_BASE } from './shared'
+import { FolderIcon, FileIcon, XIcon } from '../icons'
 
 export default function FilesTab() {
   const [dirs, setDirs] = useState<{ name: string; path: string; is_dir: boolean; size_kb: number }[]>([])
@@ -36,9 +37,9 @@ export default function FilesTab() {
     <div>
       {error && <ErrorMsg msg={error} />}
       <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
-        {currentPath && <button onClick={goUp} style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg-primary)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)' }}>上级目录</button>}
+        {currentPath && <button onClick={goUp} title="上级目录" aria-label="上级目录" style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg-primary)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)' }}>上级目录</button>}
         <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-primary)' }}>data/{currentPath || '.'}</span>
-        <button onClick={() => load(currentPath)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--accent)' }}>刷新</button>
+        <button onClick={() => load(currentPath)} title="刷新" aria-label="刷新" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--accent)' }}>刷新</button>
       </div>
       {loading ? <Spinner /> : (
         <Card>
@@ -53,7 +54,12 @@ export default function FilesTab() {
                   onClick={() => handlePreview(d)}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover-bg)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = '')}>
-                  <td style={{ padding: '10px 14px', color: d.is_dir ? 'var(--accent)' : 'var(--text-primary)', fontWeight: d.is_dir ? 600 : 400 }}>{d.is_dir ? '📁 ' : '📄 '}{d.name}</td>
+                  <td style={{ padding: '10px 14px', color: d.is_dir ? 'var(--accent)' : 'var(--text-primary)', fontWeight: d.is_dir ? 600 : 400 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {d.is_dir ? <FolderIcon size={14} style={{ flexShrink: 0 }} /> : <FileIcon size={14} style={{ flexShrink: 0 }} />}
+                      {d.name}
+                    </span>
+                  </td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: 12 }}>{d.is_dir ? '目录' : '文件'}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: 12 }}>{d.is_dir ? '-' : `${d.size_kb} KB`}</td>
                 </tr>
@@ -67,7 +73,7 @@ export default function FilesTab() {
           <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '80%', maxHeight: '85%', background: 'var(--bg-primary)', borderRadius: 12, padding: 24, overflow: 'auto', minWidth: 360, boxShadow: '0 8px 40px var(--shadow-md)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{preview.name}</span>
-              <span onClick={() => setPreview(null)} style={{ cursor: 'pointer', fontSize: 18, color: 'var(--text-secondary)', lineHeight: 1 }}>✕</span>
+              <span onClick={() => setPreview(null)} title="关闭" aria-label="关闭" style={{ cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><XIcon size={18} /></span>
             </div>
             {preview.type === 'image' && <img src={`data:image/${preview.ext?.replace('.', '')};base64,${preview.data}`} style={{ maxWidth: '100%', borderRadius: 8 }} />}
             {preview.type === 'text' && <pre style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, overflow: 'auto', maxHeight: '65vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>{preview.content}</pre>}

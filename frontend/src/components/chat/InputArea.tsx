@@ -5,6 +5,7 @@ import type { SessionInfo } from './helpers'
 import type { ChatMode } from './ChatModeSelector'
 import ChatModeSelector from './ChatModeSelector'
 import { compressImage } from './imageUtils'
+import { PaperclipIcon, XIcon, PanelLeftIcon } from '../icons'
 
 export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, messages, chatMode, setChatMode, localOnline, claudeOnline, onStartVoiceCall }: {
   input: string; setInput: (v: string) => void; loading: boolean; handleSend: () => void
@@ -50,8 +51,10 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               {images.map((img, i) => (
                 <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
                   <img src={img} style={{ height: 50, borderRadius: 6, border: '1px solid var(--border)' }} />
-                  <span onClick={() => setImages((p) => p.filter((_, j) => j !== i))}
-                    style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', background: 'var(--danger)', color: '#fff', fontSize: 12, lineHeight: '18px', textAlign: 'center', cursor: 'pointer' }}>✕</span>
+                  <span onClick={() => setImages((p) => p.filter((_, j) => j !== i))} title="移除"
+                    style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', background: 'var(--danger)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    <XIcon size={10} />
+                  </span>
                 </div>
               ))}
             </div>
@@ -86,12 +89,12 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                 }
               }}
             />
-            <button onClick={() => fileRef.current?.click()} title="上传图片"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-secondary)', padding: '8px', lineHeight: 1, opacity: 0.5, transition: 'opacity 0.15s' }}
+            <button onClick={() => fileRef.current?.click()} className="yuan-tip" data-tip="上传图片" aria-label="上传图片"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', lineHeight: 1, opacity: 0.5, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
               onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
-            >📎</button>
-            <button onClick={startVoiceCall} title="语音通话" aria-label="语音通话"
+            ><PaperclipIcon size={18} /></button>
+            <button onClick={startVoiceCall} className="yuan-tip" data-tip="语音通话" aria-label="语音通话"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', lineHeight: 1, opacity: 0.5, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
               onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
@@ -110,7 +113,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
             <button onClick={() => {
               const s = sessions.find(s => s.session_id === currentSid)
               downloadChat(messages, `${s?.title || 'chat'}.txt`)
-            }} title="下载聊天记录" aria-label="下载聊天记录"
+            }} className="yuan-tip" data-tip="下载聊天记录" aria-label="下载聊天记录"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '6px', lineHeight: 1, opacity: 0.6, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
               onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
@@ -123,7 +126,11 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               </svg>
             </button>
             {!sidebarOpen && (
-              <button onClick={() => setSidebarOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12, padding: 0 }}>▶ 侧栏</button>
+              <button onClick={() => setSidebarOpen(true)} aria-label="打开侧栏"
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', lineHeight: 1, opacity: 0.6, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontSize: 12, minWidth: 32, minHeight: 32 }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+              ><PanelLeftIcon size={14} /> 侧栏</button>
             )}
             <ChatModeSelector chatMode={chatMode} setChatMode={setChatMode}
               localOnline={localOnline} claudeOnline={claudeOnline} />

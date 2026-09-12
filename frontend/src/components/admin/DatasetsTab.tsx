@@ -57,7 +57,7 @@ export default function DatasetsTab() {
       {loading ? <Spinner /> : datasets.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 40 }}>
           <Empty msg="暂无数据集" />
-          <button onClick={() => fileRef.current?.click()} disabled={uploading}
+          <button onClick={() => fileRef.current?.click()} disabled={uploading} title={uploading ? '上传中...' : '上传数据集'} aria-label={uploading ? '上传中...' : '上传数据集'}
             style={{ fontSize: 12, padding: '5px 14px', color: 'var(--accent)', border: '1px solid var(--accent)', background: 'none', borderRadius: 4, cursor: 'pointer', marginTop: 8 }}>
             {uploading ? '上传中...' : '+ 上传 CSV/Excel/JSON'}
           </button>
@@ -68,7 +68,7 @@ export default function DatasetsTab() {
             <CardHeader title={`数据集 (${datasets.length})`} action={
               <>
                 <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.json" onChange={handleUpload} style={{ display: 'none' }} />
-                <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                <button onClick={() => fileRef.current?.click()} disabled={uploading} title={uploading ? '上传中...' : '上传数据集'} aria-label={uploading ? '上传中...' : '上传数据集'}
                   style={{ fontSize: 12, padding: '4px 10px', color: 'var(--accent)', border: '1px solid var(--accent)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>
                   {uploading ? '上传中...' : '+ 上传'}
                 </button>
@@ -92,8 +92,8 @@ export default function DatasetsTab() {
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{d.row_count ?? '-'}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{d.create_time?.slice(0, 16)}</td>
                     <td style={{ padding: '10px 14px', display: 'flex', gap: 6 }}>
-                      <button onClick={() => handleAnalyze(d.id)} disabled={analyzing} style={{ fontSize: 12, padding: '4px 10px', color: 'var(--accent)', border: '1px solid var(--accent)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>{analyzing ? '分析中...' : '分析'}</button>
-                      <button onClick={() => handleDelete(d.id)} style={btnDangerSm}>删除</button>
+                      <button onClick={() => handleAnalyze(d.id)} disabled={analyzing} title={analyzing ? '分析中...' : '分析'} aria-label={analyzing ? '分析中...' : '分析'} style={{ fontSize: 12, padding: '4px 10px', color: 'var(--accent)', border: '1px solid var(--accent)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>{analyzing ? '分析中...' : '分析'}</button>
+                      <button onClick={() => handleDelete(d.id)} title="删除" aria-label="删除" style={btnDangerSm}>删除</button>
                     </td>
                   </tr>
                 ))}
@@ -103,7 +103,7 @@ export default function DatasetsTab() {
 
           {preview && preview.preview_rows && (
             <Card>
-              <CardHeader title={`预览: ${preview.name}`} action={<button onClick={() => setPreview(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>关闭</button>} />
+              <CardHeader title={`预览: ${preview.name}`} action={<button onClick={() => setPreview(null)} title="关闭" aria-label="关闭" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>关闭</button>} />
               <div style={{ overflow: 'auto', maxHeight: 300 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead><tr>
@@ -123,7 +123,7 @@ export default function DatasetsTab() {
 
           {analysis && (
             <Card>
-              <CardHeader title={`分析结果: ${analysis.name || ''}`} action={<button onClick={() => setAnalysis(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>关闭</button>} />
+              <CardHeader title={`分析结果: ${analysis.name || ''}`} action={<button onClick={() => setAnalysis(null)} title="关闭" aria-label="关闭" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>关闭</button>} />
               <div style={{ padding: 16 }}>
                 <AnalysisResultView analysis={analysis} />
               </div>

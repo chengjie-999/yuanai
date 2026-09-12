@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { API_BASE } from '../../../api'
+import { MonitorOffIcon, BotIcon } from '../../icons'
 
 export default function AutomationPanel({ agentOnline }: { agentOnline: boolean }) {
   const [screenshot] = useState<string | null>(null)
@@ -36,7 +37,7 @@ export default function AutomationPanel({ agentOnline }: { agentOnline: boolean 
   if (!agentOnline) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 40 }}>
-        <div style={{ fontSize: 40, opacity: 0.3 }}>📡</div>
+        <div style={{ opacity: 0.3, color: 'var(--text-muted)' }}><MonitorOffIcon size={40} /></div>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>自动化 Agent 离线</div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>请启动本地 Agent 后重试</div>
       </div>
@@ -63,7 +64,7 @@ export default function AutomationPanel({ agentOnline }: { agentOnline: boolean 
           </div>
         ) : (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 30, fontSize: 13 }}>
-            <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.3 }}>🖥️</div>
+            <div style={{ marginBottom: 8, opacity: 0.3, display: 'flex', justifyContent: 'center' }}><BotIcon size={32} /></div>
             浏览器就绪，等待任务...
           </div>
         )}

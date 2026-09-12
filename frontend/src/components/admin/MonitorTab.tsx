@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import { Spinner, ErrorMsg, Card, CardHeader, Empty, headers, API_BASE } from './shared'
 import { fetchMonitorStatus, fetchMonitorChanges, fetchMonitorTimeline, fetchMonitorFileTypes } from '../../api'
+import { AlertIcon, CircleDotIcon, CircleIcon } from '../icons'
 
 const CHART_GREEN = '#629755'
 const CHART_RED = '#bc3f3c'
@@ -176,7 +177,7 @@ export default function MonitorTab() {
           background: 'rgba(188,63,60,0.1)', color: 'var(--danger)',
           fontSize: 13, display: 'flex', alignItems: 'center', gap: 8,
         }}>
-          <span>&#9888;</span>
+          <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0, lineHeight: 1 }}><AlertIcon size={15} /></span>
           <span>未检测到 Git 仓库或 Git 未安装。代码监控需要 Git 支持。</span>
         </div>
       )}
@@ -189,7 +190,10 @@ export default function MonitorTab() {
             color: ctrlStatus?.monitoring ? CHART_GREEN : 'var(--text-muted)',
             background: ctrlStatus?.monitoring ? `${CHART_GREEN}20` : 'var(--bg-tertiary)',
           }}>
-            {ctrlStatus?.monitoring ? '● 监控中' : '○ 已停止'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, lineHeight: 1 }}>
+              {ctrlStatus?.monitoring ? <CircleDotIcon size={10} /> : <CircleIcon size={10} />}
+              {ctrlStatus?.monitoring ? '监控中' : '已停止'}
+            </span>
           </span>
         } />
         <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -197,6 +201,7 @@ export default function MonitorTab() {
             <button
               onClick={() => handleMonitorAction('start')}
               disabled={ctrlBusy !== '' || ctrlStatus?.monitoring}
+              title={ctrlBusy === 'start' ? '启动中...' : '启动监控'} aria-label={ctrlBusy === 'start' ? '启动中...' : '启动监控'}
               style={{
                 padding: '7px 14px', borderRadius: 6, border: 'none', fontSize: 13,
                 background: ctrlStatus?.monitoring ? 'var(--bg-tertiary)' : 'var(--accent)',
@@ -209,6 +214,7 @@ export default function MonitorTab() {
             <button
               onClick={() => handleMonitorAction('stop')}
               disabled={ctrlBusy !== '' || !ctrlStatus?.monitoring}
+              title={ctrlBusy === 'stop' ? '停止中...' : '停止监控'} aria-label={ctrlBusy === 'stop' ? '停止中...' : '停止监控'}
               style={{
                 padding: '7px 14px', borderRadius: 6, fontSize: 13,
                 border: '1px solid var(--danger)', background: 'none', color: 'var(--danger)',

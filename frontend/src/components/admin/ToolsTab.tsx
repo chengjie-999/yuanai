@@ -35,7 +35,7 @@ export default function ToolsTab() {
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>共 {tools.length} 个工具，{grouped.length} 个分类</span>
             <div style={{ flex: 1 }} />
-            <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--accent)' }}>刷新</button>
+            <button onClick={load} title="刷新" aria-label="刷新" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--accent)' }}>刷新</button>
           </div>
           {grouped.map(([cat, items]) => (
             <Card key={cat}>
@@ -44,6 +44,7 @@ export default function ToolsTab() {
                 action={
                   <button
                     onClick={() => setExpanded((p) => ({ ...p, [cat]: !p[cat] }))}
+                    title={expanded[cat] ? '收起' : '展开'} aria-label={expanded[cat] ? '收起' : '展开'}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)' }}
                   >{expanded[cat] ? '收起' : '展开'}</button>
                 }

@@ -26,7 +26,7 @@ export const Empty = ({ msg = '暂无数据' }: { msg?: string }) => <div style=
 export const ErrorMsg = ({ msg, onRetry }: { msg: string; onRetry?: () => void }) => (
   <div style={{ color: 'var(--danger)', fontSize: 13, padding: 12, background: 'var(--accent-light)', borderRadius: 8, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
     <span style={{ flex: 1 }}>{msg}</span>
-    {onRetry && <button onClick={onRetry} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: 12, whiteSpace: 'nowrap' }}>重试</button>}
+    {onRetry && <button onClick={onRetry} title="重试" aria-label="重试" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: 12, whiteSpace: 'nowrap' }}>重试</button>}
   </div>
 )
 

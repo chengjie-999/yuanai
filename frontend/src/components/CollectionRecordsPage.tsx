@@ -6,6 +6,7 @@ import {
   readCrawlRecordFile,
   deleteCrawlRecord,
 } from '../api'
+import { ArrowLeftIcon } from './icons'
 
 // ===== 类型定义（与后端 api/v1/spider/save.py 返回结构对应） =====
 
@@ -222,8 +223,8 @@ export default function CollectionRecordsPage() {
         <Link to="/chat" style={{
           fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
           padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
-          flexShrink: 0,
-        }}>← 返回</Link>
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+        }}><ArrowLeftIcon size={12} /> 返回</Link>
         <span style={{ fontSize: 15, lineHeight: 1, color: 'var(--accent)', display: 'flex' }}><IconFile /></span>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>采集记录</div>

@@ -6,6 +6,7 @@ import DataRunGame from './DataRunGame'
 import { SUB_AGENTS } from '../config/agents'
 import Mascot from './Mascot'
 import LandingHeader from './LandingHeader'
+import { ArrowDownIcon } from './icons'
 
 /* ============================================================
    小元AI 官网首页 — 公开页面（免登录）
@@ -140,7 +141,7 @@ export default function LandingPage() {
               <p className="landing-hero-desc">云边协同 · 多智能体协作平台</p>
               <p className="landing-hero-sub">数据分析 / 数据采集 / 自动化 / 生命科学 / 多智能体协作</p>
               <div className="landing-hero-actions" style={{ marginTop: 18, justifyContent: 'center' }}>
-                <a href="#agents" className="landing-cta landing-cta-ghost">了解能力 ↓</a>
+                <a href="#agents" className="landing-cta landing-cta-ghost" style={{ gap: 8 }}>了解能力 <ArrowDownIcon size={15} /></a>
               </div>
             </div>
           </div>

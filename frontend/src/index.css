@@ -134,6 +134,39 @@ input, textarea, select {
   to { transform: rotate(360deg); }
 }
 
+/* ---- Tooltip 悬浮提示 ---- */
+/* 统一风格替代原生 title：主题色反相气泡 + 阴影，随明暗主题自适应。
+   用法：className="yuan-tip" data-tip="提示文字"（配 aria-label）。
+   注意：父容器 overflow:hidden 会裁剪气泡，此类场景（侧栏/表格）仍用原生 title。 */
+.yuan-tip {
+  position: relative;
+}
+.yuan-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%) translateY(2px);
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 1100;
+  box-shadow: 0 2px 8px var(--shadow-md);
+}
+.yuan-tip:hover::after,
+.yuan-tip:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 /* ---- Button system ---- */
 .btn {
   cursor: pointer;

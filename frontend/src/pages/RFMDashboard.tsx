@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { API_BASE, fetchDatasets, getToken } from '../api'
+import { ArrowLeftIcon } from '../components/icons'
 
 interface RFMData { summary: { users: number; orders: number; ref_date: string }; means: { R: number; F: number; M: number }; segments: { label: string; count: number; amount: number; count_pct: string; amount_pct: string; color: string }[]; chart_html: string }
 
@@ -35,7 +36,7 @@ export default function RFMDashboard() {
   return (
     <div style={{ minHeight: '100vh', background: '#1a1a2e' }}>
       <header style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 16, background: '#16213e', borderBottom: '1px solid #0f3460' }}>
-        <Link to="/chat" style={{ color: '#e94560', textDecoration: 'none', fontSize: 13 }}>{'<- Back'}</Link>
+        <Link to="/chat" style={{ color: '#e94560', textDecoration: 'none', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1 }}><ArrowLeftIcon size={13} /> Back</Link>
         <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>RFM Customer Analysis</span>
         <div style={{ flex: 1 }} />
         <select value={datasetId} onChange={(e) => runRFM(e.target.value)}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, CardHeader, btnPrimary, inputStyle, headers, safeJson, API_BASE } from './shared'
+import { XIcon } from '../icons'
 
 export default function ModelsTab() {
   const [models, setModels] = useState<Record<string, any>>({})
@@ -42,7 +43,7 @@ export default function ModelsTab() {
       {error && <ErrorMsg msg={error} onRetry={loadModels} />}
       {loading ? <Spinner /> : (
         <Card>
-          <CardHeader title="模型配置" action={<button onClick={() => setShowModal(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--accent)', fontWeight: 500 }}>+ 添加</button>} />
+          <CardHeader title="模型配置" action={<button onClick={() => setShowModal(true)} title="添加模型" aria-label="添加模型" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--accent)', fontWeight: 500 }}>+ 添加</button>} />
           {entries.length === 0 ? <Empty msg="暂无模型配置" /> : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
@@ -58,7 +59,7 @@ export default function ModelsTab() {
                       <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{label}<span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>{desc}</span></td>
                       <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>{id}</td>
                       <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: 12 }}>{info.provider as string}</td>
-                      <td style={{ padding: '10px 14px' }}>{!info.builtin && <button onClick={() => handleDelete(id)} aria-label={`删除模型 ${id}`} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)', padding: 0 }}>x</button>}</td>
+                      <td style={{ padding: '10px 14px' }}>{!info.builtin && <button onClick={() => handleDelete(id)} title="删除" aria-label={`删除模型 ${id}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><XIcon size={14} /></button>}</td>
                     </tr>)
                 })}
               </tbody>
@@ -77,8 +78,8 @@ export default function ModelsTab() {
               <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="API Key (可选)" style={inputStyle} />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowModal(false)} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)' }}>取消</button>
-              <button onClick={handleAdd} style={btnPrimary}>确认添加</button>
+              <button onClick={() => setShowModal(false)} title="取消" aria-label="取消" style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)' }}>取消</button>
+              <button onClick={handleAdd} title="确认添加" aria-label="确认添加" style={btnPrimary}>确认添加</button>
             </div>
           </div>
         </div>

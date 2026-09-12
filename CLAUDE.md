@@ -113,6 +113,7 @@ frontend/                React 18 + TypeScript + React Router 前端
 │   │   └── AgentKnowledgePage.tsx   知识库全屏页（/chat/agent/knowledge）
 │   └── components/
 │       ├── ChatPage.tsx           对话界面（群聊式多 Agent 气泡）
+│       ├── icons.tsx              共享 SVG 图标库（lucide 风格 stroke，零图标库）
 │       ├── LandingPage.tsx        官网公开首页（免登录，Hero/能力/特性/功能入口区/CTA；功能入口直达 /chat/agent/* 各面板）
 │       ├── LandingHeader.tsx      公开页共享 Header（首页/关于我们导航 + 主题 + 登录态按钮）
 │       ├── AboutPage.tsx          关于我（个人简历，免登录）
@@ -125,6 +126,15 @@ frontend/                React 18 + TypeScript + React Router 前端
 │       └── MarkdownContent.tsx    富文本渲染（表格/代码/图片）
 data/                   数据目录
 ```
+
+## UI 规范（图标优先，按场景审慎适用，不搞一刀切）
+
+- **短文字按钮保留文字**（≤4 字：发送/删除/刷新/搜索/取消/确定等）——短文字本身就是最好的图标，纯图标化会伤体验
+- **字符图标/emoji 一律不用**（✕ ▶ ◀ ⚠ ● ○ ↑ ↓ 📎 📊 等字符画），替换为 `frontend/src/components/icons.tsx` 的内联 SVG（lucide 风格 stroke，零图标库）
+- **图标 + 文字组合**：原「← 返回」类按钮改为 SVG 箭头 + 「返回」；按钮里混用的 emoji/字符图标换成 SVG 后保留文字
+- **纯图标按钮**只用于语义广为人知的操作（上传附件、语音通话、关闭、删除行等），配悬浮提示
+- **悬浮提示**：统一 `.yuan-tip`（index.css 定义，`data-tip` 属性，主题色反相气泡随明暗自适应），配 `aria-label`；原生 `title` 仅在父容器 `overflow:hidden`（侧栏/表格内）会裁剪气泡时使用
+- **豁免**：标题/正文/表单标签/表格表头/营销文案等内容性文字保留；公开页（官网/登录）文字即内容，谨慎图标化；移动端无悬浮提示，关键 CTA 保留文字
 
 ## 对话界面
 

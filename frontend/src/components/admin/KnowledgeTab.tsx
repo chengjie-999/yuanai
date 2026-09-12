@@ -54,7 +54,9 @@ export default function KnowledgeTab() {
     try {
       const res = await fetch(`${API_BASE}/knowledge/search?q=${encodeURIComponent(searchQ.trim())}`, { headers: headers() })
       if (!res.ok) throw new Error()
-      setSearchResult(await res.json())
+      const data = await res.json()
+      // 后端返回结构化 hits 数组；防御旧版字符串响应
+      setSearchResult({ ...data, results: Array.isArray(data.results) ? data.results : [] })
     }
     catch { setError('检索失败') }
     setSearching(false)
@@ -74,8 +76,13 @@ export default function KnowledgeTab() {
           <div style={{ maxHeight: 400, overflow: 'auto', padding: '0 20px 16px' }}>
             {searchResult.results?.length > 0 ? searchResult.results.map((r: any, i: number) => (
               <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid var(--border-light)' }}>
-                <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 4 }}>来源: {r.source} | 相似度: {(r.score * 100).toFixed(0)}%</div>
-                <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>{r.content}</div>
+                <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 4 }}>
+                  来源: {r.source}{r.path ? ` | ${r.path}` : ''}{r.score != null ? ` | 距离: ${Number(r.score).toFixed(3)}` : ''}
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>{r.text}</div>
+                {r.images?.length > 0 && r.images.map((img: string, j: number) => (
+                  <img key={j} src={img} alt="" style={{ maxWidth: '100%', borderRadius: 6, marginTop: 6 }} loading="lazy" />
+                ))}
               </div>
             )) : <Empty msg="无匹配结果" />}
           </div>

@@ -23,7 +23,8 @@ export default function KnowledgePanel() {
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
-      setResults(data.results || [])
+      // 后端返回结构化 hits 数组；防御旧版字符串响应
+      setResults(Array.isArray(data.results) ? data.results : [])
       setHasSearched(true)
     } catch { setError('检索失败') }
     setSearching(false)
@@ -71,11 +72,15 @@ export default function KnowledgePanel() {
             <div key={i} style={{
               padding: '10px 0', borderBottom: i < results.length - 1 ? '1px solid var(--border-light)' : 'none',
             }}>
-              <div style={{ fontSize: 11, color: 'var(--accent)', marginBottom: 4, display: 'flex', gap: 8 }}>
+              <div style={{ fontSize: 11, color: 'var(--accent)', marginBottom: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <span>{r.source}</span>
-                {r.score != null && <span style={{ color: 'var(--text-muted)' }}>{(r.score * 100).toFixed(0)}%</span>}
+                {r.path && <span style={{ color: 'var(--text-secondary)' }}>{r.path}</span>}
+                {r.score != null && <span style={{ color: 'var(--text-muted)' }}>{Number(r.score).toFixed(3)}</span>}
               </div>
-              <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>{r.content}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>{r.text}</div>
+              {r.images?.length > 0 && r.images.map((img: string, j: number) => (
+                <img key={j} src={img} alt="" style={{ maxWidth: '100%', borderRadius: 6, marginTop: 6 }} loading="lazy" />
+              ))}
             </div>
           ))
         )}

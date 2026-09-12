@@ -24,7 +24,7 @@ from yuanai_core.rag import (
     add_source_chunks,
     get_source_stats,
     build_knowledge_base,
-    search_knowledge,
+    search_knowledge_hits,
     AIPROMPT_DIR,
 )
 
@@ -234,17 +234,19 @@ async def rebuild(request: Request):
 
 @router.get("/img/{source}/{filename:path}")
 async def serve_kb_image(source: str, filename: str):
-    """提供知识库图片（公开访问）"""
-    img_path = os.path.join(AIPROMPT_DIR, source, filename)
-    if not os.path.isfile(img_path):
+    """提供知识库图片（公开访问；realpath 归一化防路径穿越）"""
+    base = os.path.realpath(os.path.join(AIPROMPT_DIR, source, ""))
+    img_path = os.path.normpath(os.path.join(base, filename))
+    if not img_path.startswith(base) or not os.path.isfile(img_path):
         raise HTTPException(status_code=404, detail="图片不存在")
     return FileResponse(img_path)
 
 
 @router.get("/search")
 async def search(request: Request, q: str = Query(..., description="检索关键词")):
-    """检索知识库（自动过滤：共享 + 自己的私有）"""
+    """检索知识库（自动过滤：共享 + 自己的私有），返回结构化 hits 数组"""
     user_id = _get_user_id(request)
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(_kb_executor, search_knowledge, q, 5, None, user_id)
-    return {"query": q, "results": result}
+    hits = await loop.run_in_executor(
+        _kb_executor, search_knowledge_hits, q, 5, None, user_id, True)
+    return {"query": q, "results": hits}

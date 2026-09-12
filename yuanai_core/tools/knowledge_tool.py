@@ -20,7 +20,13 @@ def retrieve_knowledge(query: str) -> str:
                 sources = []
             return f"请提供搜索关键词。可用知识源: {', '.join(sources)}" if sources else "知识库为空"
 
-        results = search_knowledge(query)
+        # 传当前请求上下文用户（None → rag 内部取 current_user_id，闭合跨用户泄漏）
+        from yuanai_core.rag import current_user_id
+        try:
+            uid = current_user_id.get()
+        except Exception:
+            uid = 0
+        results = search_knowledge(query, user_id=uid)
         return results if results else f"未找到与 '{query}' 相关的内容"
     except Exception as e:
         logger.error("知识库检索失败: %s", e, exc_info=True)

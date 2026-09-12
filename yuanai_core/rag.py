@@ -31,6 +31,8 @@ COLLECTION_NAME = "knowledge_base"
 CHUNK_SIZE = 300
 CHUNK_OVERLAP = 50
 TOP_K = 10
+# Milvus query/删除 单次上限：知识星球累计 chunk 可超 1.6 万，旧值会导致 ID 冲突与删不净
+MILVUS_QUERY_LIMIT = 65536
 
 # TODO: 本地 fallback 模型 dim=384，API 模型 dim=1024，需运行时动态适配
 # 当前用 1024，API 成功后没有问题；本地模型 fallback 时需先删旧 collection 重建
@@ -321,7 +323,7 @@ def _get_max_id() -> int:
             COLLECTION_NAME,
             filter="id >= 0",
             output_fields=["id"],
-            limit=16384,
+            limit=MILVUS_QUERY_LIMIT,
         )
         if not results:
             return 0
@@ -343,7 +345,7 @@ def remove_source(source: str, user_id: int | None = None) -> int:
             COLLECTION_NAME,
             filter=" and ".join(filter_parts),
             output_fields=["id"],
-            limit=16384,
+            limit=MILVUS_QUERY_LIMIT,
         )
     except Exception:
         return 0
@@ -398,7 +400,7 @@ def get_source_stats() -> list[dict]:
             COLLECTION_NAME,
             filter="id >= 0",
             output_fields=["source", "level", "images", "user_id"],
-            limit=16384,
+            limit=MILVUS_QUERY_LIMIT,
         )
     except Exception:
         return []
@@ -420,41 +422,60 @@ def get_source_stats() -> list[dict]:
 
 
 # ====================== 检索 ======================
-def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None,
-                     user_id: int | None = None) -> str:
-    """
-    向量检索知识库。
-    user_id=None   → 仅检索共享知识（user_id=0）
-    user_id=123    → 检索共享 + 该用户的私有知识
+def _resolve_user_id(user_id: int | None) -> int:
+    """隔离语义：显式 uid → 用；None → 取当前请求上下文；仍无 → 0（仅共享）"""
+    if user_id is not None:
+        return user_id
+    try:
+        ctx = current_user_id.get()
+    except Exception:
+        ctx = 0
+    return ctx if ctx else 0
+
+
+def _asset_url(source: str, name: str) -> str:
+    """图片 URL：planet:uid:pid:mid 来源走鉴权资产路由，其余走 legacy 公开路由"""
+    parts = source.split(":")
+    if len(parts) >= 4 and parts[0] == "planet":
+        return f"/api/v1/planet/asset/{parts[2]}/{parts[3]}/{name}"
+    return f"/api/v1/knowledge/img/{source}/{name}"
+
+
+def search_knowledge_hits(query: str, top_k: int = TOP_K, sources: list[str] | None = None,
+                          user_id: int | None = None, fallback: bool = True) -> list[dict]:
+    """向量检索，返回结构化命中 [{source,title,path,text,images:[url],score,level}]。
+
+    sources: 显式 source 列表（走 source in [...]，避免 like 行为差异）；缺省检索全部可见。
+    user_id: None → 取 current_user_id 上下文，仍无则仅共享（user_id==0）——修复跨用户泄漏。
+    fallback: False 时不回退 raw text（知识星球检索绝不能拿标注规范文档凑数）。
     """
     if not query.strip():
-        return ""
+        return []
 
     db = _get_db()
     if db is None:
-        return "知识库服务未启动（Milvus 不可用），请联系管理员"
+        return []
 
-    # 带超时检查集合
     has_coll = _safe_milvus("has_collection", db.has_collection, COLLECTION_NAME)
-    if has_coll is None:
-        return "知识库服务响应超时，请稍后重试"
-    if not has_coll:
-        if not build_knowledge_base():
-            return _get_all_raw_text()
+    if has_coll is None or not has_coll:
+        return []
 
     embeddings = get_embeddings([query])
     if not embeddings or all(v == 0 for v in embeddings[0]):
-        return _get_all_raw_text()[:2000]
+        return []
 
-    # 构建过滤条件
+    uid = _resolve_user_id(user_id)
     filters = []
-    if source:
-        filters.append(f'source == "{source.replace(chr(34), chr(92)+chr(34))}"')
-    if user_id is not None:
-        filters.append(f'(user_id == 0 or user_id == {user_id})')
+    if sources:
+        quoted = ", ".join(f'"{s.replace(chr(34), chr(92) + chr(34))}"' for s in sources)
+        filters.append(f"source in [{quoted}]")
+    if uid:
+        filters.append(f"(user_id == 0 or user_id == {uid})")
+    else:
+        filters.append("(user_id == 0)")
 
-    filter_expr = " and ".join(filters) if filters else None
-    output_fields = ["text", "title", "source", "path", "images", "user_id"]
+    filter_expr = " and ".join(filters)
+    output_fields = ["text", "title", "source", "path", "images", "user_id", "level"]
 
     results = _safe_milvus(
         "search",
@@ -478,30 +499,65 @@ def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None,
         )
 
     if not results or not results[0]:
-        return _get_all_raw_text()[:2000]
+        return []
 
-    chunks = []
+    hits = []
     for hit in results[0]:
         entity = hit.get("entity", {})
         src = entity.get("source", "")
-        title = entity.get("title", "")
-        text = entity.get("text", "")
-        path = entity.get("path", "")
-        images = entity.get("images", "[]")
-
-        header = f"[{src}] {path or title}"
-        chunks.append(header + "\n" + text)
-
-        if images and images != "[]":
+        imgs = []
+        raw_imgs = entity.get("images", "[]")
+        if raw_imgs and raw_imgs != "[]":
             try:
-                imgs = json.loads(images)
-                for img in imgs:
-                    # 返回可访问的 URL，前端 Markdown 渲染器可直接显示
-                    img_url = f"/api/v1/knowledge/img/{src}/{img}"
-                    chunks.append(f"  ![图片]({img_url})")
+                imgs = [_asset_url(src, i) for i in json.loads(raw_imgs)]
             except (json.JSONDecodeError, Exception):
                 pass
+        hits.append({
+            "source": src,
+            "title": entity.get("title", ""),
+            "path": entity.get("path", ""),
+            "text": entity.get("text", ""),
+            "images": imgs,
+            "score": round(float(hit.get("distance", 0.0)), 4),
+            "level": entity.get("level", 0),
+        })
+    if hits:
+        return hits
+    return [] if not fallback else []
 
+
+def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None,
+                     user_id: int | None = None) -> str:
+    """向量检索知识库（字符串契约，供 Agent 工具使用；结构化检索请用 search_knowledge_hits）。
+
+    user_id=None   → 取请求上下文用户；仍无 → 仅检索共享知识（user_id=0）
+    user_id=123    → 检索共享 + 该用户的私有知识
+    """
+    if not query.strip():
+        return ""
+
+    db = _get_db()
+    if db is None:
+        return "知识库服务未启动（Milvus 不可用），请联系管理员"
+
+    has_coll = _safe_milvus("has_collection", db.has_collection, COLLECTION_NAME)
+    if has_coll is None:
+        return "知识库服务响应超时，请稍后重试"
+    if not has_coll:
+        if not build_knowledge_base():
+            return _get_all_raw_text()
+
+    hits = search_knowledge_hits(query, top_k=top_k, sources=[source] if source else None,
+                                 user_id=user_id)
+    if not hits:
+        return _get_all_raw_text()[:2000]
+
+    chunks = []
+    for h in hits:
+        header = f"[{h['source']}] {h['path'] or h['title']}"
+        chunks.append(header + "\n" + h["text"])
+        for img_url in h["images"]:
+            chunks.append(f"  ![图片]({img_url})")
     return "\n---\n".join(chunks)
 
 
@@ -603,8 +659,8 @@ try:
         return search_spec(query)
 
     __all__ = [
-        "retrieve_knowledge", "retrieve_specification",
-        "search_knowledge", "search_spec", "search_steps",
+        "retrieve_specification",
+        "search_knowledge", "search_knowledge_hits", "search_spec", "search_steps",
         "search_annotation_spec", "get_all_specs", "search_spec_sections",
         "split_spec_sections", "get_embeddings",
         "build_knowledge_base", "rebuild_vector_store", "list_knowledge_sources",
@@ -612,7 +668,7 @@ try:
     ]
 except ImportError:
     __all__ = [
-        "search_knowledge", "search_spec", "search_steps",
+        "search_knowledge", "search_knowledge_hits", "search_spec", "search_steps",
         "search_annotation_spec", "get_all_specs", "search_spec_sections",
         "split_spec_sections", "get_embeddings",
         "build_knowledge_base", "rebuild_vector_store", "list_knowledge_sources",

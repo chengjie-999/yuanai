@@ -245,6 +245,10 @@ def run_import(job_id: int, uid: int, planet_id: int, items: list[tuple[str, str
             db.update_map(mid, uid, warnings=json.dumps(warnings, ensure_ascii=False))
 
         db.update_map(mid, uid, dir_path=f"{uid}/{pid}/{mid}")
+
+        # 向量索引（Milvus 不可用时内部降级跳过，不影响导入成功）
+        index_map(db, uid, pid, mid, tree)
+
         results.append({"filename": chosen["filename"], "ok": True, "map_id": mid,
                         "nodes": meta.get("node_count", 0), "images": img_count,
                         "quality": meta.get("quality"), "format": meta.get("format")})
@@ -259,17 +263,73 @@ def run_import(job_id: int, uid: int, planet_id: int, items: list[tuple[str, str
         db.update_job(job_id, uid, error="; ".join(r["filename"] for r in failed))
 
 
+# ---------------- 索引联动（Milvus，source 稳定主键） ----------------
+
+def source_of_map(uid: int, pid: int, mid: int) -> str:
+    return f"planet:{uid}:{pid}:{mid}"
+
+
+def source_of_note(uid: int, pid: int, mid: int) -> str:
+    return f"planet:{uid}:{pid}:{mid}:note"
+
+
+def index_map(db, uid: int, pid: int, mid: int, tree: dict) -> int:
+    """导图树 → chunks 入库（幂等：先删后插）。Milvus 不可用时降级跳过，不阻塞导入。"""
+    from yuanai_core.rag import _flatten_tree, add_source_chunks, remove_source
+
+    src = source_of_map(uid, pid, mid)
+    try:
+        chunks = _flatten_tree(tree.get("children", []), folder=src, user_id=uid)
+        remove_source(src, user_id=uid)
+        return add_source_chunks(chunks) if chunks else 0
+    except Exception as e:
+        print(f"⚠️ 导图 {mid} 索引失败（Milvus 不可用？）: {e}")
+        return 0
+
+
+def index_note(db, uid: int, pid: int, mid: int, content: str) -> int:
+    """笔记 markdown → 章节 chunks 入库（幂等：先删后插）"""
+    from yuanai_core.rag import _flatten_tree, add_source_chunks, remove_source
+    from yuanai_core.pure.mindmap_parser import parse_mindmap_markdown
+
+    src = source_of_note(uid, pid, mid)
+    try:
+        tree = parse_mindmap_markdown(content)
+        chunks = _flatten_tree(tree, folder=src, user_id=uid)
+        remove_source(src, user_id=uid)
+        return add_source_chunks(chunks) if chunks else 0
+    except Exception as e:
+        print(f"⚠️ 笔记 {mid} 索引失败: {e}")
+        return 0
+
+
+def deindex_map(db, uid: int, pid: int, mid: int):
+    """删导图索引（导图节点 + 笔记分块）"""
+    from yuanai_core.rag import remove_source
+
+    try:
+        remove_source(source_of_map(uid, pid, mid), user_id=uid)
+        remove_source(source_of_note(uid, pid, mid), user_id=uid)
+    except Exception as e:
+        print(f"⚠️ 导图 {mid} 去索引失败: {e}")
+
+
 # ---------------- 删除级联 ----------------
 
 def delete_planet_cascade(uid: int, pid: int):
-    """删星球：DB 行（内部级联）+ 文件目录。Milvus 索引由 P2 接入后追加。"""
-    if not _db().delete_planet(pid, uid):
+    """删星球：Milvus 索引 → DB 行（内部级联）→ 文件目录"""
+    db = _db()
+    for m in db.list_maps(pid, user_id=uid):
+        deindex_map(db, uid, pid, m["id"])
+    if not db.delete_planet(pid, uid):
         raise HTTPException(status_code=404, detail="星球不存在")
     shutil.rmtree(os.path.join(PLANET_DIR, str(uid), str(pid)), ignore_errors=True)
 
 
 def delete_map_cascade(uid: int, mid: int):
-    row = _db().delete_map(mid, uid)
+    db = _db()
+    row = db.delete_map(mid, uid)
     if not row:
         raise HTTPException(status_code=404, detail="导图不存在")
+    deindex_map(db, uid, row["planet_id"], mid)
     shutil.rmtree(map_dir(uid, row["planet_id"], mid), ignore_errors=True)

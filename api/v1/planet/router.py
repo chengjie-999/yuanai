@@ -181,11 +181,14 @@ def get_note(request: Request, nid: int):
 
 @router.put("/notes/{nid}")
 def update_note(request: Request, nid: int, body: NoteBody):
-    """编辑笔记（用户手改，source 转 user）"""
+    """编辑笔记（用户手改，source 转 user），保存后重建检索索引"""
     uid = _uid(request)
-    store.owned_note(nid, uid)
-    ok = get_db().update_note(nid, uid, content=body.content, title=body.title or None,
-                              summary=None, source="user")
+    note = store.owned_note(nid, uid)
+    db = get_db()
+    ok = db.update_note(nid, uid, content=body.content, title=body.title or None,
+                        summary=None, source="user")
+    if ok and note.get("map_id"):
+        store.index_note(db, uid, note["planet_id"], note["map_id"], body.content)
     return {"ok": ok}
 
 
@@ -197,18 +200,104 @@ def create_note(request: Request, body: NoteBody):
     if not pid:
         pid = store._resolve_planet(get_db(), uid, "收件箱")
     store.owned_planet(pid, uid)
-    nid = get_db().add_note(uid, pid, body.map_id, body.title or "未命名笔记",
-                            body.content, source="user")
+    db = get_db()
+    nid = db.add_note(uid, pid, body.map_id, body.title or "未命名笔记",
+                      body.content, source="user")
+    if body.map_id:
+        store.index_note(db, uid, pid, body.map_id, body.content)
     return {"ok": True, "note_id": nid}
 
 
 @router.delete("/notes/{nid}")
 def delete_note(request: Request, nid: int):
     uid = _uid(request)
-    row = get_db().delete_note(nid, uid)
+    db = get_db()
+    row = db.delete_note(nid, uid)
     if not row:
         raise HTTPException(status_code=404, detail="笔记不存在")
+    if row.get("map_id"):
+        from yuanai_core.rag import remove_source
+        try:
+            remove_source(store.source_of_note(uid, row["planet_id"], row["map_id"]), user_id=uid)
+        except Exception:
+            pass
     return {"ok": True}
+
+
+# ====================== 检索 / 重建 ======================
+
+@router.get("/search")
+async def search_planet(request: Request, q: str = "", pid: int = 0, top_k: int = 5):
+    """知识星球内检索（结构化 hits，仅共享+自己的私有）"""
+    uid = _uid(request)
+    if not q.strip():
+        return {"query": q, "results": []}
+    from yuanai_core.rag import search_knowledge_hits
+
+    sources = None
+    if pid:
+        store.owned_planet(pid, uid)
+        sources = []
+        for m in get_db().list_maps(pid, user_id=uid):
+            sources.append(store.source_of_map(uid, pid, m["id"]))
+            sources.append(store.source_of_note(uid, pid, m["id"]))
+        if not sources:
+            return {"query": q, "results": []}
+    loop = asyncio.get_running_loop()
+    hits = await loop.run_in_executor(
+        _planet_executor, search_knowledge_hits, q, top_k, sources, uid, False)
+    return {"query": q, "results": hits}
+
+
+@router.post("/reindex")
+def reindex(request: Request):
+    """重建我的全部知识星球索引（Milvus 丢数据时自救；job 轮询进度）"""
+    uid = _uid(request)
+    if get_db().has_running_job(uid, "reindex"):
+        raise HTTPException(status_code=409, detail="已有重建任务进行中，请稍候")
+    job_id = get_db().create_job(uid, "reindex")
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(_planet_executor, _run_reindex, job_id, uid)
+    return {"ok": True, "job_id": job_id}
+
+
+def _run_reindex(job_id: int, uid: int):
+    """重建执行体：遍历星球 → 重读 tree.json/笔记 → 重新入库"""
+    import json as _json
+
+    db = get_db()
+    total = done = 0
+
+    def report(msg: str):
+        db.update_job(job_id, uid, progress=int(done / max(total, 1) * 100),
+                      total_steps=total, done_steps=done, message=msg[:500])
+
+    try:
+        work = []
+        for p in db.list_planets(uid):
+            for m in db.list_maps(p["id"], user_id=uid):
+                work.append((p["id"], m["id"]))
+                for n in db.list_notes(uid, map_id=m["id"]):
+                    work.append((p["id"], m["id"], n["id"]))
+        total = len(work) or 1
+
+        seen_notes = set()
+        for item in work:
+            pid, mid = item[0], item[1]
+            tpath = os.path.join(store.map_dir(uid, pid, mid), "tree.json")
+            if os.path.isfile(tpath):
+                with open(tpath, encoding="utf-8") as f:
+                    store.index_map(db, uid, pid, mid, _json.load(f))
+            if len(item) == 3 and item[2] not in seen_notes:
+                seen_notes.add(item[2])
+                n = db.get_note(item[2], user_id=uid)
+                if n:
+                    store.index_note(db, uid, pid, mid, n["content"])
+            done += 1
+            report(f"重建中 {done}/{total}")
+        db.update_job(job_id, uid, status="done", progress=100, message="索引重建完成")
+    except Exception as e:
+        db.update_job(job_id, uid, status="failed", error=str(e)[:1000])
 
 
 # ====================== 任务 ======================

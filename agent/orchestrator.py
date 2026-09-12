@@ -24,6 +24,7 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的助手，可以独立处理简�
 - 天气：get_today_temperature / get_tomorrow_forecast
 - 用户记忆：get_user_memory / remember_user_info
 - 知识库：retrieve_knowledge
+- 知识星球：retrieve_planet_knowledge（用户个人的思维导图与线性笔记，只读检索）
 - 文件操作：list_data_files / read_data_file / save_data_csv
 - 系统统计：get_system_stats
 - 数据集管理：list_datasets / preview_dataset / analyze_dataset / transform_dataset

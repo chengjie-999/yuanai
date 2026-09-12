@@ -129,58 +129,11 @@ def _safe_milvus(op_name: str, fn, *args, **kwargs):
 
 # ====================== Markdown 思维导图解析 ======================
 def _parse_mindmap_md(filepath: str) -> list[dict]:
-    """解析 Markdown 文件：heading (#) + 列表项 (-) 共同构成树形结构"""
+    """解析 Markdown 文件：heading (#) + 列表项 (-) 共同构成树形结构（纯函数版薄壳）"""
+    from yuanai_core.pure.mindmap_parser import parse_mindmap_markdown
+
     with open(filepath, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-
-    root = {"level": 0, "title": "ROOT", "children": [], "content": "", "images": []}
-    stack = [root]
-    # 记录当前 heading 的层级，用于计算列表项的有效层级
-    current_heading_level = 0
-
-    for line in lines:
-        h_match = re.match(r'^(#{1,6})\s+(.+)$', line)
-        list_match = re.match(r'^(\s*)[-*+]\s+(.+)$', line)
-
-        if h_match:
-            level = len(h_match.group(1))
-            title = h_match.group(2).strip()
-            current_heading_level = level
-
-            while stack and stack[-1]["level"] >= level:
-                stack.pop()
-            if not stack:
-                stack = [root]
-
-            parent = stack[-1]
-            node = {"level": level, "title": title, "children": [], "content": "", "images": []}
-            parent["children"].append(node)
-            stack.append(node)
-
-        elif list_match:
-            indent = len(list_match.group(1))
-            title = list_match.group(2).strip()
-            # 列表项层级 = 当前 heading 层级 + 缩进层级（每 2 空格 = 1 级，最小 +1）
-            list_level = current_heading_level + max(1, indent // 2 + 1)
-
-            while stack and stack[-1]["level"] >= list_level:
-                stack.pop()
-            if not stack:
-                stack = [root]
-
-            parent = stack[-1]
-            node = {"level": list_level, "title": title, "children": [], "content": "", "images": []}
-            parent["children"].append(node)
-            stack.append(node)
-
-        else:
-            stripped = line.strip()
-            if stripped and stack and stack[-1]["level"] > 0:
-                stack[-1]["content"] += stripped + "\n"
-                for m in re.finditer(r'!\[([^\]]*)\]\(([^)]+)\)', stripped):
-                    stack[-1]["images"].append({"alt": m.group(1), "src": m.group(2)})
-
-    return root["children"]
+        return parse_mindmap_markdown(f.read())
 
 
 def _flatten_tree(nodes: list[dict], folder: str, path: str = "", user_id: int = 0) -> list[dict]:

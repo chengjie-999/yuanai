@@ -97,6 +97,7 @@ yuanai_core/            公共核心库（云边共用）
 │   ├── chat.py          Agent 编排（DeepSeek V4 专用 + LangGraph 通用）
 │   └── schemas.py       消息协议（WebSocket / SSE）
 ├── pure/                纯函数（无框架依赖）
+│   ├── mindmap_parser.py   思维导图多格式解析器（html高保真/mm/xmind/opml/emmx/md→统一树）
 └── tools/               通用工具（19 个，自动发现）
 spiderlx/               浏览器自动化引擎（CDP/Selenium）
 skills/                  Skill 配置中心（Agent 能力定义，YAML 驱动自动发现）

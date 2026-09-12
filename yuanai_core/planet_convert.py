@@ -134,19 +134,32 @@ def _outline_fallback(s: dict) -> str:
 # ---------------- LLM 调用 ----------------
 
 def _invoke_llm(model: str, user_text: str, system: str = ARTICLE_PROMPT) -> str:
-    """单次调用（带重试 1 次）。模型名必须显式传——call_llm 默认名在本仓库会炸。"""
+    """单次调用（带重试 1 次）。模型名必须显式传——call_llm 默认名在本仓库会炸。
+    reasoning=False：文章改写不需要 beta 推理端点，跳过思考 token 大幅提速。"""
     from langchain_core.messages import HumanMessage, SystemMessage
     from yuanai_core.core.lc import get_llm
 
-    llm = get_llm(model, temperature=0.3, timeout=LLM_TIMEOUT_S)
+    llm = get_llm(model, reasoning=False, temperature=0.3, timeout=LLM_TIMEOUT_S)
     last_err: Exception | None = None
-    for _ in range(2):
+    for attempt in range(2):
         try:
-            resp = llm.invoke([SystemMessage(content=system), HumanMessage(content=user_text)])
+            # langchain 的 timeout 参数实测不可靠（个别请求无限挂起），用并发 future 硬性限时。
+            # 注意：不能用 with（__exit__ 会 shutdown(wait=True) 等待挂起线程，等于没超时），
+            # 必须 shutdown(wait=False) 让挂起线程在守护线程池里自行飘散。
+            import concurrent.futures
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            try:
+                future = pool.submit(
+                    llm.invoke, [SystemMessage(content=system), HumanMessage(content=user_text)])
+                resp = future.result(timeout=LLM_TIMEOUT_S)
+            finally:
+                pool.shutdown(wait=False)
             content = resp.content if hasattr(resp, "content") else str(resp)
             content = re.sub(r"^```(?:markdown)?\s*|\s*```$", "", content.strip())
             if content:
                 return content
+        except concurrent.futures.TimeoutError:
+            last_err = TimeoutError(f"LLM 调用超时（>{LLM_TIMEOUT_S}s，第 {attempt + 1} 次）")
         except Exception as e:  # noqa: BLE001
             last_err = e
     raise RuntimeError(f"LLM 调用失败: {last_err}")

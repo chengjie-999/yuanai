@@ -5,7 +5,7 @@ import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { voiceTts } from '../../api'
 import { LoadingDots, addToken, stripMarkdown } from './helpers'
-import { BarChartIcon, BotIcon, ClipboardIcon } from '../icons'
+import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon } from '../icons'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
 const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSProperties => ({
@@ -287,7 +287,7 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-              >{msg.sender === 'analysis' ? <BarChartIcon size={13} /> : msg.sender === 'automation' ? <BotIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</a>
+              >{msg.sender === 'analysis' ? <BarChartIcon size={13} /> : msg.sender === 'automation' ? <BotIcon size={13} /> : msg.sender === 'planet' ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</a>
             )}
             {msg.images && msg.images.length > 0 && (
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>

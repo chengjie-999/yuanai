@@ -166,14 +166,15 @@ def delete_map(request: Request, mid: int):
 
 
 @router.post("/maps/{mid}/convert")
-def convert_map(request: Request, mid: int):
+async def convert_map(request: Request, mid: int):
     """启动「导图 → 文章化笔记」转换任务，立即返回 job_id（前端轮询进度）"""
     uid = _uid(request)
     m = store.owned_map(mid, uid)
-    if m["status"] == "converting":
-        raise HTTPException(status_code=409, detail="该导图正在转换中")
     if get_db().has_running_job(uid, "convert"):
         raise HTTPException(status_code=409, detail="已有转换任务进行中，请稍候（防连点烧钱）")
+    # 上次进程被杀等异常留下的假 converting 状态：无运行中任务即可重试
+    if m["status"] == "converting":
+        get_db().update_map(mid, uid, status="imported", error="")
     job_id = get_db().create_job(uid, "convert", planet_id=m["planet_id"], map_id=mid)
     loop = asyncio.get_running_loop()
     loop.run_in_executor(_planet_executor, store.run_convert, job_id, uid, mid)
@@ -265,7 +266,7 @@ async def search_planet(request: Request, q: str = "", pid: int = 0, top_k: int 
 
 
 @router.post("/reindex")
-def reindex(request: Request):
+async def reindex(request: Request):
     """重建我的全部知识星球索引（Milvus 丢数据时自救；job 轮询进度）"""
     uid = _uid(request)
     if get_db().has_running_job(uid, "reindex"):

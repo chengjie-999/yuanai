@@ -195,6 +195,7 @@ def run_import(job_id: int, uid: int, planet_id: int, items: list[tuple[str, str
     if not groups:
         db.update_job(job_id, uid, status="failed", error="没有可导入的文件（均为空或超过大小限制）")
         return
+    db.update_job(job_id, uid, status="running")
 
     # 批量图库：整个批次的文件按 basename 索引，供 md 相对路径图片复制
     batch_files = {}
@@ -327,6 +328,7 @@ def run_convert(job_id: int, uid: int, mid: int) -> None:
         db.update_job(job_id, uid, status="failed", error="导图不存在")
         return
     pid = m["planet_id"]
+    db.update_job(job_id, uid, status="running")
 
     def progress(done: int, total: int, msg: str):
         db.update_job(job_id, uid, progress=int(done / max(total, 1) * 100),

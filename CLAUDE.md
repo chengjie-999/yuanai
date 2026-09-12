@@ -61,6 +61,7 @@ api/                    FastAPI 后端
     ├── knowledge/           知识库
     ├── analysis/           分析大屏 API（RFM、dashboard 数据服务）
     ├── monitor/           代码进度实时监控（Git 轮询 + 可视化仪表盘）
+    ├── planet/            知识星球（星球→导图→线性笔记三级知识库；批量导入 jobs 轮询）
     └── ...
 agent/                  本地 Agent 运行时 ★
 ├── main.py              入口（--tray 托盘 / 默认命令行）

@@ -1,6 +1,7 @@
 import logging
 from urllib.parse import quote_plus
 from sqlalchemy import create_engine, Column, Integer, Text, TIMESTAMP, String, text, UniqueConstraint
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
@@ -162,6 +163,79 @@ class Dataset(Base):
     analysis_json = Column(Text, default='')
     analyzed_at = Column(TIMESTAMP, nullable=True)
     create_time = Column(TIMESTAMP, server_default=func.now())
+
+
+class Planet(Base):
+    """知识星球表（一级：主题域）"""
+    __tablename__ = 'planets'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, default='')
+    sort_order = Column(Integer, default=0)
+    map_count = Column(Integer, default=0)   # 冗余计数，列表页免 join
+    note_count = Column(Integer, default=0)
+    create_time = Column(TIMESTAMP, server_default=func.now())
+    update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+class PlanetMap(Base):
+    """思维导图表（二级：导图）"""
+    __tablename__ = 'planet_maps'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    planet_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)  # 冗余，单条件隔离查询
+    title = Column(String(200), default='')
+    source_format = Column(String(16), default='md')      # emmx/html/md/mm/xmind/opml/txt
+    origin_filename = Column(String(300), default='')
+    dir_path = Column(String(500), default='')            # 相对 data/planet 的目录
+    node_count = Column(Integer, default=0)
+    max_depth = Column(Integer, default=0)
+    quality = Column(String(16), default='full')          # full/text-only/flat
+    warnings = Column(Text, default='')                   # JSON 数组
+    note_id = Column(Integer, nullable=True)              # 最新 AI 笔记
+    status = Column(String(16), default='imported')       # imported/converting/ready/failed
+    error = Column(String(500), default='')
+    create_time = Column(TIMESTAMP, server_default=func.now())
+    update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+class PlanetNote(Base):
+    """线性笔记表（三级：markdown 文章）"""
+    __tablename__ = 'planet_notes'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    planet_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    map_id = Column(Integer, nullable=True, index=True)   # 可为空 = 自由笔记
+    title = Column(String(200), default='')
+    # 中文文章 2 万字可超 MySQL TEXT 64KB 上限，必须 MEDIUMTEXT
+    content = Column(Text().with_variant(MEDIUMTEXT, 'mysql'))
+    summary = Column(String(500), default='')
+    source = Column(String(8), default='ai')              # ai/user
+    model = Column(String(50), default='')
+    word_count = Column(Integer, default=0)
+    status = Column(String(12), default='ready')
+    create_time = Column(TIMESTAMP, server_default=func.now())
+    update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+class PlanetJob(Base):
+    """知识星球任务表（导入/转换/重建进度，前端轮询）"""
+    __tablename__ = 'planet_jobs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    planet_id = Column(Integer, nullable=True, index=True)
+    map_id = Column(Integer, nullable=True, index=True)
+    job_type = Column(String(16), default='import')       # import/convert/reindex
+    status = Column(String(12), default='pending')        # pending/running/done/failed
+    progress = Column(Integer, default=0)                 # 0-100
+    total_steps = Column(Integer, default=0)
+    done_steps = Column(Integer, default=0)
+    message = Column(String(500), default='')
+    result_json = Column(Text, default='')
+    error = Column(String(1000), default='')
+    create_time = Column(TIMESTAMP, server_default=func.now())
+    update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 
 # ---------------------- 数据库操作类（功能完全对齐原代码） ----------------------
@@ -836,6 +910,318 @@ class AgentDatabase:
             return True
         finally:
             sess.close()
+
+    # --------------------------------------------------------------------------
+    # 知识星球（星球 / 导图 / 笔记 / 任务）
+    # --------------------------------------------------------------------------
+    def create_planet(self, user_id: int, name: str, description: str = "", sort_order: int = 0) -> dict:
+        """创建星球，返回 {id, name}"""
+        sess = self.Session()
+        try:
+            p = Planet(user_id=user_id, name=name, description=description, sort_order=sort_order)
+            sess.add(p)
+            sess.commit()
+            return {"id": p.id, "name": p.name}
+        finally:
+            sess.close()
+
+    def list_planets(self, user_id: int) -> list:
+        """我的星球列表（按 sort_order 升序，同序按创建时间）"""
+        sess = self.Session()
+        try:
+            rows = sess.query(Planet).filter_by(user_id=user_id) \
+                .order_by(Planet.sort_order, Planet.id).all()
+            return [{"id": r.id, "name": r.name, "description": r.description or "",
+                     "map_count": r.map_count, "note_count": r.note_count,
+                     "create_time": str(r.create_time)[:19] if r.create_time else ""} for r in rows]
+        finally:
+            sess.close()
+
+    def get_planet(self, pid: int, user_id: int = None) -> dict:
+        sess = self.Session()
+        try:
+            q = sess.query(Planet).filter_by(id=pid)
+            if user_id is not None:
+                q = q.filter_by(user_id=user_id)
+            r = q.first()
+            if not r:
+                return None
+            return {"id": r.id, "name": r.name, "description": r.description or "",
+                    "map_count": r.map_count, "note_count": r.note_count}
+        finally:
+            sess.close()
+
+    def update_planet(self, pid: int, user_id: int, name: str = None, description: str = None,
+                      sort_order: int = None) -> bool:
+        sess = self.Session()
+        try:
+            r = sess.query(Planet).filter_by(id=pid, user_id=user_id).first()
+            if not r:
+                return False
+            if name is not None:
+                r.name = name
+            if description is not None:
+                r.description = description
+            if sort_order is not None:
+                r.sort_order = sort_order
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def delete_planet(self, pid: int, user_id: int) -> bool:
+        """删星球（DB 行级联；文件目录与 Milvus 由 store 层负责）"""
+        sess = self.Session()
+        try:
+            r = sess.query(Planet).filter_by(id=pid, user_id=user_id).first()
+            if not r:
+                return False
+            sess.query(PlanetMap).filter_by(planet_id=pid).delete()
+            sess.query(PlanetNote).filter_by(planet_id=pid).delete()
+            sess.query(PlanetJob).filter_by(planet_id=pid).delete()
+            sess.delete(r)
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def add_map(self, user_id: int, planet_id: int, title: str, source_format: str,
+                origin_filename: str, dir_path: str, node_count: int, max_depth: int,
+                quality: str, warnings: list) -> int:
+        sess = self.Session()
+        try:
+            m = PlanetMap(user_id=user_id, planet_id=planet_id, title=title,
+                          source_format=source_format, origin_filename=origin_filename,
+                          dir_path=dir_path, node_count=node_count, max_depth=max_depth,
+                          quality=quality, warnings=json.dumps(warnings, ensure_ascii=False))
+            sess.add(m)
+            sess.commit()
+            self._refresh_planet_counts(sess, planet_id)
+            return m.id
+        finally:
+            sess.close()
+
+    def get_map(self, mid: int, user_id: int = None) -> dict:
+        sess = self.Session()
+        try:
+            q = sess.query(PlanetMap).filter_by(id=mid)
+            if user_id is not None:
+                q = q.filter_by(user_id=user_id)
+            r = q.first()
+            if not r:
+                return None
+            try:
+                warnings = json.loads(r.warnings) if r.warnings else []
+            except Exception:
+                warnings = []
+            return {"id": r.id, "planet_id": r.planet_id, "user_id": r.user_id, "title": r.title,
+                    "source_format": r.source_format, "origin_filename": r.origin_filename,
+                    "dir_path": r.dir_path, "node_count": r.node_count, "max_depth": r.max_depth,
+                    "quality": r.quality, "warnings": warnings, "note_id": r.note_id,
+                    "status": r.status, "error": r.error or "",
+                    "create_time": str(r.create_time)[:19] if r.create_time else ""}
+        finally:
+            sess.close()
+
+    def list_maps(self, planet_id: int, user_id: int = None) -> list:
+        sess = self.Session()
+        try:
+            q = sess.query(PlanetMap).filter_by(planet_id=planet_id)
+            if user_id is not None:
+                q = q.filter_by(user_id=user_id)
+            rows = q.order_by(PlanetMap.id.desc()).all()
+            out = []
+            for r in rows:
+                try:
+                    warnings = json.loads(r.warnings) if r.warnings else []
+                except Exception:
+                    warnings = []
+                out.append({"id": r.id, "planet_id": r.planet_id, "title": r.title,
+                            "source_format": r.source_format, "node_count": r.node_count,
+                            "max_depth": r.max_depth, "quality": r.quality, "warnings": warnings,
+                            "note_id": r.note_id, "status": r.status, "error": r.error or "",
+                            "create_time": str(r.create_time)[:19] if r.create_time else ""})
+            return out
+        finally:
+            sess.close()
+
+    def update_map(self, mid: int, user_id: int, **fields) -> bool:
+        sess = self.Session()
+        try:
+            r = sess.query(PlanetMap).filter_by(id=mid, user_id=user_id).first()
+            if not r:
+                return False
+            for k, v in fields.items():
+                if hasattr(r, k):
+                    setattr(r, k, v)
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def delete_map(self, mid: int, user_id: int) -> dict:
+        """删导图行，返回 {planet_id} 供 store 层清目录与索引；不存在返回 None"""
+        sess = self.Session()
+        try:
+            r = sess.query(PlanetMap).filter_by(id=mid, user_id=user_id).first()
+            if not r:
+                return None
+            planet_id = r.planet_id
+            sess.query(PlanetNote).filter_by(map_id=mid).delete()
+            sess.query(PlanetJob).filter_by(map_id=mid).delete()
+            sess.delete(r)
+            sess.commit()
+            self._refresh_planet_counts(sess, planet_id)
+            return {"planet_id": planet_id}
+        finally:
+            sess.close()
+
+    def add_note(self, user_id: int, planet_id: int, map_id: int, title: str, content: str,
+                 source: str = "user", model: str = "", summary: str = "") -> int:
+        sess = self.Session()
+        try:
+            n = PlanetNote(user_id=user_id, planet_id=planet_id, map_id=map_id, title=title,
+                           content=content, source=source, model=model, summary=summary,
+                           word_count=len(content))
+            sess.add(n)
+            sess.commit()
+            if map_id:
+                sess.query(PlanetMap).filter_by(id=map_id).update({"note_id": n.id, "status": "ready"})
+                sess.commit()
+            self._refresh_planet_counts(sess, planet_id)
+            return n.id
+        finally:
+            sess.close()
+
+    def get_note(self, nid: int, user_id: int = None) -> dict:
+        sess = self.Session()
+        try:
+            q = sess.query(PlanetNote).filter_by(id=nid)
+            if user_id is not None:
+                q = q.filter_by(user_id=user_id)
+            r = q.first()
+            if not r:
+                return None
+            return {"id": r.id, "planet_id": r.planet_id, "map_id": r.map_id, "title": r.title,
+                    "content": r.content or "", "summary": r.summary or "", "source": r.source,
+                    "model": r.model, "word_count": r.word_count,
+                    "create_time": str(r.create_time)[:19] if r.create_time else "",
+                    "update_time": str(r.update_time)[:19] if r.update_time else ""}
+        finally:
+            sess.close()
+
+    def list_notes(self, user_id: int, planet_id: int = None, map_id: int = None) -> list:
+        """笔记列表（不含正文，仅标题/摘要/字数）"""
+        sess = self.Session()
+        try:
+            q = sess.query(PlanetNote).filter_by(user_id=user_id)
+            if planet_id is not None:
+                q = q.filter_by(planet_id=planet_id)
+            if map_id is not None:
+                q = q.filter_by(map_id=map_id)
+            rows = q.order_by(PlanetNote.id.desc()).all()
+            return [{"id": r.id, "planet_id": r.planet_id, "map_id": r.map_id, "title": r.title,
+                     "summary": r.summary or "", "source": r.source, "word_count": r.word_count,
+                     "update_time": str(r.update_time)[:19] if r.update_time else ""} for r in rows]
+        finally:
+            sess.close()
+
+    def update_note(self, nid: int, user_id: int, content: str = None, title: str = None,
+                    summary: str = None, source: str = None) -> bool:
+        sess = self.Session()
+        try:
+            r = sess.query(PlanetNote).filter_by(id=nid, user_id=user_id).first()
+            if not r:
+                return False
+            if content is not None:
+                r.content = content
+                r.word_count = len(content)
+            if title is not None:
+                r.title = title
+            if summary is not None:
+                r.summary = summary
+            if source is not None:
+                r.source = source
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def delete_note(self, nid: int, user_id: int) -> dict:
+        """删笔记行，返回 {planet_id, map_id} 供索引清理；不存在返回 None"""
+        sess = self.Session()
+        try:
+            r = sess.query(PlanetNote).filter_by(id=nid, user_id=user_id).first()
+            if not r:
+                return None
+            planet_id, map_id = r.planet_id, r.map_id
+            sess.delete(r)
+            if map_id:
+                sess.query(PlanetMap).filter_by(id=map_id).update({"note_id": None})
+            sess.commit()
+            self._refresh_planet_counts(sess, planet_id)
+            return {"planet_id": planet_id, "map_id": map_id}
+        finally:
+            sess.close()
+
+    def create_job(self, user_id: int, job_type: str, planet_id: int = None, map_id: int = None) -> int:
+        sess = self.Session()
+        try:
+            j = PlanetJob(user_id=user_id, job_type=job_type, planet_id=planet_id, map_id=map_id,
+                          status="pending", progress=0)
+            sess.add(j)
+            sess.commit()
+            return j.id
+        finally:
+            sess.close()
+
+    def get_job(self, jid: int, user_id: int = None) -> dict:
+        sess = self.Session()
+        try:
+            q = sess.query(PlanetJob).filter_by(id=jid)
+            if user_id is not None:
+                q = q.filter_by(user_id=user_id)
+            r = q.first()
+            if not r:
+                return None
+            return {"id": r.id, "job_type": r.job_type, "status": r.status, "progress": r.progress,
+                    "total_steps": r.total_steps, "done_steps": r.done_steps,
+                    "message": r.message or "", "error": r.error or "",
+                    "result_json": r.result_json or "",
+                    "planet_id": r.planet_id, "map_id": r.map_id,
+                    "update_time": str(r.update_time)[:19] if r.update_time else ""}
+        finally:
+            sess.close()
+
+    def update_job(self, jid: int, user_id: int, **fields) -> bool:
+        sess = self.Session()
+        try:
+            r = sess.query(PlanetJob).filter_by(id=jid, user_id=user_id).first()
+            if not r:
+                return False
+            for k, v in fields.items():
+                if hasattr(r, k):
+                    setattr(r, k, v)
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def has_running_job(self, user_id: int, job_type: str) -> bool:
+        sess = self.Session()
+        try:
+            return sess.query(PlanetJob).filter_by(user_id=user_id, job_type=job_type,
+                                                   status="running").count() > 0
+        finally:
+            sess.close()
+
+    def _refresh_planet_counts(self, sess, planet_id: int):
+        """重算星球的 map/note 冗余计数（写入后调用）"""
+        from sqlalchemy import func as sa_func
+        map_count = sess.query(sa_func.count(PlanetMap.id)).filter_by(planet_id=planet_id).scalar() or 0
+        note_count = sess.query(sa_func.count(PlanetNote.id)).filter_by(planet_id=planet_id).scalar() or 0
+        sess.query(Planet).filter_by(id=planet_id).update({"map_count": map_count, "note_count": note_count})
+        sess.commit()
 
     # ===================== 简易键值存储（审计反馈等） =====================
 

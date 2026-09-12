@@ -30,8 +30,10 @@ def _extract_token(request: Request) -> str:
     path = request.url.path
     # WebSocket 升级请求无法携带 Authorization header，只能通过 query 参数
     # iframe src 同理（MessageBubble/AnalysisResultView/大屏的 plotly 图表）
+    # 知识星球笔记图片同理（<img> 标签带不上 header，走 ?token=）
     if path.startswith("/api/v1/agent/ws") or path.startswith("/api/v1/data/script-html") \
-            or path.startswith("/api/v1/data/analysis-html"):
+            or path.startswith("/api/v1/data/analysis-html") \
+            or path.startswith("/api/v1/planet/asset"):
         return request.query_params.get("token", "")
     return ""
 

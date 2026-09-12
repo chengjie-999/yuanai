@@ -23,6 +23,7 @@ from api.v1.analysis.rfm import router as rfm_router
 from api.v1.monitor.router import router as monitor_router
 from api.v1.medical.router import router as medical_router
 from api.v1.voice.router import router as voice_router
+from api.v1.planet.router import router as planet_router
 from api.v1.middleware import auth_middleware, rate_limit_middleware
 from api.v1.exceptions import AppError, app_error_handler
 from utils.data_path import root_path
@@ -48,6 +49,8 @@ qimg_dir = os.path.join(root_path(), 'data', 'qimg')
 os.makedirs(qimg_dir, exist_ok=True)
 chat_img_dir = os.path.join(root_path(), 'data', 'chat_images')
 os.makedirs(chat_img_dir, exist_ok=True)
+planet_dir = os.path.join(root_path(), 'data', 'planet')
+os.makedirs(planet_dir, exist_ok=True)
 
 spider_router = init_router()
 app.include_router(spider_router, prefix="/api/v1/spider", tags=["spider"])
@@ -63,6 +66,7 @@ app.include_router(rfm_router, prefix="/api/v1", tags=["analysis"])
 app.include_router(monitor_router, prefix="/api/v1", tags=["monitor"])
 app.include_router(medical_router, prefix="/api/v1", tags=["medical"])
 app.include_router(voice_router, prefix="/api/v1", tags=["voice"])
+app.include_router(planet_router, prefix="", tags=["planet"])
 
 app.middleware("http")(rate_limit_middleware)  # 先限流
 app.middleware("http")(auth_middleware)        # 再鉴权

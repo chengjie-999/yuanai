@@ -7,8 +7,9 @@ import {
 import PlanetTree from '../components/planet/PlanetTree'
 import PlanetReader from '../components/planet/PlanetReader'
 import ImportDialog from '../components/planet/ImportDialog'
+import Starfield from '../components/planet/Starfield'
 import { usePlanetJob } from '../components/planet/ConvertProgress'
-import { ArrowLeftIcon, PlanetIcon } from '../components/icons'
+import { ArrowLeftIcon, GalaxyIcon } from '../components/icons'
 
 /* ============================================================
    知识星球 — /chat/planet（用户个人三级知识库）
@@ -102,7 +103,11 @@ export default function PlanetPage() {
   }
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)' }}>
+    <div style={{ height: '100%', position: 'relative', background: 'var(--bg-secondary)' }}>
+      {/* 星空背景（Canvas 粒子，明暗自适应） */}
+      <Starfield />
+
+      <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header（同 Agent 页面模板） */}
       <div style={{
         padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
@@ -113,10 +118,10 @@ export default function PlanetPage() {
           padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
           flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
         }}><ArrowLeftIcon size={12} /> 返回</Link>
-        <span style={{ lineHeight: 1, color: 'var(--accent)', display: 'flex' }}><PlanetIcon size={18} /></span>
+        <span style={{ lineHeight: 1, color: 'var(--accent)', display: 'flex' }}><GalaxyIcon size={19} /></span>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>知识星球</div>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>星球 · 思维导图 · 线性笔记 —— 导图一键改写为文章</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>银河 · 恒星 · 行星 —— 导图一键改写为文章</div>
         </div>
       </div>
 
@@ -126,11 +131,11 @@ export default function PlanetPage() {
         </div>
       )}
 
-      {/* 主体双栏 */}
+      {/* 主体双栏（背景透明，透出星空） */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <div style={{
           width: 280, flexShrink: 0, borderRight: '1px solid var(--border)',
-          background: 'var(--bg-primary)', padding: '12px 10px', overflow: 'hidden',
+          padding: '12px 10px', overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
         }}>
           <PlanetTree
@@ -148,7 +153,7 @@ export default function PlanetPage() {
             onRefresh={refreshPlanets}
           />
         </div>
-        <div style={{ flex: 1, minWidth: 0, background: 'var(--bg-primary)', padding: '14px 18px', overflow: 'hidden' }}>
+        <div style={{ flex: 1, minWidth: 0, padding: '14px 18px', overflow: 'hidden' }}>
           {map ? (
             <PlanetReader
               map={map}
@@ -160,7 +165,7 @@ export default function PlanetPage() {
             />
           ) : (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-muted)' }}>
-              <PlanetIcon size={44} style={{ opacity: 0.3 }} />
+              <GalaxyIcon size={46} style={{ opacity: 0.45, color: 'var(--accent)' }} />
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>知识星球</div>
               <div style={{ fontSize: 13, lineHeight: 1.8, textAlign: 'center' }}>
                 把万兴脑图的整个文件夹拖进来，自动归星并择优解析<br />
@@ -181,6 +186,7 @@ export default function PlanetPage() {
           onClose={() => setImportPid(null)}
           onImported={refreshPlanets} />
       )}
+      </div>
     </div>
   )
 }

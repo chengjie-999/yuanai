@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { listMaps, listNotes, searchPlanet } from '../../api/planet'
-import { PlanetIcon, MapIcon, NoteIcon, PlusIcon, ChevronDownIcon, ChevronRightIcon, SearchIcon, RefreshIcon, UploadIcon, TrashIcon } from '../icons'
+import { GalaxyIcon, StarIcon, RingPlanetIcon, MoonIcon, PlusIcon, ChevronDownIcon, ChevronRightIcon, SearchIcon, RefreshIcon, UploadIcon, TrashIcon } from '../icons'
 
 export interface PlanetRow { id: number; name: string; description: string; map_count: number; note_count: number }
 export interface MapRow { id: number; planet_id: number; title: string; quality: string; status: string; note_id: number | null }
@@ -131,7 +131,7 @@ export default function PlanetTree({ planets, selectedPid, selectedMid, selected
                     onMouseLeave={(e) => { if (selectedPid !== p.id) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                   >
                     {open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
-                    <PlanetIcon size={14} style={{ color: 'var(--accent)' }} />
+                    <GalaxyIcon size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                     <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {p.name}
                     </span>
@@ -161,7 +161,7 @@ export default function PlanetTree({ planets, selectedPid, selectedMid, selected
                               onMouseEnter={(e) => { if (selectedMid !== m.id) (e.currentTarget as HTMLElement).style.background = 'var(--hover-bg)' }}
                               onMouseLeave={(e) => { if (selectedMid !== m.id) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                             >
-                              <MapIcon size={13} style={{ color: 'var(--text-secondary)' }} />
+                              <StarIcon size={13} style={{ color: 'var(--warning, #f5a623)', flexShrink: 0 }} />
                               <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</span>
                               <span style={{ fontSize: 10, color: m.quality === 'full' ? 'var(--success)' : 'var(--text-muted)', flexShrink: 0 }}>
                                 {m.quality === 'full' ? '完整' : '纯文本'}
@@ -182,7 +182,9 @@ export default function PlanetTree({ planets, selectedPid, selectedMid, selected
                                 onMouseEnter={(e) => { if (selectedNoteId !== n.id) (e.currentTarget as HTMLElement).style.background = 'var(--hover-bg)' }}
                                 onMouseLeave={(e) => { if (selectedNoteId !== n.id) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                               >
-                                <NoteIcon size={12} style={{ color: 'var(--text-muted)' }} />
+                                {n.source === 'user'
+                                  ? <MoonIcon size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                                  : <RingPlanetIcon size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
                                 <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title}</span>
                                 {n.source === 'user' && <span style={{ fontSize: 10, color: 'var(--accent)', flexShrink: 0 }}>手改</span>}
                               </div>

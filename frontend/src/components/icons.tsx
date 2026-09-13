@@ -170,5 +170,17 @@ export const NoteIcon = (p: IconProps) => <Svg {...p}><path d="M14 2H6a2 2 0 0 0
 /* 铅笔（编辑） */
 export const EditIcon = (p: IconProps) => <Svg {...p}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></Svg>
 
+/* 银河（螺旋星系 — 知识星球一级） */
+export const GalaxyIcon = (p: IconProps) => <Svg {...p}><path d="M12 12c-1.5-2.5-3.5-3.5-6-3.5 0 2.5 1 4.5 3 5.5-2 1-3 3-3 5.5 2.5 0 4.5-1 6-3.5 1.5 2.5 3.5 3.5 6 3.5 0-2.5-1-4.5-3-5.5 2-1 3-3 3-5.5-2.5 0-4.5 1-6 3.5z" /><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></Svg>
+
+/* 恒星（四芒星 — 知识星球二级：导图） */
+export const StarIcon = (p: IconProps) => <Svg {...p}><path d="M12 2l2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2z" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /></Svg>
+
+/* 行星（带光环 — 知识星球三级：笔记） */
+export const RingPlanetIcon = (p: IconProps) => <Svg {...p}><circle cx="12" cy="12" r="5.2" /><ellipse cx="12" cy="12" rx="9.5" ry="3.2" transform="rotate(-18 12 12)" /></Svg>
+
+/* 卫星（小月亮 — 知识星球三级：手改笔记/自由笔记） */
+export const MoonIcon = (p: IconProps) => <Svg {...p}><path d="M12 3a6.4 6.4 0 0 0 9 9 9 9 0 1 1-9-9Z" /></Svg>
+
 /* 魔棒（AI 生成） */
 export const WandIcon = (p: IconProps) => <Svg {...p}><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z" /><path d="m14 7 3 3" /><path d="M5 6v4" /><path d="M19 14v4" /><path d="M10 2v2" /><path d="M7 8H3" /><path d="M21 16h-4" /><path d="M11 3H9" /></Svg>

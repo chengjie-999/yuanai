@@ -6,7 +6,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   reasoning?: string
   reasoningTime?: number
-  sender?: 'orchestrator' | 'analysis' | 'collection' | 'automation' | 'claude'
+  sender?: 'orchestrator' | 'local' | 'analysis' | 'collection' | 'automation' | 'claude' | 'planet'
   pageLink?: string
   progress?: { current: number; total: number; message?: string }
 }

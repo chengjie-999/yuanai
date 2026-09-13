@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Request
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from api.v1.middleware import require_admin
 from api.v1.monitor.watcher import get_monitor
+from api.v1.monitor.diagrams import generate_arch_svg, generate_er_svg
 
 router = APIRouter(prefix="/monitor", tags=["monitor"])
 
@@ -19,6 +21,20 @@ async def monitor_snapshot(request: Request, limit: int = 100):
     """单次获取全部监控数据（推荐）"""
     require_admin(request)
     return get_monitor().get_snapshot(min(limit, 200))
+
+
+@router.get("/er-diagram")
+def er_diagram(request: Request):
+    """数据关系图（ER）— 实时解析 db/session.py 生成，模型改动即图更新"""
+    require_admin(request)
+    return Response(content=generate_er_svg(), media_type="image/svg+xml")
+
+
+@router.get("/arch-diagram")
+def arch_diagram(request: Request):
+    """架构图 — 实时生成（目录统计/分支信息为活数据）"""
+    require_admin(request)
+    return Response(content=generate_arch_svg(), media_type="image/svg+xml")
 
 
 @router.post("/report")

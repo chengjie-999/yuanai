@@ -36,7 +36,9 @@ VISION_MODEL = "doubao-seed-2-0-pro-260215"  # DeepSeek V4 不支持图片，识
 DEFAULT_TEMPERATURE = 0.7
 
 # 知识星球「导图 → 文章化笔记」转换模型（注意：必须显式传模型名，call_llm 默认名会炸）
-PLANET_ARTICLE_MODEL = os.getenv("PLANET_ARTICLE_MODEL", DEFAULT_MODEL)
+# 默认豆包（火山引擎国内节点，本地直连快且稳）；DeepSeek 海外 API 本地直连实测
+# 一半请求卡超时（120s×2 后走大纲兜底），故不设为默认，可 .env 覆盖
+PLANET_ARTICLE_MODEL = os.getenv("PLANET_ARTICLE_MODEL", "doubao-seed-2-0-lite-260215")
 
 # Agent 模型分配 — 统一入口，消除代码中 15+ 处硬编码
 _DEFAULT_AGENT_MODEL_MAP = {

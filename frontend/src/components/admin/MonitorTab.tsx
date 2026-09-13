@@ -440,6 +440,18 @@ export default function MonitorTab() {
         </Card>
       </div>
 
+      {/* 架构图 / 数据关系图 — 请求时实时生成（模型改动即图更新） */}
+      <Card>
+        <CardHeader title="架构与数据关系（实时生成）" />
+        <div style={{ padding: '12px 16px', fontSize: 11, color: 'var(--text-muted)' }}>
+          架构图与数据关系图在每次打开时从当前代码实时生成：db/session.py 的表结构一变，关系图自动同步；目录结构一变，架构图统计自动同步。
+        </div>
+        <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <DiagramCard title="云边协同架构" path="/api/v1/monitor/arch-diagram" />
+          <DiagramCard title="数据库数据关系（ER）" path="/api/v1/monitor/er-diagram" />
+        </div>
+      </Card>
+
       {s.git_available !== false && changes.length === 0 && !error && (
         <div style={{
           textAlign: 'center', color: 'var(--text-muted)',
@@ -447,6 +459,39 @@ export default function MonitorTab() {
         }}>
           暂无代码变更记录。当 AI 在项目中创建或修改文件时，变更将实时显示在此处。
         </div>
+      )}
+    </div>
+  )
+}
+
+/* 图表卡：拉取 SVG 文本内联渲染（带缩放滚动，避免 <img> 无法带 token 的问题） */
+function DiagramCard({ title, path }: { title: string; path: string }) {
+  const [svg, setSvg] = useState('')
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let stop = false
+    fetch(`${API_BASE}${path}`, { headers: headers() })
+      .then((r) => { if (!r.ok) throw new Error(); return r.text() })
+      .then((t) => { if (!stop) setSvg(t) })
+      .catch(() => { if (!stop) setError(true) })
+    return () => { stop = true }
+  }, [path])
+
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>{title}</div>
+      {error ? (
+        <Empty msg="图表加载失败" />
+      ) : svg ? (
+        <div style={{
+          border: '1px solid var(--border)', borderRadius: 10, overflow: 'auto',
+          maxHeight: 420, background: 'var(--bg-primary)', padding: 8,
+        }}>
+          <div dangerouslySetInnerHTML={{ __html: svg }} style={{ minWidth: 'max-content' }} />
+        </div>
+      ) : (
+        <div style={{ padding: 20, textAlign: 'center' }}><Spinner /></div>
       )}
     </div>
   )

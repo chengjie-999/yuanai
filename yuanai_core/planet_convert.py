@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import re
+import threading
 
 from yuanai_core.pure.mindmap_parser import strip_tree, tree_to_outline_md
 
@@ -16,6 +17,7 @@ MAX_LLM_CALLS = 12           # 硬上限：超出即降级
 LARGE_TREE_CHARS = 5 * BUDGET_CHARS
 LARGE_TREE_DEPTH = 4
 LLM_TIMEOUT_S = 120
+PARALLEL_BATCHES = 3         # 并发箱数：豆包实测 ~28 字/秒，串行 11 箱要 30 分钟，并行砍到 1/3
 
 ARTICLE_PROMPT = """你是知识编辑，把思维导图大纲改写成一篇可读的线性笔记文章，阅读体验优先。
 
@@ -221,16 +223,35 @@ def convert_tree(tree: dict, model: str, image_base: str = "",
     batches = plan_batches(sections)
     total = len(batches) + (1 if is_large and len(batches) > 1 else 0)
     drafts: list[str] = []
+    done_count = 0
+    lock = threading.Lock()
 
-    for i, batch in enumerate(batches):
-        if on_progress:
-            on_progress(i, total, f"生成章节 {i + 1}/{len(batches)}")
+    def gen_one(i: int, batch: list[dict]) -> str:
+        """单箱生成（线程池内并发执行）；失败落大纲原样"""
         user_text = "\n\n".join(_section_outline(s, image_base) for s in batch)
         try:
-            drafts.append(_invoke_llm(model, user_text))
-        except Exception as e:  # 单箱失败：落大纲原样，其余继续
-            warnings.append(f"第 {i + 1} 箱生成失败（{e}），已用大纲原文兜底")
-            drafts.append("\n\n".join(_outline_fallback(s) for s in batch))
+            return _invoke_llm(model, user_text)
+        except Exception as e:  # noqa: BLE001
+            with lock:
+                warnings.append(f"第 {i + 1} 箱生成失败（{e}），已用大纲原文兜底")
+            return "\n\n".join(_outline_fallback(s) for s in batch)
+
+    if len(batches) > 1:
+        # 并发生成（豆包 28 字/秒串行太慢，PARALLEL_BATCHES 并发砍总时长）
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=PARALLEL_BATCHES) as pool:
+            futures = [pool.submit(gen_one, i, b) for i, b in enumerate(batches)]
+            for fut in futures:
+                drafts.append(fut.result())
+                done_count += 1
+                if on_progress:
+                    on_progress(done_count, total, f"生成章节 {done_count}/{len(batches)}")
+    else:
+        for i, batch in enumerate(batches):
+            drafts.append(gen_one(i, batch))
+            done_count += 1
+            if on_progress:
+                on_progress(done_count, total, f"生成章节 {done_count}/{len(batches)}")
 
     if is_large and len(batches) > 1:
         if on_progress:

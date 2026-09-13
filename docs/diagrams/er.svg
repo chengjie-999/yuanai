@@ -1,0 +1,363 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="1058" viewBox="0 0 1100 1058" font-family="-apple-system, Segoe UI, sans-serif" font-size="12" style="background:#f6f8fa">
+<defs>
+<marker id="arrow-656d76" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#656d76"/></marker>
+<marker id="arrow-1976d2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1976d2"/></marker>
+</defs>
+<text x="20" y="18" font-size="14" fill="#1f2328" font-weight="600" text-anchor="start">数据库数据关系（15 表 · 实时解析 db/session.py）</text>
+<path d="M 260 96 C 410 96, 410 231, 560 231" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 530 80 C 275 80, 275 43, 20 43" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 800 80 C 410 80, 410 43, 20 43" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 800 128 C 680 128, 680 231, 560 231" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 1070 80 C 545 80, 545 43, 20 43" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 530 268 C 275 268, 275 43, 20 43" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 530 284 C 545 284, 545 467, 560 467" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 1070 316 C 815 316, 815 231, 560 231" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 530 632 C 545 632, 545 231, 560 231" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 800 632 C 680 632, 680 231, 560 231" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 1070 504 C 815 504, 815 231, 560 231" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 260 772 C 545 772, 545 467, 830 467" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 260 788 C 410 788, 410 231, 560 231" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 260 932 C 275 932, 275 735, 290 735" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 530 772 C 680 772, 680 467, 830 467" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 530 788 C 545 788, 545 231, 560 231" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 530 804 C 275 804, 275 735, 20 735" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 800 772 C 680 772, 680 231, 560 231" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 800 788 C 815 788, 815 467, 830 467" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<path d="M 800 804 C 410 804, 410 735, 20 735" fill="none" stroke="#656d76" stroke-width="1.4" marker-end="url(#arrow-656d76)"/>
+<rect x="20" y="30" width="240" height="138" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="20" y="30" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="20" y="46" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="32" y="47" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">chat_session</text>
+<text x="32" y="68" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="250" y="68" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="84" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">session_id</text>
+<text x="250" y="84" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(36)</text>
+<text x="32" y="100" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">user_id</text>
+<text x="250" y="100" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="116" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">title</text>
+<text x="250" y="116" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(200)</text>
+<text x="32" y="132" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">model</text>
+<text x="250" y="132" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(50)</text>
+<text x="32" y="148" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="250" y="148" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="164" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">update_time</text>
+<text x="250" y="164" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="290" y="30" width="240" height="122" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="290" y="30" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="290" y="46" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="302" y="47" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">ai_chat</text>
+<text x="302" y="68" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="520" y="68" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="84" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">session_id</text>
+<text x="520" y="84" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(36)</text>
+<text x="302" y="100" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">role</text>
+<text x="520" y="100" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(20)</text>
+<text x="302" y="116" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">content</text>
+<text x="520" y="116" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="132" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">images</text>
+<text x="520" y="132" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="148" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="520" y="148" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="560" y="30" width="240" height="122" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="560" y="30" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="560" y="46" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="572" y="47" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">ai_chat_feedback</text>
+<text x="572" y="68" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="790" y="68" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="84" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">session_id</text>
+<text x="790" y="84" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(36)</text>
+<text x="572" y="100" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">message_index</text>
+<text x="790" y="100" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="116" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">liked</text>
+<text x="790" y="116" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="132" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">user_id</text>
+<text x="790" y="132" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="148" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="790" y="148" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="830" y="30" width="240" height="154" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="830" y="30" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="830" y="46" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="842" y="47" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">task_image</text>
+<text x="842" y="68" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="1060" y="68" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="84" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">session_id</text>
+<text x="1060" y="84" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(36)</text>
+<text x="842" y="100" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">task_name</text>
+<text x="1060" y="100" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="116" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">task_url</text>
+<text x="1060" y="116" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="132" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">image_dir</text>
+<text x="1060" y="132" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="148" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">image_count</text>
+<text x="1060" y="148" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="164" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">meta</text>
+<text x="1060" y="164" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="180" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="1060" y="180" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="20" y="218" width="240" height="106" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="20" y="218" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="20" y="234" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="32" y="235" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">visit_log</text>
+<text x="32" y="256" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="250" y="256" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="272" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">path</text>
+<text x="250" y="272" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(200)</text>
+<text x="32" y="288" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">ip</text>
+<text x="250" y="288" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(64)</text>
+<text x="32" y="304" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">user_agent</text>
+<text x="250" y="304" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(300)</text>
+<text x="32" y="320" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="250" y="320" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="290" y="218" width="240" height="106" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="290" y="218" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="290" y="234" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="302" y="235" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">analysis_history</text>
+<text x="302" y="256" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="520" y="256" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="272" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">session_id</text>
+<text x="520" y="272" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(36)</text>
+<text x="302" y="288" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">dataset_id</text>
+<text x="520" y="288" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="304" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">result_json</text>
+<text x="520" y="304" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="320" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="520" y="320" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="560" y="218" width="240" height="202" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="560" y="218" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="560" y="234" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="572" y="235" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">users</text>
+<text x="572" y="256" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="790" y="256" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="272" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">username</text>
+<text x="790" y="272" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(50)</text>
+<text x="572" y="288" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">password_hash</text>
+<text x="790" y="288" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(200)</text>
+<text x="572" y="304" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">display_name</text>
+<text x="790" y="304" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(50)</text>
+<text x="572" y="320" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">role</text>
+<text x="790" y="320" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(20)</text>
+<text x="572" y="336" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">memory</text>
+<text x="790" y="336" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="352" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">theme</text>
+<text x="790" y="352" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(10)</text>
+<text x="572" y="368" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">frozen_until</text>
+<text x="790" y="368" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="384" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">failed_login_attempts</text>
+<text x="790" y="384" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="400" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">locked_until</text>
+<text x="790" y="400" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="416" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="790" y="416" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="830" y="218" width="240" height="154" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="830" y="218" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="830" y="234" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="842" y="235" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">agent_devices</text>
+<text x="842" y="256" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="1060" y="256" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="272" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">install_code</text>
+<text x="1060" y="272" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(32)</text>
+<text x="842" y="288" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">agent_secret</text>
+<text x="1060" y="288" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(64)</text>
+<text x="842" y="304" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">machine_name</text>
+<text x="1060" y="304" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(64)</text>
+<text x="842" y="320" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">user_id</text>
+<text x="1060" y="320" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="336" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">enabled</text>
+<text x="1060" y="336" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="352" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">last_seen</text>
+<text x="1060" y="352" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="368" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="1060" y="368" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="20" y="454" width="240" height="122" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="20" y="454" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="20" y="470" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="32" y="471" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">websites</text>
+<text x="32" y="492" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="250" y="492" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="508" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">name</text>
+<text x="250" y="508" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(100)</text>
+<text x="32" y="524" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">url</text>
+<text x="250" y="524" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="540" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">remark</text>
+<text x="250" y="540" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="556" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">sort_order</text>
+<text x="250" y="556" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="572" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="250" y="572" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="290" y="454" width="240" height="202" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="290" y="454" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="290" y="470" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="302" y="471" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">crawl_records</text>
+<text x="302" y="492" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="520" y="492" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="508" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">url</text>
+<text x="520" y="508" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="524" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">retype</text>
+<text x="520" y="524" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(20)</text>
+<text x="302" y="540" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">file_path</text>
+<text x="520" y="540" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="556" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">preview</text>
+<text x="520" y="556" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(2000)</text>
+<text x="302" y="572" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">result_length</text>
+<text x="520" y="572" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="588" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">parsed_title</text>
+<text x="520" y="588" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(500)</text>
+<text x="302" y="604" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">parsed_text</text>
+<text x="520" y="604" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="620" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">parsed_links</text>
+<text x="520" y="620" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="636" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">user_id</text>
+<text x="520" y="636" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="652" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="520" y="652" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="560" y="454" width="240" height="234" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="560" y="454" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="560" y="470" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="572" y="471" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">datasets</text>
+<text x="572" y="492" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="790" y="492" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="508" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">name</text>
+<text x="790" y="508" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(200)</text>
+<text x="572" y="524" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">file_path</text>
+<text x="790" y="524" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="540" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">file_type</text>
+<text x="790" y="540" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(10)</text>
+<text x="572" y="556" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">file_size</text>
+<text x="790" y="556" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="572" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">row_count</text>
+<text x="790" y="572" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="588" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">columns_info</text>
+<text x="790" y="588" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="604" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">preview_rows</text>
+<text x="790" y="604" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="620" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">source</text>
+<text x="790" y="620" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(20)</text>
+<text x="572" y="636" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">user_id</text>
+<text x="790" y="636" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="652" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">analysis_json</text>
+<text x="790" y="652" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="668" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">analyzed_at</text>
+<text x="790" y="668" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="684" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="790" y="684" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="830" y="454" width="240" height="170" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="830" y="454" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="830" y="470" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="842" y="471" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">planets</text>
+<text x="842" y="492" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="1060" y="492" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="508" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">user_id</text>
+<text x="1060" y="508" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="524" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">name</text>
+<text x="1060" y="524" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(100)</text>
+<text x="842" y="540" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">description</text>
+<text x="1060" y="540" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="556" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">sort_order</text>
+<text x="1060" y="556" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="572" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">map_count</text>
+<text x="1060" y="572" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="588" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">note_count</text>
+<text x="1060" y="588" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="604" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="1060" y="604" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="842" y="620" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">update_time</text>
+<text x="1060" y="620" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="20" y="722" width="240" height="282" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="20" y="722" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="20" y="738" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="32" y="739" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">planet_maps</text>
+<text x="32" y="760" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="250" y="760" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="776" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">planet_id</text>
+<text x="250" y="776" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="792" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">user_id</text>
+<text x="250" y="792" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="808" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">title</text>
+<text x="250" y="808" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(200)</text>
+<text x="32" y="824" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">source_format</text>
+<text x="250" y="824" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(16)</text>
+<text x="32" y="840" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">origin_filename</text>
+<text x="250" y="840" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(300)</text>
+<text x="32" y="856" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">dir_path</text>
+<text x="250" y="856" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(500)</text>
+<text x="32" y="872" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">node_count</text>
+<text x="250" y="872" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="888" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">max_depth</text>
+<text x="250" y="888" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="904" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">quality</text>
+<text x="250" y="904" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(16)</text>
+<text x="32" y="920" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">warnings</text>
+<text x="250" y="920" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="936" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">note_id</text>
+<text x="250" y="936" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="952" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">status</text>
+<text x="250" y="952" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(16)</text>
+<text x="32" y="968" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">error</text>
+<text x="250" y="968" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(500)</text>
+<text x="32" y="984" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="250" y="984" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="32" y="1000" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">update_time</text>
+<text x="250" y="1000" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="290" y="722" width="240" height="234" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="290" y="722" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="290" y="738" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="302" y="739" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">planet_notes</text>
+<text x="302" y="760" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="520" y="760" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="776" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">planet_id</text>
+<text x="520" y="776" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="792" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">user_id</text>
+<text x="520" y="792" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="808" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">map_id</text>
+<text x="520" y="808" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="824" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">title</text>
+<text x="520" y="824" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(200)</text>
+<text x="302" y="840" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">content</text>
+<text x="520" y="840" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end"></text>
+<text x="302" y="856" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">summary</text>
+<text x="520" y="856" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(500)</text>
+<text x="302" y="872" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">source</text>
+<text x="520" y="872" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(8)</text>
+<text x="302" y="888" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">model</text>
+<text x="520" y="888" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(50)</text>
+<text x="302" y="904" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">word_count</text>
+<text x="520" y="904" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="920" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">status</text>
+<text x="520" y="920" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(12)</text>
+<text x="302" y="936" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="520" y="936" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="302" y="952" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">update_time</text>
+<text x="520" y="952" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<rect x="560" y="722" width="240" height="250" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="560" y="722" width="240" height="26" rx="10" fill="#1976d2" stroke="none"/>
+<rect x="560" y="738" width="240" height="10" fill="#1976d2" stroke="none"/>
+<text x="572" y="739" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="start">planet_jobs</text>
+<text x="572" y="760" font-size="11.5" fill="#1976d2" font-weight="600" text-anchor="start">id</text>
+<text x="790" y="760" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="776" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">user_id</text>
+<text x="790" y="776" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="792" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">planet_id</text>
+<text x="790" y="792" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="808" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">map_id</text>
+<text x="790" y="808" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="824" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">job_type</text>
+<text x="790" y="824" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(16)</text>
+<text x="572" y="840" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">status</text>
+<text x="790" y="840" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(12)</text>
+<text x="572" y="856" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">progress</text>
+<text x="790" y="856" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="872" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">total_steps</text>
+<text x="790" y="872" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="888" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">done_steps</text>
+<text x="790" y="888" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="904" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">message</text>
+<text x="790" y="904" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(500)</text>
+<text x="572" y="920" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">result_json</text>
+<text x="790" y="920" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="936" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">error</text>
+<text x="790" y="936" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">String(1000)</text>
+<text x="572" y="952" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">create_time</text>
+<text x="790" y="952" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+<text x="572" y="968" font-size="11.5" fill="#1f2328" font-weight="400" text-anchor="start">update_time</text>
+<text x="790" y="968" font-size="10.5" fill="#656d76" font-weight="400" text-anchor="end">Name</text>
+</svg>

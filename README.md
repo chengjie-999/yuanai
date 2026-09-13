@@ -330,6 +330,21 @@ data/                   数据目录（聊天图片、爬取文件等）
 
 ---
 
+## 架构与数据关系（随代码自动更新）
+
+两张图由 `api/v1/monitor/diagrams.py` 在**请求时从当前代码实时生成**（后台「代码监控」页内嵌展示），
+`python scripts/gen_diagrams.py` 可落盘为下面的 SVG 文件供文档引用——模型/目录一改图即同步。
+
+### 云边协同架构
+
+![架构图](docs/diagrams/arch.svg)
+
+### 数据库数据关系（ER，实时解析 db/session.py）
+
+![数据关系图](docs/diagrams/er.svg)
+
+---
+
 ## 技术栈
 
 | 层 | 技术 |

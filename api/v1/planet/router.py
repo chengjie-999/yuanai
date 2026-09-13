@@ -158,6 +158,20 @@ def get_map_outline(request: Request, mid: int):
     return FileResponse(path, media_type="text/markdown; charset=utf-8")
 
 
+@router.get("/maps/{mid}/origin")
+def get_map_origin(request: Request, mid: int):
+    """导图原始文件（万兴 html 导出为自包含可交互页面——原布局/配色/图片全保留）"""
+    uid = _uid(request)
+    m = store.owned_map(mid, uid)
+    mdir = store.map_dir(uid, m["planet_id"], mid)
+    candidates = [f for f in os.listdir(mdir) if f.startswith("origin.")]
+    if not candidates:
+        raise HTTPException(status_code=404, detail="该导图没有原始文件")
+    path = os.path.join(mdir, candidates[0])
+    media = "text/html" if candidates[0].endswith(".html") else "application/octet-stream"
+    return FileResponse(path, media_type=media)
+
+
 @router.delete("/maps/{mid}")
 def delete_map(request: Request, mid: int):
     uid = _uid(request)

@@ -19,19 +19,18 @@ LARGE_TREE_DEPTH = 4
 LLM_TIMEOUT_S = 120
 PARALLEL_BATCHES = 3         # 并发箱数：豆包实测 ~28 字/秒，串行 11 箱要 30 分钟，并行砍到 1/3
 
-ARTICLE_PROMPT = """你是知识编辑，把思维导图大纲改写成一篇可读的线性笔记文章，阅读体验优先。
+ARTICLE_PROMPT = """你是知识编辑，把思维导图大纲改写成一篇**线性文章**：像教科书或技术博客一样流畅可读，而不是带层级的要点清单。阅读体验优先。
 
 硬约束：
-1. 大纲中每一层标题保留为 Markdown 标题（一级分支用 ##，二级用 ###），标题文字不改写
-2. 每个叶子要点扩写为完整段落（每段 80-200 字），保持信息完整，不遗漏大纲中的任何要点
+1. 只有大纲的一级分支可以成为章节标题（##），二级及以下的要点**全部融入正文段落**，禁止再出现 ### 标题
+2. 严禁使用列表、要点符号、缩进层级——所有信息都写成连贯段落（每段 80-200 字），段落之间自然衔接
 3. 不得编造大纲中不存在的数字、版本号、API 名、日期；允许常识性衔接语
-4. 代码、英文术语、链接原样保留
-5. 仅并列项 ≥3 时使用列表，其余用连贯段落
+4. 代码、英文术语、链接原样保留（代码可以放在行内或段落中，不要用列表）
+5. 内容稀少的分支并入相邻段落，不硬凑字数
 6. 直接输出 Markdown 正文：不要 ``` 包裹，不要"以下是根据导图…"之类前言
-7. 内容稀少的分支并入相邻段落，不硬凑字数
-8. 末尾不要加"总结"章节
+7. 末尾不要加"总结"章节
 
-大纲中的「（备注：…）」是节点备注，「（图片: …）」是图片链接，图片按原位置输出为 ![图片](链接)。"""
+大纲中的「（备注：…）」是节点备注，「（图片: …）」是图片链接——图片必须原样输出为 ![图片](链接)，放在最相关段落的后面，一张都不要丢。"""
 
 ASSEMBLE_PROMPT = """你是知识编辑。下面是笔记的章节标题清单，请为整篇笔记写一段 3-5 句的导语，并为除第一章外的每个章节写一句不超过 30 字的过渡句。
 
@@ -115,21 +114,31 @@ def _section_outline(s: dict, image_base: str) -> str:
     return (header + "\n" + body).strip()
 
 
-def _outline_fallback(s: dict) -> str:
-    """LLM 失败时的兜底：大纲原样转成标题+列表 markdown"""
+def _outline_fallback(s: dict, image_base: str = "") -> str:
+    """LLM 失败时的兜底：把子树压成段落式文本（保持线性风格，附图片）"""
     node = s["node"]
     lines = [f"## {node['title']}"]
     if node.get("content"):
         lines.append(node["content"].strip())
 
-    def walk(nodes, indent):
+    def walk(nodes, out: list):
         for n in nodes:
-            lines.append("  " * indent + "- " + n["title"])
             if n.get("content"):
-                lines.append("  " * (indent + 1) + n["content"].strip())
-            walk(n["children"], indent + 1)
+                out.append(f"{n['title']}：{n['content'].strip()}")
+            else:
+                out.append(n["title"])
+            if image_base and n.get("images"):
+                for img in n["images"]:
+                    out.append(f"![图片]({image_base.rstrip('/')}/{img['src']})")
+            walk(n["children"], out)
 
-    walk(node["children"], 1)
+    parts: list = []
+    walk(node["children"], parts)
+    if parts:
+        lines.append("、".join(p for p in parts if not p.startswith("![")))
+        for p in parts:
+            if p.startswith("!["):
+                lines.append(p)
     return "\n".join(lines)
 
 
@@ -234,7 +243,7 @@ def convert_tree(tree: dict, model: str, image_base: str = "",
         except Exception as e:  # noqa: BLE001
             with lock:
                 warnings.append(f"第 {i + 1} 箱生成失败（{e}），已用大纲原文兜底")
-            return "\n\n".join(_outline_fallback(s) for s in batch)
+            return "\n\n".join(_outline_fallback(s, image_base) for s in batch)
 
     if len(batches) > 1:
         # 并发生成（豆包 28 字/秒串行太慢，PARALLEL_BATCHES 并发砍总时长）

@@ -69,3 +69,8 @@ export function searchPlanet(q: string, pid = 0, topK = 5) {
 export function planetAssetUrl(pid: number, mid: number, name: string): string {
   return `${API_BASE}/planet/asset/${pid}/${mid}/${encodeURIComponent(name)}?token=${getToken()}`
 }
+
+/* 导图原始文件 URL（iframe 无法带 header，走 ?token=；万兴 html 导出为自包含交互页面） */
+export function mapOriginUrl(mid: number): string {
+  return `${API_BASE}/planet/maps/${mid}/origin?token=${getToken()}`
+}

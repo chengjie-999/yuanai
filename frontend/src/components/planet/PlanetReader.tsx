@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getMapTree } from '../../api/planet'
+import { getMapTree, mapOriginUrl } from '../../api/planet'
 import MarkdownContent from '../MarkdownContent'
 import { WandIcon, NoteIcon, ChevronRightIcon, LoaderIcon, EditIcon } from '../icons'
 import PlanetOutline from './PlanetOutline'
@@ -140,7 +140,11 @@ export default function PlanetReader({ map, note, job, onConvert, onSaveNote, on
         )}
 
         {tab === 'map' && (
-          tree ? <PlanetMapView tree={tree} /> : (
+          map.source_format === 'html' ? (
+            /* 万兴 html 导出 = 自包含交互页面（原布局/配色/图片），直接渲染原文件 */
+            <iframe src={mapOriginUrl(map.id)} title="导图原文件"
+              style={{ width: '100%', height: '100%', border: 'none', borderRadius: 8, background: '#fff' }} />
+          ) : tree ? <PlanetMapView tree={tree} /> : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', padding: 30, color: 'var(--text-muted)', fontSize: 13 }}>
               <LoaderIcon size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> 加载中...
             </div>

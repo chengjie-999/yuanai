@@ -108,6 +108,20 @@ export default function ChatPage({ user }: { user?: any }) {
     setMessages, setCurrentSid, refreshSessions,
   })
 
+  // 麦克风权限必须在点击手势内同步申请：Chrome 的用户激活（约 5s）过期后
+  // getUserMedia 会被静默拒绝（NotAllowedError），连询问框都不弹。
+  // 先申请拿权限即释放，SDK 进房后重新采集时权限已在，不会再弹框。
+  // 单点实现：输入区/欢迎页两个话筒按钮共用，不再各自拷贝。
+  const startVoiceCallWithPermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach((t) => t.stop())
+      startVoiceCall()
+    } catch {
+      alert('麦克风权限被拒绝：请点击浏览器地址栏左侧图标，将麦克风设为「允许」后重试')
+    }
+  }
+
   const handleNewSession = async () => {
     setCurrentSid('')
     setMessages([])
@@ -377,7 +391,7 @@ export default function ChatPage({ user }: { user?: any }) {
             sessions={sessions} onSelectSession={handleSelectSession}
             chatMode={chatMode} setChatMode={setChatMode}
             localOnline={localOnline} claudeOnline={claudeOnline}
-            onStartVoiceCall={startVoiceCall}
+            onStartVoiceCall={startVoiceCallWithPermission}
           />
         ) : (
           <ChatView
@@ -393,7 +407,7 @@ export default function ChatPage({ user }: { user?: any }) {
             pendingApproval={pendingApproval} handleDecision={handleDecision}
             likes={likes} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
             onEditMessage={handleEditMessage} onLike={handleLike}
-            onStartVoiceCall={startVoiceCall}
+            onStartVoiceCall={startVoiceCallWithPermission}
           />
         )}
       </div>

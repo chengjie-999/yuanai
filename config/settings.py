@@ -182,7 +182,6 @@ VOLCANO_SECRET_KEY = os.getenv("VOLCANO_SECRET_KEY", "")        # IAM SecretKey
 VOLCANO_RTC_APP_ID = os.getenv("VOLCANO_RTC_APP_ID", "")        # RTC 应用 AppId
 VOLCANO_RTC_APP_KEY = os.getenv("VOLCANO_RTC_APP_KEY", "")      # RTC 应用 AppKey（Token 签名密钥）
 VOICE_LLM_ENDPOINT_ID = os.getenv("VOICE_LLM_ENDPOINT_ID", "")  # 火山方舟推理接入点 ID（语音对话 LLM）
-VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "")              # 模型名（可空，方舟端点已绑定模型）
 VOICE_ASR_APP_ID = os.getenv("VOICE_ASR_APP_ID", "")            # 豆包语音控制台 ASR AppId
 VOICE_ASR_ACCESS_TOKEN = os.getenv("VOICE_ASR_ACCESS_TOKEN", "")  # 豆包语音控制台 ASR AccessToken
 VOICE_TTS_APP_ID = os.getenv("VOICE_TTS_APP_ID", "")            # 豆包语音控制台 TTS AppId
@@ -190,3 +189,17 @@ VOICE_TTS_ACCESS_TOKEN = os.getenv("VOICE_TTS_ACCESS_TOKEN", "")  # 豆包语音
 VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "zh_female_xiaohe_uranus_bigtts")  # 气泡朗读音色（须为 2.0 系列，配 seed-tts-2.0 资源）
 VOICE_TTS_VOICE_BOT = os.getenv("VOICE_TTS_VOICE_BOT", "zh_male_shaonianzixin_uranus_bigtts")  # 通话机器人音色（主智能体小元：少年梓辛小男孩；uranus 音色在 bidirection 通道待通话实测，无声则回退 mars 系列）
 VOICE_ASR_RESOURCE_ID = os.getenv("VOICE_ASR_RESOURCE_ID", "volc.bigasr.sauc.concurrent")  # ASR 大模型资源（本地实测：并发版已授权、时长版 403）
+
+# ---- 语音调参（原散落在 voice/router.py 的字面量，统一下沉至此，.env 可覆盖） ----
+VOICE_ASR_VOLUME_GAIN = float(os.getenv("VOICE_ASR_VOLUME_GAIN", "1"))
+VOICE_ASR_STREAM_MODE = int(os.getenv("VOICE_ASR_STREAM_MODE", "1"))
+VOICE_ASR_END_WINDOW_SIZE = int(os.getenv("VOICE_ASR_END_WINDOW_SIZE", "500"))
+VOICE_ASR_FORCE_TO_SPEECH_TIME = int(os.getenv("VOICE_ASR_FORCE_TO_SPEECH_TIME", "500"))
+VOICE_TTS_PITCH_RATE = float(os.getenv("VOICE_TTS_PITCH_RATE", "1"))
+VOICE_TTS_SPEECH_RATE = float(os.getenv("VOICE_TTS_SPEECH_RATE", "1"))
+VOICE_TTS_RESOURCE_ID = os.getenv("VOICE_TTS_RESOURCE_ID", "volc.service_type.10029")
+VOICE_LLM_MAX_TOKENS = int(os.getenv("VOICE_LLM_MAX_TOKENS", "1024"))
+VOICE_LLM_TEMPERATURE = float(os.getenv("VOICE_LLM_TEMPERATURE", "0.1"))
+VOICE_LLM_TOP_P = float(os.getenv("VOICE_LLM_TOP_P", "0.3"))
+VOICE_LLM_PREFILL = os.getenv("VOICE_LLM_PREFILL", "true").lower() == "true"
+VOICE_LLM_HISTORY_LENGTH = int(os.getenv("VOICE_LLM_HISTORY_LENGTH", "3"))

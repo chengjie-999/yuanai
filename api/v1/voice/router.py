@@ -83,25 +83,31 @@ def _call_rtc_api(action: str, body: dict) -> dict:
 
 
 def _build_start_body(app_id: str, room_id: str, task_id: str, rtc_user_id: str) -> dict:
-    """构造 StartVoiceChat 请求体（对齐官方 rtc-server-demo-open 1201 大模型模板）"""
+    """构造 StartVoiceChat 请求体（对齐官方 rtc-server-demo-open 1201 大模型模板）
+    调参项统一在 config/settings.py（.env 可覆盖）。"""
     from config.settings import (
         VOICE_LLM_ENDPOINT_ID,
         VOICE_ASR_APP_ID, VOICE_ASR_ACCESS_TOKEN, VOICE_ASR_RESOURCE_ID,
+        VOICE_ASR_VOLUME_GAIN, VOICE_ASR_STREAM_MODE, VOICE_ASR_END_WINDOW_SIZE,
+        VOICE_ASR_FORCE_TO_SPEECH_TIME,
         VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE_BOT,
+        VOICE_TTS_PITCH_RATE, VOICE_TTS_SPEECH_RATE, VOICE_TTS_RESOURCE_ID,
+        VOICE_LLM_MAX_TOKENS, VOICE_LLM_TEMPERATURE, VOICE_LLM_TOP_P,
+        VOICE_LLM_PREFILL, VOICE_LLM_HISTORY_LENGTH,
     )
     config: dict = {}
     if VOICE_ASR_APP_ID and VOICE_ASR_ACCESS_TOKEN:
         config["ASRConfig"] = {
             "Provider": "volcano",
-            "VolumeGain": 1,
+            "VolumeGain": VOICE_ASR_VOLUME_GAIN,
             "ProviderParams": {
                 "Mode": "bigmodel",
                 "AppId": VOICE_ASR_APP_ID,
                 "AccessToken": VOICE_ASR_ACCESS_TOKEN,
                 "ApiResourceId": VOICE_ASR_RESOURCE_ID,
-                "StreamMode": 1,
-                "end_window_size": 500,
-                "force_to_speech_time": 500,
+                "StreamMode": VOICE_ASR_STREAM_MODE,
+                "end_window_size": VOICE_ASR_END_WINDOW_SIZE,
+                "force_to_speech_time": VOICE_ASR_FORCE_TO_SPEECH_TIME,
             },
         }
     if VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN:
@@ -110,21 +116,22 @@ def _build_start_body(app_id: str, room_id: str, task_id: str, rtc_user_id: str)
             "Provider": "volcano_bidirection",
             "ProviderParams": {
                 "app": {"appid": VOICE_TTS_APP_ID, "token": VOICE_TTS_ACCESS_TOKEN},
-                "audio": {"voice_type": VOICE_TTS_VOICE_BOT, "pitch_rate": 1, "speech_rate": 1},
-                "ResourceId": "volc.service_type.10029",
+                "audio": {"voice_type": VOICE_TTS_VOICE_BOT,
+                          "pitch_rate": VOICE_TTS_PITCH_RATE, "speech_rate": VOICE_TTS_SPEECH_RATE},
+                "ResourceId": VOICE_TTS_RESOURCE_ID,
             },
         }
     if VOICE_LLM_ENDPOINT_ID:
         config["LLMConfig"] = {
             "Mode": "ArkV3",
             "EndPointId": VOICE_LLM_ENDPOINT_ID,
-            "MaxTokens": 1024,
-            "Temperature": 0.1,
-            "TopP": 0.3,
-            "Prefill": True,
+            "MaxTokens": VOICE_LLM_MAX_TOKENS,
+            "Temperature": VOICE_LLM_TEMPERATURE,
+            "TopP": VOICE_LLM_TOP_P,
+            "Prefill": VOICE_LLM_PREFILL,
             # 实测为字符串数组 []string
             "SystemMessages": [_SYSTEM_PROMPT],
-            "HistoryLength": 3,
+            "HistoryLength": VOICE_LLM_HISTORY_LENGTH,
         }
     return {
         "AppId": app_id,

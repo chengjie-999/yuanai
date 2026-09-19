@@ -124,6 +124,7 @@ skills/
 | `/chat/agent/knowledge` | 知识库检索面板 | 需登录 |
 | `/chat/agent/medical` | 医学与生命科学工作台 | 需登录 |
 | `/chat/agent/records` | 采集记录 | 需登录 |
+| `/chat/planet` | 知识星球（星球→思维导图→线性笔记，导图 AI 文章化） | 需登录 |
 | `/chat/admin/dashboard` | 仪表盘 | admin |
 | `/chat/admin/users` | 用户管理 | admin |
 | `/chat/admin/agents` | Agent 状态 | admin |

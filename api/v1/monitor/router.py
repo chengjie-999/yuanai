@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -25,15 +25,20 @@ async def monitor_snapshot(request: Request, limit: int = 100):
 
 @router.get("/er-diagram")
 def er_diagram(request: Request):
-    """数据关系图（ER）— 实时解析 db/session.py 生成，模型改动即图更新"""
-    require_admin(request)
+    """数据关系图（ER）— 实时解析 db/session.py 生成，模型改动即图更新。
+    登录即可看（技术架构信息，README 同样公开；不含业务数据）。"""
+    from api.v1.middleware import get_user_id
+    if not get_user_id(request):
+        raise HTTPException(status_code=401, detail="未登录")
     return Response(content=generate_er_svg(), media_type="image/svg+xml")
 
 
 @router.get("/arch-diagram")
 def arch_diagram(request: Request):
-    """架构图 — 实时生成（目录统计/分支信息为活数据）"""
-    require_admin(request)
+    """架构图 — 实时生成（目录统计/分支信息为活数据）。登录即可看。"""
+    from api.v1.middleware import get_user_id
+    if not get_user_id(request):
+        raise HTTPException(status_code=401, detail="未登录")
     return Response(content=generate_arch_svg(), media_type="image/svg+xml")
 
 

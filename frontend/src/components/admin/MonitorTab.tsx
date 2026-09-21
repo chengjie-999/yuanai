@@ -447,8 +447,8 @@ export default function MonitorTab() {
           架构图与数据关系图在每次打开时从当前代码实时生成：db/session.py 的表结构一变，关系图自动同步；目录结构一变，架构图统计自动同步。
         </div>
         <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <DiagramCard title="云边协同架构" path="/api/v1/monitor/arch-diagram" />
-          <DiagramCard title="数据库数据关系（ER）" path="/api/v1/monitor/er-diagram" />
+          <DiagramCard title="云边协同架构" path="/monitor/arch-diagram" />
+          <DiagramCard title="数据库数据关系（ER）" path="/monitor/er-diagram" />
         </div>
       </Card>
 

@@ -113,17 +113,50 @@ def test_convert_tree_large_two_phase(monkeypatch):
 
     def fake_llm(model, user_text, system=ARTICLE_PROMPT):
         if system == ARTICLE_PROMPT:
-            heads = [ln for ln in user_text.splitlines() if ln.startswith("## ")]
+            # 书式编号后分节块只有 ### 标题
+            heads = [ln for ln in user_text.splitlines() if ln.startswith("### ") or ln.startswith("## ")]
             return "\n".join(f"{h}\n{draft}段落。" for h, draft in zip(heads, ["甲", "乙"]))
-        # 装配调用：从 system 里的标题清单取第一个章节名做动态过渡
-        title = next((ln for ln in system.splitlines() if ln.startswith("节")), "章0")
-        return f"这是导语段落。\n<!--break-->\n1. {title}: 过渡一\n2. 节0b: 过渡二"
+        # 装配调用：从 system 的标题清单里取前两个真实标题做过渡
+        import re as _re
+        heads = [ln for ln in system.splitlines() if _re.fullmatch(r"\d+\.\d+.*", ln.strip())]
+        t1 = heads[0] if heads else "1.1 节0a"
+        t2 = heads[1] if len(heads) > 1 else "1.2 节0b"
+        return f"这是导语段落。\n<!--break-->\n1. {t1}: 过渡一\n2. {t2}: 过渡二"
 
     monkeypatch.setattr("yuanai_core.planet_convert._invoke_llm", fake_llm)
     result = convert_tree(big, model="deepseek-v4-flash")
     assert "这是导语段落" in result["content"]
     # 第一章不加过渡（prompt 约定「除第一章外」），第二章起注入
     assert "过渡二" in result["content"]
+
+
+def test_renumber_headings():
+    from yuanai_core.planet_convert import _renumber_headings
+
+    raw = """导语段。
+
+## 1. 基础语法（模型乱编号）
+段落甲。
+### 变量
+段落乙。
+## 第3章 流程控制
+段落丙。
+### 1.4 空值：NoneType
+段落丁。"""
+    out = _renumber_headings(raw)
+    lines = out.splitlines()
+    assert "## 第1章 基础语法（模型乱编号）" in lines
+    assert "### 1.1 变量" in lines
+    assert "## 第2章 流程控制" in lines
+    assert "### 2.1 空值：NoneType" in lines
+
+
+def test_clean_article_dedent():
+    from yuanai_core.planet_convert import _clean_article
+
+    raw = "  段落一  \n\n\n\n  段落二\n  段落三\n"
+    out = _clean_article(raw)
+    assert out == "段落一\n\n段落二\n段落三"
 
 
 def test_outline_with_image_base(small_tree):

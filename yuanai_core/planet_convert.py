@@ -19,16 +19,17 @@ LARGE_TREE_DEPTH = 4
 LLM_TIMEOUT_S = 120
 PARALLEL_BATCHES = 3         # 并发箱数：豆包实测 ~28 字/秒，串行 11 箱要 30 分钟，并行砍到 1/3
 
-ARTICLE_PROMPT = """你是知识编辑，把思维导图大纲改写成一篇**线性文章**：像教科书或技术博客一样流畅可读，而不是带层级的要点清单。阅读体验优先。
+ARTICLE_PROMPT = """你是知识编辑，把思维导图大纲改写成一本**书的章节**：像技术书籍一样有「第X章 / X.Y 节」编号的线性文章，而不是带层级的要点清单。阅读体验优先。
 
 硬约束：
-1. 只有大纲的一级分支可以成为章节标题（##），二级及以下的要点**全部融入正文段落**，禁止再出现 ### 标题
-2. 严禁使用列表、要点符号、缩进层级——所有信息都写成连贯段落（每段 80-200 字），段落之间自然衔接
-3. 不得编造大纲中不存在的数字、版本号、API 名、日期；允许常识性衔接语
-4. 代码、英文术语、链接原样保留（代码可以放在行内或段落中，不要用列表）
-5. 内容稀少的分支并入相邻段落，不硬凑字数
-6. 直接输出 Markdown 正文：不要 ``` 包裹，不要"以下是根据导图…"之类前言
-7. 末尾不要加"总结"章节
+1. 大纲给出的标题编号必须**原样保留**：「第X章」用 ##，「X.Y 节」用 ###，编号文字一个字都不要改
+2. ### 小节标题之下全部是连贯段落（每段 80-200 字），严禁列表、要点符号、缩进层级；段落之间自然衔接
+3. 大纲中没有编号标题的内容一律融入段落，不得自行加标题
+4. 不得编造大纲中不存在的数字、版本号、API 名、日期；允许常识性衔接语
+5. 代码、英文术语、链接原样保留（代码可以放在行内或段落中，不要用列表）
+6. 内容稀少的分支并入相邻段落，不硬凑字数
+7. 直接输出 Markdown 正文：不要 ``` 包裹，不要"以下是根据导图…"之类前言
+8. 末尾不要加"总结"章节
 
 大纲中的「（备注：…）」是节点备注，「（图片: …）」是图片链接——图片必须原样输出为 ![图片](链接)，放在最相关段落的后面，一张都不要丢。"""
 
@@ -105,41 +106,101 @@ def plan_batches(sections: list[dict], budget: int = BUDGET_CHARS) -> list[list[
     return batches
 
 
+def _annotate_numbers(children: list[dict]):
+    """书式编号标注：一级分支 = 第X章，二级 = X.Y 节（就地写入节点 num 字段）"""
+    for ci, ch in enumerate(children, 1):
+        ch["num"] = f"第{ci}章"
+        for si, sub in enumerate(ch.get("children", []), 1):
+            sub["num"] = f"{ci}.{si}"
+
+
+def _node_notes(node: dict, image_base: str) -> str:
+    """节点备注与图片标注行（无标题）"""
+    parts = []
+    if node.get("content"):
+        parts.append(f"（备注：{node['content'].strip().splitlines()[0][:120]}）")
+    if image_base and node.get("images"):
+        for img in node["images"]:
+            # data:URI 是旧版导入残留，跳过避免 LLM 把 base64 写进笔记
+            if not img["src"].startswith("data:"):
+                parts.append(f"（图片: {image_base.rstrip('/')}/{img['src']}）")
+    return "\n".join(parts)
+
+
+def _subtree_bullets(node: dict, image_base: str) -> str:
+    """更深层子树 → 缩进要点（三级以下不再编号，交给 LLM 融入段落）"""
+    body = tree_to_outline_md({"children": node.get("children", [])}, image_base=image_base)
+    notes = _node_notes(node, image_base)
+    return "\n".join(x for x in (notes, body) if x)
+
+
 def _section_outline(s: dict, image_base: str) -> str:
+    """章节块 → 带书式编号的大纲文本（供 LLM 改写）"""
     if s.get("whole"):
         return ""
     node = s["node"]
-    header = f"【上下文】{' > '.join(s['path'][:-1])}" if len(s["path"]) > 1 else ""
-    body = tree_to_outline_md({"children": [node]}, image_base=image_base)
-    return (header + "\n" + body).strip()
+    num = node.get("num", "")
+    lines: list[str] = []
+    if (node.get("level") or 1) <= 1:
+        # 整章块：## 第X章 + 二级子节点按 X.Y 编号做 ### 小节
+        if node["title"]:
+            lines.append(f"## {num} {node['title']}" if num else f"## {node['title']}")
+        lines.append(_node_notes(node, image_base))
+        for sub in node["children"]:
+            if not sub["title"]:
+                continue
+            sub_num = sub.get("num", "")
+            lines.append(f"### {sub_num} {sub['title']}" if sub_num else f"### {sub['title']}")
+            lines.append(_subtree_bullets(sub, image_base))
+    else:
+        # 被切分出来的节：本章首节先补 ## 第X章 章标题（否则正文里永远没有章标题）
+        if s.get("lead_chapter") and len(s["path"]) > 1 and s["path"][0]:
+            chapter_no = (num or "1").split(".")[0]
+            lines.append(f"## 第{chapter_no}章 {s['path'][0]}")
+        ctx = " > ".join(s["path"][:-1])
+        lines.append(f"【上下文】{ctx}")
+        if node["title"]:
+            lines.append(f"### {num} {node['title']}" if num else f"### {node['title']}")
+        lines.append(_subtree_bullets(node, image_base))
+    return "\n".join(x for x in lines if x).strip()
 
 
 def _outline_fallback(s: dict, image_base: str = "") -> str:
-    """LLM 失败时的兜底：把子树压成段落式文本（保持线性风格，附图片）"""
+    """LLM 失败时的兜底：把子树压成段落式文本（书式编号标题 + 附图片）"""
     node = s["node"]
-    lines = [f"## {node['title']}"]
-    if node.get("content"):
-        lines.append(node["content"].strip())
+    num = node.get("num", "")
+    if (node.get("level") or 1) <= 1:
+        lines = [f"## {num} {node['title']}" if num else f"## {node['title']}"]
+        if node.get("content"):
+            lines.append(node["content"].strip())
+        for sub in node["children"]:
+            sub_num = sub.get("num", "")
+            lines.append(f"### {sub_num} {sub['title']}" if sub_num else f"### {sub['title']}")
+            lines.append(_fallback_prose(sub, image_base))
+        return "\n".join(x for x in lines if x)
+    lines = [f"### {num} {node['title']}" if num else f"### {node['title']}"]
+    lines.append(_fallback_prose(node, image_base))
+    return "\n".join(x for x in lines if x)
 
-    def walk(nodes, out: list):
+
+def _fallback_prose(node: dict, image_base: str) -> str:
+    """子树 → 顿号串接的段落式文本 + 图片"""
+    parts: list = []
+    imgs: list = []
+
+    def walk(nodes):
         for n in nodes:
-            if n.get("content"):
-                out.append(f"{n['title']}：{n['content'].strip()}")
-            else:
-                out.append(n["title"])
+            parts.append(f"{n['title']}：{n['content'].strip()}" if n.get("content") else n["title"])
             if image_base and n.get("images"):
                 for img in n["images"]:
-                    out.append(f"![图片]({image_base.rstrip('/')}/{img['src']})")
-            walk(n["children"], out)
+                    if not img["src"].startswith("data:"):
+                        imgs.append(f"![图片]({image_base.rstrip('/')}/{img['src']})")
+            walk(n.get("children", []))
 
-    parts: list = []
-    walk(node["children"], parts)
-    if parts:
-        lines.append("、".join(p for p in parts if not p.startswith("![")))
-        for p in parts:
-            if p.startswith("!["):
-                lines.append(p)
-    return "\n".join(lines)
+    walk(node.get("children", []))
+    lines = ["、".join(parts)] if parts else []
+    lines.extend(imgs)
+    return "\n".join(x for x in lines if x)
 
 
 # ---------------- LLM 调用 ----------------
@@ -176,13 +237,63 @@ def _invoke_llm(model: str, user_text: str, system: str = ARTICLE_PROMPT) -> str
     raise RuntimeError(f"LLM 调用失败: {last_err}")
 
 
+def _clean_article(text: str) -> str:
+    """去每行首尾空白（LLM 偶带缩进，markdown 会渲染成代码块/嵌套列表）+ 压缩 3+ 空行。
+    注：prompt 约束代码只允许行内/段落内，无围栏代码块，故全局去缩进安全。"""
+    out: list[str] = []
+    blank = 0
+    for ln in text.splitlines():
+        ln = ln.strip()
+        if not ln:
+            blank += 1
+            if blank > 1:
+                continue
+        else:
+            blank = 0
+        out.append(ln)
+    return "\n".join(out).strip()
+
+
+def _renumber_headings(text: str) -> str:
+    """确定性重编号：## → 第X章（全局顺序），### → X.Y 节（章内顺序）。
+
+    不依赖模型是否保留编号（豆包 lite 实测时丢时乱）——书式编号 100% 一致。
+    标题先剥掉模型可能自带的编号前缀（第X章/数字.数字），再统一重排。"""
+    out: list[str] = []
+    chapter = 0
+    sub = 0
+    for ln in text.splitlines():
+        m2 = re.match(r"^##\s+(.+)$", ln)
+        m3 = re.match(r"^###\s+(.+)$", ln)
+        if m2:
+            chapter += 1
+            sub = 0
+            # 剥掉模型可能自带的编号：数字前缀（1. / 1、）与「第X章」（含抄写 prompt 的字面 X）两种
+            title = re.sub(r"^\d+(\.\d+)*[\.、\s]*", "", m2.group(1))
+            title = re.sub(r"^(第\s*[0-9Xx一二三四五六七八九十百]+\s*[章节篇]\s*)", "", title).strip()
+            if not title:
+                continue  # 空标题章：丢弃该标题行
+            out.append(f"## 第{chapter}章 {title}")
+        elif m3:
+            sub += 1
+            title = re.sub(r"^\d+(\.\d+)*[\.、\s]*", "", m3.group(1)).strip()
+            if not title:
+                continue  # 空标题节：丢弃该标题行
+            out.append(f"### {chapter}.{sub} {title}")
+        else:
+            out.append(ln)
+    return "\n".join(out)
+
+
 def _assemble(tree: dict, drafts: list[str], model: str) -> str:
-    """大树第二阶段：标题清单 → 导语 + 过渡句，注入草稿合并"""
+    """大树第二阶段：标题清单 → 导语 + 过渡句，注入草稿合并。
+    标题兼容 ## 章 / ### 节（书式编号后分节块只有 ###）。"""
     headings = []
     for d in drafts:
         for line in d.splitlines():
-            if line.startswith("## "):
-                headings.append(line[3:].strip())
+            m = re.match(r"^(#{2,3})\s+(.+)$", line)
+            if m:
+                headings.append(m.group(2).strip())
                 break
     if len(headings) <= 1:
         return "\n\n".join(drafts)
@@ -199,9 +310,10 @@ def _assemble(tree: dict, drafts: list[str], model: str) -> str:
         if intro:
             parts.append(intro + "\n")
         for i, d in enumerate(drafts):
-            first = next((l for l in d.splitlines() if l.startswith("## ")), "")
-            if first and i > 0:
-                t = trans_map.get(first[3:].strip())
+            first_line = d.strip().splitlines()[0] if d.strip() else ""
+            m = re.match(r"^(#{2,3})\s+(.+)$", first_line)
+            if m and i > 0:
+                t = trans_map.get(m.group(2).strip())
                 if t:
                     parts.append(f"*{t}*\n")
             parts.append(d)
@@ -220,7 +332,19 @@ def convert_tree(tree: dict, model: str, image_base: str = "",
     total_chars = _outline_size(children)
     max_depth = tree.get("meta", {}).get("max_depth", 0)
 
+    _annotate_numbers(children)  # 书式编号（第X章 / X.Y 节）
     sections = build_sections(tree)
+    # 分章块：每个章的第一节标记 lead_chapter（正文中唯一补章标题的位置）
+    last_chapter = ""
+    for s in sections:
+        node = s.get("node")
+        if not node or (node.get("level") or 1) <= 1:
+            continue
+        num = node.get("num", "1.1")
+        chapter_no = num.split(".")[0]
+        if chapter_no != last_chapter:
+            s["lead_chapter"] = True
+            last_chapter = chapter_no
     is_large = total_chars > LARGE_TREE_CHARS or max_depth > LARGE_TREE_DEPTH
 
     if is_large and len(plan_batches(sections)) > MAX_LLM_CALLS:
@@ -269,6 +393,8 @@ def convert_tree(tree: dict, model: str, image_base: str = "",
     else:
         content = "\n\n".join(drafts)
 
+    content = _clean_article(content)
+    content = _renumber_headings(content)
     if on_progress:
         on_progress(total, total, "完成")
-    return {"content": content.strip(), "warnings": warnings}
+    return {"content": content, "warnings": warnings}

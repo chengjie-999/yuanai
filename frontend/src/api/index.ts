@@ -613,6 +613,15 @@ export async function fetchMonitorTimeline(): Promise<any> {
   } catch { return { timeline: [] } }
 }
 
+/** 每日代码变更量（git 历史现算，重启不丢） */
+export async function fetchMonitorDaily(days: number = 30): Promise<any[]> {
+  try {
+    const res = await fetch(`${API_BASE}/monitor/daily?days=${days}`, { headers: headers() })
+    if (!res.ok) return []
+    return (await res.json()).daily || []
+  } catch { return [] }
+}
+
 export async function fetchMonitorFileTypes(): Promise<any> {
   try {
     const res = await fetch(`${API_BASE}/monitor/file-types`, { headers: headers() })

@@ -60,7 +60,7 @@ api/                    FastAPI 后端
     ├── data/               数据集管理
     ├── knowledge/           知识库
     ├── analysis/           分析大屏 API（RFM、dashboard 数据服务）
-    ├── monitor/           代码进度实时监控（Git 轮询 + 可视化仪表盘）
+    ├── monitor/           代码进度实时监控（Git 轮询 + 可视化仪表盘 + 架构图/ER 图实时生成）
     ├── planet/            知识星球（星球→导图→线性笔记三级知识库；批量导入 jobs 轮询）
     └── ...
 agent/                  本地 Agent 运行时 ★
@@ -211,6 +211,18 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **审批流未启用**：依赖 claude-agent-sdk 的 `can_use_tool`，当前网络装不了该包（pypi.org 不通、清华源无包）。review 级命令目前靠提示词黑名单约束（同 Phase 1 delegate）
 - 验证：`python -m agent.verify_claude_bridge`（离线断言 agent→token→tool→done + 会话续接）
 
+## 知识星球（三级知识库）
+
+用户个人知识库：**知识星球（主题域）→ 思维导图 → 线性笔记 markdown**，页面 `/chat/planet`（登录后，按用户隔离）。
+
+- **导入**：整个文件夹拖入（万兴脑图导出），同 stem 自动择优（html 高保真 > md > xmind > mm > opml > emmx 纯文本 > txt），自动归星（文件夹名=星球名）；解析器 `yuanai_core/pure/mindmap_parser.py`（html 的 ed:parentid 完整层级 / emmx 明文文本兜底）
+- **AI 文章化**：`yuanai_core/planet_convert.py` 把导图树重写为线性文章（分箱 6000 字、3 箱并行、硬超时 120s、失败落大纲兜底）；模型 `PLANET_ARTICLE_MODEL`（默认豆包 lite，DeepSeek 本地直连实测不稳）；jobs 表 + 1.5s 轮询
+- **导图视图**：html 来源直接 iframe 渲染**原始文件**（自包含交互页）；非 html 回退手绘 SVG 树 + 大纲视图
+- **检索只读**：`retrieve_planet_knowledge` 工具（聊天可查，气泡挂「知识星球」标签 + 打开面板）；Milvus source=`planet:{uid}:{pid}:{mid}[:note]`；文件 `data/planet/{uid}/{pid}/{mid}/`（**不复用 data/aiprompt**——全量重建会以共享身份索引私人笔记）
+- **表**：planets / planet_maps / planet_notes（内容 MEDIUMTEXT）/ planet_jobs（Alembic 0007）
+- **视觉**：Canvas 星野背景（Starfield.tsx）+ 天体图标（银河=星球、恒星=导图、行星/卫星=笔记）
+- **架构图/ER 图**：`api/v1/monitor/diagrams.py` 请求时实时生成（ER 图 ast 解析 db/session.py）；端点 `/monitor/arch-diagram`、`/er-diagram`（admin）；后台「代码监控」页卡片 + README 嵌入（`python scripts/gen_diagrams.py` 刷新）
+
 ## 语音对话
 
 火山引擎「AI 音视频互动方案」实时语音（豆包 App 同款：RTC + 豆包 ASR/TTS + 方舟 LLM）：
@@ -219,7 +231,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - 后端纯 Python 零新依赖：`api/v1/voice/rtc_token.py`（VeRTC Token「001」新版二进制格式，密钥 AppKey）、`v4_sign.py`（OpenAPI V4 签名，域 rtc.volcengineapi.com，Version=2024-12-01）
 - 请求体已对齐官方 rtc-server-demo-open 1201 大模型模板（ASR 直接字段 + ApiResourceId=并发版；TTS 走 volcano_bidirection + volc.service_type.10029）；联调参数集中在 `_build_start_body()`
 - 前端 `VoiceCall.tsx` 悬浮通话卡（桌面居中 / 手机全屏）：音量波形、通话计时、机器人状态/字幕实时展示（subv/conv 协议）、转录落聊天会话；SDK 动态 import 分包（约 2MB，点击才加载）
-- 配置：`.env` 的 VOLCANO_ACCESS_KEY/SECRET_KEY（IAM）、VOLCANO_RTC_APP_ID/APP_KEY（RTC 应用）、VOICE_LLM_ENDPOINT_ID（方舟接入点）、VOICE_ASR/TTS_APP_ID+ACCESS_TOKEN（豆包语音控制台）、VOICE_ASR_RESOURCE_ID（须并发版）、VOICE_TTS_VOICE_BOT（通话机器人音色，主智能体=少年梓辛小男孩）；未配置时 /voice/start 返回 503
+- 配置：`.env` 的 VOLCANO_ACCESS_KEY/SECRET_KEY（IAM）、VOLCANO_RTC_APP_ID/APP_KEY（RTC 应用）、VOICE_LLM_ENDPOINT_ID（方舟接入点）、VOICE_ASR/TTS_APP_ID+ACCESS_TOKEN（豆包语音控制台）、VOICE_ASR_RESOURCE_ID（须并发版）、VOICE_TTS_VOICE_BOT（通话机器人音色，主智能体=少年梓辛小男孩）；未配置时 /voice/start 返回 503；**调参**（VolumeGain/StreamMode/end_window_size/MaxTokens/TopP/Prefill 等 12 项）已下沉 `config/settings.py` 的 VOICE_* 常量，`.env` 可覆盖（.env.example 有注释档）
 - **气泡朗读（豆包同款）**：AI 消息喇叭图标 → `POST /api/v1/voice/tts`（seed-tts-2.0 单向流式，响应为换行分隔 JSON 流 + base64 mp3）→ 浏览器播放，播放中波形动画可打断
 - **每 Agent 独立音色**：`config/settings.py` 的 `AGENT_VOICE_MAP`（6 键：orchestrator/local/analysis/collection/automation/claude，默认小元=少年梓辛）；用户设置页（/chat/settings）「语音音色」卡经 `GET/PUT /api/v1/auth/agent-voices` 改 models.json 的 `_agent_voices` 键；`voice_tts` 按消息 sender 查表选音色。**音色须为 2.0 uranus 系列**（1.0 mars 会 55000000 不匹配），预置 12 个音色全部本地实测有效
 

@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar,
+  BarChart, Bar, ComposedChart, Line,
 } from 'recharts'
 import { Spinner, ErrorMsg, Card, CardHeader, Empty, headers, API_BASE } from './shared'
-import { fetchMonitorStatus, fetchMonitorChanges, fetchMonitorTimeline, fetchMonitorFileTypes } from '../../api'
+import { fetchMonitorStatus, fetchMonitorChanges, fetchMonitorTimeline, fetchMonitorFileTypes, fetchMonitorDaily } from '../../api'
 import { AlertIcon, CircleDotIcon, CircleIcon } from '../icons'
 
 const CHART_GREEN = '#629755'
@@ -119,6 +119,7 @@ export default function MonitorTab() {
   const [ctrlTimeline, setCtrlTimeline] = useState<any>(null)
   const [ctrlFileTypes, setCtrlFileTypes] = useState<any>(null)
   const [ctrlTopFiles, setCtrlTopFiles] = useState<any>(null)
+  const [dailyStats, setDailyStats] = useState<any[]>([])
   const [ctrlBusy, setCtrlBusy] = useState('')  // 正在执行的控制操作: start/stop
   const [ctrlMsg, setCtrlMsg] = useState('')    // 控制操作结果提示
 
@@ -128,6 +129,8 @@ export default function MonitorTab() {
     fetchMonitorTimeline().then(setCtrlTimeline)
     fetchMonitorFileTypes().then(setCtrlFileTypes)
     fetchMonitorTopFiles(10).then(setCtrlTopFiles)
+    // 每日变更量来自 git 历史现算，数据稳定，加载一次即可
+    fetchMonitorDaily(30).then(setDailyStats)
   }
 
   // 注意：POST /monitor/report 是 Agent 变更上报通道（非报告生成），
@@ -352,7 +355,34 @@ export default function MonitorTab() {
         </Card>
       </div>
 
-      {/* Row 2: Most changed files + Recent activity */}
+      {/* Row 2: 每日代码变更量（K 线风格：涨红跌绿柱 + 净量线） */}
+      <Card>
+        <CardHeader title="每日代码变更量（K 线风格 · 来自 git 历史，重启不丢）" />
+        <div style={{ padding: 16 }}>
+          {dailyStats.length === 0 ? (
+            <Empty msg="暂无提交历史" />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart data={dailyStats.map((d: any) => ({
+                date: d.date?.slice(5) || d.date,
+                新增: d.added,
+                删除: d.removed,
+                净量: d.added - d.removed,
+              }))} barGap={0}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+                <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+                <Tooltip content={<ChartTooltip />} />
+                <Bar dataKey="新增" fill={CHART_RED} radius={[2, 2, 0, 0]} maxBarSize={12} />
+                <Bar dataKey="删除" fill={CHART_GREEN} radius={[2, 2, 0, 0]} maxBarSize={12} />
+                <Line type="monotone" dataKey="净量" stroke="var(--accent)" strokeWidth={1.6} dot={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </Card>
+
+      {/* Row 3: Most changed files + Recent activity */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <Card>
           <CardHeader title="最常变更文件" />

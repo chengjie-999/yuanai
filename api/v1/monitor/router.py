@@ -76,6 +76,14 @@ async def monitor_timeline(request: Request):
     return {"timeline": get_monitor().get_timeline()}
 
 
+@router.get("/daily")
+async def monitor_daily(request: Request, days: int = 30):
+    """每日代码变更量（git 历史现算，重启不丢；K 线风格图表数据源）"""
+    require_admin(request)
+    days = max(7, min(days, 365))
+    return {"daily": get_monitor().get_daily_stats(days)}
+
+
 @router.get("/file-types")
 async def monitor_file_types(request: Request):
     require_admin(request)

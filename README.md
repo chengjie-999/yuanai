@@ -142,6 +142,10 @@ skills/
 
 ## 功能模块
 
+### 知识星球（`/chat/planet`，个人三级知识库）
+
+星球（主题域）→ 思维导图 → 线性笔记：把万兴脑图导出的**整个文件夹拖入**，自动归星并择优解析（html 高保真 > md > xmind > mm > opml > emmx）；一键「AI 生成笔记」把导图树重写为连贯的线性文章（导图图片原样带入）；导图页直接渲染**原始文件**（万兴 HTML 自包含交互页）。聊天中 `retrieve_planet_knowledge` 只读检索个人知识，气泡挂「知识星球」标签可一键打开面板。星空主题视觉：银河=星球、恒星=导图、行星/卫星=笔记。
+
 ### 后台管理（仅 admin，嵌套路由 `/chat/admin/*`）
 
 12 个 Tab，每个有独立 URL：
@@ -158,7 +162,7 @@ skills/
 | 知识库 | `/chat/admin/knowledge` | 知识库文档管理 |
 | 文件管理 | `/chat/admin/files` | 服务器文件浏览 |
 | 工具 | `/chat/admin/tools` | 已注册工具列表 |
-| 代码监控 | `/chat/admin/monitor` | Git 轮询 + 代码变更趋势图 + 文件类型分布 + 实时活动日志 |
+| 代码监控 | `/chat/admin/monitor` | Git 轮询 + 代码变更趋势图 + 文件类型分布 + 实时活动日志 + **架构图/ER 图实时生成** |
 | 设置 | `/chat/admin/settings` | 系统设置 |
 
 ### 工具系统

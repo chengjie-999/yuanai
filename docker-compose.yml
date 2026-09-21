@@ -101,8 +101,28 @@ services:
       timeout: 5s
       retries: 3
 
+  # 数据库自动备份（启动即备份一次，此后每 24h；保留 14 天，可 env 覆盖）
+  backup:
+    image: mysql:8.0
+    container_name: spider-backup
+    restart: always
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_agent}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - backup_data:/backups
+      - ./scripts/backup_entry.sh:/backup_entry.sh:ro
+    entrypoint: ["/bin/sh", "/backup_entry.sh"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+
 volumes:
   mysql_data:
   redis_data:
   milvus_data:
   app_data:
+  backup_data:

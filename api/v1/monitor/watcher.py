@@ -7,7 +7,7 @@ import threading
 import time
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -279,6 +279,32 @@ class GitMonitor:
                  "percentage": round(count / total * 100, 1)}
                 for filepath, count in file_counter.most_common(top_n)
             ]
+
+    def get_daily_stats(self, days: int = 30) -> list[dict]:
+        """按日聚合代码变更量（新增/删除行数、文件数）。
+
+        git 历史即持久层：每次调用用 `git log --numstat` 现算，
+        服务重启/内存清空都不丢历史，无需数据库表。
+        """
+        since = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        output = self._run_git(
+            ["log", f"--since={since}", "--date=short",
+             "--pretty=format:DAY:%ad", "--numstat"])
+        day_map: dict[str, dict] = {}
+        cur = ""
+        for line in output.splitlines():
+            if line.startswith("DAY:"):
+                cur = line[4:].strip()
+                day_map.setdefault(cur, {"date": cur, "added": 0, "removed": 0, "files": 0})
+                continue
+            m = re.match(r"^(\d+|-)\t(\d+|-)\t", line)
+            if m and cur:
+                a = 0 if m.group(1) == "-" else int(m.group(1))
+                r = 0 if m.group(2) == "-" else int(m.group(2))
+                day_map[cur]["added"] += a
+                day_map[cur]["removed"] += r
+                day_map[cur]["files"] += 1
+        return list(day_map.values())
 
     def report_change(self, filepath: str, status: str = "M",
                       lines_added: int = 0, lines_removed: int = 0) -> None:

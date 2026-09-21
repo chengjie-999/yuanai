@@ -24,7 +24,7 @@ export default function NoteEditor({ initial, onSave, onCancel }: {
       </div>
       {preview ? (
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px', background: 'var(--bg-primary)' }}>
-          <MarkdownContent content={content} />
+          <MarkdownContent content={content} indent />
         </div>
       ) : (
         <textarea value={content} onChange={(e) => setContent(e.target.value)} autoFocus

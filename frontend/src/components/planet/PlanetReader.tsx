@@ -110,7 +110,7 @@ export default function PlanetReader({ map, note, job, onConvert, onSaveNote, on
             <div>
               {savedMsg && <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 6 }}>{savedMsg}</div>}
               <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', background: 'var(--bg-primary)' }}>
-                <MarkdownContent content={note.content} />
+                <MarkdownContent content={note.content} indent />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                 <button onClick={() => setEditing(true)}

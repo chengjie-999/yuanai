@@ -11,7 +11,7 @@ function withAssetToken(src?: string): string | undefined {
   return src
 }
 
-function MarkdownContent({ content }: { content: string }) {
+function MarkdownContent({ content, indent }: { content: string; indent?: boolean }) {
   if (!content) return null
   return (
     <ReactMarkdown
@@ -29,7 +29,7 @@ function MarkdownContent({ content }: { content: string }) {
         h1: ({ children }) => <h1 style={{ fontSize: 22, fontWeight: 700, margin: '18px 0 8px', color: 'var(--text-primary)' }}>{children}</h1>,
         h2: ({ children }) => <h2 style={{ fontSize: 18, fontWeight: 700, margin: '16px 0 6px', color: 'var(--text-primary)' }}>{children}</h2>,
         h3: ({ children }) => <h3 style={{ fontSize: 15, fontWeight: 600, margin: '12px 0 4px', color: 'var(--text-primary)' }}>{children}</h3>,
-        p: ({ children }) => <p style={{ margin: '4px 0', lineHeight: 1.7 }}>{children}</p>,
+        p: ({ children }) => <p style={{ margin: '4px 0', lineHeight: 1.7, textIndent: indent ? '2em' : undefined }}>{children}</p>,
         code: ({ className, children, ...props }) => {
           const isInline = !className
           if (isInline) {

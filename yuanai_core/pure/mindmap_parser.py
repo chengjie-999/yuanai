@@ -527,6 +527,9 @@ def tree_to_outline_md(tree, image_base: str = "") -> str:
             lines.append(f"{prefix}（备注：{first}）")
         if image_base and node.get("images"):
             for img in node["images"]:
+                # data:URI 是旧版导入残留，无法经资产路由提供，跳过避免 LLM 把 base64 写进笔记
+                if img["src"].startswith("data:"):
+                    continue
                 lines.append(f"{prefix}（图片: {image_base.rstrip('/')}/{img['src']}）")
 
     def walk(nodes, indent: int):

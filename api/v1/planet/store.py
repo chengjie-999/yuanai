@@ -236,13 +236,15 @@ def run_import(job_id: int, uid: int, planet_id: int, items: list[tuple[str, str
         os.makedirs(mdir, exist_ok=True)
         with open(os.path.join(mdir, "origin" + os.path.splitext(chosen["filename"])[1]), "wb") as f:
             f.write(chosen["raw"])
+        # 先抽图片（data:URI → assets/文件名，重写树内 src），再落 tree.json/outline.md——
+        # 否则树里残留 data:URI，转换时 LLM 会把整段 base64 写进笔记
+        img_count, unresolved = _extract_assets(tree, uid, pid, mid, batch_files)
+        if unresolved:
+            warnings.append(f"{len(unresolved)} 张图片未解析（{unresolved[0] if unresolved else ''}...）")
         with open(os.path.join(mdir, "tree.json"), "w", encoding="utf-8") as f:
             json.dump(tree, f, ensure_ascii=False)
         with open(os.path.join(mdir, "outline.md"), "w", encoding="utf-8") as f:
             f.write(tree_to_outline_md(tree))
-        img_count, unresolved = _extract_assets(tree, uid, pid, mid, batch_files)
-        if unresolved:
-            warnings.append(f"{len(unresolved)} 张图片未解析（{unresolved[0] if unresolved else ''}...）")
             db.update_map(mid, uid, warnings=json.dumps(warnings, ensure_ascii=False))
 
         db.update_map(mid, uid, dir_path=f"{uid}/{pid}/{mid}")

@@ -30,7 +30,12 @@ export function deletePlanet(pid: number) { return req(`/planet/${pid}`, { metho
 export function listMaps(pid: number) { return req(`/planet/${pid}/maps`).then((d: any) => d.maps || []) }
 export function getMap(mid: number) { return req(`/planet/maps/${mid}`).then((d: any) => d.map) }
 export function getMapTree(mid: number) { return req(`/planet/maps/${mid}/tree`) }
-export function getMapOutline(mid: number) { return req(`/planet/maps/${mid}/outline`, { headers: { Accept: 'text/markdown' } }).then((r: any) => (typeof r === 'string' ? r : JSON.stringify(r))) }
+export async function getMapOutline(mid: number): Promise<string> {
+  // 后端返回 markdown 文本（非 JSON），不能用 req 的 res.json()
+  const res = await fetch(`${API_BASE}/planet/maps/${mid}/outline`, { headers: authHeaders() })
+  if (!res.ok) throw new Error('大纲加载失败')
+  return await res.text()
+}
 export function deleteMap(mid: number) { return req(`/planet/maps/${mid}`, { method: 'DELETE' }) }
 
 /** 批量导入：files 与相对路径平行对齐（webkitdirectory 文件夹） */

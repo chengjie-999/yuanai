@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import subprocess
 from utils.data_path import root_path
 
@@ -49,6 +50,11 @@ def _text(x: int, y: int, s: str, size: int = 12, fill: str = "", weight: str = 
             f'font-weight="{weight or 400}" text-anchor="{anchor}">{_esc(s)}</text>')
 
 
+def _marker_id(color: str) -> str:
+    """颜色 → 合法 marker id（去掉 # 与 rgba 括号等非法字符）"""
+    return re.sub(r"[^a-zA-Z0-9]", "", color)
+
+
 def _arrow(x1: int, y1: int, x2: int, y2: int, color: str = "", dash: str = "",
            label: str = "") -> str:
     """三次贝塞尔箭头（水平出、水平入）"""
@@ -58,16 +64,15 @@ def _arrow(x1: int, y1: int, x2: int, y2: int, color: str = "", dash: str = "",
     s = f'<path d="{d}" fill="none" stroke="{color}" stroke-width="1.4"'
     if dash:
         s += f' stroke-dasharray="{dash}"'
-    s += f' marker-end="url(#arrow-{color.replace("#", "")})"/>'
+    s += f' marker-end="url(#arrow-{_marker_id(color)})"/>'
     return s
 
 
 def _defs(colors: list[str]) -> str:
     out = ["<defs>"]
     for c in colors:
-        cid = c.replace("#", "").replace("rgba", "rgba")
         out.append(
-            f'<marker id="arrow-{cid}" viewBox="0 0 10 10" refX="8" refY="5" '
+            f'<marker id="arrow-{_marker_id(c)}" viewBox="0 0 10 10" refX="8" refY="5" '
             f'markerWidth="7" markerHeight="7" orient="auto">'
             f'<path d="M 0 0 L 10 5 L 0 10 z" fill="{c}"/></marker>')
     out.append("</defs>")

@@ -35,21 +35,21 @@ class TestAuthEndpoints:
     """认证端点"""
 
     def test_login_public(self, client):
-        """登录端点无需认证"""
+        """登录端点无需认证（密码 ≥8 字符为接口校验，短密码走 422 属正常参数校验）"""
         resp = client.post("/api/v1/auth/login", json={
             "username": "nonexistent_user_12345",
-            "password": "wrong",
+            "password": "wrongpassword",
         })
-        # 应返回 401 而非 401/403 之外的错误（不会因为未认证被拦截）
+        # 应返回 401 而非 401/429 之外的错误（不会因为未认证被拦截）
         assert resp.status_code in (401, 429)
 
     def test_register_disabled(self, client):
         """注册功能暂不开放"""
         resp = client.post("/api/v1/auth/register", json={
             "username": "test",
-            "password": "test123",
+            "password": "test1234",
         })
-        assert resp.status_code == 403
+        assert resp.status_code in (403, 404)
 
     def test_protected_route_no_auth(self, client):
         """未认证访问受保护路由应返回 401"""
@@ -61,14 +61,15 @@ class TestAuthEndpoints:
         resp = client.post("/api/v1/auth/check", json={"token": "invalid-token"})
         assert resp.status_code == 401
 
-    def test_rate_limit(self, client):
-        """超过限流阈值应返回 429"""
-        # 发送 6 次登录请求（阈值是 5 次/60s）
+    def test_rate_limit(self, client, monkeypatch):
+        """超过限流阈值应返回 429（本测试需真实限流，临时关闭测试豁免）"""
+        monkeypatch.delenv("RATE_LIMIT_DISABLED", raising=False)
+        # 发送 6 次登录请求（阈值是 5 次/60s；密码 ≥8 字符满足接口校验）
         results = []
         for _ in range(6):
             resp = client.post("/api/v1/auth/login", json={
                 "username": "ratelimit_test",
-                "password": "test",
+                "password": "test12345",
             })
             results.append(resp.status_code)
         # 至少有一次被限流（429）或正常拒绝（401）

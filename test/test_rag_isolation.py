@@ -1,29 +1,60 @@
-"""RAG 隔离与结构化检索测试 — 需要 Milvus 运行中（不可用则 skip）
+"""RAG 隔离与结构化检索测试 — milvus-lite 嵌入式本地文件，零网络零服务依赖。
+
+- MILVUS_HOST 指向临时 .db（rag._get_db 对 .db 结尾的 host 走嵌入式模式）
+- get_embeddings 被 mock 成确定性伪向量（本测试只测过滤逻辑，不需要真实 embedding，
+  且本地无法访问 huggingface 下载模型）
 
 核心回归：user_id=None 时绝不返回他人私有 chunk；sources 过滤只命中指定 source；
 fallback=False 无结果时返回空数组（不回落 raw text）。
 """
+import os
+import tempfile
+
 import pytest
 
+# 必须在导入 rag 之前设置（模块级），指向会话级临时 .db 文件
+_TEST_DB = os.path.join(tempfile.gettempdir(), "milvus_test_isolation.db")
+os.environ["MILVUS_HOST"] = _TEST_DB
 
-def _rag_or_skip():
-    try:
-        import yuanai_core.rag as rag
 
-        db = rag._get_db()
-        if db is None:
-            pytest.skip("Milvus 不可用")
-        has = rag._safe_milvus("has_collection", db.has_collection, rag.COLLECTION_NAME)
-        if not has:
-            pytest.skip("knowledge_base 集合不存在（先跑一次 build_knowledge_base）")
-        return rag
-    except ImportError as e:
-        pytest.skip(f"依赖缺失: {e}")
+def _fake_embedding(texts):
+    """确定性伪向量：文本哈希展开成 1024 维 ±1 向量（EMBEDDING_DIM 同维）"""
+    dim = 1024
+    out = []
+    for t in texts:
+        h = hash(t)
+        vec = []
+        for i in range(dim):
+            vec.append(1.0 if ((h >> (i % 61)) & 1) else -1.0)
+        out.append(vec)
+    return out
 
 
 @pytest.fixture(scope="module")
 def rag():
-    return _rag_or_skip()
+    try:
+        import yuanai_core.rag as rag_mod
+
+        db = rag_mod._get_db()
+        if db is None:
+            pytest.skip("milvus-lite 不可用（pip install milvus-lite）")
+        rag_mod._ensure_collection()
+        # 本测试只测过滤逻辑，mock 掉 embedding（零网络、零模型下载）
+        rag_mod.get_embeddings = _fake_embedding
+        return rag_mod
+    except ImportError as e:
+        pytest.skip(f"依赖缺失: {e}")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _cleanup_db(rag):
+    yield
+    # 会话结束清理临时库（milvus-lite 的 .db 是目录，用 rmtree）
+    try:
+        import shutil
+        shutil.rmtree(_TEST_DB, ignore_errors=True)
+    except Exception:
+        pass
 
 
 UID_A, UID_B = 999001, 999002
@@ -84,9 +115,10 @@ def test_hits_sources_filter(rag):
 
 
 def test_hits_fallback_false_empty(rag):
-    """fallback=False 无命中 → 空数组而非 raw text"""
-    hits = rag.search_knowledge_hits("完全不存在的查询词xyzabc", top_k=3,
-                                     sources=[SRC_A], user_id=UID_A, fallback=False)
+    """fallback=False 无命中 → 空数组而非 raw text。
+    注：伪向量下任意查询都有最近邻，故用不存在的 source 过滤制造空结果。"""
+    hits = rag.search_knowledge_hits("任何查询词", top_k=3,
+                                     sources=["planet:0:0:0"], user_id=UID_A, fallback=False)
     assert hits == []
 
 

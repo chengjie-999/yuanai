@@ -27,6 +27,7 @@ SPEC_FILE_PATH = os.path.join(AIPROMPT_DIR, "annotation_spec.txt")
 STEPS_FILE_PATH = os.path.join(AIPROMPT_DIR, "audit_steps.txt")
 MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
 MILVUS_PORT = os.getenv("MILVUS_PORT", "19530")
+# MILVUS_HOST 以 .db 结尾时走 milvus-lite 嵌入式本地文件模式（单机测试/免部署）
 COLLECTION_NAME = "knowledge_base"
 CHUNK_SIZE = 300
 CHUNK_OVERLAP = 50
@@ -106,7 +107,10 @@ def _get_db() -> MilvusClient | None:
     global _db
     if _db is not None:
         return _db
-    uri = f"http://{MILVUS_HOST}:{MILVUS_PORT}"
+    if MILVUS_HOST.endswith(".db"):
+        uri = MILVUS_HOST  # milvus-lite 嵌入式本地文件
+    else:
+        uri = f"http://{MILVUS_HOST}:{MILVUS_PORT}"
     try:
         _db = MilvusClient(uri=uri, timeout=5)
         return _db

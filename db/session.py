@@ -479,7 +479,7 @@ class AgentDatabase:
 
     def record_failed_login(self, username: str):
         """记录一次登录失败，连续 5 次后锁定 15 分钟"""
-        from datetime import timedelta
+        from datetime import datetime, timedelta
         sess = self.Session()
         try:
             user = sess.query(User).filter_by(username=username).first()

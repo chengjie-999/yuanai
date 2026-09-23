@@ -14,11 +14,19 @@ API 全局限流模块 — 基于 Redis + 内存降级
       ...
 """
 
+import os
 import time
 import logging
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
+
+# 测试环境豁免限流（pytest 连跑登录会触发 5次/60s 429）；生产永不设置。
+# 每次 check 动态读取（模块常量会在全量测试会话中被其它文件抢先 import 固化）
+
+
+def _rate_limit_disabled() -> bool:
+    return os.getenv("RATE_LIMIT_DISABLED", "") == "1"
 
 
 class RateLimiter:
@@ -47,6 +55,8 @@ class RateLimiter:
             identifier: 限流标识（通常为 IP 地址）
         """
         from api.v1.exceptions import AppError
+        if _rate_limit_disabled():
+            return
         now = time.time()
         try:
             from db.redis_client import get_redis

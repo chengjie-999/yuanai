@@ -49,9 +49,13 @@ async def auth_middleware(request: Request, call_next):
     if is_public(path):
         return await call_next(request)
 
+    # 注意：ASGI 中间件里 raise AppError 不会被 FastAPI 异常处理器接管
+    #（ServerErrorMiddleware 对非 HTTPException 一律 500），必须直接返回 JSONResponse
+    from fastapi.responses import JSONResponse
+
     token = _extract_token(request)
     if not token:
-        raise Unauthorized("未提供 token")
+        return JSONResponse(status_code=401, content={"detail": "未提供 token"})
 
     payload = verify_token(token)
     if payload:
@@ -65,7 +69,7 @@ async def auth_middleware(request: Request, call_next):
             request.state.role = sse[1]
             request.state.username = ""
         else:
-            raise Unauthorized("token 无效或已过期")
+            return JSONResponse(status_code=401, content={"detail": "token 无效或已过期"})
 
     # 冻结检查
     from db.session import get_db, User
@@ -75,7 +79,7 @@ async def auth_middleware(request: Request, call_next):
         sess = db.Session()
         user = sess.query(User).filter_by(id=payload["user_id"]).first()
         if user and user.frozen_until and user.frozen_until > datetime.utcnow():
-            raise Forbidden("账号已被冻结")
+            return JSONResponse(status_code=403, content={"detail": "账号已被冻结"})
     except Exception:
         logger.exception("冻结检查时数据库异常")
     finally:
@@ -101,15 +105,21 @@ async def rate_limit_middleware(request: Request, call_next):
 
     ip = get_client_ip(request)
 
-    # 登录/注册使用严格限流
-    if path.startswith("/api/v1/auth/login") or path.startswith("/api/v1/auth/register"):
-        auth_limiter.check(ip)
-    # 上传端点使用中等限流
-    elif path.startswith("/api/v1/data/upload"):
-        upload_limiter.check(ip)
-    # 其他 API 使用通用限流
-    elif path.startswith("/api/"):
-        api_limiter.check(ip)
+    # 中间件里 raise AppError 不会被 FastAPI 异常处理器接管，必须直接返回 429 响应
+    from fastapi.responses import JSONResponse
+    from api.v1.exceptions import AppError
+    try:
+        # 登录/注册使用严格限流
+        if path.startswith("/api/v1/auth/login") or path.startswith("/api/v1/auth/register"):
+            auth_limiter.check(ip)
+        # 上传端点使用中等限流
+        elif path.startswith("/api/v1/data/upload"):
+            upload_limiter.check(ip)
+        # 其他 API 使用通用限流
+        elif path.startswith("/api/"):
+            api_limiter.check(ip)
+    except AppError as e:
+        return JSONResponse(status_code=e.status_code, content={"detail": e.user_msg})
 
     return await call_next(request)
 

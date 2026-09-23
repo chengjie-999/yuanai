@@ -13,6 +13,14 @@ from api.v1.ratelimit import RateLimiter, get_client_ip
 class TestRateLimiter:
     """RateLimiter 基础功能（内存 fallback 模式）"""
 
+    @pytest.fixture(autouse=True)
+    def _force_memory_fallback(self, monkeypatch):
+        """本类测真实限流行为：临时关闭测试豁免 + 强制内存 fallback
+        （本地 Redis 可达时计数器跨测试/跨进程残留，60s TTL 会污染断言）。
+        注意不能用模块级 os.environ——pytest 收集期导入会污染整个会话其它文件。"""
+        monkeypatch.delenv("RATE_LIMIT_DISABLED", raising=False)
+        monkeypatch.setattr("db.redis_client.get_redis", lambda: None)
+
     def test_allows_requests_within_limit(self):
         limiter = RateLimiter("test", max_requests=3, window=60)
         # 前 3 次不应抛出异常

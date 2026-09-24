@@ -3,6 +3,7 @@ import { getStoredModel, setStoredModel, fetchModels } from '../api'
 import { fetchAgentModels, updateAgentModel, fetchApiKeys, saveApiKey, deleteApiKey } from '../api'
 import { fetchAgentVoices, updateAgentVoice } from '../api'
 import { XIcon } from './icons'
+import { useAuth } from '../contexts/AuthContext'
 
 const C = {
   card: { background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' } as const,
@@ -58,6 +59,7 @@ const VOICE_OPTIONS = [
 ]
 
 export default function SettingsPage() {
+  const { isAdmin } = useAuth()
   const [chatModel, setChatModel] = useState(getStoredModel())
   const [models, setModels] = useState<Record<string, { label: string; provider: string }>>({})
   const [agentModels, setAgentModels] = useState<Record<string, string>>({})
@@ -159,7 +161,8 @@ export default function SettingsPage() {
       <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px' }}>设置</h1>
 
-        {/* ---- API Key ---- */}
+        {/* ---- API Key（仅 admin：全局密钥，普通用户写删会覆盖全站模型调用） ---- */}
+        {isAdmin && (
         <div style={C.card}>
           <div style={C.title}>API Key <span style={C.sub}>— 配置模型供应商的访问密钥</span></div>
           {Object.keys(apiKeys).length === 0 ? (
@@ -185,6 +188,7 @@ export default function SettingsPage() {
               style={C.btn}>+ 添加 API Key</button>
           </div>
         </div>
+        )}
 
         {/* ---- 模型配置 ---- */}
         <div style={C.card}>

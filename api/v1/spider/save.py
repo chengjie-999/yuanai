@@ -6,34 +6,39 @@ from spiderlx.core.save.save_data import SavedData
 
 router = APIRouter()
 
+# 保存端点直接写服务器文件/数据库 → 仅管理员可用（安全加固 S0.2）
+_NAME_FIELD = Field(..., description="保存文件名", pattern=r'^[A-Za-z0-9_一-鿿.\-]{1,128}$')
+
 
 class SaveHTMLParams(BaseModel):
-    name: str = Field(..., description="保存文件名")
+    name: str = _NAME_FIELD
     data: str = Field(..., description="HTML内容")
 
 
 class SaveCSVParams(BaseModel):
-    name: str = Field(..., description="保存文件名")
+    name: str = _NAME_FIELD
     data_list: List[List[str]] = Field(..., description="CSV数据列表")
     columns: Optional[List[str]] = Field(default=None, description="列名")
 
 
 class SaveExcelParams(BaseModel):
-    name: str = Field(..., description="保存文件名")
+    name: str = _NAME_FIELD
     data_list: List[List[str]] = Field(..., description="Excel数据列表")
 
 
 class SaveMysqlParams(BaseModel):
-    name: str = Field(..., description="表名")
+    name: str = Field(..., description="表名", pattern=r'^[A-Za-z_][A-Za-z0-9_]{0,63}$')
     data_list: List[List[str]] = Field(..., description="MySQL数据列表")
 
 
 @router.post("/html")
-async def save_html(params: SaveHTMLParams):
-    """保存HTML数据到本地"""
+async def save_html(params: SaveHTMLParams, request: Request):
+    """保存HTML数据到本地（仅 admin：直接写服务器文件）"""
+    from api.v1.middleware import require_admin
+    require_admin(request)
     if SavedData is None:
         raise HTTPException(status_code=500, detail="保存模块未找到")
-    
+
     try:
         saver = SavedData(params.name)
         saver.save_data_html(params.data)
@@ -43,11 +48,13 @@ async def save_html(params: SaveHTMLParams):
 
 
 @router.post("/csv")
-async def save_csv(params: SaveCSVParams):
-    """保存CSV数据到本地"""
+async def save_csv(params: SaveCSVParams, request: Request):
+    """保存CSV数据到本地（仅 admin）"""
+    from api.v1.middleware import require_admin
+    require_admin(request)
     if SavedData is None:
         raise HTTPException(status_code=500, detail="保存模块未找到")
-    
+
     try:
         saver = SavedData(params.name)
         columns = params.columns or []
@@ -58,11 +65,13 @@ async def save_csv(params: SaveCSVParams):
 
 
 @router.post("/excel")
-async def save_excel(params: SaveExcelParams):
-    """保存Excel数据到本地"""
+async def save_excel(params: SaveExcelParams, request: Request):
+    """保存Excel数据到本地（仅 admin）"""
+    from api.v1.middleware import require_admin
+    require_admin(request)
     if SavedData is None:
         raise HTTPException(status_code=500, detail="保存模块未找到")
-    
+
     try:
         saver = SavedData(params.name)
         saver.save_data_excel(params.data_list)
@@ -72,11 +81,13 @@ async def save_excel(params: SaveExcelParams):
 
 
 @router.post("/mysql")
-async def save_mysql(params: SaveMysqlParams):
-    """保存数据到MySQL数据库"""
+async def save_mysql(params: SaveMysqlParams, request: Request):
+    """保存数据到MySQL数据库（仅 admin：直写服务器数据库）"""
+    from api.v1.middleware import require_admin
+    require_admin(request)
     if SavedData is None:
         raise HTTPException(status_code=500, detail="保存模块未找到")
-    
+
     try:
         saver = SavedData(params.name)
         saver.save_data_mysql(params.data_list)

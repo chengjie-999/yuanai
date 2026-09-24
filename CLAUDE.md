@@ -247,9 +247,12 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 
 `agent/tools/claude_delegate.py` — 统筹 Agent 的 `delegate_to_claude_agent` 工具：以 `claude -p --output-format stream-json` 子进程在**本机仓库**执行代码/终端/Git 任务，30s `progress` 心跳防 SSE 300s 超时，输出截断 8000 字符。
 
-安全边界（重要）：
-- **Claude Code hooks 在 `-p` 无头模式下不触发**（第三方网关模式下实测），**不要**把 hooks 写进 `.claude/settings.json`——它只会作用于交互会话且钩子进程 cwd 不是项目根（相对路径命令会以 exit 2 报错，锁死本仓库所有交互会话的工具调用，需重启会话清除）
-- 实际防护 = 进程级白名单（`--allowedTools Read,Glob,Grep,Write,Edit,Bash` + `--disallowedTools WebFetch,WebSearch` + `acceptEdits` + cwd 锁仓库根 + `--max-budget-usd 10`）+ 提示词硬约束（黑名单命令清单，实测模型会拒绝）+ 审计日志 `data/logs/claude_audit.log`
+安全边界（重要，2026-09-23 加固后）：
+- **三层防线**（不依赖 hook 是否真的在无头模式生效）：
+  1. `.claude/settings.json` 已注册 PreToolUse/PostToolUse 钩子（**绝对路径** `$CLAUDE_PROJECT_DIR/scripts/hooks/claude_guard.py`，且 guard 内部 `CLAUDE_CODE_BRIDGE != 1` 时 exit 0 → 对交互会话 no-op，不会锁死）
+  2. **fail-closed 门禁**：`bridge_policy.guard_ready()` —— hook 脚本/settings.json 缺失或未注册时，claude_bridge 与 claude_delegate **拒绝 spawn 子进程**
+  3. **进程级白名单收敛**：`build_allowed_tools()` 默认不含裸 Bash，只留 `Bash(git status/diff/log、pytest、py_compile:*)` 前缀白名单；`CLAUDE_BRIDGE_ENABLE_BASH=0` 纯只读、`CLAUDE_BRIDGE_BASH_UNRESTRICTED=1` 逃生舱
+- 提示词硬约束（黑名单命令清单）+ 审计日志 `data/logs/claude_audit.log` + cwd 锁仓库根 + `--max-budget-usd 10`
 - `agent/bridge_policy.py` 命令分类（allow/deny/review）与 `scripts/hooks/claude_guard.py` 保留，供后续 SDK 桥接（can_use_tool 审批流）复用
 
 ### 工具分配（Token 优化）

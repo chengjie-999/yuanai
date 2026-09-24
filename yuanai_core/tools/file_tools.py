@@ -9,9 +9,13 @@ def save_data_csv(name: str, data: str, headers: str = "") -> str:
     """Save data as CSV file. name: filename, data: CSV content, headers: optional comma-separated."""
     import os
     from utils.data_path import root_path
-    dir_path = os.path.join(root_path(), 'data', 'file', 'csv')
-    os.makedirs(dir_path, exist_ok=True)
-    path = os.path.join(dir_path, name)
+    from utils.safe import ensure_within, safe_filename
+    base = os.path.realpath(os.path.join(root_path(), 'data', 'file', 'csv'))
+    os.makedirs(base, exist_ok=True)
+    try:
+        path = ensure_within(base, os.path.join(base, safe_filename(name)))
+    except ValueError as e:
+        return f"文件名非法: {e}"
     content = (headers + '\n' + data) if headers else data
     with open(path, 'w', encoding='utf-8-sig') as f:
         f.write(content)

@@ -40,6 +40,7 @@ from yuanai_core.core.schemas import (
     tool_end as ev_tool_end, done as ev_done, error_event, progress, sender_event,
 )
 from utils.data_path import root_path
+from agent.bridge_policy import build_allowed_tools, guard_ready
 
 logger = logging.getLogger("claude_bridge")
 
@@ -50,7 +51,6 @@ MAX_TOOL_OUTPUT = 2000
 CLAUDE_CLI = "claude"
 BRIDGE_TIMEOUT = 900  # 单次会话最长 15 分钟
 
-_ALLOWED_TOOLS = "Read,Glob,Grep,Write,Edit,Bash"
 _DISALLOWED_TOOLS = "WebFetch,WebSearch"
 
 _BRIDGE_SYSTEM_PROMPT = (
@@ -191,6 +191,13 @@ class ClaudeBridgeHandler:
             yield error_event("本机未安装 Claude Code CLI（请先安装并登录 claude）", rid)
             return
 
+        # fail-closed 门禁：安全钩子未就绪绝不 spawn 子进程（S0.1 C1 修复）
+        ok, reason = guard_ready(str(PROJECT_ROOT))
+        if not ok:
+            logger.error("拒绝启动 Claude Code：%s", reason)
+            yield error_event(f"安全钩子未就绪，已拒绝启动 Claude Code：{reason}", rid)
+            return
+
         yield sender_event("claude", rid)
 
         resume_sid = self._sessions.get(req.session_id)
@@ -200,7 +207,7 @@ class ClaudeBridgeHandler:
             "--output-format", "stream-json", "--verbose",
             "--include-partial-messages",
             "--permission-mode", "acceptEdits",
-            "--allowedTools", _ALLOWED_TOOLS,
+            "--allowedTools", build_allowed_tools(),
             "--disallowedTools", _DISALLOWED_TOOLS,
             "--setting-sources", "project",
             "--max-budget-usd", "10",

@@ -14,13 +14,8 @@ import logging
 from dotenv import load_dotenv
 load_dotenv()
 
-_ident = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
-
-
-def _safe_ident(name: str) -> str:
-    if not _ident.match(name):
-        raise ValueError(f"非法标识符: {name}")
-    return name
+# 复用 utils/safe 单点实现（安全加固 S0.2）；保留 _safe_ident 名供本文件调用点
+from utils.safe import safe_ident as _safe_ident
 
 logger = logging.getLogger(__name__)
 
@@ -390,7 +385,7 @@ def _update_row(session, table: str, row: dict, merge_keys: list):
     set_cols = [k for k in row if k not in merge_keys and k != "id" and k in valid]
     set_clause = ", ".join([f"`{c}` = :{c}" for c in set_cols])
     where_clause = " AND ".join([f"`{c}` = :where_{c}" for c in merge_keys])
-    sql = f"UPDATE `{table}` SET {set_clause} WHERE {where_clause}"
+    sql = f"UPDATE `{_safe_ident(table)}` SET {set_clause} WHERE {where_clause}"
     params = {c: row[c] for c in set_cols}
     params.update({f"where_{c}": row[c] for c in merge_keys})
     if set_cols:

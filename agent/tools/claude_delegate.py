@@ -16,6 +16,7 @@ from typing import Callable, Optional
 from yuanai_core.core.schemas import AgentEvent, progress
 from yuanai_core.rag import current_request_id
 from utils.data_path import root_path
+from agent.bridge_policy import build_allowed_tools, guard_ready
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,6 @@ SUBPROCESS_TIMEOUT = 600       # 单次任务最长 10 分钟
 HEARTBEAT_SECONDS = 30         # 心跳间隔（重置云端 SSE 300s 超时）
 MAX_OUTPUT_CHARS = 8000        # tool_end 输出上限（进入 LLM 上下文与聊天记录）
 
-_ALLOWED_TOOLS = "Read,Glob,Grep,Write,Edit,Bash"
 _DISALLOWED_TOOLS = "WebFetch,WebSearch"
 
 _BRIDGE_SYSTEM_PROMPT = (
@@ -52,7 +52,7 @@ def _build_command(claude_path: str, prompt: str) -> list:
         "--output-format", "stream-json",
         "--verbose",  # stream-json 要求 --verbose
         "--permission-mode", "acceptEdits",
-        "--allowedTools", _ALLOWED_TOOLS,
+        "--allowedTools", build_allowed_tools(),
         "--disallowedTools", _DISALLOWED_TOOLS,
         "--setting-sources", "project",
         "--max-budget-usd", "10",
@@ -71,8 +71,14 @@ async def run_claude_once(
     if claude_path is None:
         return "本机未安装 Claude Code CLI（请先安装并登录 claude）"
 
+    # fail-closed 门禁：安全钩子未就绪绝不 spawn 子进程（S0.1 C1 修复）
+    ok, reason = guard_ready(PROJECT_ROOT)
+    if not ok:
+        logger.error("拒绝启动 Claude Code：%s", reason)
+        return f"安全钩子未就绪，已拒绝启动 Claude Code：{reason}"
+
     if _IS_3P_MODE:
-        logger.warning("第三方网关模式（hooks 不可用）：命令级拦截降级为提示词约束 + 进程级白名单")
+        logger.warning("第三方网关模式（hooks 可能不触发）：命令级拦截靠进程级白名单兜底")
 
     cwd = cwd or PROJECT_ROOT
     cmd = _build_command(claude_path, prompt)

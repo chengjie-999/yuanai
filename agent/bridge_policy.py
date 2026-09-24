@@ -6,6 +6,7 @@ Phase 2（SDK 桥接）：review 走云端聊天审批流（can_use_tool）
 钩子与 SDK can_use_tool 共用本模块，保证两阶段安全口径一致。
 """
 
+import json
 import os
 import re
 from pathlib import Path
@@ -60,6 +61,54 @@ _BASH_DENY = [
 _BASH_REVIEW = [
     (r"\bgit\s+commit\b", "git commit 需云端审批确认"),
 ]
+
+# ==================== S0.1 修复：fail-closed 门禁 + Bash 白名单 ====================
+# 背景：hooks 在 -p 无头模式实测不触发（第三方网关模式，见 CLAUDE.md），
+# 因此不能只依赖钩子。三层防线：① 钩子注册（交互会话可用）② guard_ready 门禁
+# ③ --allowedTools 移除裸 Bash（不依赖任何运行时行为）。
+
+_BASE_TOOLS = "Read,Glob,Grep,Write,Edit"
+# 只读/测试类常用命令白名单（Bash(前缀:*) 语法）
+_DEFAULT_BASH_ALLOW = [
+    "Bash(git status:*)",
+    "Bash(git diff:*)",
+    "Bash(git log:*)",
+    "Bash(python -m pytest:*)",
+    "Bash(python -m py_compile:*)",
+]
+
+
+def build_allowed_tools() -> str:
+    """构造 --allowedTools：默认不含裸 Bash（即使钩子完全不生效也拦得住）。
+    - CLAUDE_BRIDGE_ENABLE_BASH=0 → 纯只读+编辑（钩子探针未通过时的保守默认）
+    - CLAUDE_BRIDGE_BASH_UNRESTRICTED=1 → 恢复裸 Bash（逃生舱，已知风险）
+    """
+    if os.getenv("CLAUDE_BRIDGE_BASH_UNRESTRICTED", "0") == "1":
+        return _BASE_TOOLS + ",Bash"
+    if os.getenv("CLAUDE_BRIDGE_ENABLE_BASH", "1") == "0":
+        return _BASE_TOOLS
+    return _BASE_TOOLS + "," + ",".join(_DEFAULT_BASH_ALLOW)
+
+
+def guard_ready(project_root: str) -> tuple:
+    """fail-closed 门禁：hook 脚本存在 + settings.json 已注册 + JSON 可解析。
+    返回 (ok: bool, reason: str)。未就绪时调用方必须拒绝 spawn 子进程。"""
+    root = Path(project_root)
+    guard = root / "scripts" / "hooks" / "claude_guard.py"
+    if not guard.is_file():
+        return False, "hook 脚本缺失: scripts/hooks/claude_guard.py"
+    settings = root / ".claude" / "settings.json"
+    if not settings.is_file():
+        return False, ".claude/settings.json 不存在（安全钩子未注册）"
+    try:
+        data = json.loads(settings.read_text("utf-8"))
+    except Exception as e:
+        return False, f".claude/settings.json 解析失败: {e}"
+    for rule in (data.get("hooks") or {}).get("PreToolUse") or []:
+        for h in rule.get("hooks", []):
+            if "claude_guard.py" in str(h.get("command", "")):
+                return True, ""
+    return False, ".claude/settings.json 未注册 claude_guard.py 钩子"
 
 _CURL_WGET = re.compile(r"\b(curl|wget)\b")
 _LOCALHOST = re.compile(r"localhost|127\.0\.0\.1")

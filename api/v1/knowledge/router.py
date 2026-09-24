@@ -101,7 +101,8 @@ def _run_upload(content: bytes, filename: str, actual_user_id: int, visibility: 
     """同步执行上传全流程（在线程池中运行）"""
     tag = "共享" if visibility == "shared" else f"私有(uid={user_id})"
     tmp_dir = tempfile.mkdtemp(prefix="kb_upload_")
-    zip_path = os.path.join(tmp_dir, filename)
+    # 不信任客户端 filename（可 ../../ 穿越）：tmp_dir 是 mkdtemp 隔离目录，用固定名
+    zip_path = os.path.join(tmp_dir, "upload.zip")
 
     try:
         with open(zip_path, "wb") as f:

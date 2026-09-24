@@ -40,6 +40,17 @@ def _check_ownership(request: Request, ds: dict):
             raise HTTPException(status_code=404, detail="not found")
 
 
+def _safe_dataset_path(path: str) -> str:
+    """数据集文件路径包含校验（H1 修复）：realpath 必须落在 DATASETS_DIR 内。
+    兼容旧脏数据：校验失败 404 而非静默回退。"""
+    from utils.safe import ensure_within
+    try:
+        return ensure_within(DATASETS_DIR, path)
+    except ValueError:
+        logger.warning("数据集路径越界被拒: %s", path)
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+
 @router.post("/upload")
 async def upload_dataset(request: Request, file: UploadFile = File(...)):
     ext = os.path.splitext(file.filename or "")[1].lower()
@@ -96,7 +107,9 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)):
             file_size=0, row_count=0, columns_info=[], preview_rows=[],
             user_id=user_id,
         )
-        fname = f"{ds_id}_{file.filename}"
+        # 落盘名必须净化（客户端 filename 可带路径成分 → 穿越；H1 修复）
+        from utils.safe import safe_filename
+        fname = f"{ds_id}_{safe_filename(file.filename)}"
         fpath = os.path.join(DATASETS_DIR, fname)
         with open(fpath, "wb") as f:
             f.write(content)
@@ -188,7 +201,7 @@ async def analyze_dataset_api(ds_id: int, request: Request, force: bool = False,
     ds = db.get_dataset(ds_id)
     _check_ownership(request, ds)
 
-    path = ds["file_path"]
+    path = _safe_dataset_path(ds["file_path"])
     file_mtime = os.path.getmtime(path) if os.path.exists(path) else 0
 
     KEY_BASIC = f"analysis:{ds_id}:basic"

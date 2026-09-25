@@ -7,7 +7,8 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ai_agent}
     ports:
-      - "3307:3306"
+      # S2.2：只绑本机回环（公网关闭；本机 GUI/SSH 隧道可用）
+      - "127.0.0.1:3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -20,10 +21,12 @@ services:
     image: redis:7-alpine
     container_name: spider-redis
     restart: always
+    # S2.2：requirepass（.env 新增 REDIS_PASSWORD，随机强口令）
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,9 +40,8 @@ services:
       ETCD_USE_EMBED: "true"
       ETCD_DATA_DIR: /var/lib/milvus/etcd
       COMMON_STORAGETYPE: local
-    ports:
-      - "19530:19530"
-      - "9091:9091"
+    # S2.2：不发布任何端口（backend/frontend 同 compose 网络走 milvus:19530 内网通信；
+    # 健康检查在容器内 localhost:9091 执行，不受影响）
     volumes:
       - milvus_data:/var/lib/milvus
     healthcheck:
@@ -61,6 +63,8 @@ services:
       - REDIS_HOST=redis
       - MILVUS_HOST=milvus
       - APP_ENV=production
+      # S2.2：Redis 密码（redis_client/settings 两处连接点都读这个变量）
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
     depends_on:
       mysql:
         condition: service_healthy

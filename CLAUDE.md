@@ -303,6 +303,7 @@ skills/
 - 登录限流 5次/60s，通用 API 60次/60s，上传 10次/60s
 - Nginx 层安全响应头（CSP/HSTS/X-Frame-Options 等）
 - 知识库 zip 上传三道闸（条目数/总体积/压缩比/单成员上限 + 逐成员解压 + 路径校验 + 流式写盘 300MB 上限，`api/v1/knowledge/router.py` `_safe_extract_zip`；测试别用 admin/admin123 撞登录——连跑 5 轮会把本地 admin 锁死 15 分钟，conftest 已改自建测试账号）
+- **S2 部署面（2026-09-25）**：nginx 安全头收口到 `deploy/snippets/security-headers.conf`（CSP 先 Report-Only）+ `sandbox-headers.conf`（iframe 端点无 XFO）；80 默认块改 301；MySQL 3307 只绑 127.0.0.1（公网关闭，db/merge.py 走 SSH 隧道）；Milvus 不发布端口；Redis requirepass（REDIS_PASSWORD，`db/redis_client.py` + `settings.REDIS_CONFIG` 两处连接点）；应用账号改最小权限（S3.5 随部署执行）
 
 ## 成本护栏（2026-09-11）
 

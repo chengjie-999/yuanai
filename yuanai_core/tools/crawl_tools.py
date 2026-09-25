@@ -93,28 +93,18 @@ def check_url(url: str) -> str:
     """Check if URL is reachable. url: the URL to check."""
     import time
     try:
-        import requests
+        from spiderlx.core.requests.safe_fetch import safe_get
         start = time.time()
-        resp = requests.head(url, timeout=10, allow_redirects=True,
-                            headers={"User-Agent": "Mozilla/5.0"})
+        # S1.4/S1.5：守卫 + 逐跳重校验（不再 allow_redirects=True 盲跳）
+        result = safe_get(url, method="HEAD", timeout=10,
+                          headers={"User-Agent": "Mozilla/5.0"}, max_bytes=4096)
         elapsed = (time.time() - start) * 1000
         return (
-            f"可访问 (状态码: {resp.status_code})\n"
+            f"可访问 (状态码: {result.status_code})\n"
             f"响应: {elapsed:.0f}ms\n"
-            f"最终URL: {resp.url}\n"
-            f"Content-Type: {resp.headers.get('Content-Type', 'N/A')}"
+            f"最终URL: {result.url}\n"
+            f"Content-Type: {result.headers.get('Content-Type', 'N/A')}"
         )
-    except ImportError:
-        import urllib.request
-        try:
-            start = time.time()
-            req = urllib.request.Request(url, method='HEAD',
-                                         headers={"User-Agent": "Mozilla/5.0"})
-            resp = urllib.request.urlopen(req, timeout=10)
-            elapsed = (time.time() - start) * 1000
-            return f"可访问 (状态码: {resp.getcode()})\n响应: {elapsed:.0f}ms"
-        except Exception as e2:
-            return f"不可访问: {e2}"
     except Exception as e:
         return f"不可访问: {e}"
 

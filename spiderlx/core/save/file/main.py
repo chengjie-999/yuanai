@@ -17,6 +17,8 @@ DB_CONFIG = {
 }
 BASE_SAVE_DIR = os.path.join(root_path(), "crawled_files")
 CHUNK_SIZE = 1024 * 1024
+# S1.5：下载体积上限（仍封顶，防无限流）
+DOWNLOAD_MAX_BYTES = 512 * 1024 * 1024
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
 }
@@ -99,16 +101,17 @@ def download_file(url):
     task_id = insert_pending_task(url, file_name)
 
     try:
-        resp = requests.get(url, stream=True, headers=HEADERS, timeout=30)
-        resp.raise_for_status()
-        file_type = resp.headers.get("Content-Type", "application/octet-stream")
-
-        # 临时保存路径
+        # S1.5：走 safe_fetch 收口（SSRF 守卫 + 逐跳重校验 + 钉住 + 体积上限）
+        from spiderlx.core.requests.safe_fetch import safe_get
         temp_path = os.path.join(BASE_SAVE_DIR, os.urandom(8).hex() + "_temp")
+        file_type = "application/octet-stream"
         with open(temp_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=CHUNK_SIZE):
-                if chunk:
-                    f.write(chunk)
+            result = safe_get(url, headers=HEADERS, timeout=30,
+                              max_bytes=DOWNLOAD_MAX_BYTES, stream_cb=f.write)
+        result.raise_for_status()
+        if result.truncated:
+            raise ValueError(f"文件超过下载上限（{DOWNLOAD_MAX_BYTES} 字节）")
+        file_type = result.headers.get("Content-Type", "application/octet-stream")
 
         # 计算md5、大小
         file_size = os.path.getsize(temp_path)
@@ -124,6 +127,11 @@ def download_file(url):
 
     except Exception as e:
         update_file_info(task_id, "failed", 0, "", "", "")
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
         print(f"❌ 下载失败 {url}：{str(e)}")
 
 

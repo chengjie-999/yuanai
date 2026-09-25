@@ -2,10 +2,17 @@
 import base64
 from typing import Dict, List
 
+# fetch_url 响应上限（S1.4：parse_html 只用前段文本，防大响应打爆内存）
+FETCH_URL_MAX_BYTES = 5 * 1024 * 1024
+
 
 def fetch_url(url: str, retype: str = "text") -> str:
-    """GET 请求，返回 'text' | 'json' | 'content'(base64)。"""
-    import requests
+    """GET 请求，返回 'text' | 'json' | 'content'(base64)。
+
+    S1.4/S1.5 加固：走 safe_fetch 收口（SSRF 守卫 + 逐跳重校验 + DNS 钉住 +
+    5MB 流式截断）。lazy import 保持本模块纯函数属性（spiderlx 依赖 requests）。
+    """
+    from spiderlx.core.requests.safe_fetch import safe_get
 
     headers = {
         "User-Agent": (
@@ -13,13 +20,13 @@ def fetch_url(url: str, retype: str = "text") -> str:
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         )
     }
-    resp = requests.get(url, headers=headers, timeout=15)
-    resp.raise_for_status()
+    result = safe_get(url, headers=headers, timeout=15, max_bytes=FETCH_URL_MAX_BYTES)
+    result.raise_for_status()
     if retype == "json":
-        return resp.text
+        return result.text
     elif retype == "content":
-        return base64.b64encode(resp.content).decode()
-    return resp.text
+        return base64.b64encode(result.content).decode()
+    return result.text
 
 
 def parse_html(html: str) -> Dict:

@@ -160,7 +160,11 @@ def get_map_outline(request: Request, mid: int):
 
 @router.get("/maps/{mid}/origin")
 def get_map_origin(request: Request, mid: int):
-    """导图原始文件（万兴 html 导出为自包含可交互页面——原布局/配色/图片全保留）"""
+    """导图原始文件（万兴 html 导出为自包含可交互页面——原布局/配色/图片全保留）
+
+    S1.2：用户上传的 html 以不透明源沙箱运行（CSP sandbox），即使内嵌恶意脚本
+    也读不到本站存储；前端 iframe 同步加 sandbox="allow-scripts" 双保险。
+    """
     uid = _uid(request)
     m = store.owned_map(mid, uid)
     mdir = store.map_dir(uid, m["planet_id"], mid)
@@ -169,7 +173,13 @@ def get_map_origin(request: Request, mid: int):
         raise HTTPException(status_code=404, detail="该导图没有原始文件")
     path = os.path.join(mdir, candidates[0])
     media = "text/html" if candidates[0].endswith(".html") else "application/octet-stream"
-    return FileResponse(path, media_type=media)
+    headers = {"Cache-Control": "private, max-age=600"}
+    if media == "text/html":
+        headers.update({
+            "Content-Security-Policy": "sandbox allow-scripts; frame-ancestors 'self'",
+            "X-Content-Type-Options": "nosniff",
+        })
+    return FileResponse(path, media_type=media, headers=headers)
 
 
 @router.delete("/maps/{mid}")
@@ -352,4 +362,5 @@ def serve_asset(request: Request, pid: int, mid: int, filename: str):
     # realpath 归一化防路径穿越（照 chat/router.py 图片服务安全写法）
     if not fp.startswith(base) or not os.path.isfile(fp):
         raise HTTPException(status_code=404, detail="资源不存在")
-    return FileResponse(fp, headers={"Cache-Control": "private, max-age=600"})
+    return FileResponse(fp, headers={"Cache-Control": "private, max-age=600",
+                                     "X-Content-Type-Options": "nosniff"})

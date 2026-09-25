@@ -367,6 +367,7 @@ GitHub Actions（`.github/workflows/ci.yml`）：
 - `GET /api/v1/analysis/history?session_id=` — 大屏历史列表
 - `GET /api/v1/analysis/rfm-chart/{filename}` — Plotly 3D 图表 HTML（公开路径，iframe 嵌入）
 - iframe 鉴权：`/api/v1/data/script-html`、`/api/v1/data/analysis-html` 支持 `?token=`（middleware `_extract_token`）
+- **iframe 安全（2026-09-25 S1.2 加固）**：iframe 资源用 5 秒 sse token（`GET /auth/sse-token`，单次使用）替代 7 天 JWT 拼 URL（`helpers.tsx useSecuredUrl`）；前端 5 处 iframe 全部 `sandbox="allow-scripts"`；后端三个 HTML 端点（planet origin / analysis-html / script-html）响应 `CSP: sandbox allow-scripts; frame-ancestors 'self'` + nosniff；script-html 增加 html_id 白名单（12 位 hex）+ `.owner` 归属校验（registry 生成时写入 current_user_id）；middleware 冻结检查改读 request.state.user_id（sse 分支原静默失效）
 
 **医学 API（`api/v1/medical/router.py`，JWT 保护）：**
 - `GET /api/v1/medical/species` — 物种→MeSH 导航列表

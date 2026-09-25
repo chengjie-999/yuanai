@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { API_BASE, fetchDatasets, getToken } from '../api'
 import { ArrowLeftIcon } from '../components/icons'
+import { useSecuredUrl } from '../components/chat/helpers'
 
 interface RFMData { summary: { users: number; orders: number; ref_date: string }; means: { R: number; F: number; M: number }; segments: { label: string; count: number; amount: number; count_pct: string; amount_pct: string; color: string }[]; chart_html: string }
 
@@ -32,6 +33,9 @@ export default function RFMDashboard() {
   }
 
   useEffect(() => { dsId ? runRFM(dsId) : runRFM() }, [dsId])
+
+  // 3D 散点 iframe 安全 URL（5 秒 sse token + 沙箱，S1.2）
+  const chartSrc = useSecuredUrl(data?.chart_html || '')
 
   return (
     <div style={{ minHeight: '100vh', background: '#1a1a2e' }}>
@@ -70,7 +74,7 @@ export default function RFMDashboard() {
           {/* 3D scatter + Segments */}
           <div style={{ display: 'flex', gap: 12, padding: '0 24px', height: 480 }}>
             <div style={{ flex: 1, background: '#16213e', borderRadius: 10, border: '1px solid #0f3460', overflow: 'hidden' }}>
-              <iframe src={`${data.chart_html}?token=${getToken()}`} style={{ width: '100%', height: '100%', border: 'none' }} />
+              <iframe src={chartSrc} sandbox="allow-scripts" style={{ width: '100%', height: '100%', border: 'none' }} />
             </div>
 
             <div style={{ width: 240, flexShrink: 0, background: '#16213e', borderRadius: 10, border: '1px solid #0f3460', padding: 12, overflow: 'auto' }}>

@@ -75,7 +75,7 @@ export function planetAssetUrl(pid: number, mid: number, name: string): string {
   return `${API_BASE}/planet/asset/${pid}/${mid}/${encodeURIComponent(name)}?token=${getToken()}`
 }
 
-/* 导图原始文件 URL（iframe 无法带 header，走 ?token=；万兴 html 导出为自包含交互页面） */
+/* 导图原始文件基础 URL（token 由 useSecuredUrl 换 5 秒 sse token，S1.2 不落长期 JWT） */
 export function mapOriginUrl(mid: number): string {
-  return `${API_BASE}/planet/maps/${mid}/origin?token=${getToken()}`
+  return `${API_BASE}/planet/maps/${mid}/origin`
 }

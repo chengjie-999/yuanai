@@ -71,13 +71,14 @@ async def auth_middleware(request: Request, call_next):
         else:
             return JSONResponse(status_code=401, content={"detail": "token 无效或已过期"})
 
-    # 冻结检查
+    # 冻结检查（S1.2 修复：sse token 分支 payload 为 None，原来在此抛 TypeError 被
+    # except 吞掉 → 冻结检查失效；统一改读 request.state.user_id）
     from db.session import get_db, User
     sess = None
     try:
         db = get_db()
         sess = db.Session()
-        user = sess.query(User).filter_by(id=payload["user_id"]).first()
+        user = sess.query(User).filter_by(id=request.state.user_id).first()
         if user and user.frozen_until and user.frozen_until > datetime.utcnow():
             return JSONResponse(status_code=403, content={"detail": "账号已被冻结"})
     except Exception:

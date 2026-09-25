@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { API_BASE, getToken } from '../api'
-import { addToken } from '../components/chat/helpers'
+import { useSecuredUrl } from '../components/chat/helpers'
 import { ArrowLeftIcon, BarChartIcon } from '../components/icons'
 
 /* ============================================================
@@ -160,6 +160,9 @@ export default function AnalysisDashboard() {
       .finally(() => setLoading(false))
   }, [sessionId])
 
+  // 图表 iframe 安全 URL（5 秒 sse token + 沙箱，S1.2）
+  const chartSrc = useSecuredUrl(data?.chart_html || '')
+
   if (loading) return <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-secondary)' }}>加载中…</div>
   if (error) return (
     <div style={{ padding: 60, textAlign: 'center' }}>
@@ -196,7 +199,7 @@ export default function AnalysisDashboard() {
       <div style={{ flex: 1, padding: '16px 20px 40px', maxWidth: 1080, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
         {chart_html && (
           <div style={{ height: '60vh', minHeight: 380, marginBottom: 18, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-            <iframe src={addToken(chart_html)} style={{ width: '100%', height: '100%', border: 'none' }} title="交互图表" />
+            <iframe src={chartSrc} sandbox="allow-scripts" style={{ width: '100%', height: '100%', border: 'none' }} title="交互图表" />
           </div>
         )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>{body}</div>

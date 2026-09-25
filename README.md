@@ -187,6 +187,15 @@ skills/
 - 注册功能已关闭，仅 admin 可创建用户
 - 用户可被冻结，冻结期间无法使用
 
+### iframe 资源安全（2026-09-25 加固）
+
+前端内嵌 iframe 加载的 HTML 资源（导图原文件 / plotly 图表 / 分析 HTML / RFM 大屏）统一：
+
+- **5 秒 sse token**：`GET /api/v1/auth/sse-token` 签发（单次使用），iframe URL 不再携带 7 天 JWT——URL 泄露只损失 5 秒
+- **双沙箱**：前端 iframe 全部 `sandbox="allow-scripts"`（不给 `allow-same-origin`）；后端三个 HTML 端点响应 `CSP: sandbox allow-scripts; frame-ancestors 'self'` + `nosniff`——用户上传的 html 即使内嵌恶意脚本也读不到本站存储
+- **归属校验**：脚本生成的 HTML 缓存带 `.owner` 文件（registry 写入当前 user_id），`/data/script-html/{id}` 校验属主（admin 例外），html_id 限 12 位 hex 白名单
+- 旧模式（`?token=长期JWT`）仍兼容；sse token 分支的冻结检查已修复（原静默失效）
+
 ### 公开路径
 
 ```

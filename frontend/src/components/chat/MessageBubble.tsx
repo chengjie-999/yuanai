@@ -4,7 +4,7 @@ import ToolCallCard from '../ToolCallCard'
 import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { voiceTts } from '../../api'
-import { LoadingDots, addToken, stripMarkdown } from './helpers'
+import { LoadingDots, addToken, stripMarkdown, useSecuredUrl } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon } from '../icons'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
@@ -19,6 +19,20 @@ const iconProps = { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', s
 
 // 全局朗读互斥：同一时刻只允许一个气泡出声，新朗读自动打断旧的
 let globalStopReading: (() => void) | null = null
+
+/* 交互图表 iframe：5 秒 sse token + 沙箱（S1.2，不落长期 JWT、不给 allow-same-origin） */
+function HtmlFrame({ url, title }: { url: string; title: string }) {
+  const src = useSecuredUrl(url)
+  return (
+    <div style={{
+      borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)',
+      background: 'var(--bg-primary)', aspectRatio: '2/1', maxHeight: 450,
+    }}>
+      <iframe src={src} sandbox="allow-scripts" title={title}
+        style={{ width: '100%', height: '100%', border: 'none' }} />
+    </div>
+  )
+}
 
 export default function MessageBubble({ msg, index, isLast, loading, liked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onLike }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
@@ -301,14 +315,7 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
             {msg.htmls && msg.htmls.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
                 {msg.htmls.map((url, j) => (
-                  <div key={j} style={{
-                    borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)',
-                    background: 'var(--bg-primary)', aspectRatio: '2/1', maxHeight: 450,
-                  }}>
-                    <iframe src={addToken(url)} style={{
-                      width: '100%', height: '100%', border: 'none',
-                    }} title={`交互图表 ${j + 1}`} />
-                  </div>
+                  <HtmlFrame key={j} url={url} title={`交互图表 ${j + 1}`} />
                 ))}
               </div>
             )}

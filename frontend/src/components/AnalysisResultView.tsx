@@ -1,5 +1,12 @@
 import { API_BASE, getToken } from '../api'
-import { addToken } from './chat/helpers'
+import { useSecuredUrl } from './chat/helpers'
+
+/* 图表 iframe：5 秒 sse token + 沙箱（S1.2，不落长期 JWT、不给 allow-same-origin） */
+function ChartFrame({ url, name }: { url: string; name: string }) {
+  const src = useSecuredUrl(url)
+  return <iframe src={src} sandbox="allow-scripts" title={name}
+    style={{ width: '100%', height: 300, border: 'none' }} />
+}
 
 const thStyle: React.CSSProperties = {
   padding: '4px 6px', textAlign: 'left', fontSize: 10,
@@ -177,7 +184,7 @@ export default function AnalysisResultView({ analysis }: { analysis: any }) {
                   {ch.name}
                 </div>
                 {ch.html_url ? (
-                  <iframe src={addToken(ch.html_url)} style={{ width: '100%', height: 300, border: 'none' }} />
+                  <ChartFrame url={ch.html_url} name={ch.name} />
                 ) : ch.data ? (
                   <img src={`data:image/png;base64,${ch.data}`} style={{ width: '100%', display: 'block' }} alt={ch.name} />
                 ) : null}

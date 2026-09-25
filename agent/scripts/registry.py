@@ -16,14 +16,14 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 
 
 def _purge_html_cache(max_age_seconds: int = 3600):
-    """清理过期的 HTML 缓存文件（默认 TTL 1 小时）"""
+    """清理过期的 HTML 缓存文件（默认 TTL 1 小时）；.owner 归属文件随 html 一并清"""
     cache_dir = os.path.join(PROJECT_ROOT, "data", "analysis", "html_cache")
     if not os.path.isdir(cache_dir):
         return
     now = time.time()
     for fname in os.listdir(cache_dir):
         fpath = os.path.join(cache_dir, fname)
-        if fname.endswith(".html") and now - os.path.getmtime(fpath) > max_age_seconds:
+        if fname.endswith((".html", ".owner")) and now - os.path.getmtime(fpath) > max_age_seconds:
             try:
                 os.remove(fpath)
             except OSError:
@@ -160,6 +160,14 @@ class _ScriptHandle:
                         cache_id = uuid.uuid4().hex[:12]
                         cached_path = os.path.join(cache_dir, f"{cache_id}.html")
                         shutil.copy2(html_path, cached_path)
+                        # S1.2：写 .owner 归属（云端 serve_script_html 校验，防越权读他人分析 HTML）
+                        try:
+                            from yuanai_core.rag import current_user_id
+                            with open(os.path.join(cache_dir, f"{cache_id}.owner"),
+                                      "w", encoding="utf-8") as of:
+                                of.write(str(current_user_id.get()))
+                        except Exception as e:
+                            logger.warning("write .owner failed: %s", e)
                         html_urls.append(f"/api/v1/data/script-html/{cache_id}")
                 if html_urls:
                     output += f"\n__HTML__URL:{','.join(html_urls)}"

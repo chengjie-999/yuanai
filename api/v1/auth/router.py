@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, field_validator
 from db.session import get_db
-from api.v1.auth.utils import create_token, verify_token
+from api.v1.auth.utils import create_token, verify_token, create_sse_token
 from api.v1.ratelimit import auth_limiter, get_client_ip
 from utils.data_path import root_path as _root_path
 
@@ -302,6 +302,21 @@ def delete_apikey(req: ApiKeyBody, request: Request):
 
 class TokenCheck(BaseModel):
     token: str
+
+
+@router.get("/sse-token")
+def get_sse_token(request: Request):
+    """签发 5 秒短期令牌（iframe 加载 HTML 资源用，替代长期 JWT 拼 URL）。
+
+    /auth/* 是公开路径（中间件不鉴权），本端点自行校验 Authorization 头；
+    sse token 由中间件 verify_sse_token 校验（单次使用 + 5 秒 TTL）。
+    """
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    payload = verify_token(token) if token else None
+    if not payload:
+        raise HTTPException(status_code=401, detail="未登录")
+    return {"token": create_sse_token(payload["user_id"], payload.get("role", "user"))}
 
 
 @router.post("/check")

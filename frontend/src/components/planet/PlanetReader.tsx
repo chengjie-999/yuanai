@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getMapTree, mapOriginUrl } from '../../api/planet'
+import { useSecuredUrl } from '../chat/helpers'
 import MarkdownContent from '../MarkdownContent'
 import { WandIcon, NoteIcon, ChevronRightIcon, LoaderIcon, EditIcon } from '../icons'
 import PlanetOutline from './PlanetOutline'
@@ -28,6 +29,8 @@ export default function PlanetReader({ map, note, job, onConvert, onSaveNote, on
   const [tree, setTree] = useState<any>(null)
   const [editing, setEditing] = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
+  // 导图原始文件 URL（5 秒 sse token；沙箱化防用户上传 html 读本站存储）
+  const originUrl = useSecuredUrl(map.source_format === 'html' ? mapOriginUrl(map.id) : '')
 
   useEffect(() => {
     setEditing(false)
@@ -141,8 +144,9 @@ export default function PlanetReader({ map, note, job, onConvert, onSaveNote, on
 
         {tab === 'map' && (
           map.source_format === 'html' ? (
-            /* 万兴 html 导出 = 自包含交互页面（原布局/配色/图片），直接渲染原文件 */
-            <iframe src={mapOriginUrl(map.id)} title="导图原文件"
+            /* 万兴 html 导出 = 自包含交互页面（原布局/配色/图片），直接渲染原文件。
+               sandbox="allow-scripts"（不给 allow-same-origin）：用户上传内容以不透明源运行 */
+            <iframe src={originUrl} title="导图原文件" sandbox="allow-scripts"
               style={{ width: '100%', height: '100%', border: 'none', borderRadius: 8, background: '#fff' }} />
           ) : tree ? <PlanetMapView tree={tree} /> : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', padding: 30, color: 'var(--text-muted)', fontSize: 13 }}>

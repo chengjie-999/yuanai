@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { ChatMessage } from '../../types'
-import { getToken } from '../../api'
+import { API_BASE, getToken } from '../../api'
 
 export type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string }
 
@@ -10,6 +10,43 @@ export function addToken(url: string): string {
   if (url.includes('?token=')) return url
   if (url.startsWith('/api/v1/chat/image')) return url  // 图片路由公开，加 token 会击穿 immutable 缓存
   return `${url}?token=${getToken()}`
+}
+
+/** 取 5 秒短期 sse token（iframe 加载 HTML 资源用，替代长期 JWT 拼 URL） */
+export async function fetchSseToken(): Promise<string> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/sse-token`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+    if (!res.ok) return ''
+    return ((await res.json()) as { token?: string }).token || ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * iframe 安全 URL：/api/v1 资源换 5 秒 sse_token（URL 不落 7 天 JWT，S1.2）。
+ * data: 与公开路由（chat/image）跳过；sse token 获取失败时回退长期 token
+ * （iframe 已加 sandbox="allow-scripts" + 后端 CSP 沙箱头，双重兜底）。
+ */
+export function useSecuredUrl(url: string): string {
+  const [final, setFinal] = useState(url)
+  useEffect(() => {
+    let alive = true
+    if (!url || url.startsWith('data:') || !url.startsWith('/api/v1/')
+      || url.startsWith('/api/v1/chat/image') || url.includes('?token=')) {
+      setFinal(url)
+      return
+    }
+    fetchSseToken().then((tok) => {
+      if (!alive) return
+      if (tok) setFinal(`${url}${url.includes('?') ? '&' : '?'}token=${tok}`)
+      else setFinal(`${url}?token=${getToken()}`)  // 端点异常时退回现状（沙箱内）
+    }).catch(() => {})
+    return () => { alive = false }
+  }, [url])
+  return final
 }
 
 export function stripMarkdown(text: string): string {

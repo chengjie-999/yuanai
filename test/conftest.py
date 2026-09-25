@@ -63,10 +63,19 @@ def client():
 
 @pytest.fixture(scope="session")
 def auth_headers(client):
-    """登录并返回带 token 的 headers"""
+    """登录并返回带 token 的 headers。
+
+    只用自建测试账号（__test_api_user__），绝不撞 admin/admin123——
+    本地 admin 密码不一致时，连跑 5 轮测试会把真实 admin 账号锁死 15 分钟。
+    """
+    from db.session import get_db
+
+    db = get_db()
+    r = db.register_user("__test_api_user__", "test123")
+    username = r.get("username", "__test_api_user__")
     resp = client.post("/api/v1/auth/login", json={
-        "username": "admin",
-        "password": "admin123",
+        "username": username,
+        "password": "test123",
     })
     if resp.status_code == 200:
         token = resp.json()["token"]

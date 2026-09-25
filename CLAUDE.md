@@ -300,6 +300,7 @@ skills/
 - API 全局限流：Redis 优先 + 内存降级（`api/v1/ratelimit.py`）
 - 登录限流 5次/60s，通用 API 60次/60s，上传 10次/60s
 - Nginx 层安全响应头（CSP/HSTS/X-Frame-Options 等）
+- 知识库 zip 上传三道闸（条目数/总体积/压缩比/单成员上限 + 逐成员解压 + 路径校验 + 流式写盘 300MB 上限，`api/v1/knowledge/router.py` `_safe_extract_zip`；测试别用 admin/admin123 撞登录——连跑 5 轮会把本地 admin 锁死 15 分钟，conftest 已改自建测试账号）
 
 ## 成本护栏（2026-09-11）
 

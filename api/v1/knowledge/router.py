@@ -97,20 +97,54 @@ def _find_and_process_mds(
     return results
 
 
-def _run_upload(content: bytes, filename: str, actual_user_id: int, visibility: str, user_id: int) -> dict:
-    """同步执行上传全流程（在线程池中运行）"""
+# S1.3 zip 炸弹三道闸（条目数 / 总解压体积 / 压缩比 / 单成员上限）
+MAX_ENTRIES = 5000
+MAX_TOTAL_UNCOMPRESSED = 512 * 1024 * 1024
+MAX_RATIO = 100
+MAX_MEMBER = 128 * 1024 * 1024
+# 上传包体积上限（与 nginx 300m 对齐；流式写盘防全量入内存）
+MAX_UPLOAD_BYTES = 300 * 1024 * 1024
+
+
+def _safe_extract_zip(zip_path: str, target_dir: str) -> None:
+    """逐成员解压 + 三道闸（防 zip 炸弹与路径穿越）。违反抛 HTTPException(400)。"""
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        infos = zf.infolist()
+        if len(infos) > MAX_ENTRIES:
+            raise HTTPException(status_code=400, detail="压缩包条目过多")
+        total = sum(i.file_size for i in infos)
+        if total > MAX_TOTAL_UNCOMPRESSED:
+            raise HTTPException(status_code=400, detail="压缩包解压后体积异常")
+        if total > max(1, os.path.getsize(zip_path)) * MAX_RATIO:
+            raise HTTPException(status_code=400, detail="压缩比异常（疑似 zip 炸弹）")
+        base = os.path.realpath(target_dir)
+        try:
+            for i in infos:
+                if i.file_size > MAX_MEMBER:
+                    raise HTTPException(status_code=400, detail="压缩包含超大文件")
+                # realpath 包含校验：绝对路径/../ 一律拒（join 后逃逸必越界）
+                target = os.path.realpath(os.path.join(target_dir, i.filename))
+                if not (target == base or target.startswith(base + os.sep)):
+                    raise HTTPException(status_code=400, detail="压缩包含非法路径")
+                if i.is_dir():
+                    os.makedirs(target, exist_ok=True)
+                    continue
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with zf.open(i) as src, open(target, "wb") as dst:
+                    shutil.copyfileobj(src, dst, 1 << 20)  # 分块写盘，不整段入内存
+        except RuntimeError as e:
+            # 加密/损坏成员（zf.open 抛 RuntimeError）
+            raise HTTPException(status_code=400, detail=f"压缩包损坏或加密: {e}")
+
+
+def _run_upload(tmp_zip_path: str, filename: str, actual_user_id: int, visibility: str, user_id: int) -> dict:
+    """同步执行上传全流程（在线程池中运行）。tmp_zip_path 为已流式写盘的临时 zip。"""
     tag = "共享" if visibility == "shared" else f"私有(uid={user_id})"
-    tmp_dir = tempfile.mkdtemp(prefix="kb_upload_")
-    # 不信任客户端 filename（可 ../../ 穿越）：tmp_dir 是 mkdtemp 隔离目录，用固定名
-    zip_path = os.path.join(tmp_dir, "upload.zip")
+    tmp_dir = os.path.dirname(tmp_zip_path)
 
     try:
-        with open(zip_path, "wb") as f:
-            f.write(content)
-
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(tmp_dir)
-        os.remove(zip_path)
+        _safe_extract_zip(tmp_zip_path, tmp_dir)
+        os.remove(tmp_zip_path)
 
         results = _find_and_process_mds(tmp_dir, actual_user_id, visibility, user_id, tag)
 
@@ -163,7 +197,24 @@ async def upload_knowledge(
         raise HTTPException(status_code=400, detail="仅支持 .zip 压缩包")
 
     actual_user_id = 0 if visibility == "shared" else user_id
-    content = await file.read()
+
+    # S1.3：body 流式写盘（不整段入内存）+ 体积上限；tmp 目录由 _run_upload 清理
+    tmp_dir = tempfile.mkdtemp(prefix="kb_upload_")
+    tmp_zip_path = os.path.join(tmp_dir, "upload.zip")  # 固定名，不信任客户端 filename
+    try:
+        total = 0
+        with open(tmp_zip_path, "wb") as out:
+            while True:
+                chunk = await file.read(1 << 20)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=400, detail="压缩包过大（上限 300MB）")
+                out.write(chunk)
+    except BaseException:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
 
     loop = asyncio.get_running_loop()
     try:
@@ -171,12 +222,14 @@ async def upload_knowledge(
             loop.run_in_executor(
                 _kb_executor,
                 _run_upload,
-                content, file.filename, actual_user_id, visibility, user_id,
+                tmp_zip_path, file.filename, actual_user_id, visibility, user_id,
             )
         )
         return result
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="无效的 ZIP 文件")
+    except HTTPException:
+        raise  # _safe_extract_zip 的 400 直接透传
     except Exception as e:
         logger.exception("上传知识库失败")
         raise InternalError(str(e))

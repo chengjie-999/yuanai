@@ -19,7 +19,7 @@ plt.rcParams["axes.unicode_minus"] = False
 __script_name__ = "描述性统计分析"
 __script_desc__ = "对数据集执行描述性统计分析：数据清洗、统计量、分布图、热力图、箱线图。参数: dataset_id(必填, 数据集ID), chart_type(可选, all/static/interactive，默认all)"
 __script_tags__ = ["统计分析"]
-__script_params__ = ["dataset_id", "chart_type"]
+__script_params__ = [{"name": "dataset_id", "type": "int"}, {"name": "chart_type", "type": "enum", "choices": ["all", "static", "interactive"]}]
 
 # 用于收集图表路径（脚本末尾输出标记）
 _图表列表 = []

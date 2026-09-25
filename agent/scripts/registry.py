@@ -1,4 +1,5 @@
 import os
+import ast
 import re
 import sys
 import json
@@ -13,6 +14,96 @@ from typing import Dict, List
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# S1.6：path 型参数允许落脚的根目录（realpath 包含校验）
+ALLOWED_ROOTS = [
+    "data",
+    "agent/datanalysis/scripts",
+    "agent/datanalysis/crawl",
+    "skills",
+]
+
+# 枚举型参数字符集：禁 / \ 与 ..（路径语义），禁首字符 -（选项注入）；
+# 参数经 Popen 列表传递（无 shell），其余标点无注入能力
+_ENUM_FORBIDDEN = ("/", "\\", "..")
+_INT_RE = re.compile(r"^\d{1,10}$")
+_FLOAT_RE = re.compile(r"^\d{1,4}(\.\d{1,6})?$")
+
+# 旧格式字符串参数名的类型启发式（含 path|file|dir → path；含 id|num|count|top|size|limit|pages|period → int）
+_PATH_HINT = ("path", "file", "dir")
+_INT_HINT = ("id", "num", "count", "top", "size", "limit", "pages", "period", "depth", "index")
+
+
+def _guess_type(name: str) -> str:
+    lower = name.lower()
+    if any(h in lower for h in _PATH_HINT):
+        return "path"
+    if any(h in lower for h in _INT_HINT):
+        return "int"
+    return "enum"
+
+
+def _validate_param(key: str, val: str, schema: Dict) -> str:
+    """单参数类型化校验，返回错误文案或空串（通过）。"""
+    if val.startswith("-"):
+        return f"参数 {key} 不得以 - 开头"
+    ptype = schema.get("type") or _guess_type(key)
+    if ptype == "int":
+        return "" if _INT_RE.fullmatch(val) else f"参数 {key} 需为整数"
+    if ptype == "float":
+        return "" if _FLOAT_RE.fullmatch(val) else f"参数 {key} 需为数字（如 0.2）"
+    if ptype == "path":
+        p = os.path.realpath(os.path.join(PROJECT_ROOT, val) if not os.path.isabs(val) else val)
+        allowed = [os.path.realpath(os.path.join(PROJECT_ROOT, r)) for r in ALLOWED_ROOTS]
+        if not any(p == a or p.startswith(a + os.sep) for a in allowed):
+            return f"参数 {key} 路径越界（仅允许 data/ 与脚本目录内）"
+        return ""
+    if ptype == "url":
+        from yuanai_core.pure.ssrf import validate_url
+        try:
+            validate_url(val)
+            return ""
+        except ValueError as e:
+            return f"参数 {key} 不是合法 URL: {e}"
+    # enum
+    choices = schema.get("choices")
+    if choices and val not in choices:
+        return f"参数 {key} 仅支持: {', '.join(map(str, choices))}"
+    if any(bad in val for bad in _ENUM_FORBIDDEN) or not val or len(val) > 128:
+        return f"参数 {key} 含非法字符"
+    return ""
+
+
+def _parse_params_decl(raw: str, handle: "_ScriptHandle") -> None:
+    """解析 __script_params__ 声明（S1.6 双格式）：
+
+    - 新格式：[{"name": "file_path", "type": "path"}, {"name": "chart_type",
+      "type": "enum", "choices": ["all", ...]}]（ast.literal_eval）
+    - 旧格式：["file_path", "dataset_id"]（类型启发式：含 path|file|dir → path，
+      含 id|num|count|top 等 → int，其余 enum 默认拒绝路径语义）
+    """
+    try:
+        data = ast.literal_eval(raw)
+    except Exception:
+        return
+    if not isinstance(data, list):
+        return
+    for item in data:
+        if isinstance(item, dict):
+            pname = str(item.get("name", "")).strip()
+            if not pname:
+                continue
+            schema = {"type": item.get("type") or _guess_type(pname)}
+            if isinstance(item.get("choices"), list):
+                schema["choices"] = [str(c) for c in item["choices"]]
+            handle._param_schemas[pname] = schema
+            if pname not in handle._param_order:
+                handle._param_order.append(pname)
+        elif isinstance(item, str) and item.strip():
+            pname = item.strip()
+            handle._param_schemas[pname] = {"type": _guess_type(pname)}
+            if pname not in handle._param_order:
+                handle._param_order.append(pname)
 
 
 def _purge_html_cache(max_age_seconds: int = 3600):
@@ -36,21 +127,22 @@ class _ScriptHandle:
         self.description = description
         self._filepath = filepath
         self.tags = tags or []
-
-    _SAFE_PARAM = re.compile(r'^[a-zA-Z0-9_\-一-鿿./: .,;!?@#$%^&*()+=<>\[\]{}|~`\'"]+$')
+        self._param_order: List[str] = []
+        self._param_schemas: Dict[str, Dict] = {}  # S1.6：name → {"type":..., "choices":[...]}
 
     def run(self, progress_cb=None, **params) -> str:
         _purge_html_cache()
         # 冻结模式（PyInstaller exe）：本 exe 不是 Python 解释器，通过 --run-script 入口复用自身执行脚本（自包含）
         frozen = getattr(sys, "frozen", False)
         args = [sys.executable, "--run-script", self._filepath] if frozen else [sys.executable, self._filepath]
-        param_order = getattr(self, '_param_order', [])
-        keys = param_order if param_order else sorted(params)
-        for k in keys:
+        param_order = self._param_order or sorted(params)
+        for k in param_order:
             if k in params:
                 val = str(params[k])
-                if not self._SAFE_PARAM.match(val):
-                    return f"参数校验失败: {k}={val[:100]} 含非法字符"
+                # S1.6：类型化校验（int/path/enum/url + 启发式默认）；不通过即拒绝启动子进程
+                err = _validate_param(k, val, self._param_schemas.get(k, {}))
+                if err:
+                    return f"参数校验失败: {err}（收到 {val[:100]!r}）"
                 args.append(val)
 
         try:
@@ -218,12 +310,9 @@ class ScriptRegistry:
 
             handle = _ScriptHandle(name, desc, filepath, tags)
 
-            params_match = re.search(r'__script_params__\s*=\s*\[([^\]]+)\]', source)
+            params_match = re.search(r'__script_params__\s*=\s*(\[.*\])', source)
             if params_match:
-                handle._param_order = [
-                    p.strip().strip('"').strip("'")
-                    for p in params_match.group(1).split(",")
-                ]
+                _parse_params_decl(params_match.group(1), handle)
 
             self._scripts[name] = handle
             logger.info("已注册脚本: %s (tags=%s) → %s", name, tags, filepath)

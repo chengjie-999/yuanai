@@ -18,7 +18,7 @@ plt.rcParams["axes.unicode_minus"] = False
 __script_name__ = "时间序列分析"
 __script_desc__ = "对含日期列的数据集做时间序列分析：趋势分解(STL)、滚动统计、异常检测、ADF平稳性检验、自相关图。参数: dataset_id(必填, 数据集ID), date_col(可选, 自动检测), value_col(可选, 自动选第一个数值列), period(可选, 季节性周期，默认7)"
 __script_tags__ = ["统计分析", "时间序列"]
-__script_params__ = ["dataset_id", "date_col", "value_col", "period"]
+__script_params__ = [{"name": "dataset_id", "type": "int"}, {"name": "date_col", "type": "enum"}, {"name": "value_col", "type": "enum"}, {"name": "period", "type": "int"}]
 
 _图表列表 = []
 _HTML列表 = []

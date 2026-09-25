@@ -18,7 +18,7 @@ plt.rcParams["axes.unicode_minus"] = False
 __script_name__ = "回归分析"
 __script_desc__ = "对数据集做回归建模分析：线性/岭回归/Lasso/多项式回归 + 交叉验证 + 残差诊断。参数: dataset_id(必填), target_col(必填, 目标列名), feature_cols(可选, 逗号分隔特征列，默认自动选数值列), model_type(linear/ridge/lasso/poly), test_size(默认0.2)"
 __script_tags__ = ["统计分析", "机器学习"]
-__script_params__ = ["dataset_id", "target_col", "feature_cols", "model_type", "test_size"]
+__script_params__ = [{"name": "dataset_id", "type": "int"}, {"name": "target_col", "type": "enum"}, {"name": "feature_cols", "type": "enum"}, {"name": "model_type", "type": "enum", "choices": ["linear", "ridge", "lasso", "poly"]}, {"name": "test_size", "type": "float"}]
 
 _图表列表 = []
 _HTML列表 = []

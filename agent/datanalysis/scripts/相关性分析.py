@@ -19,7 +19,7 @@ plt.rcParams["axes.unicode_minus"] = False
 __script_name__ = "相关性分析"
 __script_desc__ = "对数据集数值列做多方法相关系数分析：Pearson/Spearman/Kendall + 显著性检验 + 热力图/聚类图/散点矩阵。参数: dataset_id(必填), method(pearson/spearman/kendall), top_n(默认15)"
 __script_tags__ = ["统计分析"]
-__script_params__ = ["dataset_id", "method", "top_n"]
+__script_params__ = [{"name": "dataset_id", "type": "int"}, {"name": "method", "type": "enum", "choices": ["pearson", "spearman", "kendall"]}, {"name": "top_n", "type": "int"}]
 
 _图表列表 = []
 _HTML列表 = []

@@ -23,7 +23,7 @@ plt.rcParams["axes.unicode_minus"] = False
 __script_name__ = "RFM客户分群"
 __script_desc__ = "从订单明细 Excel 计算客户 RFM 价值分群（百分位打分 + 3D散点 + 分群关系图）。file_path 默认使用 data/user/from/订单明细.xlsx（已内置示例数据），无需用户提供即可直接运行。user_info_path 可选用于区域下钻"
 __script_tags__ = ["客户分析"]
-__script_params__ = ["file_path", "user_info_path"]
+__script_params__ = [{"name": "file_path", "type": "path"}, {"name": "user_info_path", "type": "path"}]
 
 _图表列表 = []
 _HTML列表 = []

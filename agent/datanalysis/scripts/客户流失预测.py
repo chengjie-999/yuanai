@@ -23,7 +23,7 @@ plt.rcParams["axes.unicode_minus"] = False
 __script_name__ = "客户流失预测"
 __script_desc__ = "客户流失预测：EDA+逻辑回归+交叉验证+ROC曲线+最优阈值分析。file_path默认使用内置示例数据，无需用户提供即可直接运行。label_col默认'churn'"
 __script_tags__ = ["客户分析", "机器学习"]
-__script_params__ = ["file_path", "label_col", "feature_cols", "predict_path"]
+__script_params__ = [{"name": "file_path", "type": "path"}, {"name": "label_col", "type": "enum"}, {"name": "feature_cols", "type": "enum"}, {"name": "predict_path", "type": "path"}]
 
 _图表列表 = []
 _HTML列表 = []

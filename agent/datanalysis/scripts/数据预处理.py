@@ -18,7 +18,7 @@ plt.rcParams["axes.unicode_minus"] = False
 __script_name__ = "数据预处理"
 __script_desc__ = "对数据集执行数据预处理：缺失值填充、异常值检测（Z-score/IQR）、标准化/归一化、分类编码、低方差特征过滤。参数: dataset_id(必填), operations(missing,outlier,scale,encode,select默认全做), target_col(可选, 有监督预处理时指定目标列)"
 __script_tags__ = ["数据清洗"]
-__script_params__ = ["dataset_id", "operations", "target_col"]
+__script_params__ = [{"name": "dataset_id", "type": "int"}, {"name": "operations", "type": "enum"}, {"name": "target_col", "type": "enum"}]
 
 _图表列表 = []
 _HTML列表 = []

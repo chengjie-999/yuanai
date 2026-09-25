@@ -19,7 +19,7 @@ plt.rcParams["axes.unicode_minus"] = False
 __script_name__ = "基因表达分布分析"
 __script_desc__ = "对基因表达数据（log2_FPKM）做直方图+KDE+小提琴图+火山图+表达热力图分析。参数: file_path(可选, CSV文件路径，默认用内置示例数据)"
 __script_tags__ = ["生物信息"]
-__script_params__ = ["file_path"]
+__script_params__ = [{"name": "file_path", "type": "path"}]
 
 _图表列表 = []
 _HTML列表 = []

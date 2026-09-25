@@ -18,7 +18,7 @@ plt.rcParams["axes.unicode_minus"] = False
 __script_name__ = "分类数据分析"
 __script_desc__ = "对分类变量做频次分析+交叉表+卡方检验，配合 violin/boxen/bar/point 高级可视化。参数: dataset_id(必填), cat_cols(可选, 逗号分隔分类列，默认自动选object列), target_col(可选, 数值目标列用于分组比较)"
 __script_tags__ = ["统计分析"]
-__script_params__ = ["dataset_id", "cat_cols", "target_col"]
+__script_params__ = [{"name": "dataset_id", "type": "int"}, {"name": "cat_cols", "type": "enum"}, {"name": "target_col", "type": "enum"}]
 
 _图表列表 = []
 _HTML列表 = []

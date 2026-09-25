@@ -24,11 +24,12 @@ frontend/dist
 .gitignore
 .gitattributes
 
-# 运行时数据
-data/chat_images/*
-data/qimg/*
-data/crawl/*
-data/file/*
+# 运行时数据（S3.2 M5：整目录排除 + 反白名单 aiprompt——
+# agent_identity.json/models.json/claude_sessions.json/logs 等凭据文件绝不进镜像；
+# 命名卷 app_data 挂载 /app/data，运行不受影响）
+data/*
+!data/aiprompt/
+!data/aiprompt/**
 web_cookie/*
 
 # 文档

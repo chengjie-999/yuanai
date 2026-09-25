@@ -52,12 +52,12 @@ def run_backup(config: dict, backup_dir: str, retention: int, upload: bool = Tru
     filepath = os.path.join(backup_dir, filename)
 
     mysqldump = find_mysqldump()
+    # S3.5：密码走 MYSQL_PWD 环境变量（不进命令行参数，ps 可见面收窄）
     cmd = [
         mysqldump,
         f"--host={config['host']}",
         f"--port={config['port']}",
         f"--user={config['user']}",
-        f"--password={config['password']}",
         "--single-transaction",
         "--routines",
         "--triggers",
@@ -67,8 +67,9 @@ def run_backup(config: dict, backup_dir: str, retention: int, upload: bool = Tru
     ]
     logger.info("备份: %s → %s", config["host"], filepath)
 
+    env = {**os.environ, "MYSQL_PWD": config["password"]}
     with open(filepath, "w", encoding="utf-8") as f:
-        proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True, env=env)
     if proc.returncode != 0:
         raise RuntimeError(f"mysqldump 失败: {proc.stderr}")
 

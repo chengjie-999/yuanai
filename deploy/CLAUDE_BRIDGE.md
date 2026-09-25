@@ -5,9 +5,10 @@
 ## 一、云端一次性准备
 
 1. 后台「用户管理」创建专属用户 `claude_bridge`（role=user）
-2. 签发长令牌（≤365 天）：
+2. 签发长令牌（S3.4：上限收敛为 ≤90 天；吊销走 `POST /api/v1/admin/users/revoke-tokens`
+   {"user_id": <该用户id>}——token_version +1 后旧令牌立即失效）：
    ```
-   POST /api/v1/admin/agent-token   {"user_id": <该用户id>, "expires_days": 365}
+   POST /api/v1/admin/agent-token   {"user_id": <该用户id>, "expires_days": 90}
    ```
 3. 服务器 `.env` 增加：
    ```bash

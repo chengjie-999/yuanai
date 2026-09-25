@@ -104,6 +104,15 @@ async def main():
     agent_id = args.agent_id or str(identity.get("agent_id") or socket.gethostname())
     agent_token = args.agent_token or identity.get("agent_secret", "") or os.getenv("AGENT_TOKEN", "")
 
+    # S3.3：强制 wss（ws:// 仅允许 localhost/127.0.0.1 且 AGENT_ALLOW_INSECURE_WS=1 显式豁免）
+    from urllib.parse import urlparse as _urlparse
+    _host = _urlparse(server_url).hostname or ""
+    if server_url.startswith("ws://") and not (
+            _host in ("localhost", "127.0.0.1") and os.getenv("AGENT_ALLOW_INSECURE_WS") == "1"):
+        logger.error("拒绝明文 ws:// 连接（%s）：Agent 凭据经明文传输会被窃取；"
+                     "本地开发可设 AGENT_ALLOW_INSECURE_WS=1", server_url)
+        sys.exit(1)
+
     # 配置日志
     from logging.handlers import RotatingFileHandler
     from utils.data_path import root_path

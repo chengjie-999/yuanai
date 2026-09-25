@@ -103,10 +103,9 @@ async def register_agent(req: AgentRegisterRequest):
         sess = db.Session()
         try:
             dev = sess.query(AgentDevice).filter_by(install_code=code).first()
-            if not dev:
-                raise HTTPException(status_code=404, detail="安装码不存在")
-            if dev.agent_secret:
-                raise HTTPException(status_code=400, detail="该安装码已被注册使用")
+            # S3.5：两种失败统一文案与状态码（防安装码枚举 oracle 区分「不存在」与「已使用」）
+            if not dev or dev.agent_secret:
+                raise HTTPException(status_code=400, detail="安装码无效或已被使用")
             dev.agent_secret = secrets.token_hex(32)
             dev.machine_name = (req.machine_name or "")[:64]
             dev.last_seen = datetime.utcnow()
@@ -209,8 +208,11 @@ def cleanup_pending(request_id: str):
 @router.websocket("/ws/agent/{agent_id}")
 async def agent_ws(websocket: WebSocket, agent_id: str):
     # 在 accept 前验证凭据：JWT（旧模式）或 agent_secret（机器模式，二选一）
+    # S3.3：token 优先取 Authorization 头（不落 URL/日志）；?token= 兜底保留一个版本
     from api.v1.auth.utils import verify_token
-    token = websocket.query_params.get("token", "")
+    auth = websocket.headers.get("authorization", "")
+    token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    token = token or websocket.query_params.get("token", "")
     payload = verify_token(token)
     if payload:
         # 旧模式：JWT，user_id 必须等于 agent_id

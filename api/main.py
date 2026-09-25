@@ -28,7 +28,12 @@ from api.v1.middleware import auth_middleware, rate_limit_middleware
 from api.v1.exceptions import AppError, app_error_handler
 from utils.data_path import root_path
 
-app = FastAPI(title="小元AI API", version="1.0.0")
+# S3.5：生产关 /docs 与 /openapi.json（收敛接口面）；开发保持可用
+_PROD = os.getenv("APP_ENV", "") == "production"
+app = FastAPI(title="小元AI API", version="1.0.0",
+              docs_url=None if _PROD else "/docs",
+              redoc_url=None if _PROD else "/redoc",
+              openapi_url=None if _PROD else "/openapi.json")
 app.add_exception_handler(AppError, app_error_handler)
 
 _CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else [
@@ -85,4 +90,7 @@ def health_check():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)
+    # S3.5：开发默认绑 127.0.0.1 + 无 reload（局域网不暴露；需对外可设 HOST/RELOAD env）
+    host = os.getenv("HOST", "127.0.0.1")
+    reload_flag = os.getenv("RELOAD", "0") == "1"
+    uvicorn.run("api.main:app", host=host, port=8000, reload=reload_flag)

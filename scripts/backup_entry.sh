@@ -9,7 +9,9 @@ echo "[backup] 启动，间隔 ${BACKUP_INTERVAL_HOURS:-24}h，保留 ${BACKUP_K
 while true; do
   STAMP=$(date +%Y%m%d_%H%M%S)
   DB="${MYSQL_DATABASE:-ai_agent}"
-  if mysqldump -h "$MYSQL_HOST" -u root -p"$MYSQL_PASSWORD" \
+  # S3.5：密码走 MYSQL_PWD 环境变量（不在命令行出现，ps 可见面收窄）
+  export MYSQL_PWD="$MYSQL_PASSWORD"
+  if mysqldump -h "$MYSQL_HOST" -u root \
        --single-transaction --quick --set-gtid-purged=OFF "$DB" 2>/tmp/dump.err \
        | gzip > "/backups/${DB}_${STAMP}.sql.gz"; then
     echo "[backup] ✅ ${DB}_${STAMP}.sql.gz"

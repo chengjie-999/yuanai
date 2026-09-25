@@ -349,6 +349,13 @@ def parse_args():
             os.getenv("CLAUDE_BRIDGE_TOKEN", "") or os.getenv("AGENT_TOKEN", "")
     if not args.server_url:
         args.server_url = identity.get("server_url") or "wss://cjyuanai.cn"
+    # S3.3：强制 wss（ws:// 仅允许 localhost 开发 + env 显式豁免）
+    from urllib.parse import urlparse as _urlparse
+    _host = _urlparse(args.server_url).hostname or ""
+    if args.server_url.startswith("ws://") and not (
+            _host in ("localhost", "127.0.0.1") and os.getenv("AGENT_ALLOW_INSECURE_WS") == "1"):
+        raise SystemExit(f"拒绝明文 ws:// 连接（{args.server_url}）："
+                         "本地开发可设 AGENT_ALLOW_INSECURE_WS=1")
     return args
 
 

@@ -40,6 +40,25 @@ async def list_users(request: Request):
         sess.close()
 
 
+@router.post("/users/revoke-tokens")
+async def revoke_user_tokens(req: FreezeRequest, request: Request):
+    """吊销用户全部 JWT（token_version +1，旧 token 立即失效；S3.4 M7）"""
+    require_admin(request)
+    db = get_db()
+    from db.session import User
+    sess = db.Session()
+    try:
+        user = sess.query(User).filter_by(id=req.user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        user.token_version = (user.token_version or 0) + 1
+        sess.commit()
+        return {"ok": True, "token_version": user.token_version,
+                "message": f"用户 {user.username} 的全部登录令牌已失效"}
+    finally:
+        sess.close()
+
+
 @router.post("/users/freeze")
 async def freeze_user(req: FreezeRequest, request: Request):
     require_admin(request)

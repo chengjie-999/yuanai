@@ -1,16 +1,33 @@
 import secrets
 import time
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import jwt, JWTError
 from config.settings import JWT_SECRET_KEY, JWT_ALGORITHM, JWT_EXPIRE_DAYS
 
 
-def create_token(user_id: int, role: str = "user", username: str = "", expires_days: Optional[float] = None) -> str:
-    """签发 JWT。expires_days 为空时使用全局默认有效期；供 Agent 桥接等场景签发长令牌。"""
+def create_token(user_id: int, role: str = "user", username: str = "", expires_days: Optional[float] = None, tv: Optional[int] = None) -> str:
+    """签发 JWT。expires_days 为空时使用全局默认有效期；供 Agent 桥接等场景签发长令牌。
+
+    S3.4：带 jti（唯一标识）与 tv（token_version 快照，None 时查库取当前值；
+    老 token 无 tv 视作 0，兼容不强制全站重登）。
+    """
     days = expires_days if expires_days is not None else JWT_EXPIRE_DAYS
     expire = datetime.utcnow() + timedelta(days=days)
-    payload = {"user_id": user_id, "role": role, "username": username, "exp": expire}
+    if tv is None:
+        try:
+            from db.session import get_db, User
+            sess = get_db().Session()
+            try:
+                u = sess.query(User).filter_by(id=user_id).first()
+                tv = u.token_version if u else 0
+            finally:
+                sess.close()
+        except Exception:
+            tv = 0
+    payload = {"user_id": user_id, "role": role, "username": username,
+               "jti": uuid.uuid4().hex, "tv": tv, "exp": expire}
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 

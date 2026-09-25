@@ -73,6 +73,8 @@ async def auth_middleware(request: Request, call_next):
 
     # 冻结检查（S1.2 修复：sse token 分支 payload 为 None，原来在此抛 TypeError 被
     # except 吞掉 → 冻结检查失效；统一改读 request.state.user_id）
+    # S3.4：JWT 吊销——payload.tv 快照落后于用户 token_version 即 401
+    #（老 token 无 tv 视作 0；sse 短期令牌跳过该检查）
     from db.session import get_db, User
     sess = None
     try:
@@ -81,6 +83,8 @@ async def auth_middleware(request: Request, call_next):
         user = sess.query(User).filter_by(id=request.state.user_id).first()
         if user and user.frozen_until and user.frozen_until > datetime.utcnow():
             return JSONResponse(status_code=403, content={"detail": "账号已被冻结"})
+        if payload and user and user.token_version and int(payload.get("tv") or 0) < user.token_version:
+            return JSONResponse(status_code=401, content={"detail": "token 已失效，请重新登录"})
     except Exception:
         logger.exception("冻结检查时数据库异常")
     finally:
@@ -110,8 +114,9 @@ async def rate_limit_middleware(request: Request, call_next):
     from fastapi.responses import JSONResponse
     from api.v1.exceptions import AppError
     try:
-        # 登录/注册使用严格限流
-        if path.startswith("/api/v1/auth/login") or path.startswith("/api/v1/auth/register"):
+        # 登录/注册使用严格限流（S3.5：安装码注册端点同档——防枚举爆破）
+        if path.startswith("/api/v1/auth/login") or path.startswith("/api/v1/auth/register") \
+                or path.startswith("/api/v1/agent/register"):
             auth_limiter.check(ip)
         # 上传端点使用中等限流
         elif path.startswith("/api/v1/data/upload"):

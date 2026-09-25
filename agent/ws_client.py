@@ -71,11 +71,15 @@ class AgentWSClient:
         while self._running:
             try:
                 url = f"{self.server_url}/api/v1/agent/ws/agent/{self.agent_id}"
+                # S3.3：agent_secret 走 Authorization 头（不落 URL/日志）；
+                # 云端仍保留 ?token= 兜底一个版本（老客户端平滑过渡）
+                extra_headers = None
                 if self.agent_token:
+                    extra_headers = {"Authorization": f"Bearer {self.agent_token}"}
                     url += f"?token={self.agent_token}"
                 self._status = "connecting"
                 logger.info("正在连接云端: %s/api/v1/agent/ws/agent/%s", self.server_url, self.agent_id)
-                self._ws = await connect(url, ping_interval=None)
+                self._ws = await connect(url, ping_interval=None, additional_headers=extra_headers)
 
                 # 发送注册消息
                 await self._ws.send(json.dumps({

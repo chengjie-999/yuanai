@@ -33,10 +33,11 @@ class AgentFreezeRequest(BaseModel):
 
 @router.post("/agent-token")
 async def mint_agent_token(req: AgentTokenRequest, request: Request):
-    """为本地 Agent 桥接签发长生命周期 JWT（仅 admin；默认 180 天，上限 365 天）"""
+    """为本地 Agent 桥接签发长生命周期 JWT（仅 admin；S3.4 上限收敛为 90 天，
+    配合 token_version 吊销：/admin/users/revoke-tokens 可立即作废）"""
     require_admin(request)
-    if not 1 <= req.expires_days <= 365:
-        raise HTTPException(status_code=400, detail="expires_days 必须在 1-365 天之间")
+    if not 1 <= req.expires_days <= 90:
+        raise HTTPException(status_code=400, detail="expires_days 必须在 1-90 天之间")
     from db.session import User
     db = get_db()
     sess = db.Session()

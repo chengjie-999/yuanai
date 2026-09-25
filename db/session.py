@@ -99,6 +99,7 @@ class User(Base):
     frozen_until = Column(TIMESTAMP, nullable=True)
     failed_login_attempts = Column(Integer, default=0)
     locked_until = Column(TIMESTAMP, nullable=True)
+    token_version = Column(Integer, default=0, nullable=False)  # S3.4：令牌吊销计数（+1 全量失效）
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 

@@ -67,14 +67,17 @@ async def upload_agent_exe(request: Request, version: str = Form(""), file: Uplo
     exe_path = os.path.join(downloads_dir, "yuanai-agent.exe")
     tmp_path = exe_path + ".uploading"
 
-    # 流式分块写入（200MB 级文件不占内存）
+    # 流式分块写入（200MB 级文件不占内存）+ 同步计算 sha256（S1.7，不二次读盘）
+    import hashlib
     size = 0
+    hasher = hashlib.sha256()
     try:
         with open(tmp_path, "wb") as out:
             while True:
                 chunk = await file.read(1024 * 1024)
                 if not chunk:
                     break
+                hasher.update(chunk)
                 out.write(chunk)
                 size += len(chunk)
                 if size > 500 * 1024 * 1024:
@@ -82,15 +85,19 @@ async def upload_agent_exe(request: Request, version: str = Form(""), file: Uplo
         if size == 0:
             raise HTTPException(status_code=400, detail="文件为空")
 
-        # 原子替换 + 更新版本信息（version.json 供客户端自动更新检查）
+        # 原子替换 + 更新版本信息（version.json 供客户端自动更新检查；
+        # sha256 为客户端下载校验必需——发布顺序：先后端（含 sha256）再推新客户端）
         os.replace(tmp_path, exe_path)
         with open(os.path.join(downloads_dir, "version.json"), "w", encoding="utf-8") as f:
             json.dump({
                 "version": version,
                 "exe": "/downloads/yuanai-agent.exe",
                 "size": size,
+                "sha256": hasher.hexdigest(),
+                "min_version": version,
             }, f, ensure_ascii=False, indent=2)
-        return {"ok": True, "version": version, "size": size}
+        return {"ok": True, "version": version, "size": size,
+                "sha256": hasher.hexdigest()}
     finally:
         if os.path.exists(tmp_path):
             try:

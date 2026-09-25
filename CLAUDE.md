@@ -24,7 +24,9 @@ python -m agent.main --tray
 
 # 一键启动（Windows 双击 start_agent.bat）
 # 发布版 exe：python -m PyInstaller agent/yuanai_agent.spec（产物 dist/小元AI Agent.exe，
-#   上传服务器 downloads/yuanai-agent.exe，后台「Agent 管理」与官网首页提供下载入口）
+#   上传服务器 downloads/yuanai-agent.exe，后台「Agent 管理」与官网首页提供下载入口；
+#   上传端点流式计算 sha256 进 version.json，客户端自动更新强制 https + sha256 校验（缺 hash 拒更），
+#   发布顺序：先后端（含 hash）→ 再推新 exe）
 ```
 
 ## 多智能体架构

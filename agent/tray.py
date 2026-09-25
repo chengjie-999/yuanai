@@ -26,6 +26,19 @@ logger = logging.getLogger("agent.tray")
 # 当前版本（打包发布时更新；云端 downloads/version.json 由网页上传时写入）
 AGENT_VERSION = "1.0.0"
 
+
+def _ver_lt(a: str, b: str) -> bool:
+    """简单版本比较（1.2.3 三段数字，缺段补 0）"""
+    try:
+        pa = [int(x) for x in str(a).split(".")]
+        pb = [int(x) for x in str(b).split(".")]
+    except ValueError:
+        return str(a) != str(b)  # 非数字版本号：不同即视为需要更新
+    n = max(len(pa), len(pb))
+    pa += [0] * (n - len(pa))
+    pb += [0] * (n - len(pb))
+    return pa < pb
+
 # 状态颜色
 GREEN = (76, 175, 80)
 YELLOW = (255, 152, 0)
@@ -167,6 +180,8 @@ class AgentTray:
         self._client = None
         self._restart = False  # 开关切换后触发重连
         self._update_available = None  # 云端最新版本号（发现新版后设置）
+        self._update_forced = False  # min_version 安全下限触发（必须更新）
+        self._update_sha256 = ""  # S1.7：云端清单 sha256（下载校验用）
 
     def run(self):
         """主入口：启动托盘（阻塞主线程）"""
@@ -207,13 +222,27 @@ class AgentTray:
         base = self.server_url.replace("ws://", "http://").replace("wss://", "https://").rstrip("/")
         return base
 
+    @staticmethod
+    def _insecure_update_allowed(base: str) -> bool:
+        """http 仅允许 localhost/127.0.0.1 的开发场景，且需 AGENT_ALLOW_INSECURE_UPDATE=1 显式开启"""
+        if base.startswith("https://"):
+            return True
+        from urllib.parse import urlparse
+        if urlparse(base).hostname not in ("localhost", "127.0.0.1"):
+            return False
+        return os.getenv("AGENT_ALLOW_INSECURE_UPDATE", "0") == "1"
+
     def _check_update_once(self, manual: bool = False):
-        """请求云端 version.json 比对（优先比文件大小，其次比版本号）；manual=True 为用户手动触发"""
+        """请求云端 version.json 比对（优先比文件大小，其次比版本号）；manual=True 为用户手动触发
+
+        S1.7：清单缺 sha256 → fail-closed 不提供更新（防旧清单绕过校验）。
+        """
         import urllib.request
         url = f"{self._version_base_url()}/downloads/version.json"
         with urllib.request.urlopen(url, timeout=8) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         latest = str(data.get("version", ""))
+        remote_sha = str(data.get("sha256", ""))
 
         # 文件大小优先：更新后 exe 被替换成云端同一文件，大小一致即判定为最新
         remote_size = data.get("size")
@@ -227,33 +256,62 @@ class AgentTray:
         elif latest:
             has_new = latest != AGENT_VERSION
 
+        # fail-closed：无 sha256 的清单不提供更新（旧后端清单无法校验完整性）
+        if has_new and not remote_sha:
+            logger.warning("version.json 缺少 sha256，拒绝提供更新（fail-closed）")
+            has_new = False
+        # min_version 安全下限：当前版本低于下限时强制提示
+        min_ver = str(data.get("min_version", ""))
+        self._update_forced = bool(min_ver and latest and _ver_lt(AGENT_VERSION, min_ver))
+
         if has_new:
             self._update_available = latest or f"({remote_size})"
+            self._update_sha256 = remote_sha
             try:
                 self._icon.update_menu()
             except Exception:
                 pass
-            self._icon.notify(f"发现新版本 v{latest}，托盘菜单点击「立即更新」即可自动升级", "小元AI Agent")
+            force_tip = "（安全要求，必须更新）" if self._update_forced else ""
+            self._icon.notify(f"发现新版本 v{latest}{force_tip}，托盘菜单点击「立即更新」即可自动升级", "小元AI Agent")
         elif manual:
             self._icon.notify(f"已是最新版本 v{AGENT_VERSION}", "小元AI Agent")
 
     def _do_update(self):
-        """一键更新：下载新 exe → 写自替换脚本 → 退出自身 → 脚本替换并重启"""
+        """一键更新：校验清单 sha256 → 下载并同步算哈希 → 一致才写自替换脚本"""
+        import hashlib
         import urllib.request
         new_exe = os.path.join(_config_file().parent, "yuanai-agent.new")
         bat = os.path.join(_config_file().parent, "update.bat")
         exe_path = sys.executable
-        url = f"{self._version_base_url()}/downloads/yuanai-agent.exe"
+        base = self._version_base_url()
         self._icon.title = "小元AI Agent - 下载更新中..."
 
         try:
-            # 分块下载（约 200MB）
-            with urllib.request.urlopen(url, timeout=120) as resp, open(new_exe, "wb") as out:
+            # S1.7-1：强制 https（http 仅 localhost 开发 + env 显式豁免）
+            if not self._insecure_update_allowed(base):
+                raise RuntimeError("自动更新必须走 https（本地开发可设 AGENT_ALLOW_INSECURE_UPDATE=1）")
+
+            # S1.7-2：先取清单，sha256 缺失即中止（fail-closed）
+            with urllib.request.urlopen(f"{base}/downloads/version.json", timeout=8) as resp:
+                manifest = json.loads(resp.read().decode("utf-8"))
+            remote_sha = str(manifest.get("sha256", "")).lower()
+            if not remote_sha:
+                raise RuntimeError("云端清单缺少 sha256，已拒绝更新（安全）")
+            exe_url = f"{base}{manifest.get('exe', '/downloads/yuanai-agent.exe')}"
+
+            # S1.7-3：分块下载（约 200MB）+ 同步计算 sha256
+            hasher = hashlib.sha256()
+            with urllib.request.urlopen(exe_url, timeout=120) as resp, open(new_exe, "wb") as out:
                 while True:
                     chunk = resp.read(1024 * 1024)
                     if not chunk:
                         break
+                    hasher.update(chunk)
                     out.write(chunk)
+            if hasher.hexdigest() != remote_sha:
+                # 校验失败：删除临时文件，绝不写 update.bat
+                os.remove(new_exe)
+                raise RuntimeError("更新包校验失败（sha256 不一致），已中止")
 
             # 自替换脚本：等待本进程退出 → 覆盖 → 重启 → 自删
             with open(bat, "w", encoding="gbk") as f:

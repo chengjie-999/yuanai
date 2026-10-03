@@ -28,12 +28,12 @@ def request_with_proxy() -> Optional[requests.Response]:
 
         try:
             print(f"第{attempt+1}次尝试：使用代理请求目标网址")
+            # S5.1（L3）：移除 verify=False——关闭 TLS 证书校验 = 中间人攻击敞口
             response = requests.get(
                 CONFIG["TARGET_URL"],
                 headers=headers,
                 proxies=proxies,
                 timeout=CONFIG["TIMEOUT"],
-                verify=False
             )
             response.raise_for_status()
             print("目标网址请求成功")

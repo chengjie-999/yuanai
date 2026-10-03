@@ -31,6 +31,9 @@ Thumbs.db
 # Environment
 .env
 *.env.local
+# S5.1：生产环境配置不入库（模板见 deploy/.env.production.example，
+# 填了真凭据的文件绝不能被 git 跟踪）
+deploy/.env.production
 
 # SSL certificates (keep .gitkeep only)
 deploy/ssl/*

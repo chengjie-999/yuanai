@@ -26,7 +26,10 @@ _AGENT_COLORS = {"orchestrator": "#1976d2", "analysis": "#7b1fa2",
 
 
 def _esc(s: str) -> str:
-    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+    """S5.1（L5）：所有插值进 SVG 前统一转义（quote=True 双保险——
+    分支名/表名来自 git 与文件系统，属外部可控输入）"""
+    import html
+    return html.escape(str(s), quote=True)
 
 
 def _svg(w: int, h: int, body: str) -> str:

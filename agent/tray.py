@@ -39,6 +39,15 @@ def _ver_lt(a: str, b: str) -> bool:
     pb += [0] * (n - len(pb))
     return pa < pb
 
+
+def _run_script_allowed(script_path: str, root: str) -> bool:
+    """冻结模式 --run-script 白名单校验（S5.1 L1）：
+    realpath 必须落在内置脚本目录（agent/datanalysis/scripts|crawl、skills）内"""
+    allowed = [os.path.realpath(os.path.join(root, r)) for r in
+               ("agent/datanalysis/scripts", "agent/datanalysis/crawl", "skills")]
+    p = os.path.realpath(script_path)
+    return any(p == a or p.startswith(a + os.sep) for a in allowed)
+
 # 状态颜色
 GREEN = (76, 175, 80)
 YELLOW = (255, 152, 0)
@@ -495,8 +504,14 @@ def main():
                 setattr(sys, _name, open(os.devnull, "w", encoding="utf-8"))
 
     # 冻结模式脚本执行入口：分析/采集脚本子进程复用本 exe（自包含，无需系统 Python）
+    # S5.1（L1）：白名单校验（_MEIPASS 解包目录里的内置脚本目录）——
+    # 防 exe 被拿来执行任意本地 Python 文件
     if getattr(sys, "frozen", False) and len(sys.argv) >= 3 and sys.argv[1] == "--run-script":
         _script_path = sys.argv[2]
+        _root = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+        if not _run_script_allowed(_script_path, _root):
+            print(f"拒绝执行越界脚本: {_script_path}", file=sys.stderr)
+            sys.exit(2)
         sys.argv = [sys.argv[0]] + sys.argv[3:]
         with open(_script_path, encoding="utf-8") as _f:
             exec(compile(_f.read(), _script_path, "exec"), {"__name__": "__main__", "__file__": _script_path})

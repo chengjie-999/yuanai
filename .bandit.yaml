@@ -1,0 +1,11 @@
+# Bandit SAST 扫描配置（S4.2 安全加固）
+# 用法：bandit -c .bandit.yaml -r api agent spiderlx yuanai_core utils db -ll
+exclude_dirs:
+  - venv
+  - build
+  - dist
+  - data
+  - test
+  - frontend
+  - node_modules
+  - .git

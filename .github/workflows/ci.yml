@@ -78,6 +78,39 @@ jobs:
       - name: Build
         run: npm run build
 
+  # ==================== 安全扫描（S4.2：bandit / pip-audit / npm audit） ====================
+  security-scan:
+    runs-on: ubuntu-latest
+    # 观察期：先不阻塞合并（continue-on-error），跑稳一轮后删除本行改为阻塞
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install scanners
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit[toml] pip-audit
+
+      - name: Bandit SAST（-ll：只报中高危）
+        run: bandit -c .bandit.yaml -r api agent spiderlx yuanai_core utils db -ll
+
+      - name: pip-audit（依赖漏洞审计）
+        # --strict：发现已知漏洞即失败。豁免需逐条写在下方 --ignore-vuln 并注释
+        # 「批准人/日期/复审期限」（当前无豁免项）。
+        # 注：torch 在 Dockerfile 里单独从 pytorch 索引安装，不在本文件，未被审计。
+        run: pip-audit -r requirements.txt --strict
+
+      - name: npm audit（前端依赖漏洞审计，high 级即失败）
+        working-directory: frontend
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
   # ==================== Docker 镜像构建验证 ====================
   docker-build:
     runs-on: ubuntu-latest

@@ -66,6 +66,41 @@ export async function saveTheme(theme: string): Promise<boolean> {
   } catch { return false }
 }
 
+// ---- 长期记忆（设置页「我的记忆」卡） ----
+export interface MemoryInfo {
+  memory: string
+  count: number
+  max_items: number
+  max_chars: number
+}
+
+export async function fetchMemory(): Promise<MemoryInfo> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/memory`, { headers: authHeaders() })
+    if (!res.ok) return { memory: '', count: 0, max_items: 100, max_chars: 2000 }
+    const data = await res.json()
+    return {
+      memory: data.memory || '',
+      count: data.count || 0,
+      max_items: data.max_items || 100,
+      max_chars: data.max_chars || 2000,
+    }
+  } catch { return { memory: '', count: 0, max_items: 100, max_chars: 2000 } }
+}
+
+export async function saveMemory(memory: string): Promise<{ ok: boolean; detail?: string; memory?: string; count?: number }> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/memory`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ memory }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return { ok: false, detail: (data as any).detail || '保存失败' }
+    return { ok: true, memory: data.memory, count: data.count }
+  } catch { return { ok: false, detail: '网络错误，请稍后重试' } }
+}
+
 // ---- Profile ----
 export async function updateProfile(display_name: string) {
   const res = await fetch(`${API_BASE}/auth/profile`, {

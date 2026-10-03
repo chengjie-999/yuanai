@@ -186,6 +186,55 @@ def update_password(req: PasswordUpdate, request: Request):
     return {"ok": True}
 
 
+# ===================== 长期记忆（透明可编辑） =====================
+
+class MemoryUpdate(BaseModel):
+    memory: str
+
+
+def _normalize_memory(text: str) -> str:
+    """记忆文本归一化：\r\n→\n、逐行 strip、丢空行（保持「一行一条事实」格式）"""
+    lines = [ln.strip() for ln in str(text).replace("\r\n", "\n").split("\n")]
+    return "\n".join(ln for ln in lines if ln)
+
+
+@router.get("/memory")
+def get_memory(request: Request):
+    """读当前用户长期记忆（设置页「我的记忆」卡）"""
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    from config.settings import MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS
+    memory = get_db().get_user_memory(uid)
+    count = len([ln for ln in memory.split("\n") if ln.strip()]) if memory else 0
+    return {"memory": memory, "count": count,
+            "max_items": MEMORY_MAX_ITEMS, "max_chars": MEMORY_MAX_CHARS}
+
+
+@router.put("/memory")
+def update_memory(req: MemoryUpdate, request: Request):
+    """覆盖式更新长期记忆（透明可编辑：用户可改可删任何一行）
+
+    校验超限时拒绝而非静默截断——记忆是用户自己的数据，宁可让用户先精简。
+    """
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    from config.settings import MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS
+    normalized = _normalize_memory(req.memory)
+    count = len([ln for ln in normalized.split("\n") if ln.strip()])
+    if count > MEMORY_MAX_ITEMS:
+        raise HTTPException(status_code=400,
+                            detail=f"记忆最多 {MEMORY_MAX_ITEMS} 条，当前 {count} 条，请先精简")
+    if len(normalized) > MEMORY_MAX_CHARS:
+        raise HTTPException(status_code=400,
+                            detail=f"记忆最多 {MEMORY_MAX_CHARS} 字，当前 {len(normalized)} 字，请先精简")
+    ok = get_db().update_user_memory(uid, normalized)
+    if not ok:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return {"ok": True, "memory": normalized, "count": count}
+
+
 class AgentModelUpdate(BaseModel):
     role: str       # orchestrator, analysis, collection, automation, audit
     model_id: str   # 分配给该角色的模型 ID

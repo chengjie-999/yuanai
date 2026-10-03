@@ -4,6 +4,7 @@ import { fetchAgentModels, updateAgentModel, fetchApiKeys, saveApiKey, deleteApi
 import { fetchAgentVoices, updateAgentVoice } from '../api'
 import { XIcon } from './icons'
 import { useAuth } from '../contexts/AuthContext'
+import MemoryCard from './MemoryCard'
 
 const C = {
   card: { background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' } as const,
@@ -252,6 +253,9 @@ export default function SettingsPage() {
             </div>
           ))}
         </div>
+
+        {/* ---- 我的记忆（透明可编辑的长期记忆，自加载组件） ---- */}
+        <MemoryCard />
 
         {/* ---- 关于 ---- */}
         <div style={C.card}>

@@ -72,6 +72,21 @@ def _load_agent_models() -> dict:
 
 AGENT_MODEL_MAP = _load_agent_models()
 
+# ===================== 记忆机制（短期工作记忆 / 长期条目化记忆） =====================
+# 决策：最近 N 条原样保留；超出部分豆包 lite 后台异步折叠成条目化事实存 users.memory；
+# 设置页「我的记忆」透明可编辑；点踩内容不进记忆。全部可 .env 覆盖。
+MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "true").lower() == "true"     # 压缩总开关
+MEMORY_MODEL = os.getenv("MEMORY_MODEL", "doubao-seed-2-0-lite-260215")    # 折叠用模型（豆包 lite）
+MEMORY_WORKING_WINDOW = int(os.getenv("MEMORY_WORKING_WINDOW", "20"))      # 工作记忆条数（最近 N 条永不折叠）
+MEMORY_TRIGGER_CHARS = int(os.getenv("MEMORY_TRIGGER_CHARS", "8000"))      # 触发阈值：会话总字数
+MEMORY_FOLD_MIN_MESSAGES = int(os.getenv("MEMORY_FOLD_MIN_MESSAGES", "5")) # 单次折叠最小条数（烧钱护栏，设 1 = 字面口径）
+MEMORY_FOLD_MIN_CHARS = int(os.getenv("MEMORY_FOLD_MIN_CHARS", "800"))
+MEMORY_FOLD_INPUT_MAX_CHARS = int(os.getenv("MEMORY_FOLD_INPUT_MAX_CHARS", "12000"))  # 单次折叠输入上限
+MEMORY_MAX_ITEMS = int(os.getenv("MEMORY_MAX_ITEMS", "100"))               # 长期记忆条数上限（超限丢最旧）
+MEMORY_MAX_CHARS = int(os.getenv("MEMORY_MAX_CHARS", "2000"))              # 长期记忆字数上限（每轮注入，别开大）
+MEMORY_FOLD_TIMEOUT_S = int(os.getenv("MEMORY_FOLD_TIMEOUT_S", "120"))
+MEMORY_FOLD_DAILY_MAX = int(os.getenv("MEMORY_FOLD_DAILY_MAX", "50"))      # 每用户每日折叠次数上限
+
 # Agent 音色分配 — 气泡朗读按消息归属 Agent 选音色（均实测有效；须为 2.0 系列配 seed-tts-2.0）
 _DEFAULT_AGENT_VOICE_MAP = {
     "orchestrator": "zh_male_shaonianzixin_uranus_bigtts",   # 小元：少年梓辛（小男孩）

@@ -35,6 +35,11 @@ DEFAULT_MODEL = "deepseek-v4-flash"
 VISION_MODEL = "doubao-seed-2-0-pro-260215"  # DeepSeek V4 不支持图片，识图自动切豆包
 DEFAULT_TEMPERATURE = 0.7
 
+# 推理强度（DeepSeek 系列 reasoning_effort，.env 可覆盖）：
+#   low = 快答省 token（默认，适合路由/对话）；high = 深度思考（适合复杂分析）
+# 豆包系列不走此参数——思考模式由方舟接入点（火山控制台 endpoint）的 thinking 开关控制
+REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")
+
 # 知识星球「导图 → 文章化笔记」转换模型（注意：必须显式传模型名，call_llm 默认名会炸）
 # 默认豆包（火山引擎国内节点，本地直连快且稳）；DeepSeek 海外 API 本地直连实测
 # 一半请求卡超时（120s×2 后走大纲兜底），故不设为默认，可 .env 覆盖

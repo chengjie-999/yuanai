@@ -5,7 +5,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from utils.sensitive_data import get_api_key
-from config.settings import MODEL_NAMES
+from config.settings import MODEL_NAMES, REASONING_EFFORT
 
 dsllm = [m for m in MODEL_NAMES if 'deepseek' in m]
 seed = [m for m in MODEL_NAMES if 'doubao' in m]
@@ -43,10 +43,14 @@ def get_llm(model='deepseek-chat', reasoning=True, **kwargs):
     if model in dsllm:
         ds_api_key = _get_stored_key("DeepSeek") or get_api_key('dsllm')
         extra_params = {}
-        if reasoning and model in ['deepseek-v4-flash', 'deepseek-v4-pro']:
-            extra_params["extra_body"] = {"reasoning_effort": "low"}
-        elif reasoning and model == 'deepseek-reasoner':
-            extra_params["extra_body"] = {"reasoning_effort": "high"}
+        # 推理强度（模型升级弹性化）：按前缀匹配而非硬编码 id——
+        # 新版本（deepseek-4.1 等）加入 models.json 后自动生效；
+        # reasoner 系列恒 high（其专长）；其余 deepseek-* 用 settings.REASONING_EFFORT
+        if reasoning:
+            if "reasoner" in model:
+                extra_params["extra_body"] = {"reasoning_effort": "high"}
+            elif model.startswith("deepseek-"):
+                extra_params["extra_body"] = {"reasoning_effort": REASONING_EFFORT}
         return ChatOpenAI(
             api_key=ds_api_key,
             base_url="https://api.deepseek.com/beta",

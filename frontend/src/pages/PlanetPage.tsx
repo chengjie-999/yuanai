@@ -8,6 +8,7 @@ import PlanetTree from '../components/planet/PlanetTree'
 import PlanetReader from '../components/planet/PlanetReader'
 import ImportDialog from '../components/planet/ImportDialog'
 import Starfield from '../components/planet/Starfield'
+import { API_BASE, getToken } from '../api'
 import { usePlanetJob } from '../components/planet/ConvertProgress'
 import { ArrowLeftIcon, GalaxyIcon } from '../components/icons'
 
@@ -17,6 +18,36 @@ import { ArrowLeftIcon, GalaxyIcon } from '../components/icons'
    ============================================================ */
 
 export default function PlanetPage() {
+  // vault 同步徽标：轮询 /admin/agent-status 取本用户绑定 Agent 的 vault_sync 状态
+  const [vaultStatus, setVaultStatus] = useState<{ label: string; tip: string; tone: string } | null>(null)
+  useEffect(() => {
+    let alive = true
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/admin/agent-status`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        })
+        if (!res.ok || !alive) return
+        const agents = await res.json()
+        const info = (agents || []).find((a: any) => a.vault_sync && Object.keys(a.vault_sync).length > 0)
+        if (!info || !alive) { setVaultStatus(null); return }
+        const vs = info.vault_sync
+        if (vs.event === 'baseline') {
+          setVaultStatus({ label: `已同步 ${vs.downloaded ?? 0} 篇`, tip: '冷启动基线完成：云端笔记已下载到 vault', tone: 'var(--success)' })
+        } else if (vs.event === 'sync') {
+          const parts = []
+          if (vs.uploaded) parts.push(`上传 ${vs.uploaded}`)
+          if (vs.downloaded) parts.push(`下载 ${vs.downloaded}`)
+          if (vs.conflicts) parts.push(`冲突 ${vs.conflicts}`)
+          if (vs.images_not_uploaded) parts.push(`图片未上行 ${vs.images_not_uploaded}`)
+          setVaultStatus({ label: parts.join(' · ') || '同步中', tip: 'Obsidian vault ↔ 知识星球 双向同步', tone: vs.conflicts ? 'var(--danger)' : 'var(--success)' })
+        }
+      } catch { if (alive) setVaultStatus(null) }
+    }
+    poll()
+    const t = setInterval(poll, 15000)
+    return () => { alive = false; clearInterval(t) }
+  }, [])
   const [planets, setPlanets] = useState<any[]>([])
   const [selectedPid, setSelectedPid] = useState<number | null>(null)
   const [map, setMap] = useState<any | null>(null)
@@ -123,6 +154,17 @@ export default function PlanetPage() {
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>知识星球</div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>银河 · 恒星 · 行星 —— 导图一键改写为文章</div>
         </div>
+        <div style={{ flex: 1 }} />
+        {vaultStatus && (
+          <span className="yuan-tip" data-tip={vaultStatus.tip} aria-label={vaultStatus.tip}
+            style={{
+              fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 12,
+              color: vaultStatus.tone, border: `1px solid ${vaultStatus.tone}`,
+              background: 'var(--bg-primary)', whiteSpace: 'nowrap',
+            }}>
+            {vaultStatus.label}
+          </span>
+        )}
       </div>
 
       {notice && (

@@ -227,7 +227,7 @@ class AgentTray:
             from agent.vault_sync import build_loop_from_config
             self._vault_loop = build_loop_from_config(
                 str(_config_file()), str(self.agent_id), self.agent_token, self.server_url,
-                status_cb=lambda s: logger.info("vault 同步: %s", s))
+                status_cb=self._emit_vault_status)
             if self._vault_loop:
                 threading.Thread(target=self._vault_loop.run_loop, daemon=True).start()
                 logger.info("vault 同步已启动: %s", self._vault_loop.vault_dir)
@@ -368,6 +368,17 @@ class AgentTray:
                 pass
 
     # ==================== vault 同步（Obsidian ↔ 知识星球） ====================
+
+    def _emit_vault_status(self, s: dict) -> None:
+        """vault 同步状态 → 日志 + WS 上报（云端存 _agent_info 供前端徽标）"""
+        logger.info("vault 同步: %s", s)
+        client = getattr(self, "_client", None)
+        if client:
+            try:
+                from yuanai_core.core.schemas import vault_sync_event
+                client.send_event(vault_sync_event(s))
+            except Exception:
+                pass
 
     def _vault_enabled(self) -> bool:
         from agent.vault_sync import load_vault_config

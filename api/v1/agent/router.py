@@ -55,6 +55,9 @@ def _get_agent_status(request: Request, include_activities: bool = False) -> lis
             "capabilities": info.get("capabilities", []),
             "online": True,
             "last_heartbeat": info.get("last_heartbeat", ""),
+            # vault 同步状态（前端知识星球页徽标；无该键 = 未启用）
+            "vault_sync": info.get("vault_sync", {}),
+            "vault_sync_time": info.get("vault_sync_time", ""),
         }
         if include_activities:
             entry["activities"] = list(reversed(info.get("activities", [])[-10:]))
@@ -299,6 +302,13 @@ async def agent_ws(websocket: WebSocket, agent_id: str):
                     })
                     if len(acts) > 20:
                         acts[:] = acts[-20:]  # 只保留最近 20 条
+                continue
+
+            if event_type == "vault_sync":
+                # Obsidian vault 同步状态（前端知识星球页徽标轮询展示）
+                if agent_id in _agent_info:
+                    _agent_info[agent_id]["vault_sync"] = event.get("data", {})
+                    _agent_info[agent_id]["vault_sync_time"] = time.strftime("%H:%M:%S")
                 continue
 
             # 把 Agent 事件投递到对应的等待队列（SSE 桥）

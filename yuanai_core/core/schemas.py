@@ -114,6 +114,11 @@ def activity_event(message: str, detail: str = "", request_id: str = "") -> Agen
     return AgentEvent(type="activity", data={"message": message, "detail": detail}, request_id=request_id)
 
 
+def vault_sync_event(data: dict, request_id: str = "") -> AgentEvent:
+    """vault 同步状态（Obsidian ↔ 知识星球；云端存 _agent_info 供前端徽标轮询）"""
+    return AgentEvent(type="vault_sync", data=data, request_id=request_id)
+
+
 def agent_hello(agent_name: str, capabilities: List[str]) -> AgentEvent:
     """Agent 首次连接时的注册消息"""
     return AgentEvent(

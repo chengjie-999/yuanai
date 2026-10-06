@@ -257,6 +257,24 @@ export default function SettingsPage() {
         {/* ---- 我的记忆（透明可编辑的长期记忆，自加载组件） ---- */}
         <MemoryCard />
 
+        {/* ---- vault 同步说明（只读；配置在本机 Agent 托盘） ---- */}
+        <div style={C.card}>
+          <div style={C.title}>
+            vault 同步
+            <span style={C.sub}>　Obsidian ↔ 知识星球 双向同步（本机 Agent 托盘配置）</span>
+          </div>
+          <div style={{ ...C.row, flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              1. 本机 Agent 托盘右键 →「设置 vault 路径...」选择 Obsidian 仓库里的「知识星球」目录<br />
+              2. 勾选「vault 同步」→ 重启 Agent<br />
+              3. 笔记互相自动同步：vault 改动上传、网页改动落盘；双改时本地赢，云端版存为 <span style={{ fontFamily: 'monospace', fontSize: 11.5 }}>*.conflict-*.md</span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              同步状态见本页知识星球页右上角徽标；配置存于本机 data/agent_config.json
+            </div>
+          </div>
+        </div>
+
         {/* ---- 关于 ---- */}
         <div style={C.card}>
           <div style={C.title}>关于</div>

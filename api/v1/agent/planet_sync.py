@@ -77,6 +77,14 @@ def push_upsert(request: Request, body: UpsertBody):
     db = get_db()
     r = store.upsert_note_from_sync(db, uid, body.planet, body.map_id,
                                     body.title, body.content)
+    # 同步上行后重建检索索引（vault 编辑的内容聊天里要能搜到；
+    # Milvus 异常时内部降级跳过，不影响同步主流程）
+    if body.map_id:
+        try:
+            pid = db.get_note(r["id"], uid)["planet_id"]
+            store.index_note(db, uid, pid, body.map_id, body.content)
+        except Exception:
+            pass
     return {"id": r["id"], "created": r["created"],
             "content_hash": note_body_hash(body.content, body.map_id)}
 

@@ -225,6 +225,17 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **视觉**：Canvas 星野背景（Starfield.tsx）+ 天体图标（银河=星球、恒星=导图、行星/卫星=笔记）
 - **架构图/ER 图**：`api/v1/monitor/diagrams.py` 请求时实时生成（ER 图 ast 解析 db/session.py）；端点 `/monitor/arch-diagram`、`/er-diagram`（admin）；后台「代码监控」页卡片 + README 嵌入（`python scripts/gen_diagrams.py` 刷新）
 
+## Obsidian vault 双向同步（2026-09-25 落地）
+
+知识星球笔记 ↔ Obsidian vault 指定目录（`知识星球/`）双向同步，本地 Agent 作桥（托盘菜单「vault 同步」勾选 + 「设置 vault 路径...」选目录，配置存 `data/agent_config.json` 的 vault 节；CLI 模式 `python -m agent.main --vault-sync`）。
+
+- **同步引擎**：`agent/vault_sync.py` VaultSyncLoop——20s 纯轮询、`(size,mtime)` 两轮防抖、三向判定（`yuanai_core/pure/vault_note.py` sync_decision：双改本地赢 + 云端版落 `*.conflict-*.md`）、冷启动云端全量建基线、本地删 trash 归档 + 云端删保守墓碑、笔记级重试 + 请求级 20→40→80→300s 退避、状态 `data/vault_sync_state.json`（原子写 + .bak）
+- **内容规范**：`vault_note.py` canonical_body 把图片链接统一为 `asset:{mid}/{basename}` 再算哈希（token/写法不同内容相同 → 哈希一致，防无限回环）；自实现 frontmatter（扁平标量，不引 PyYAML）；vault 文件名保留中文空格
+- **落盘格式（S3）**：pull 内容里的 `asset:` 链接 → 下载到 `知识星球/assets/{mid}/` 并改写相对路径；frontmatter 锚点（planet_note_id/map_id/tags=星球名/source）；新文件上传成功后只回填 id 段（已有锚点绝不动用户内容）；云端标题变化 → vault 文件改名；本地图片上行未实现（状态报告 images_not_uploaded 计数不静默，S3b）
+- **云端地基（S1）**：`api/v1/agent/planet_sync.py`（X-Agent-Id/X-Agent-Secret 鉴权，设备绑定映射，未绑定 403）——/pull/index（含星球名 JOIN）、/pull/content（≤50）、/push/upsert（按 map_id 幂等覆盖 + index_note 重建检索索引）、/push/delete、/asset 下载；planet_notes.content_hash（迁移 0010 + scripts/backfill_note_hash.py，存量空则现算）
+- **状态徽标（S4）**：vault_sync_event 经 WS 上报 → `/admin/agent-status` 带 vault_sync 字段 → PlanetPage header 徽标（15s 轮询：已同步 N 篇 / 上传下载冲突计数）；SettingsPage 只读说明卡
+- **验证**：`python -m agent.verify_vault_sync`（离线断言 15 项 + --online）；测试 test_vault_note/test_planet_sync_api/test_vault_sync_agent 共 17 项
+
 ## 记忆机制（短期工作记忆 + 长期条目化记忆）
 
 「一个对话用到底」：最近 20 条原样保留（工作记忆）；超阈值（>20 条或 >8000 字）由豆包 lite 后台异步折叠成条目化事实存 `users.memory`（寒暄遗忘、点踩内容剔除）；设置页「我的记忆」卡透明可编辑；记忆注入 system prompt（`chat/router.py` 注入点，桥接与云端直连均生效）。

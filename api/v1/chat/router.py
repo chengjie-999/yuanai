@@ -201,9 +201,10 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         # --- 回退：云端直接调用 LLM ---
         logger.info("chat/stream → 云端直接调用 (user=%s, agent offline)", user_id)
-        # Agent 离线时没有 delegate 工具，修正系统提示
+        # Agent 离线时没有 delegate 工具，修正系统提示。
+        # 记忆机制修复：原来整段覆盖会丢掉已注入的用户记忆——改为前置拼接
         offline_prompt = "你是小元AI助手，可以直接使用工具完成任务。可用的工具包括：list_datasets(列出数据集)、preview_dataset(预览)、analyze_dataset(分析)、fetch_url(抓取网页)、parse_html(解析HTML)、get_today_temperature(天气)、calculate_sum(计算)、get_user_memory(用户记忆)、retrieve_planet_knowledge(知识星球检索) 等。直接用工具处理用户请求，简洁回复。任务完成或对话结束时，用表格总结本次完成了什么。"
-        input_messages[0]["content"] = offline_prompt
+        input_messages[0]["content"] = offline_prompt + "\n\n" + str(input_messages[0]["content"])
         effort = req.reasoning_effort if req.reasoning_effort in ("low", "high") else "low"
         llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True,
                       reasoning_effort=effort)
@@ -467,6 +468,17 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
 
         from db.cache import clear_chat_cache
         clear_chat_cache(req.session_id)
+
+        # 记忆折叠触发（fire-and-forget）：超阈值才真正入队；任何异常不影响保存
+        try:
+            from api.v1.chat.memory_fold import maybe_schedule_memory_fold
+            maybe_schedule_memory_fold(
+                req.session_id, user_id, len(req.messages),
+                sum(len(m.get("content") or "") for m in req.messages),
+            )
+        except Exception:
+            logger.warning("记忆压缩调度失败（不影响保存）", exc_info=True)
+
         return {"saved": count}
     except HTTPException:
         raise

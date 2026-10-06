@@ -4,6 +4,8 @@ import uuid
 import base64
 import asyncio
 import logging
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import StreamingResponse, FileResponse
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
@@ -70,7 +72,8 @@ class MessagesRequest(BaseModel):
 class FeedbackRequest(BaseModel):
     session_id: str = Field(..., min_length=1, description="会话 ID")
     message_index: int = Field(..., ge=0, description="消息下标（0 起，与前端数组一致）")
-    liked: bool = Field(..., description="是否点赞")
+    liked: Optional[bool] = Field(None, description="点赞（true=赞，false=取消；与 disliked 互斥）")
+    disliked: Optional[bool] = Field(None, description="点踩（true=踩，false=取消；与 liked 互斥）")
 
 
 
@@ -474,11 +477,19 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
 
 @router.post("/feedback")
 async def set_message_feedback(req: FeedbackRequest, request: Request):
-    """点赞/取消点赞一条 AI 消息（按会话内消息下标定位）"""
+    """点赞/点踩一条 AI 消息（按会话内消息下标定位；liked/disliked 三态互斥）
+
+    服务端归一：liked=True → 赞 1 踩 0；disliked=True → 赞 0 踩 1；
+    其余（含两者皆 false/None）→ 两态皆 0（取消）。
+    旧客户端只发 liked 的行为完全不变。
+    """
     try:
         db = _get_db()
         user_id = _get_user_id(request)
         _verify_session_owner(db, req.session_id, user_id)
+
+        liked = 1 if req.liked is True else 0
+        disliked = 1 if (req.disliked is True and not liked) else 0
 
         from db.session import AIChatFeedback
         sess = db.Session()
@@ -487,13 +498,15 @@ async def set_message_feedback(req: FeedbackRequest, request: Request):
                 session_id=req.session_id, message_index=req.message_index,
             ).first()
             if row:
-                row.liked = 1 if req.liked else 0
+                row.liked = liked
+                row.disliked = disliked
                 row.user_id = user_id
             else:
                 sess.add(AIChatFeedback(
                     session_id=req.session_id,
                     message_index=req.message_index,
-                    liked=1 if req.liked else 0,
+                    liked=liked,
+                    disliked=disliked,
                     user_id=user_id,
                 ))
             sess.commit()
@@ -502,7 +515,7 @@ async def set_message_feedback(req: FeedbackRequest, request: Request):
             raise
         finally:
             sess.close()
-        return {"ok": True}
+        return {"ok": True, "liked": bool(liked), "disliked": bool(disliked)}
     except HTTPException:
         raise
     except Exception as e:
@@ -512,7 +525,7 @@ async def set_message_feedback(req: FeedbackRequest, request: Request):
 
 @router.get("/feedback")
 async def get_message_feedback(request: Request, session_id: str = Query(..., min_length=1, description="会话 ID")):
-    """获取会话内所有消息的点赞状态，返回 {消息下标: 是否已赞}"""
+    """获取会话内所有消息的反馈状态，返回 {消息下标: {liked, disliked}}（两态皆 0 的不返回）"""
     try:
         db = _get_db()
         user_id = _get_user_id(request)
@@ -522,7 +535,8 @@ async def get_message_feedback(request: Request, session_id: str = Query(..., mi
         sess = db.Session()
         try:
             rows = sess.query(AIChatFeedback).filter_by(session_id=session_id).all()
-            return {str(r.message_index): bool(r.liked) for r in rows}
+            return {str(r.message_index): {"liked": bool(r.liked), "disliked": bool(r.disliked)}
+                    for r in rows if r.liked or r.disliked}
         finally:
             sess.close()
     except HTTPException:

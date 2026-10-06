@@ -42,15 +42,30 @@ class AIChat(Base):
 
 
 class AIChatFeedback(Base):
-    """AI 消息点赞表（消息无 id，以数组下标定位，会话内唯一）"""
+    """AI 消息反馈表（消息无 id，以数组下标定位，会话内唯一；liked/disliked 三态互斥）"""
     __tablename__ = 'ai_chat_feedback'
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String(36), nullable=False, index=True)
     message_index = Column(Integer, nullable=False)
-    liked = Column(Integer, default=0)   # 0=未赞 1=已赞
+    liked = Column(Integer, default=0)       # 0=未赞 1=已赞
+    disliked = Column(Integer, default=0)    # 0=未踩 1=已踩（与 liked 不可同时为 1）
     user_id = Column(Integer, nullable=True, index=True)
     create_time = Column(TIMESTAMP, server_default=func.now())
     __table_args__ = (UniqueConstraint('session_id', 'message_index', name='uq_feedback_session_index'),)
+
+
+class SessionMemoryState(Base):
+    """会话记忆折叠游标：folded_count = 已折叠进长期记忆的前缀消息条数
+
+    ai_chat 每次 save 全量重建（id 每轮全变），故游标必须是独立持久化的
+    前缀计数；编辑重发使消息数组变短时由调用方回夹（clamp）。
+    """
+    __tablename__ = 'session_memory_state'
+    session_id = Column(String(36), primary_key=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    folded_count = Column(Integer, default=0, nullable=False)
+    create_time = Column(TIMESTAMP, server_default=func.now())
+    update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 
 class TaskImage(Base):
@@ -332,6 +347,7 @@ class AgentDatabase:
         try:
             sess.query(AIChat).filter_by(session_id=session_id).delete()
             sess.query(AIChatFeedback).filter_by(session_id=session_id).delete()
+            sess.query(SessionMemoryState).filter_by(session_id=session_id).delete()
             sess.query(ChatSession).filter_by(session_id=session_id).delete()
             sess.commit()
         finally:
@@ -383,6 +399,7 @@ class AgentDatabase:
         try:
             session.query(AIChat).delete()
             session.query(ChatSession).delete()
+            session.query(SessionMemoryState).delete()
             session.commit()
         finally:
             session.close()
@@ -531,6 +548,83 @@ class AgentDatabase:
             user.memory = memory.strip()
             sess.commit()
             return True
+        finally:
+            sess.close()
+
+    # --------------------------------------------------------------------------
+    # 记忆机制（会话折叠游标 / 反馈三态 / 记忆合并）
+    # --------------------------------------------------------------------------
+    def get_session_memory_state(self, session_id: str):
+        """读折叠游标；无行返回 None（视作 folded=0）"""
+        sess = self.Session()
+        try:
+            row = sess.query(SessionMemoryState).filter_by(session_id=session_id).first()
+            if not row:
+                return None
+            return {"session_id": row.session_id, "user_id": row.user_id,
+                    "folded_count": row.folded_count or 0}
+        finally:
+            sess.close()
+
+    def upsert_session_memory_state(self, session_id: str, user_id: int, folded_count: int) -> None:
+        """幂等 upsert 折叠游标；已存在时取 max（游标只增不减，防并发回退）"""
+        sess = self.Session()
+        try:
+            row = sess.query(SessionMemoryState).filter_by(session_id=session_id).first()
+            if row:
+                row.folded_count = max(row.folded_count or 0, folded_count)
+                row.user_id = user_id or row.user_id
+            else:
+                sess.add(SessionMemoryState(session_id=session_id, user_id=user_id,
+                                            folded_count=folded_count))
+            sess.commit()
+        finally:
+            sess.close()
+
+    def get_session_feedback(self, session_id: str) -> dict:
+        """{message_index: {"liked": bool, "disliked": bool}}；两态皆 0 的行不返回"""
+        sess = self.Session()
+        try:
+            rows = sess.query(AIChatFeedback).filter_by(session_id=session_id).all()
+            out = {}
+            for r in rows:
+                if r.liked or r.disliked:
+                    out[r.message_index] = {"liked": bool(r.liked), "disliked": bool(r.disliked)}
+            return out
+        finally:
+            sess.close()
+
+    def merge_user_memory(self, user_id: int, new_lines: list, max_items: int, max_chars: int) -> dict:
+        """把折叠出的新事实合并进长期记忆（事务内 FOR UPDATE 锁行，防与设置页手改互相覆盖）
+
+        只追加 + 行级去重，绝不整表重写——保护用户手改内容。
+        返回 {"added": int, "total": int}。
+        """
+        from yuanai_core.memory import merge_facts  # 惰性 import，保持模块级依赖不变
+
+        sess = self.Session()
+        try:
+            user = sess.query(User).filter_by(id=user_id).with_for_update().first()
+            if not user:
+                return {"added": 0, "total": 0}
+            existing = [ln.strip() for ln in (user.memory or "").split("\n") if ln.strip()]
+            merged, added = merge_facts(existing, [ln.strip() for ln in new_lines if ln.strip()],
+                                        max_items, max_chars)
+            user.memory = "\n".join(merged)
+            sess.commit()
+            return {"added": added, "total": len(merged)}
+        finally:
+            sess.close()
+
+    def get_session_stats(self, session_id: str) -> dict:
+        """会话消息条数 + 总字数（一次聚合查询，不加载正文）"""
+        from sqlalchemy import func as _func
+        sess = self.Session()
+        try:
+            cnt, total = sess.query(
+                _func.count(AIChat.id), _func.coalesce(_func.sum(_func.length(AIChat.content)), 0)
+            ).filter(AIChat.session_id == session_id).first()
+            return {"msg_count": int(cnt or 0), "total_chars": int(total or 0)}
         finally:
             sess.close()
 

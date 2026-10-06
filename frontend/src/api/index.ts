@@ -323,25 +323,36 @@ export async function saveMessages(sessionId: string, messages: { role: string; 
 }
 
 // ---- Feedback ----
-export async function loadFeedback(sessionId: string): Promise<Record<number, boolean>> {
+export type FeedbackState = { liked: boolean; disliked: boolean }
+
+export async function loadFeedback(sessionId: string): Promise<Record<number, FeedbackState>> {
   try {
     const res = await fetch(`${API_BASE}/chat/feedback?session_id=${encodeURIComponent(sessionId)}`, { headers: authHeaders() })
     if (!res.ok) return {}
     const data = await res.json()
-    const out: Record<number, boolean> = {}
+    const out: Record<number, FeedbackState> = {}
     if (data && typeof data === 'object') {
-      for (const k of Object.keys(data)) out[Number(k)] = !!data[k]
+      for (const k of Object.keys(data)) {
+        const v = data[k]
+        out[Number(k)] = typeof v === 'object'
+          ? { liked: !!v.liked, disliked: !!v.disliked }
+          : { liked: !!v, disliked: false }   // 兼容旧服务端（bool 形状）
+      }
     }
     return out
   } catch { return {} }
 }
 
-export async function setFeedback(sessionId: string, messageIndex: number, liked: boolean): Promise<boolean> {
+export async function setFeedback(sessionId: string, messageIndex: number,
+  state: 'like' | 'dislike' | 'none'): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/chat/feedback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ session_id: sessionId, message_index: messageIndex, liked }),
+      body: JSON.stringify({
+        session_id: sessionId, message_index: messageIndex,
+        liked: state === 'like', disliked: state === 'dislike',
+      }),
     })
     return res.ok
   } catch { return false }

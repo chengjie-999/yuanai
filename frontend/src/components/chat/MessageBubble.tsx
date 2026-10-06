@@ -34,14 +34,14 @@ function HtmlFrame({ url, title }: { url: string; title: string }) {
   )
 }
 
-export default function MessageBubble({ msg, index, isLast, loading, liked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onLike }: {
+export default function MessageBubble({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
-  liked?: boolean; editing?: boolean
+  liked?: boolean; disliked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
   onEditStart: (i: number) => void
   onEditConfirm: (i: number, content: string) => void
   onEditCancel: () => void
-  onLike: (i: number) => void
+  onFeedback: (i: number, kind: 'like' | 'dislike') => void
 }) {
   const isUser = msg.role === 'user'
   const sender = !isUser ? (msg.sender || 'orchestrator') : null
@@ -166,7 +166,8 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
           <svg {...iconProps}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
         </button>
       ) : (
-        <button onClick={() => onLike(index)} disabled={loading}
+        <>
+        <button onClick={() => onFeedback(index, 'like')} disabled={loading}
           className="yuan-tip" data-tip={liked ? '取消点赞' : '点赞'} aria-label={liked ? '取消点赞' : '点赞'}
           style={iconBtnStyle(false, !!liked)}
           onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
@@ -176,6 +177,17 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, edit
             <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z" />
           </svg>
         </button>
+        <button onClick={() => onFeedback(index, 'dislike')} disabled={loading}
+          className="yuan-tip" data-tip={disliked ? '取消点踩' : '点踩（内容不会进入记忆）'} aria-label={disliked ? '取消点踩' : '点踩'}
+          style={{ ...iconBtnStyle(false, !!disliked), color: disliked ? 'var(--danger)' : undefined }}
+          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
+          <svg {...iconProps} fill={disliked ? 'currentColor' : 'none'}>
+            <path d="M7 14v-12" />
+            <path d="M9 5.88 10 14H4.17a2 2 0 0 0-1.92 2.56l2.33 8A2 2 0 0 0 6.5 26H20a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2.76a2 2 0 0 1-1.79-1.11L12 2h0a3.13 3.13 0 0 0-3 3.88Z" transform="translate(0,24) scale(1,-1)" />
+          </svg>
+        </button>
+        </>
       )}
     </div>
   ) : null

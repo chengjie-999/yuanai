@@ -42,9 +42,9 @@ export default function ChatPage({ user }: { user?: any }) {
   // Claude Code 桥接待审批命令
   const [pendingApproval, setPendingApproval] = useState<{ decision_id: string; tool_name: string; command: string } | null>(null)
   // 消息点赞（下标 → 已赞）与修改编辑态（消息下标，null = 非编辑态）
-  const [likes, setLikes] = useState<Record<number, boolean>>({})
+  const [feedback, setFeedbackState] = useState<Record<number, { liked: boolean; disliked: boolean }>>({})
+  const feedbackPendingRef = useRef<Set<number>>(new Set())
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
-  const likePendingRef = useRef<Set<number>>(new Set())
   const messagesRef = useRef(messages)
   messagesRef.current = messages
   const sidRef = useRef(currentSid)
@@ -130,15 +130,15 @@ export default function ChatPage({ user }: { user?: any }) {
     setMessages([])
     setQuickInput('')
     setInput('')
-    setLikes({})
+    setFeedbackState({})
     setEditingIndex(null)
   }
 
   const handleSelectSession = async (sid: string) => {
     setCurrentSid(sid)
     const history = await loadMessages(sid)
-    const likesData = await loadFeedback(sid)
-    setLikes(likesData)
+    const feedbackData = await loadFeedback(sid)
+    setFeedbackState(feedbackData)
     setEditingIndex(null)
     if (history.length === 0) {
       setMessages([{ role: 'assistant', content: '你好！有什么可以帮你的？' }])
@@ -285,15 +285,19 @@ export default function ChatPage({ user }: { user?: any }) {
     sendMessages(truncated, newContent.trim(), base[index].images)
   }
 
-  // 点赞 toggle：乐观更新 + 失败回滚 + pending 防并发（流式期间禁止索引操作）
-  const handleLike = async (index: number) => {
-    if (loading || likePendingRef.current.has(index) || !currentSid) return
-    const next = !likes[index]
-    likePendingRef.current.add(index)
-    setLikes((p) => ({ ...p, [index]: next }))
-    const ok = await setFeedback(currentSid, index, next)
-    if (!ok) setLikes((p) => ({ ...p, [index]: !next }))
-    likePendingRef.current.delete(index)
+  // 点赞/点踩 三态互斥：乐观更新 + 失败回滚 + pending 防并发（流式期间禁止索引操作）
+  const handleFeedback = async (index: number, kind: 'like' | 'dislike') => {
+    if (loading || feedbackPendingRef.current.has(index) || !currentSid) return
+    const cur = feedback[index] || { liked: false, disliked: false }
+    const next = kind === 'like'
+      ? { liked: !cur.liked, disliked: false }
+      : { liked: false, disliked: !cur.disliked }
+    const state = next.liked ? 'like' : next.disliked ? 'dislike' : 'none'
+    feedbackPendingRef.current.add(index)
+    setFeedbackState((p) => ({ ...p, [index]: next }))
+    const ok = await setFeedback(currentSid, index, state)
+    if (!ok) setFeedbackState((p) => ({ ...p, [index]: cur }))
+    feedbackPendingRef.current.delete(index)
   }
 
   // 语音通话结束：刷新会话列表（新会话标题/最近对话）
@@ -410,8 +414,8 @@ export default function ChatPage({ user }: { user?: any }) {
             localOnline={localOnline} claudeOnline={claudeOnline}
             effort={effort} setEffort={setEffort}
             pendingApproval={pendingApproval} handleDecision={handleDecision}
-            likes={likes} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
-            onEditMessage={handleEditMessage} onLike={handleLike}
+            likes={feedback} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
+            onEditMessage={handleEditMessage} onFeedback={handleFeedback}
             onStartVoiceCall={startVoiceCallWithPermission}
           />
         )}

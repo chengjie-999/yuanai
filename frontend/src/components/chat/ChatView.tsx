@@ -7,7 +7,7 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onLike, onStartVoiceCall }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string) => void; handleSend: () => void
@@ -20,11 +20,11 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   pendingApproval: { decision_id: string; tool_name: string; command: string } | null
   handleDecision: (approve: boolean) => void
-  likes: Record<number, boolean>
+  likes: Record<number, { liked: boolean; disliked: boolean }>
   editingIndex: number | null
   setEditingIndex: (v: number | null) => void
   onEditMessage: (index: number, content: string) => void
-  onLike: (index: number) => void
+  onFeedback: (index: number, kind: 'like' | 'dislike') => void
   onStartVoiceCall: () => void
 }) {
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -44,12 +44,12 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
           {messages.map((msg, i) => (
             <MessageBubble key={i} msg={msg} index={i} isLast={i === messages.length - 1}
               loading={loading} user={user}
-              liked={!!likes[i]} editing={editingIndex === i}
+              liked={!!likes[i]?.liked} disliked={!!likes[i]?.disliked} editing={editingIndex === i}
               setExpandedImage={setExpandedImage}
               onEditStart={setEditingIndex}
               onEditConfirm={onEditMessage}
               onEditCancel={() => setEditingIndex(null)}
-              onLike={onLike} />
+              onFeedback={onFeedback} />
           ))}
           <div ref={chatEndRef} />
           {pendingApproval && (

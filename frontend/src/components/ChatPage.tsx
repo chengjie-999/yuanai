@@ -34,8 +34,8 @@ export default function ChatPage({ user }: { user?: any }) {
   // 聊天模式：local=本地统筹 Agent / cloud=云端直连 / claude=Claude Code 桥接
   const [chatMode, setChatMode] = useState<'local' | 'cloud' | 'claude'>('local')
   // 推理强度开关（快答/深思）：localStorage 持久化，仅对 DeepSeek 系列生效
-  const [effort, setEffortState] = useState<'low' | 'high'>(getStoredEffort())
-  const setEffort = (v: 'low' | 'high') => { setEffortState(v); setStoredEffort(v) }
+  const [effort, setEffortState] = useState<'low' | 'medium' | 'high'>(getStoredEffort())
+  const setEffort = (v: 'low' | 'medium' | 'high') => { setEffortState(v); setStoredEffort(v) }
   const [localOnline, setLocalOnline] = useState(false)
   const [claudeOnline, setClaudeOnline] = useState(false)
   const [statusKnown, setStatusKnown] = useState(false)

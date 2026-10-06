@@ -33,6 +33,9 @@ def test_explicit_param_wins(lc_mod):
     lc.get_llm("deepseek-v4-pro", reasoning_effort="high")
     assert captured["extra_body"] == {"reasoning_effort": "high"}
 
+    lc.get_llm("deepseek-v4-pro", reasoning_effort="medium")
+    assert captured["extra_body"] == {"reasoning_effort": "medium"}
+
     lc.get_llm("deepseek-v4-pro", reasoning_effort="low")
     assert captured["extra_body"] == {"reasoning_effort": "low"}
 

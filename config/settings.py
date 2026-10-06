@@ -36,7 +36,7 @@ VISION_MODEL = "doubao-seed-2-0-pro-260215"  # DeepSeek V4 不支持图片，识
 DEFAULT_TEMPERATURE = 0.7
 
 # 推理强度（DeepSeek 系列 reasoning_effort，.env 可覆盖）：
-#   low = 快答省 token（默认，适合路由/对话）；high = 深度思考（适合复杂分析）
+#   low = 快答省 token（默认）；medium = 标准；high = 深度思考（复杂分析）
 # 豆包系列不走此参数——思考模式由方舟接入点（火山控制台 endpoint）的 thinking 开关控制
 REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")
 

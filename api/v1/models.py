@@ -12,7 +12,7 @@ class ChatRequest(BaseModel):
     session_id: str = Field("", description="会话ID（Claude 桥接用于会话持久化）")
     decision: Optional[dict] = Field(None, description="审批决议（Claude 桥接）：{decision_id, approve}")
     force_cloud: bool = Field(False, description="强制走云端 LLM，跳过本地 Agent WebSocket 桥接")
-    reasoning_effort: str = Field("low", description="推理强度：low 快答 / high 深思（聊天框开关）")
+    reasoning_effort: str = Field("low", description="推理强度：low 快答 / medium 标准 / high 深思（聊天框滑块）")
 
 
 class MessageResponse(BaseModel):

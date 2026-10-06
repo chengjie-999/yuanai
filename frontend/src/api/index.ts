@@ -18,11 +18,12 @@ export function setStoredModel(model: string) {
 // ---- 推理强度（聊天框开关，localStorage 持久化） ----
 const EFFORT_KEY = 'reasoningEffort'
 
-export function getStoredEffort(): 'low' | 'high' {
-  return localStorage.getItem(EFFORT_KEY) === 'high' ? 'high' : 'low'
+export function getStoredEffort(): 'low' | 'medium' | 'high' {
+  const v = localStorage.getItem(EFFORT_KEY)
+  return v === 'high' || v === 'medium' ? v : 'low'
 }
 
-export function setStoredEffort(effort: 'low' | 'high') {
+export function setStoredEffort(effort: 'low' | 'medium' | 'high') {
   localStorage.setItem(EFFORT_KEY, effort)
 }
 
@@ -435,7 +436,7 @@ export function streamChat(
     decision?: { decision_id: string; approve: boolean }
     claude?: boolean
     force_cloud?: boolean
-    reasoning_effort?: 'low' | 'high'
+    reasoning_effort?: 'low' | 'medium' | 'high'
   },
   onEvent: (event: any) => void,
   onError: (error: string) => void,

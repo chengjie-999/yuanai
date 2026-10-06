@@ -146,7 +146,7 @@ class AgentWSClient:
         current_request_id.set(request_id)
         # 推理强度开关（聊天框 low/high）：本请求内 get_llm 自动生效
         from yuanai_core.core.lc import current_reasoning_effort
-        if req.reasoning_effort in ("low", "high"):
+        if req.reasoning_effort in ("low", "medium", "high"):
             current_reasoning_effort.set(req.reasoning_effort)
 
         if not self._on_chat_request:

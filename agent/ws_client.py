@@ -136,6 +136,7 @@ class AgentWSClient:
             messages=msg.get("messages", []),
             images=msg.get("images", []),
             mode=msg.get("mode", ""),
+            reasoning_effort=msg.get("reasoning_effort", "low"),
             decision=msg.get("decision"),
         )
 
@@ -143,6 +144,10 @@ class AgentWSClient:
         if req.user_id:
             current_user_id.set(req.user_id)
         current_request_id.set(request_id)
+        # 推理强度开关（聊天框 low/high）：本请求内 get_llm 自动生效
+        from yuanai_core.core.lc import current_reasoning_effort
+        if req.reasoning_effort in ("low", "high"):
+            current_reasoning_effort.set(req.reasoning_effort)
 
         if not self._on_chat_request:
             await self._send(error_event("Agent 未配置对话处理器", request_id))

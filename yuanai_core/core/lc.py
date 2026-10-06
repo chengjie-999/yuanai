@@ -1,11 +1,17 @@
 from typing import Optional, List, Union
 
+from contextvars import ContextVar
+
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from utils.sensitive_data import get_api_key
 from config.settings import MODEL_NAMES, REASONING_EFFORT
+
+# 当前请求的推理强度（聊天框「快答/深思」开关；ws_client 按请求设置，
+# 优先级：get_llm 显式参数 > 本 contextvar > settings.REASONING_EFFORT）
+current_reasoning_effort: ContextVar[str] = ContextVar("lc_reasoning_effort", default="")
 
 dsllm = [m for m in MODEL_NAMES if 'deepseek' in m]
 seed = [m for m in MODEL_NAMES if 'doubao' in m]
@@ -39,18 +45,20 @@ def call_llm(
         return None
 
 
-def get_llm(model='deepseek-chat', reasoning=True, **kwargs):
+def get_llm(model='deepseek-chat', reasoning=True, reasoning_effort: Optional[str] = None, **kwargs):
+    """LLM 工厂。reasoning_effort 优先级：显式参数 > 请求上下文（聊天框开关）> settings。"""
     if model in dsllm:
         ds_api_key = _get_stored_key("DeepSeek") or get_api_key('dsllm')
         extra_params = {}
         # 推理强度（模型升级弹性化）：按前缀匹配而非硬编码 id——
         # 新版本（deepseek-4.1 等）加入 models.json 后自动生效；
-        # reasoner 系列恒 high（其专长）；其余 deepseek-* 用 settings.REASONING_EFFORT
+        # reasoner 系列恒 high（其专长）；其余 deepseek-* 用可配置强度
         if reasoning:
+            effort = reasoning_effort or current_reasoning_effort.get() or REASONING_EFFORT
             if "reasoner" in model:
                 extra_params["extra_body"] = {"reasoning_effort": "high"}
             elif model.startswith("deepseek-"):
-                extra_params["extra_body"] = {"reasoning_effort": REASONING_EFFORT}
+                extra_params["extra_body"] = {"reasoning_effort": effort}
         return ChatOpenAI(
             api_key=ds_api_key,
             base_url="https://api.deepseek.com/beta",

@@ -5,16 +5,19 @@ import Mascot from '../Mascot'
 import type { SessionInfo } from './helpers'
 import type { ChatMode } from './ChatModeSelector'
 import ChatModeSelector from './ChatModeSelector'
+import type { ReasoningEffort } from './ReasoningSelector'
+import ReasoningSelector from './ReasoningSelector'
 import { compressImage } from './imageUtils'
 import { PaperclipIcon, XIcon } from '../icons'
 
-export default function WelcomePage({ images, setImages, quickInput, setQuickInput, sendWithNewSession, sessions, onSelectSession, chatMode, setChatMode, localOnline, claudeOnline, onStartVoiceCall }: {
+export default function WelcomePage({ images, setImages, quickInput, setQuickInput, sendWithNewSession, sessions, onSelectSession, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, onStartVoiceCall }: {
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   quickInput: string; setQuickInput: (v: string | ((p: string) => string)) => void
   sendWithNewSession: (text: string) => void
   sessions: SessionInfo[]; onSelectSession: (sid: string) => void
   chatMode: ChatMode; setChatMode: (v: ChatMode) => void
   localOnline: boolean; claudeOnline: boolean
+  effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   onStartVoiceCall: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -115,6 +118,7 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px 10px' }}>
               <ChatModeSelector chatMode={chatMode} setChatMode={setChatMode}
                 localOnline={localOnline} claudeOnline={claudeOnline} />
+              <ReasoningSelector effort={effort} setEffort={setEffort} />
             </div>
           </div>
         </div>

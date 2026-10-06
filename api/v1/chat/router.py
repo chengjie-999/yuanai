@@ -186,6 +186,8 @@ async def chat_stream(req: ChatRequest, request: Request):
                 "user_id": user_id,
                 "messages": input_messages,
                 "images": req.images,
+                # 聊天框推理强度开关（low/high）透传本地 Agent
+                "reasoning_effort": req.reasoning_effort if req.reasoning_effort in ("low", "high") else "low",
             }
             bridged_request_id = await forward_to_agent(user_id, agent_chat_request)
 
@@ -199,7 +201,9 @@ async def chat_stream(req: ChatRequest, request: Request):
         # Agent 离线时没有 delegate 工具，修正系统提示
         offline_prompt = "你是小元AI助手，可以直接使用工具完成任务。可用的工具包括：list_datasets(列出数据集)、preview_dataset(预览)、analyze_dataset(分析)、fetch_url(抓取网页)、parse_html(解析HTML)、get_today_temperature(天气)、calculate_sum(计算)、get_user_memory(用户记忆)、retrieve_planet_knowledge(知识星球检索) 等。直接用工具处理用户请求，简洁回复。任务完成或对话结束时，用表格总结本次完成了什么。"
         input_messages[0]["content"] = offline_prompt
-        llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True)
+        effort = req.reasoning_effort if req.reasoning_effort in ("low", "high") else "low"
+        llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True,
+                      reasoning_effort=effort)
 
         async def event_stream():
             try:

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, API_BASE, getToken } from '../api'
+import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
@@ -33,6 +33,9 @@ export default function ChatPage({ user }: { user?: any }) {
   const [expandedImage, setExpandedImage] = useState<string | null>(null)
   // 聊天模式：local=本地统筹 Agent / cloud=云端直连 / claude=Claude Code 桥接
   const [chatMode, setChatMode] = useState<'local' | 'cloud' | 'claude'>('local')
+  // 推理强度开关（快答/深思）：localStorage 持久化，仅对 DeepSeek 系列生效
+  const [effort, setEffortState] = useState<'low' | 'high'>(getStoredEffort())
+  const setEffort = (v: 'low' | 'high') => { setEffortState(v); setStoredEffort(v) }
   const [localOnline, setLocalOnline] = useState(false)
   const [claudeOnline, setClaudeOnline] = useState(false)
   const [statusKnown, setStatusKnown] = useState(false)
@@ -249,7 +252,7 @@ export default function ChatPage({ user }: { user?: any }) {
     const { onEvent, onError } = makeStreamHandlers()
     streamChat(
       { model, temperature: 0.7, prompt, images: sentImages, history, system_prompt: SYSTEM_PROMPT,
-        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud' },
+        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud', reasoning_effort: effort },
       onEvent, onError,
       () => {
         setLoading(false)
@@ -324,7 +327,7 @@ export default function ChatPage({ user }: { user?: any }) {
     const { onEvent, onError } = makeStreamHandlers()
     streamChat(
       { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: SYSTEM_PROMPT,
-        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud' },
+        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud', reasoning_effort: effort },
       onEvent, onError,
       () => {
         setLoading(false)
@@ -391,6 +394,7 @@ export default function ChatPage({ user }: { user?: any }) {
             sessions={sessions} onSelectSession={handleSelectSession}
             chatMode={chatMode} setChatMode={setChatMode}
             localOnline={localOnline} claudeOnline={claudeOnline}
+            effort={effort} setEffort={setEffort}
             onStartVoiceCall={startVoiceCallWithPermission}
           />
         ) : (
@@ -404,6 +408,7 @@ export default function ChatPage({ user }: { user?: any }) {
             sessions={sessions}
             chatMode={chatMode} setChatMode={setChatMode}
             localOnline={localOnline} claudeOnline={claudeOnline}
+            effort={effort} setEffort={setEffort}
             pendingApproval={pendingApproval} handleDecision={handleDecision}
             likes={likes} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
             onEditMessage={handleEditMessage} onLike={handleLike}

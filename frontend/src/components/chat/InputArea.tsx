@@ -4,16 +4,19 @@ import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
 import type { ChatMode } from './ChatModeSelector'
 import ChatModeSelector from './ChatModeSelector'
+import type { ReasoningEffort } from './ReasoningSelector'
+import ReasoningSelector from './ReasoningSelector'
 import { compressImage } from './imageUtils'
 import { PaperclipIcon, XIcon, PanelLeftIcon } from '../icons'
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, messages, chatMode, setChatMode, localOnline, claudeOnline, onStartVoiceCall }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, messages, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, onStartVoiceCall }: {
   input: string; setInput: (v: string) => void; loading: boolean; handleSend: () => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
   sidebarOpen: boolean; setSidebarOpen: (v: boolean) => void
   sessions: SessionInfo[]; messages: ChatMessage[]
   chatMode: ChatMode; setChatMode: (v: ChatMode) => void
+  effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   localOnline: boolean; claudeOnline: boolean
   onStartVoiceCall: () => void
 }) {
@@ -121,6 +124,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
             )}
             <ChatModeSelector chatMode={chatMode} setChatMode={setChatMode}
               localOnline={localOnline} claudeOnline={claudeOnline} />
+            <ReasoningSelector effort={effort} setEffort={setEffort} />
           </div>
         </div>
       </div>

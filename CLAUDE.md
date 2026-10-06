@@ -225,6 +225,18 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **视觉**：Canvas 星野背景（Starfield.tsx）+ 天体图标（银河=星球、恒星=导图、行星/卫星=笔记）
 - **架构图/ER 图**：`api/v1/monitor/diagrams.py` 请求时实时生成（ER 图 ast 解析 db/session.py）；端点 `/monitor/arch-diagram`、`/er-diagram`（admin）；后台「代码监控」页卡片 + README 嵌入（`python scripts/gen_diagrams.py` 刷新）
 
+## 记忆机制（短期工作记忆 + 长期条目化记忆）
+
+「一个对话用到底」：最近 20 条原样保留（工作记忆）；超阈值（>20 条或 >8000 字）由豆包 lite 后台异步折叠成条目化事实存 `users.memory`（寒暄遗忘、点踩内容剔除）；设置页「我的记忆」卡透明可编辑；记忆注入 system prompt（`chat/router.py` 注入点，桥接与云端直连均生效）。
+
+- **触发**：`/chat/save` 落库后 fire-and-forget（`api/v1/chat/memory_fold.py`；请求内零成本预筛 + in-flight 防重 + 异常全吞）；工作线程重读 DB 消息数组 → 游标 clamp → 烧钱护栏（≥5 条或 800 字才调 LLM）→ 每日 50 次限额 → 折叠 → 合并 → 游标前进（失败不动自然重试；LLM 空输出=遗忘也前进）
+- **游标**：`session_memory_state` 表（session_id PK / folded_count，max 语义只增不减；ai_chat 每次 save 全量重建 id 会变，游标必须是独立前缀计数；编辑重发自动回夹）
+- **合并**：`yuanai_core/memory.py` merge_facts 只追加 + 行级去重（FOR UPDATE 锁行防与手改互相覆盖）；上限 100 条/2000 字丢最旧
+- **点踩**：ai_chat_feedback 三态互斥（liked/disliked，迁移 0009）；点踩消息在折叠 transcript 中被剔除并标注
+- **编辑入口**：`GET/PUT /api/v1/auth/memory`（超限 400 拒绝而非截断）；前端 `MemoryCard.tsx`
+- **配置**：config/settings.py MEMORY_* 12 项（模型/窗口/阈值/护栏/上限/超时/日限额，.env 可覆盖）
+- 已知限制（二期）：历史仍全量发送模型（不截断省 token）；claude-stream 无记忆注入；/voice/message 不触发折叠
+
 ## 语音对话
 
 火山引擎「AI 音视频互动方案」实时语音（豆包 App 同款：RTC + 豆包 ASR/TTS + 方舟 LLM）：

@@ -24,6 +24,7 @@ a = Analysis(
         'skills',
         'agent', 'agent.main', 'agent.ws_client', 'agent.orchestrator', 'agent.intent_classifier',
         'agent.claude_bridge', 'agent.tools.claude_delegate',
+        'agent.vault_sync', 'yuanai_core.pure.vault_note',
         'agent.agents', 'agent.agents.base', 'agent.agents.analysis', 'agent.agents.collection', 'agent.agents.automation',
         'agent.tools', 'agent.tools.errors', 'agent.tools.audit_tools', 'agent.tools.browser_info_tools', 'agent.tools.cookie_tools', 'agent.tools.monitor_tools',
         'agent.tools.selenium_tools', 'agent.tools.selenium_tools.core', 'agent.tools.selenium_tools.xiaoyuan',

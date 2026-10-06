@@ -36,6 +36,8 @@ def parse_args():
     p.add_argument("--agent-token", default=None, help="Agent 认证凭据（JWT 或注册获得的 agent_secret；默认：身份文件 > AGENT_TOKEN 环境变量）")
     p.add_argument("--install", metavar="安装码", default=None, help="首次安装：用后台签发的安装码注册本机（如 YUAN-XXXX-XXXX-XXXX）")
     p.add_argument("--tray", action="store_true", help="以托盘模式运行（默认命令行模式）")
+    p.add_argument("--vault-sync", action="store_true",
+                   help="命令行模式启动 vault 同步循环（托盘模式自动随配置启用）")
     return p.parse_args()
 
 
@@ -91,6 +93,28 @@ async def main():
     if args.tray:
         from agent.tray import main as tray_main
         tray_main()
+        return
+
+    # vault 同步前台循环（CLI 模式显式启用；默认关——托盘模式随配置自动启）
+    if args.vault_sync:
+        identity = load_identity()
+        server_url = args.server_url or identity.get("server_url") or "wss://cjyuanai.cn"
+        agent_id = args.agent_id or str(identity.get("agent_id") or socket.gethostname())
+        agent_token = args.agent_token or identity.get("agent_secret", "") or os.getenv("AGENT_TOKEN", "")
+        from agent.vault_sync import build_loop_from_config, load_vault_config
+        from utils.data_path import root_path
+        cfg_path = os.path.join(root_path(), "data", "agent_config.json")
+        loop = build_loop_from_config(cfg_path, agent_id, agent_token, server_url,
+                                      status_cb=lambda s: logger.info("vault 同步: %s", s))
+        if not loop:
+            cfg = load_vault_config(cfg_path)
+            if not (cfg.get("path") or "").strip():
+                logger.error("未配置 vault 路径：请编辑 data/agent_config.json 的 vault.path 后重试")
+            elif not cfg.get("enabled"):
+                logger.error("vault 同步未启用：agent_config.json 的 vault.enabled=true 后重试")
+            sys.exit(1)
+        logger.info("vault 同步循环启动（Ctrl+C 退出）: %s", loop.vault_dir)
+        loop.run_loop()
         return
 
     # 安装流程（注册后退出）

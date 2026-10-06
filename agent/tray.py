@@ -88,11 +88,20 @@ def load_toggles() -> dict:
 
 
 def save_toggles(toggles: dict):
-    """保存 Agent 开关配置"""
+    """保存 Agent 开关配置（读-改-写合并——文件里还有 vault 等其它节，不能整覆盖）"""
     try:
         _config_file().parent.mkdir(parents=True, exist_ok=True)
+        data = {}
+        if _config_file().is_file():
+            try:
+                data = json.loads(_config_file().read_text(encoding="utf-8"))
+            except Exception:
+                data = {}
+        if not isinstance(data, dict):
+            data = {}
+        data["enabled"] = toggles
         _config_file().write_text(
-            json.dumps({"enabled": toggles}, ensure_ascii=False, indent=2),
+            json.dumps(data, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
     except Exception as e:
@@ -211,6 +220,19 @@ class AgentTray:
         # 后台线程检查更新（启动 5 秒后，此后每 6 小时一次）
         update_thread = threading.Thread(target=self._update_check_loop, daemon=True)
         update_thread.start()
+
+        # vault 双向同步线程（Obsidian ↔ 知识星球；agent_config.json 的 vault 节未配置则跳过）
+        self._vault_loop = None
+        try:
+            from agent.vault_sync import build_loop_from_config
+            self._vault_loop = build_loop_from_config(
+                str(_config_file()), str(self.agent_id), self.agent_token, self.server_url,
+                status_cb=lambda s: logger.info("vault 同步: %s", s))
+            if self._vault_loop:
+                threading.Thread(target=self._vault_loop.run_loop, daemon=True).start()
+                logger.info("vault 同步已启动: %s", self._vault_loop.vault_dir)
+        except Exception as e:
+            logger.warning("vault 同步启动失败: %s", e)
 
         # 托盘在主线程运行（阻塞）
         self._icon.run()
@@ -345,6 +367,56 @@ class AgentTray:
             except Exception:
                 pass
 
+    # ==================== vault 同步（Obsidian ↔ 知识星球） ====================
+
+    def _vault_enabled(self) -> bool:
+        from agent.vault_sync import load_vault_config
+        cfg = load_vault_config(str(_config_file()))
+        return bool(cfg.get("enabled")) and bool((cfg.get("path") or "").strip())
+
+    def _on_vault_toggle(self, icon, item):
+        """菜单勾选开关：切换 vault 同步并持久化（下次启动生效）"""
+        from agent.vault_sync import load_vault_config, save_vault_config
+        cfg = load_vault_config(str(_config_file()))
+        path = (cfg.get("path") or "").strip()
+        if not cfg.get("enabled"):
+            if not path:
+                self._icon.notify("请先「设置 vault 路径」再开启同步", "vault 同步")
+                return
+            cfg["enabled"] = True
+            self._icon.notify("vault 同步已开启（重启 Agent 生效）", "vault 同步")
+        else:
+            cfg["enabled"] = False
+            self._icon.notify("vault 同步已关闭", "vault 同步")
+        save_vault_config(str(_config_file()), cfg)
+
+    def _on_set_vault_path(self, icon, item):
+        """弹文件夹选择框设置 Obsidian vault 同步目录"""
+        import tkinter as tk
+        from tkinter import filedialog, messagebox
+        from agent.vault_sync import load_vault_config, save_vault_config
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            chosen = filedialog.askdirectory(
+                title="选择 Obsidian vault 中的「知识星球」同步目录",
+                parent=root)
+            if not chosen:
+                return
+            cfg = load_vault_config(str(_config_file()))
+            cfg["path"] = chosen
+            save_vault_config(str(_config_file()), cfg)
+            root.destroy()
+            messagebox.showinfo("vault 同步",
+                                f"同步目录已设置：\n{chosen}\n\n重启 Agent 后生效。", parent=root)
+        except Exception as e:
+            root.destroy()
+            try:
+                messagebox.showerror("vault 同步", f"设置失败：{e}")
+            except Exception:
+                pass
+
     def _build_menu(self):
         def open_web():
             url = self.server_url.replace("ws://", "http://").replace("wss://", "https://").rstrip("/")
@@ -380,6 +452,8 @@ class AgentTray:
         items += [
             TrayMenu.SEPARATOR,
             MenuItem("开机自启", self._on_autostart_toggle, checked=lambda item: autostart_enabled()),
+            MenuItem("vault 同步", self._on_vault_toggle, checked=lambda item: self._vault_enabled()),
+            MenuItem("设置 vault 路径...", self._on_set_vault_path),
             MenuItem("检查更新", lambda icon, item: threading.Thread(target=self._check_update_once, args=(True,), daemon=True).start()),
         ]
         # 发现新版时追加「立即更新」入口

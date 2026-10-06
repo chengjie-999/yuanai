@@ -110,6 +110,19 @@ class VaultSyncLoop:
             raw = resp.read().decode("utf-8")
         return json.loads(raw) if raw.strip() else {}
 
+    def _http_raw(self, path: str, timeout: int = 60) -> bytes:
+        """二进制 GET（vault 图片下载用），失败返回 None"""
+        try:
+            url = f"{self.server_base}/api/v1/agent/planet{path}"
+            req = urllib.request.Request(url, method="GET")
+            req.add_header("X-Agent-Id", self.agent_id)
+            req.add_header("X-Agent-Secret", self.agent_secret)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except Exception as e:
+            logger.warning("vault 资产下载失败 %s: %s", path, e)
+            return None
+
     def _http_ok(self, method: str, path: str, payload: dict = None, timeout: int = 30):
         try:
             return True, self._http(method, path, payload, timeout)
@@ -168,6 +181,72 @@ class VaultSyncLoop:
         with open(full, "w", encoding="utf-8") as f:
             f.write(inject_frontmatter(body, fields))
 
+    # ---------------- S3：assets 下载与链接改写 / frontmatter 回填 / 标题同步 ----------------
+
+    def _download_assets(self, body: str, mid: int, planet: str) -> str:
+        """把 asset:{mid}/{name} 链接改写为本地相对路径并下载图片。
+
+        → 改写为 assets/{mid}/{name}（笔记都在 知识星球/ 下，相对路径直接可用）
+        → 文件存 {vault}/知识星球/assets/{mid}/{name}
+        下载失败不删链接语义：保持 asset: 占位（下次重试）并计数。
+        """
+        import re
+        failed = [0]
+
+        def _sub(m):
+            mid = int(m.group(2))
+            name = m.group(3)
+            dest_rel = f"{SYNC_DIR_NAME}/assets/{mid}/{name}"
+            dest = os.path.join(self.vault_dir, dest_rel)
+            if not os.path.isfile(dest):
+                raw = self._http_raw(f"/asset/{mid}/{name}")
+                if raw is None:
+                    failed[0] += 1
+                    return m.group(0)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "wb") as f:
+                    f.write(raw)
+            return f"![{m.group(1)}](assets/{mid}/{name})"
+
+        body = re.sub(r"!\[([^\]]*)\]\(asset:(\d+)/([^)]+)\)", _sub, body)
+        if failed[0]:
+            logger.warning("资产下载失败 %d 张（下轮重试）: mid=%s planet=%s", failed[0], mid, planet)
+        return body
+
+    def _backfill_anchor(self, rel: str, note_id: int, map_id: int, planet: str) -> None:
+        """上传成功后回填 frontmatter 锚点（文件无 frontmatter 才注入，不动用户正文）"""
+        full = os.path.join(self.vault_dir, rel)
+        try:
+            with open(full, "r", encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            return
+        fm = parse_frontmatter(text)
+        if fm.get("planet_note_id"):
+            return  # 已有锚点（用户可能改过正文，绝不动）
+        body = strip_frontmatter(text)
+        self._write_note(rel, body, {"planet_note_id": note_id, "map_id": map_id or 0,
+                                     "tags": planet, "source": "user"})
+
+    def _rename_vault_file(self, rel: str, new_title: str) -> str:
+        """云端标题变化 → vault 文件改名（同一目录内；状态同步迁移）"""
+        if not rel.startswith(SYNC_DIR_NAME + "/"):
+            return rel
+        stem = os.path.splitext(os.path.basename(rel))[0]
+        if stem == new_title:
+            return rel
+        new_rel = os.path.join(os.path.dirname(rel), vault_filename(new_title)).replace("\\", "/")
+        if new_rel == rel or os.path.exists(os.path.join(self.vault_dir, new_rel)):
+            return rel  # 目标已存在（保守不覆盖）
+        try:
+            shutil.move(os.path.join(self.vault_dir, rel), os.path.join(self.vault_dir, new_rel))
+        except OSError:
+            return rel
+        entry = self._state["notes"].pop(rel, None)
+        if entry:
+            self._state["notes"][new_rel] = entry
+        return new_rel
+
     def _trash(self, rel: str) -> None:
         """本地删除归档（保留一个副本，不直接 rm）"""
         full = os.path.join(self.vault_dir, rel)
@@ -204,9 +283,11 @@ class VaultSyncLoop:
             if os.path.exists(full):
                 pending.append(rel)
                 continue
-            self._write_note(rel, note.get("content") or "",
-                             {"planet_note_id": nid, "map_id": note.get("map_id") or 0,
-                              "source": "cloud"})
+            mid = note.get("map_id") or 0
+            body = self._download_assets(note.get("content") or "", mid, index.get("planet", ""))
+            self._write_note(rel, body,
+                             {"planet_note_id": nid, "map_id": mid,
+                              "tags": index.get("planet", ""), "source": "cloud"})
             _, fm, body, h = self._read_note(rel)
             self._state["notes"][rel] = {"note_id": nid, "base_hash": h, "status": "ok", "retry": 0}
         self._state["baseline"] = True
@@ -220,7 +301,8 @@ class VaultSyncLoop:
         """执行一轮同步（幂等；返回本轮摘要，测试直接调用）"""
         now = now or time.time()
         summary = {"cold_start": False, "uploaded": 0, "downloaded": 0,
-                   "conflicts": 0, "deleted": 0, "skipped": 0}
+                   "conflicts": 0, "deleted": 0, "skipped": 0,
+                   "images_not_uploaded": 0, "renamed": 0}
 
         # 请求级退避：上次请求失败后暂停 BACKOFF_REQUEST 阶梯
         if self._request_backoff_s and now < self._request_backoff_s:
@@ -275,6 +357,9 @@ class VaultSyncLoop:
             if total_bytes > PUSH_MAX_BYTES:
                 break
             if kind in ("new", "upsert"):
+                # S3b：正文含 asset: 链接 = 本地图片（云端无此文件，上行未实现）→ 不能静默
+                import re as _re
+                summary["images_not_uploaded"] += len(_re.findall(r"!\[[^\]]*\]\(assets/", body))
                 ok, r = self._http_ok("POST", "/push/upsert", {
                     "planet": fm.get("planet") or SYNC_DIR_NAME,
                     "map_id": int(fm.get("map_id") or 0),
@@ -286,20 +371,38 @@ class VaultSyncLoop:
                     continue
                 self._state["notes"][rel] = {"note_id": r["id"], "base_hash": r["content_hash"],
                                              "status": "ok", "retry": 0}
+                if kind == "new":
+                    # S3：上传成功后回填 frontmatter 锚点（文件从此自描述）
+                    self._backfill_anchor(rel, r["id"], int(fm.get("map_id") or 0),
+                                          fm.get("planet") or SYNC_DIR_NAME)
                 summary["uploaded"] += 1
             elif kind == "download":
+                cloud = cloud_index.get(entry["note_id"]) or {}
                 ok, r = self._http_ok("GET", f"/pull/content?ids={entry['note_id']}")
                 if not ok:
                     continue
                 notes = r.get("notes") or []
                 if not notes:
                     continue
-                self._write_note(rel, notes[0]["content"], {"planet_note_id": entry["note_id"],
-                                                            "map_id": notes[0].get("map_id") or 0,
-                                                            "source": "cloud"})
-                _, _fm, _b, h2 = self._read_note(rel)
-                self._state["notes"][rel]["base_hash"] = h2
-                self._state["notes"][rel]["status"] = "ok"
+                mid = notes[0].get("map_id") or 0
+                body = self._download_assets(notes[0].get("content") or "", mid,
+                                             cloud.get("planet", ""))
+                # S3：云端标题变化 → vault 文件改名（保守：目标已存在则不动）
+                new_title = cloud.get("title") or ""
+                new_rel = self._rename_vault_file(rel, new_title) if new_title else rel
+                self._write_note(new_rel, body, {"planet_note_id": entry["note_id"],
+                                                 "map_id": mid,
+                                                 "tags": cloud.get("planet", ""),
+                                                 "source": "cloud"})
+                _, _fm, _b, h2 = self._read_note(new_rel)
+                # _rename_vault_file 已把状态条目迁到 new_rel——只更新字段，勿重复迁移
+                cur = self._state["notes"].get(new_rel) or entry
+                cur["base_hash"] = h2
+                cur["status"] = "ok"
+                cur["retry"] = 0
+                self._state["notes"][new_rel] = cur
+                if new_rel != rel:
+                    summary["renamed"] += 1
                 summary["downloaded"] += 1
             elif kind == "conflict":
                 cloud = cloud_index.get(entry["note_id"])
@@ -323,6 +426,8 @@ class VaultSyncLoop:
                 summary["conflicts"] += 1
 
         # 3) 本地删除检测：状态里有、磁盘上没了 → trash + push delete
+        #    注意：检测前重扫快照——本轮 ops 刚改名/落盘的文件绝不能被误判为删除
+        snap = self._scan()
         for rel in list(self._state["notes"].keys()):
             if rel in snap or rel in self._sync_ignore:
                 continue

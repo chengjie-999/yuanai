@@ -1252,18 +1252,22 @@ class AgentDatabase:
     # vault 同步专用读接口
     # --------------------------------------------------------------------------
     def list_notes_index(self, user_id: int) -> list:
-        """笔记索引（不含正文）：id/map_id/title/content_hash/update_time。
+        """笔记索引（不含正文）：id/map_id/title/content_hash/update_time + 星球名（tags 用）。
         content_hash 空 = 存量未回填 → 现算（读一次正文，兼容先发代码后迁移）。"""
         from yuanai_core.pure.vault_note import note_body_hash
         sess = self.Session()
         try:
-            rows = sess.query(PlanetNote).filter_by(user_id=user_id).order_by(PlanetNote.id).all()
+            rows = (sess.query(PlanetNote, Planet.name)
+                    .outerjoin(Planet, Planet.id == PlanetNote.planet_id)
+                    .filter(PlanetNote.user_id == user_id)
+                    .order_by(PlanetNote.id).all())
             out = []
-            for r in rows:
+            for r, planet_name in rows:
                 h = r.content_hash or ""
                 if not h and r.content:
                     h = note_body_hash(r.content, r.map_id or 0)
                 out.append({"id": r.id, "map_id": r.map_id or 0, "title": r.title,
+                            "planet": planet_name or "收件箱",
                             "content_hash": h, "source": r.source,
                             "update_time": str(r.update_time)[:19] if r.update_time else ""})
             return out

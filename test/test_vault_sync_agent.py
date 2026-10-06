@@ -243,9 +243,108 @@ def test_request_backoff_on_failure(loop, monkeypatch):
     assert loop._request_backoff_s > now  # 已设置退避时间
     # 退避期间再跑一轮 → 直接跳过（不请求）
     r2 = loop.run_once(now=now + 5)
-    assert r2 == {"cold_start": False, "uploaded": 0, "downloaded": 0,
-                  "conflicts": 0, "deleted": 0, "skipped": 0}
+    assert r2["uploaded"] == 0 and r2["downloaded"] == 0 and r2["deleted"] == 0
 
 
 if __name__ == "__main__":
     print("测试入口：pytest test/test_vault_sync_agent.py -v")
+
+
+# ===================== S3：落盘格式 =====================
+
+def test_new_file_anchor_backfill(loop, monkeypatch):
+    """新文件上传成功后：回填 frontmatter 锚点（文件自描述），正文不动"""
+    monkeypatch.setattr(loop, "_http_ok", lambda m, p, payload=None, timeout=30: (True, {"notes": []}))
+    loop.run_once()
+
+    _mk(loop, "知识星球/无锚点笔记.md", "# 标题\n纯正文，无 frontmatter")
+
+    def fake_ok(method, path, payload=None, timeout=30):
+        if path == "/pull/index":
+            return True, {"notes": []}
+        if path == "/push/upsert":
+            return True, {"id": 55, "created": True, "content_hash": "hash55"}
+        return True, {}
+
+    monkeypatch.setattr(loop, "_http_ok", fake_ok)
+    _stable(loop)
+    loop.run_once()
+
+    text = open(os.path.join(loop.vault_dir, "知识星球", "无锚点笔记.md"), encoding="utf-8").read()
+    assert "planet_note_id: 55" in text
+    assert "# 标题\n纯正文，无 frontmatter" in text  # 正文原样保留
+
+
+def test_baseline_downloads_assets_and_rewrites(loop, monkeypatch):
+    """冷启动：asset: 链接改写为本地相对路径 + 图片落盘"""
+    def fake_ok(method, path, payload=None, timeout=30):
+        if path == "/pull/index":
+            return True, {"notes": [{"id": 1, "map_id": 5, "title": "图文笔记",
+                                     "planet": "Python学习", "content_hash": "h"}]}
+        if path.startswith("/pull/content"):
+            return True, {"notes": [{"id": 1, "map_id": 5, "title": "图文笔记",
+                                     "content": "看图：![图](asset:5/a.png)"}]}
+        return True, {}
+
+    monkeypatch.setattr(loop, "_http_ok", fake_ok)
+    monkeypatch.setattr(loop, "_http_raw", lambda path, timeout=60: b"PNGDATA")
+
+    loop.run_once()
+
+    text = open(os.path.join(loop.vault_dir, "知识星球", "图文笔记.md"), encoding="utf-8").read()
+    assert "![图](assets/5/a.png)" in text
+    assert "asset:5/a.png" not in text
+    assert os.path.isfile(os.path.join(loop.vault_dir, "知识星球", "assets", "5", "a.png"))
+    # tags 写入
+    assert "tags: Python学习" in text
+
+
+def test_cloud_title_change_renames(loop, monkeypatch):
+    """云端标题变化 → vault 文件改名 + 状态迁移"""
+    from yuanai_core.pure.vault_note import note_body_hash
+
+    monkeypatch.setattr(loop, "_http_ok", lambda m, p, payload=None, timeout=30: (True, {"notes": []}))
+    loop.run_once()
+
+    _mk(loop, "知识星球/旧标题.md", "正文")
+    loop._state["notes"]["知识星球/旧标题.md"] = {
+        "note_id": 8, "base_hash": note_body_hash("正文", 0), "status": "ok", "retry": 0}
+    loop._save_state()
+
+    def fake_ok(method, path, payload=None, timeout=30):
+        if path == "/pull/index":
+            return True, {"notes": [{"id": 8, "map_id": 0, "title": "新标题",
+                                     "planet": "收件箱", "content_hash": "cloudnew"}]}
+        if path.startswith("/pull/content"):
+            return True, {"notes": [{"id": 8, "map_id": 0, "title": "新标题",
+                                     "content": "云端新正文"}]}
+        return True, {}
+
+    monkeypatch.setattr(loop, "_http_ok", fake_ok)
+    _stable(loop)
+    r = loop.run_once()
+    assert r["downloaded"] == 1 and r["renamed"] == 1
+    assert not os.path.exists(os.path.join(loop.vault_dir, "知识星球", "旧标题.md"))
+    assert os.path.isfile(os.path.join(loop.vault_dir, "知识星球", "新标题.md"))
+    assert "知识星球/新标题.md" in loop._state["notes"]
+
+
+def test_images_not_uploaded_reported(loop, monkeypatch):
+    """上行正文含 asset: 链接（本地图片未上行）→ 状态报告不静默"""
+    monkeypatch.setattr(loop, "_http_ok", lambda m, p, payload=None, timeout=30: (True, {"notes": []}))
+    loop.run_once()
+
+    _mk(loop, "知识星球/带图.md", "看图 ![x](assets/5/b.png) 还有 ![y](assets/5/c.png)")
+
+    def fake_ok(method, path, payload=None, timeout=30):
+        if path == "/pull/index":
+            return True, {"notes": []}
+        if path == "/push/upsert":
+            return True, {"id": 60, "created": True, "content_hash": "h60"}
+        return True, {}
+
+    monkeypatch.setattr(loop, "_http_ok", fake_ok)
+    _stable(loop)
+    r = loop.run_once()
+    assert r["uploaded"] == 1
+    assert r["images_not_uploaded"] == 2

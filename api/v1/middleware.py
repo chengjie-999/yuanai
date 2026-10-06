@@ -42,8 +42,9 @@ def _extract_token(request: Request) -> str:
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
 
-    # Agent WebSocket 连接由端点自行鉴权（JWT 或 agent_secret），中间件直接放行
-    if path.startswith("/api/v1/agent/ws"):
+    # Agent WebSocket 连接与 vault 同步 REST 由端点自行鉴权
+    #（JWT 或 agent_secret / X-Agent-Id+Secret），中间件直接放行
+    if path.startswith("/api/v1/agent/ws") or path.startswith("/api/v1/agent/planet"):
         return await call_next(request)
 
     if is_public(path):

@@ -230,6 +230,8 @@ class PlanetNote(Base):
     source = Column(String(8), default='ai')              # ai/user
     model = Column(String(50), default='')
     word_count = Column(Integer, default=0)
+    # vault 同步变更检测：规范化正文的 sha256（空 = 存量数据未回填，读时现算）
+    content_hash = Column(String(64), default='')
     status = Column(String(12), default='ready')
     create_time = Column(TIMESTAMP, server_default=func.now())
     update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
@@ -1173,11 +1175,13 @@ class AgentDatabase:
 
     def add_note(self, user_id: int, planet_id: int, map_id: int, title: str, content: str,
                  source: str = "user", model: str = "", summary: str = "") -> int:
+        from yuanai_core.pure.vault_note import note_body_hash
         sess = self.Session()
         try:
             n = PlanetNote(user_id=user_id, planet_id=planet_id, map_id=map_id, title=title,
                            content=content, source=source, model=model, summary=summary,
-                           word_count=len(content))
+                           word_count=len(content),
+                           content_hash=note_body_hash(content, map_id or 0))
             sess.add(n)
             sess.commit()
             if map_id:
@@ -1223,6 +1227,7 @@ class AgentDatabase:
 
     def update_note(self, nid: int, user_id: int, content: str = None, title: str = None,
                     summary: str = None, source: str = None) -> bool:
+        from yuanai_core.pure.vault_note import note_body_hash
         sess = self.Session()
         try:
             r = sess.query(PlanetNote).filter_by(id=nid, user_id=user_id).first()
@@ -1231,6 +1236,7 @@ class AgentDatabase:
             if content is not None:
                 r.content = content
                 r.word_count = len(content)
+                r.content_hash = note_body_hash(content, r.map_id or 0)
             if title is not None:
                 r.title = title
             if summary is not None:
@@ -1239,6 +1245,56 @@ class AgentDatabase:
                 r.source = source
             sess.commit()
             return True
+        finally:
+            sess.close()
+
+    # --------------------------------------------------------------------------
+    # vault 同步专用读接口
+    # --------------------------------------------------------------------------
+    def list_notes_index(self, user_id: int) -> list:
+        """笔记索引（不含正文）：id/map_id/title/content_hash/update_time。
+        content_hash 空 = 存量未回填 → 现算（读一次正文，兼容先发代码后迁移）。"""
+        from yuanai_core.pure.vault_note import note_body_hash
+        sess = self.Session()
+        try:
+            rows = sess.query(PlanetNote).filter_by(user_id=user_id).order_by(PlanetNote.id).all()
+            out = []
+            for r in rows:
+                h = r.content_hash or ""
+                if not h and r.content:
+                    h = note_body_hash(r.content, r.map_id or 0)
+                out.append({"id": r.id, "map_id": r.map_id or 0, "title": r.title,
+                            "content_hash": h, "source": r.source,
+                            "update_time": str(r.update_time)[:19] if r.update_time else ""})
+            return out
+        finally:
+            sess.close()
+
+    def get_notes_content(self, user_id: int, nids: list) -> list:
+        """批量取正文（pull content 用；无正文内容返回 content='' 而非缺行）"""
+        sess = self.Session()
+        try:
+            rows = sess.query(PlanetNote).filter(
+                PlanetNote.user_id == user_id, PlanetNote.id.in_(nids)).all()
+            found = {r.id: r for r in rows}
+            return [{"id": nid, "title": found[nid].title,
+                     "content": found[nid].content or "",
+                     "map_id": found[nid].map_id or 0,
+                     "content_hash": found[nid].content_hash or ""}
+                    for nid in nids if nid in found]
+        finally:
+            sess.close()
+
+    def find_note_by_map(self, user_id: int, map_id: int):
+        """按 map_id 找笔记（vault 锚点 map_id 反查云端行）"""
+        sess = self.Session()
+        try:
+            r = sess.query(PlanetNote).filter_by(user_id=user_id, map_id=map_id).first()
+            if not r:
+                return None
+            return {"id": r.id, "planet_id": r.planet_id, "map_id": r.map_id or 0,
+                    "title": r.title, "content": r.content or "",
+                    "content_hash": r.content_hash or "", "source": r.source}
         finally:
             sess.close()
 

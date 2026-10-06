@@ -393,3 +393,36 @@ def delete_map_cascade(uid: int, mid: int):
         raise HTTPException(status_code=404, detail="导图不存在")
     deindex_map(db, uid, row["planet_id"], mid)
     shutil.rmtree(map_dir(uid, row["planet_id"], mid), ignore_errors=True)
+
+
+# ---------------- vault 同步单点（Obsidian 双向同步；幂等语义） ----------------
+
+def upsert_note_from_sync(db, uid: int, planet_name: str, map_id: int, title: str,
+                          content: str) -> dict:
+    """同步上行单点：按 map_id 找笔记 → 存在则覆盖，不存在则新建。
+    source 一律 'user'（vault 编辑算人改，延续「AI 不覆盖人」不变量；
+    web 再转换会新建行的代价已接受并写文档）。
+    返回 {"id", "created"}。"""
+    if map_id:
+        existing = db.find_note_by_map(uid, map_id)
+        if existing:
+            db.update_note(existing["id"], uid, content=content, title=title,
+                           source="user")
+            return {"id": existing["id"], "created": False}
+    pid = _resolve_planet(db, uid, planet_name or "收件箱")
+    nid = db.add_note(uid, pid, map_id or None, title or "未命名笔记", content, source="user")
+    return {"id": nid, "created": True}
+
+
+def delete_note_from_sync(db, uid: int, nid: int) -> bool:
+    """同步删除单点：删行 + 清 Milvus 索引（幂等：不存在返回 False）"""
+    row = db.delete_note(nid, uid)
+    if not row:
+        return False
+    if row.get("map_id"):
+        try:
+            from yuanai_core.rag import remove_source
+            remove_source(source_of_note(uid, row["planet_id"], row["map_id"]), user_id=uid)
+        except Exception:
+            pass
+    return True

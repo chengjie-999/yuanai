@@ -193,6 +193,24 @@ def _verify_agent_secret(agent_id: str, secret: str) -> bool:
         return False
 
 
+def resolve_agent_uid(agent_id: str) -> int:
+    """机器设备 → 一对一绑定的云端用户 id（vault 同步等 REST 端点用）；未绑定返回 0"""
+    if not agent_id.isdigit():
+        return 0
+    try:
+        from db.session import get_db, AgentDevice
+        db = get_db()
+        sess = db.Session()
+        try:
+            dev = sess.query(AgentDevice).filter_by(id=int(agent_id), enabled=1).first()
+            return (dev.user_id or 0) if dev else 0
+        finally:
+            sess.close()
+    except Exception as e:
+        logger.warning("设备绑定查询失败: %s", e)
+        return 0
+
+
 def get_pending_queue(request_id: str) -> asyncio.Queue:
     """为指定 request_id 获取或创建等待队列"""
     if request_id not in _pending:

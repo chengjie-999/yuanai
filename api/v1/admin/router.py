@@ -145,10 +145,20 @@ async def token_usage_stats(request: Request, days: int = 7, group_by: str = "da
     if group_by not in ("day", "model", "user"):
         raise HTTPException(status_code=400, detail="group_by 必须为 day/model/user")
     rows = get_db().query_token_usage(days=max(1, min(days, 90)), group_by=group_by)
+    # 成本按模型定价折算（元）；day 聚合口径为「每天各模型的成本之和」
+    from yuanai_core.usage import model_cost
+    for r in rows:
+        if group_by == "model":
+            r["cost"] = model_cost(r["key"], r["prompt_tokens"], r["completion_tokens"])
     totals = {
         "total_tokens": sum(r["total_tokens"] for r in rows),
         "prompt_tokens": sum(r["prompt_tokens"] for r in rows),
         "completion_tokens": sum(r["completion_tokens"] for r in rows),
         "calls": sum(r["calls"] for r in rows),
     }
+    # 成本总额始终以 model 口径计算（准确）
+    model_rows = get_db().query_token_usage(days=max(1, min(days, 90)), group_by="model")
+    totals["cost"] = round(sum(
+        model_cost(mr["key"], mr["prompt_tokens"], mr["completion_tokens"])
+        for mr in model_rows), 2)
     return {"rows": rows, "totals": totals}

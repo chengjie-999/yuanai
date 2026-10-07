@@ -40,6 +40,26 @@ DEFAULT_TEMPERATURE = 0.7
 # 豆包系列不走此参数——思考模式由方舟接入点（火山控制台 endpoint）的 thinking 开关控制
 REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")
 
+# 模型 API 定价（元 / 百万 token，成本面板用）。
+# ⚠ 价格为占位默认值，以官方最新价为准；整体覆盖：.env 设 MODEL_PRICING_JSON
+#   形如 {"deepseek-v4-pro": {"in": 2.0, "out": 8.0}, ...}；未列出的模型记 0 成本（标记未定价）
+_MODEL_PRICING_DEFAULTS = {
+    "deepseek-v4-flash": {"in": 0.5, "out": 2.0},
+    "deepseek-v4-pro": {"in": 2.0, "out": 8.0},
+    "deepseek-reasoner": {"in": 4.0, "out": 16.0},
+    "doubao-seed-2-0-lite-260215": {"in": 0.3, "out": 0.6},
+    "doubao-seed-2-0-pro-260215": {"in": 0.8, "out": 2.0},
+}
+MODEL_PRICING = _MODEL_PRICING_DEFAULTS
+try:
+    _pricing_env = os.getenv("MODEL_PRICING_JSON", "")
+    if _pricing_env:
+        _pricing_custom = json.loads(_pricing_env)
+        if isinstance(_pricing_custom, dict):
+            MODEL_PRICING = {**_MODEL_PRICING_DEFAULTS, **_pricing_custom}
+except Exception:
+    pass
+
 # 知识星球「导图 → 文章化笔记」转换模型（注意：必须显式传模型名，call_llm 默认名会炸）
 # 默认豆包（火山引擎国内节点，本地直连快且稳）；DeepSeek 海外 API 本地直连实测
 # 一半请求卡超时（120s×2 后走大纲兜底），故不设为默认，可 .env 覆盖

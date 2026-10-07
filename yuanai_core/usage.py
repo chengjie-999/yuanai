@@ -56,6 +56,16 @@ def _maybe_interval_flush() -> None:
 _last_flush_time = time.time()
 
 
+def model_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """单次调用成本（元）：模型定价 × token 数；未定价模型返回 0"""
+    from config.settings import MODEL_PRICING
+    price = MODEL_PRICING.get(model or "")
+    if not price:
+        return 0.0
+    return round(prompt_tokens / 1_000_000 * price.get("in", 0)
+                 + completion_tokens / 1_000_000 * price.get("out", 0), 6)
+
+
 def _submit_flush(rows: list) -> None:
     try:
         _executor.submit(_flush_rows, rows)

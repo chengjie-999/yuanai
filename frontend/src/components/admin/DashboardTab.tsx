@@ -41,6 +41,9 @@ function StatCard({ label, value, color, trend }: {
 export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
   const [data, setData] = useState<any>(null)
   const [agents, setAgents] = useState<any[]>([])
+  // 成本面板（token 用量统计 → 模型定价折算）
+  const [usage, setUsage] = useState<any>(null)
+  const [modelUsage, setModelUsage] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -53,6 +56,14 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
       fetch(`${API_BASE}/admin/agent-status`, { headers: headers() })
         .then((r) => { if (!r.ok) throw new Error(); return r.json() })
         .then((d) => { if (Array.isArray(d)) setAgents(d) })
+        .catch(() => {}),
+      fetch(`${API_BASE}/admin/token-usage?days=30&group_by=day`, { headers: headers() })
+        .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+        .then((d) => { setUsage(d) })
+        .catch(() => {}),
+      fetch(`${API_BASE}/admin/token-usage?days=30&group_by=model`, { headers: headers() })
+        .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+        .then((d) => { if (Array.isArray(d.rows)) setModelUsage(d.rows) })
         .catch(() => {}),
     ]).finally(() => setLoading(false))
   }
@@ -105,6 +116,8 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
       } : null,
     },
     { label: '在线 Agent', value: onlineCount, color: '#26c6da', adminOnly: false, trend: null as null | { text: string; up: boolean } },
+    { label: '本月 API 成本', value: `¥${usage?.totals?.cost ?? '-'}`, color: '#ef5350', adminOnly: true, trend: null as null | { text: string; up: boolean } },
+    { label: '本月调用次数', value: usage?.totals?.calls ?? '-', color: '#78909c', adminOnly: true, trend: null as null | { text: string; up: boolean } },
     {
       label: '今日消息', value: data?.today_messages ?? '-', color: '#ef5350', adminOnly: false,
       trend: chartData.length > 0 ? {
@@ -128,6 +141,57 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
           <StatCard key={c.label} label={c.label} value={c.value} color={c.color} trend={c.trend ?? undefined} />
         ))}
       </div>
+
+      {/* 成本面板：近30天成本趋势 + 模型成本明细（定价可在 .env MODEL_PRICING_JSON 校准） */}
+      {isAdmin && usage?.rows?.length > 0 && (
+        <Card style={{ marginBottom: 24, padding: '20px 24px' }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 4px', color: 'var(--text-primary)' }}>
+            近30天 API 成本（¥）
+          </h3>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 }}>
+            按模型定价折算（MODEL_PRICING_JSON 可校准）；语音 RTC/TTS 另计
+          </div>
+          <ResponsiveContainer width="100%" height={160}>
+            <AreaChart data={usage.rows.map((r: any) => ({ label: (r.key || '').slice(5), tokens: r.total_tokens }))}
+              margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="dashCostGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={CHART_RED} stopOpacity={0.35} />
+                  <stop offset="95%" stopColor={CHART_RED} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="label" fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} />
+              <YAxis fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} />
+              <Tooltip contentStyle={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+              <Area type="monotone" dataKey="tokens" name="Token 数" stroke={CHART_RED} strokeWidth={2}
+                fill="url(#dashCostGrad)" />
+            </AreaChart>
+          </ResponsiveContainer>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 16, fontSize: 12 }}>
+            <thead>
+              <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>模型</th>
+                <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>调用次数</th>
+                <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>Token</th>
+                <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>成本（¥）</th>
+              </tr>
+            </thead>
+            <tbody>
+              {modelUsage.map((m: any) => (
+                <tr key={m.key} style={{ color: 'var(--text-primary)' }}>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)', fontFamily: 'monospace', fontSize: 11 }}>{m.key}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.calls}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.total_tokens.toLocaleString()}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)', textAlign: 'right', fontWeight: 600 }}>
+                    {m.cost != null ? m.cost.toFixed(2) : '未定价'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       {/* 近30天消息量（补零完整轴） */}
       {isAdmin && chartData.length > 0 && (

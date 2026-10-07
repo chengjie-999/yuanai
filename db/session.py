@@ -54,6 +54,20 @@ class AIChatFeedback(Base):
     __table_args__ = (UniqueConstraint('session_id', 'message_index', name='uq_feedback_session_index'),)
 
 
+class TokenUsage(Base):
+    """Token 用量统计（支付与金融分析账本；lc.py 回调批量落库）"""
+    __tablename__ = 'token_usage'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    model = Column(String(64), default='')
+    purpose = Column(String(32), default='chat')
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    total_tokens = Column(Integer, default=0)
+    source = Column(String(16), default='cloud')
+    create_time = Column(TIMESTAMP, server_default=func.now())
+
+
 class SessionMemoryState(Base):
     """会话记忆折叠游标：folded_count = 已折叠进长期记忆的前缀消息条数
 
@@ -1434,8 +1448,63 @@ class AgentDatabase:
             logger.warning("get_all_states 失败: %s", e)
             return {}
 
+    # --------------------------------------------------------------------------
+    # Token 用量统计（支付与金融分析）
+    # --------------------------------------------------------------------------
+    def add_token_usage_rows(self, rows: list) -> None:
+        """批量落库用量记录（usage.py 缓冲冲刷用；失败整批回滚）"""
+        sess = self.Session()
+        try:
+            for r in rows:
+                sess.add(TokenUsage(
+                    user_id=r.get("user_id") or 0,
+                    model=(r.get("model") or "")[:64],
+                    purpose=(r.get("purpose") or "chat")[:32],
+                    prompt_tokens=r.get("prompt_tokens") or 0,
+                    completion_tokens=r.get("completion_tokens") or 0,
+                    total_tokens=r.get("total_tokens") or 0,
+                    source=(r.get("source") or "cloud")[:16],
+                ))
+            sess.commit()
+        except Exception:
+            sess.rollback()
+            raise
+        finally:
+            sess.close()
+
+    def query_token_usage(self, days: int = 7, group_by: str = "day",
+                          user_id: int = None) -> list:
+        """聚合用量：group_by = day / model / user（近 N 天）"""
+        from sqlalchemy import func as _func
+        sess = self.Session()
+        try:
+            q = sess.query(TokenUsage)
+            if user_id is not None:
+                q = q.filter(TokenUsage.user_id == user_id)
+            if group_by == "model":
+                key = TokenUsage.model
+            elif group_by == "user":
+                key = TokenUsage.user_id
+            else:  # day
+                key = _func.date(TokenUsage.create_time)
+            rows = (q.with_entities(
+                key.label("k"),
+                _func.sum(TokenUsage.total_tokens).label("total"),
+                _func.sum(TokenUsage.prompt_tokens).label("prompt"),
+                _func.sum(TokenUsage.completion_tokens).label("completion"),
+                _func.count(TokenUsage.id).label("calls"))
+                .group_by(key)
+                .order_by(key.desc() if group_by == "day" else None)
+                .limit(60).all())
+            return [{"key": str(r.k), "total_tokens": int(r.total or 0),
+                     "prompt_tokens": int(r.prompt or 0),
+                     "completion_tokens": int(r.completion or 0),
+                     "calls": int(r.calls or 0)} for r in rows]
+        finally:
+            sess.close()
 
 _db_instance = None
+
 
 
 def get_db():
@@ -1450,3 +1519,5 @@ def get_db():
 if __name__ == '__main__':
     db = AgentDatabase()
     print("AgentDatabase initialized OK")
+
+

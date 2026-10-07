@@ -1,6 +1,6 @@
 """后台管理主路由：仪表盘/Agent 状态 + 聚合各资源子路由（users / agent_devices / resources）"""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from db.session import get_db
 
 from api.v1.admin.users import router as users_router
@@ -129,3 +129,26 @@ async def admin_agent_status_v2(request: Request):
     """返回 Agent 列表（含活动记录）。admin 看全部，普通用户只看自己的。"""
     from api.v1.agent.router import _get_agent_status
     return _get_agent_status(request, include_activities=True)
+
+
+# ===================== Token 用量统计（支付与金融分析账本） =====================
+
+
+@router.get("/token-usage")
+async def token_usage_stats(request: Request, days: int = 7, group_by: str = "day"):
+    """Token 用量聚合（admin）：group_by = day / model / user。
+
+    前端后台仪表盘与后续计费/金融分析共用；数据由 lc.py 用量回调落库。
+    """
+    from api.v1.middleware import require_admin
+    require_admin(request)
+    if group_by not in ("day", "model", "user"):
+        raise HTTPException(status_code=400, detail="group_by 必须为 day/model/user")
+    rows = get_db().query_token_usage(days=max(1, min(days, 90)), group_by=group_by)
+    totals = {
+        "total_tokens": sum(r["total_tokens"] for r in rows),
+        "prompt_tokens": sum(r["prompt_tokens"] for r in rows),
+        "completion_tokens": sum(r["completion_tokens"] for r in rows),
+        "calls": sum(r["calls"] for r in rows),
+    }
+    return {"rows": rows, "totals": totals}

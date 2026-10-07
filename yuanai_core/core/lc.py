@@ -63,6 +63,7 @@ def get_llm(model='deepseek-chat', reasoning=True, reasoning_effort: Optional[st
             api_key=ds_api_key,
             base_url="https://api.deepseek.com/beta",
             model=model,
+            callbacks=kwargs.pop("callbacks", None) or [_usage_cb()],
             **kwargs,
             **extra_params,
         )
@@ -72,6 +73,7 @@ def get_llm(model='deepseek-chat', reasoning=True, reasoning_effort: Optional[st
             api_key=seed_api_key,
             base_url="https://ark.cn-beijing.volces.com/api/v3",
             model=model,
+            callbacks=kwargs.pop("callbacks", None) or [_usage_cb()],
             **kwargs,
         )
     else:
@@ -87,9 +89,16 @@ def get_llm(model='deepseek-chat', reasoning=True, reasoning_effort: Optional[st
                 api_key=custom_key,
                 base_url=kwargs.pop("base_url", "https://api.openai.com/v1"),
                 model=model,
+                callbacks=kwargs.pop("callbacks", None) or [_usage_cb()],
                 **kwargs,
             )
         raise ValueError(f"未找到模型 {model} 的 API Key，请在 Agent 页面配置")
+
+
+def _usage_cb():
+    """用量统计回调单例（惰性 import：usage 依赖 rag.contextvar，无循环）"""
+    from yuanai_core.usage import get_usage_handler
+    return get_usage_handler()
 
 
 def get_langgraph_agent(llm, tools):

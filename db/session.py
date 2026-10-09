@@ -1621,12 +1621,20 @@ class AgentDatabase:
         try:
             since = _text(f"DATE_SUB(CURDATE(), INTERVAL {int(days) - 1} DAY)")
 
-            def counts(model, user_col="user_id"):
+            def counts(model, user_col="user_id", via_session=False):
                 total = sess.query(_func.count(model.id)).scalar() or 0
                 recent = sess.query(_func.count(model.id)).filter(model.create_time >= since).scalar() or 0
-                users = sess.query(_func.count(distinct(getattr(model, user_col)))).filter(
-                    getattr(model, "create_time") >= since,
-                    getattr(model, user_col).isnot(None)).scalar() or 0
+                if via_session:
+                    # 无 user_id 的表（AnalysisHistory）经 chat_session 关联用户
+                    recent_sids = sess.query(model.session_id).filter(
+                        model.create_time >= since).subquery()
+                    users = sess.query(_func.count(distinct(ChatSession.user_id))).filter(
+                        ChatSession.session_id.in_(recent_sids),
+                        ChatSession.user_id.isnot(None)).scalar() or 0
+                else:
+                    users = sess.query(_func.count(distinct(getattr(model, user_col)))).filter(
+                        getattr(model, "create_time") >= since,
+                        getattr(model, user_col).isnot(None)).scalar() or 0
                 return {"total": int(total), "recent": int(recent), "active_users": int(users)}
 
             active_users = sess.query(_func.count(distinct(VisitLog.user_id))).filter(
@@ -1635,7 +1643,7 @@ class AgentDatabase:
             features = {
                 "planet": {"label": "知识星球（笔记）", **counts(PlanetNote)},
                 "datasets": {"label": "数据集上传", **counts(Dataset)},
-                "analysis": {"label": "分析大屏", **counts(AnalysisHistory)},
+                "analysis": {"label": "分析大屏", **counts(AnalysisHistory, via_session=True)},
                 "crawl": {"label": "数据采集记录", **counts(CrawlRecord)},
             }
             for key in features:

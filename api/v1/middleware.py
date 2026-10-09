@@ -111,6 +111,11 @@ async def rate_limit_middleware(request: Request, call_next):
     if path.startswith("/api/v1/monitor"):
         return await call_next(request)
 
+    # 后台管理免通用限流（JWT+admin 双重保护；仪表盘/分析页 15s 轮询频繁，
+    # 60 次/分会把正常使用打爆 429）
+    if path.startswith("/api/v1/admin/"):
+        return await call_next(request)
+
     ip = get_client_ip(request)
 
     # 中间件里 raise AppError 不会被 FastAPI 异常处理器接管，必须直接返回 429 响应

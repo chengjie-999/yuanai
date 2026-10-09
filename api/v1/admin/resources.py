@@ -126,7 +126,25 @@ async def read_file(request: Request, path: str = ""):
         except UnicodeDecodeError:
             text = ""
         return {"type": "markdown", "path": path, "content": text}
-    if ext in ('.txt', '.csv', '.json', '.py', '.js', '.tsx', '.ts', '.css', '.yml', '.yaml', '.xml', '.log'):
+    if ext == '.csv':
+        try:
+            with open(target, 'r', encoding='utf-8') as f:
+                text = f.read(512 * 1024)
+        except UnicodeDecodeError:
+            text = ""
+        return {"type": "csv", "path": path, "content": text}
+    if ext == '.json':
+        try:
+            with open(target, 'r', encoding='utf-8') as f:
+                text = f.read(512 * 1024)
+        except UnicodeDecodeError:
+            text = ""
+        return {"type": "json", "path": path, "content": text}
+    if ext in ('.mp4', '.webm', '.mov', '.m4v', '.mp3', '.wav', '.m4a', '.ogg'):
+        return {"type": "media", "path": path, "ext": ext}
+    if ext == '.pdf':
+        return {"type": "pdf", "path": path}
+    if ext in ('.txt', '.py', '.js', '.tsx', '.ts', '.css', '.yml', '.yaml', '.xml', '.log'):
         try:
             with open(target, 'r', encoding='utf-8') as f:
                 text = f.read()
@@ -134,6 +152,30 @@ async def read_file(request: Request, path: str = ""):
         except UnicodeDecodeError:
             return {"type": "binary", "detail": "无法解码为文本"}
     return {"type": "unsupported", "detail": f"暂不支持预览 {ext} 文件"}
+
+
+@router.get("/file-media")
+async def serve_file_media(request: Request, path: str = ""):
+    """音视频/PDF 流式播放（FileResponse 自带 Range 支持，可拖动进度条）"""
+    require_admin(request)
+    base = os.path.realpath(os.path.join(root_path(), "data"))
+    target = os.path.realpath(os.path.join(base, path))
+    if not target.startswith(base + os.sep) and target != base:
+        raise HTTPException(status_code=400, detail="路径越权")
+    if not os.path.isfile(target):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    ext = os.path.splitext(path)[1].lower()
+    media_types = {
+        '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+        '.m4v': 'video/x-m4v', '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
+        '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.pdf': 'application/pdf',
+    }
+    media_type = media_types.get(ext)
+    if not media_type:
+        raise HTTPException(status_code=404, detail="不支持的文件类型")
+    from fastapi.responses import FileResponse
+    return FileResponse(target, media_type=media_type,
+                        headers={"Cache-Control": "private, max-age=600"})
 
 
 @router.get("/file-html")

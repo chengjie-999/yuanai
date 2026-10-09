@@ -35,6 +35,7 @@ def _extract_token(request: Request) -> str:
             or path.startswith("/api/v1/data/analysis-html") \
             or path.startswith("/api/v1/planet/asset") \
             or path.startswith("/api/v1/admin/file-html") \
+            or path.startswith("/api/v1/admin/file-media") \
             or (path.startswith("/api/v1/planet/maps") and path.endswith("/origin")):
         return request.query_params.get("token", "")
     return ""

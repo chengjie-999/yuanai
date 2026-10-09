@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, safeJson, headers, API_BASE } from './shared'
 import { FolderIcon, FileIcon, XIcon } from '../icons'
-import { useSecuredUrl } from '../chat/helpers'
+import { useSecuredUrl, fetchSseToken } from '../chat/helpers'
 import MarkdownContent from '../MarkdownContent'
 
 /* HTML 渲染预览：沙箱 iframe（sse token）+ 源码切换 */
@@ -44,6 +44,82 @@ function MarkdownPreview({ content }: { content: string }) {
           <MarkdownContent content={content} />
         </div>
       )}
+    </div>
+  )
+}
+
+/* CSV 表格预览（前 100 行；引号感知的简单解析） */
+function CsvPreview({ content }: { content: string }) {
+  const parsed = useMemo(() => {
+    try {
+      const rows: string[][] = []
+      let row: string[] = [], cell = '', inQ = false
+      for (let i = 0; i < content.length; i++) {
+        const ch = content[i]
+        if (inQ) {
+          if (ch === '"') { if (content[i + 1] === '"') { cell += '"'; i++ } else inQ = false }
+          else cell += ch
+        } else if (ch === '"') inQ = true
+        else if (ch === ',') { row.push(cell); cell = '' }
+        else if (ch === '\n' || ch === '\r') {
+          if (ch === '\r' && content[i + 1] === '\n') i++
+          row.push(cell); cell = ''; rows.push(row); row = []
+        } else cell += ch
+      }
+      if (cell !== '' || row.length) { row.push(cell); rows.push(row) }
+      return rows.filter(r => r.some(c => c.trim() !== '')).slice(0, 101)
+    } catch { return [] }
+  }, [content])
+  if (!parsed.length) return <pre style={{ fontSize: 13, color: 'var(--text-muted)' }}>无法解析 CSV</pre>
+  const head = parsed[0], body = parsed.slice(1, 100)
+  return (
+    <div style={{ overflow: 'auto', maxHeight: '65vh', border: '1px solid var(--border)', borderRadius: 8 }}>
+      <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: '100%' }}>
+        <thead><tr>{head.map((h, i) => (
+          <th key={i} style={{ padding: '7px 10px', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textAlign: 'left', position: 'sticky', top: 0 }}>{h}</th>))}</tr></thead>
+        <tbody>{body.map((r, i) => (
+          <tr key={i} style={{ borderTop: '1px solid var(--border-light)' }}>{r.map((c, j) => (
+            <td key={j} style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>{c}</td>))}</tr>))}</tbody>
+      </table>
+      {parsed.length > 100 && <div style={{ padding: 8, fontSize: 11, color: 'var(--text-muted)' }}>仅展示前 100 行（共 {parsed.length - 1} 行数据）</div>}
+    </div>
+  )
+}
+
+/* JSON 美化预览 */
+function JsonPreview({ content }: { content: string }) {
+  const pretty = useMemo(() => {
+    try { return JSON.stringify(JSON.parse(content), null, 2) }
+    catch { return null }
+  }, [content])
+  if (pretty === null) return <pre style={{ fontSize: 13, color: 'var(--danger)' }}>JSON 解析失败</pre>
+  return <pre style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 12.5, lineHeight: 1.5, overflow: 'auto', maxHeight: '65vh', color: 'var(--text-primary)' }}>{pretty}</pre>
+}
+
+/* 音视频原生播放器（sse token URL） */
+function MediaPreview({ path, ext }: { path: string; ext: string }) {
+  const src = useSecuredUrl(`${API_BASE}/admin/file-media?path=${encodeURIComponent(path)}`)
+  const isAudio = ['.mp3', '.wav', '.m4a', '.ogg'].includes(ext)
+  return isAudio
+    ? <audio src={src} controls style={{ width: '100%' }} />
+    : <video src={src} controls style={{ width: '100%', maxHeight: '65vh', borderRadius: 8 }} />
+}
+
+/* PDF：新标签页打开（浏览器原生查看器；沙箱 iframe 会禁插件） */
+function PdfPreview({ path }: { path: string }) {
+  const [url, setUrl] = useState('')
+  useEffect(() => {
+    fetchSseToken().then(tok => {
+      setUrl(`${API_BASE}/admin/file-media?path=${encodeURIComponent(path)}${tok ? `&token=${tok}` : ''}`)
+    }).catch(() => {})
+  }, [path])
+  return (
+    <div style={{ textAlign: 'center', padding: 30 }}>
+      <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>PDF 文件用浏览器原生查看器打开</div>
+      <button onClick={() => { if (url) window.open(url, '_blank') }}
+        style={{ padding: '10px 24px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
+        在新标签页打开
+      </button>
     </div>
   )
 }
@@ -124,6 +200,10 @@ export default function FilesTab() {
             {preview.type === 'image' && <img src={`data:image/${preview.ext?.replace('.', '')};base64,${preview.data}`} style={{ maxWidth: '100%', borderRadius: 8 }} />}
             {preview.type === 'html' && <HtmlPreview path={preview.path} content={preview.content} name={preview.name} />}
             {preview.type === 'markdown' && <MarkdownPreview content={preview.content} />}
+            {preview.type === 'csv' && <CsvPreview content={preview.content} />}
+            {preview.type === 'json' && <JsonPreview content={preview.content} />}
+            {preview.type === 'media' && <MediaPreview path={preview.path} ext={preview.ext} />}
+            {preview.type === 'pdf' && <PdfPreview path={preview.path} />}
             {preview.type === 'text' && <pre style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, overflow: 'auto', maxHeight: '65vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>{preview.content}</pre>}
             {!preview.type && <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{preview.detail || '无法预览'}</div>}
           </div>

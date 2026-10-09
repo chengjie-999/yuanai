@@ -375,3 +375,26 @@ def test_generate_title_updates_db(db, monkeypatch):
         assert generate_title(sid, db.get_chats(sid)) is False
     finally:
         db.delete_session(sid)
+
+
+def test_retention_analytics_no_crash(db):
+    """留存分析：有注册+访问数据时正常返回矩阵（regression：date.date() 崩溃）"""
+    from db.session import VisitLog
+
+    uid = db.register_user("__ret_test__", "test123")["id"]
+    try:
+        db.record_visit("/chat", "127.0.0.1", "ua", uid)
+        r = db.query_retention_analytics(days=30)
+        assert set(r) >= {"daily", "matrix"}
+        assert isinstance(r["matrix"], list)
+    finally:
+        sess = db.Session()
+        try:
+            sess.query(VisitLog).filter_by(user_id=uid).delete()
+            from db.session import User
+            u = sess.query(User).filter_by(id=uid).first()
+            if u:
+                sess.delete(u)
+            sess.commit()
+        finally:
+            sess.close()

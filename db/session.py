@@ -1683,8 +1683,8 @@ class AgentDatabase:
             for week_off in range(7, -1, -1):
                 w_start = today - timedelta(days=today.weekday()) - timedelta(weeks=week_off)
                 w_end = w_start + timedelta(days=7)
-                cohort = [uid for uid, ct in users
-                          if w_start.date() <= ct.date() < w_end.date()]
+                # ct 是 datetime（TIMESTAMP 列）→ .date() 归一；w_start/w_end 是 date
+                cohort = [uid for uid, ct in users if w_start <= ct.date() < w_end]
                 if not cohort:
                     matrix.append({"week": w_start.strftime("%m-%d"), "registered": 0,
                                    "r1": 0, "r2": 0, "r3": 0, "r4": 0})

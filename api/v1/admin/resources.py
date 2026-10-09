@@ -3,7 +3,7 @@
 import os
 import base64
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from db.session import get_db
 from api.v1.middleware import require_admin
 from utils.data_path import root_path
@@ -176,6 +176,116 @@ async def serve_file_media(request: Request, path: str = ""):
     from fastapi.responses import FileResponse
     return FileResponse(target, media_type=media_type,
                         headers={"Cache-Control": "private, max-age=600"})
+
+
+_PROTECTED_DATA_ROOTS = {"chat_images", "qimg", "datasets", "analysis", "planet",
+                          "logs", "aiprompt", "file", "crawl", "cases"}
+
+
+def _is_protected_root(target: str) -> bool:
+    """data/ 一级关键目录保护（系统数据目录禁止改名/删除）"""
+    data_root = os.path.realpath(os.path.join(root_path(), "data"))
+    return (os.path.dirname(target) == data_root
+            and os.path.basename(target) in _PROTECTED_DATA_ROOTS)
+
+
+def _resolve_in_data(path: str):
+    """realpath 包含校验（文件管理所有写操作共用）；越权抛 400"""
+    base = os.path.realpath(os.path.join(root_path(), "data"))
+    target = os.path.realpath(os.path.join(base, path))
+    if not (target == base or target.startswith(base + os.sep)):
+        raise HTTPException(status_code=400, detail="路径越权")
+    return target
+
+
+@router.post("/file/upload")
+async def upload_file(request: Request, path: str = "", file: UploadFile = File(...)):
+    """上传文件到 data/ 目录（文件名净化 + 100MB 上限）"""
+    require_admin(request)
+    from utils.safe import safe_filename
+    try:
+        name = safe_filename(file.filename or "")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="文件名非法")
+    target_dir = _resolve_in_data(path)
+    if not os.path.isdir(target_dir):
+        raise HTTPException(status_code=400, detail="目标目录不存在")
+    dest = os.path.join(target_dir, name)
+    if os.path.exists(dest):
+        raise HTTPException(status_code=409, detail="同名文件已存在")
+    size = 0
+    with open(dest, "wb") as out:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > 100 * 1024 * 1024:
+                out.close()
+                os.remove(dest)
+                raise HTTPException(status_code=400, detail="文件超过 100MB 上限")
+            out.write(chunk)
+    return {"ok": True, "name": name, "size_kb": round(size / 1024, 1)}
+
+
+class FileOpBody(BaseModel):
+    path: str = ""
+    name: str = ""  # 新建目录名 / 重命名目标名
+
+
+@router.post("/file/mkdir")
+async def make_dir(request: Request, body: FileOpBody):
+    require_admin(request)
+    from utils.safe import safe_filename
+    try:
+        name = safe_filename(body.name)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="目录名非法（仅中英文/数字/下划线/点/横线）")
+    target = _resolve_in_data(body.path)
+    new_dir = os.path.join(target, name)
+    if os.path.exists(new_dir):
+        raise HTTPException(status_code=409, detail="同名目录已存在")
+    os.makedirs(new_dir, exist_ok=True)
+    return {"ok": True}
+
+
+@router.post("/file/rename")
+async def rename_file(request: Request, body: FileOpBody):
+    """重命名文件/目录（同一目录内；保护 data/ 根下的关键目录不被改名）"""
+    require_admin(request)
+    from utils.safe import safe_filename
+    try:
+        name = safe_filename(body.name)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="新名称非法")
+    target = _resolve_in_data(body.path)
+    if not os.path.exists(target):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if _is_protected_root(target):
+        raise HTTPException(status_code=400, detail="不允许重命名系统数据目录")
+    new_path = os.path.join(os.path.dirname(target), name)
+    if os.path.exists(new_path):
+        raise HTTPException(status_code=409, detail="同名项已存在")
+    os.rename(target, new_path)
+    return {"ok": True, "name": name}
+
+
+@router.delete("/file/delete")
+async def delete_file(request: Request, path: str = ""):
+    """删除文件或空目录（保护 data/ 根目录项；非空目录拒绝）"""
+    require_admin(request)
+    target = _resolve_in_data(path)
+    if not os.path.exists(target):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if _is_protected_root(target):
+        raise HTTPException(status_code=400, detail="不允许删除系统数据目录")
+    if os.path.isdir(target):
+        if os.listdir(target):
+            raise HTTPException(status_code=400, detail="目录非空，请先清空再删除")
+        os.rmdir(target)
+    else:
+        os.remove(target)
+    return {"ok": True}
 
 
 @router.get("/file-html")

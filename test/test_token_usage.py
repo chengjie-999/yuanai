@@ -255,3 +255,123 @@ def test_user_analytics_endpoint(client, db):
             sess.commit()
         finally:
             sess.close()
+
+
+# ===================== 文件管理 CRUD =====================
+
+def test_file_crud_roundtrip(client, db):
+    from api.v1.auth.utils import create_token
+    import shutil as _shutil
+    from utils.data_path import root_path as _rp
+
+    # 清理上次失败运行的残留
+    _residue = _shutil.rmtree
+    for _res in ("__crud_test_dir__", "__crud_test_dir__/测试文件.txt", "__crud_test_dir__/改名后.txt"):
+        _p = os.path.join(_rp(), "data", _res)
+        if os.path.isdir(_p):
+            _shutil.rmtree(_p, ignore_errors=True)
+        elif os.path.isfile(_p):
+            os.remove(_p)
+
+    db.register_user("__filecrud_admin__", "test123", role="admin")
+    from db.session import User
+    sess = db.Session()
+    try:
+        uid = sess.query(User).filter_by(username="__filecrud_admin__").first().id
+    finally:
+        sess.close()
+    h = {"Authorization": f"Bearer {create_token(uid, 'admin')}"}
+    try:
+        # 401
+        assert client.post("/api/v1/admin/file/mkdir", json={"path": "", "name": "x"}).status_code == 401
+        # 越权 400
+        assert client.post("/api/v1/admin/file/mkdir", headers=h,
+                           json={"path": "../..", "name": "x"}).status_code == 400
+        # 新建目录 → 上传 → 重命名 → 删除（链路）
+        r = client.post("/api/v1/admin/file/mkdir", headers=h,
+                        json={"path": "", "name": "__crud_test_dir__"})
+        assert r.status_code == 200, r.text
+        # 同名 409
+        assert client.post("/api/v1/admin/file/mkdir", headers=h,
+                           json={"path": "", "name": "__crud_test_dir__"}).status_code == 409
+        # 上传
+        r = client.post("/api/v1/admin/file/upload?path=__crud_test_dir__", headers=h,
+                        files={"file": ("测试文件.txt", b"hello crud", "text/plain")})
+        assert r.status_code == 200, r.text
+        # 重命名
+        r = client.post("/api/v1/admin/file/rename", headers=h,
+                        json={"path": "__crud_test_dir__/测试文件.txt", "name": "改名后.txt"})
+        assert r.status_code == 200, r.text
+        # 删除（非空目录拒绝 → 先删文件再删目录）
+        assert client.request("DELETE", "/api/v1/admin/file/delete?path=__crud_test_dir__",
+                              headers=h).status_code == 400
+        assert client.request("DELETE", "/api/v1/admin/file/delete?path=__crud_test_dir__/改名后.txt",
+                              headers=h).status_code == 200
+        assert client.request("DELETE", "/api/v1/admin/file/delete?path=__crud_test_dir__",
+                              headers=h).status_code == 200
+        # data 根目录项保护
+        assert client.request("DELETE", "/api/v1/admin/file/delete?path=datasets",
+                              headers=h).status_code == 400
+    finally:
+        sess = db.Session()
+        try:
+            u = sess.query(User).filter_by(id=uid).first()
+            if u:
+                sess.delete(u)
+            sess.commit()
+        finally:
+            sess.close()
+
+
+# ===================== AI 会话标题 =====================
+
+def test_title_is_auto_heuristic():
+    from api.v1.chat.title_gen import _is_auto_title
+    assert _is_auto_title("新对话", "任何") is True
+    assert _is_auto_title("", "任何") is True
+    long = "x" * 100
+    assert _is_auto_title(long[:80] + "...", long) is True
+    assert _is_auto_title("帮我分析销售数据", "帮我分析销售数据") is True   # 首条消息截断式 = 自动标题
+    assert _is_auto_title("销售复盘报告", "帮我分析销售数据") is False     # 用户手改/已生成
+
+
+def test_generate_title_updates_db(db, monkeypatch):
+    """mock LLM → 标题更新 + 缓存清理；已非自动标题则跳过"""
+    import uuid
+    from api.v1.chat.title_gen import generate_title
+    from db.session import ChatSession
+
+    sid = str(uuid.uuid4())
+    db.create_session(title="新对话")
+    # create_session 生成的 session_id 是随机的，需要拿到；改为固定创建
+    from db.session import ChatSession
+    sess0 = db.Session()
+    try:
+        row = sess0.query(ChatSession).order_by(ChatSession.id.desc()).first()
+        real_sid = row.session_id
+    finally:
+        sess0.close()
+    sid = real_sid
+    db.add_chat(sid, "user", "帮我分析一下上个月的销售数据趋势")
+    db.add_chat(sid, "assistant", "好的，上个月销售整体上涨 15%...")
+
+    class FakeResp:
+        content = "销售数据趋势分析"
+
+    class FakeLLM:
+        def invoke(self, msgs):
+            return FakeResp()
+
+    monkeypatch.setattr("yuanai_core.core.lc.get_llm", lambda *a, **kw: FakeLLM())
+    try:
+        assert generate_title(sid, db.get_chats(sid)) is True
+        sess = db.Session()
+        try:
+            row = sess.query(ChatSession).filter_by(session_id=sid).first()
+            assert row.title == "销售数据趋势分析"
+        finally:
+            sess.close()
+        # 再跑：标题已非自动 → 跳过
+        assert generate_title(sid, db.get_chats(sid)) is False
+    finally:
+        db.delete_session(sid)

@@ -479,6 +479,13 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
         except Exception:
             logger.warning("记忆压缩调度失败（不影响保存）", exc_info=True)
 
+        # 会话标题 AI 生成（fire-and-forget）：仅当标题仍是自动标题时触发一次
+        try:
+            from api.v1.chat.title_gen import maybe_generate_title
+            maybe_generate_title(req.session_id, req.messages)
+        except Exception:
+            logger.warning("标题生成调度失败（不影响保存）", exc_info=True)
+
         return {"saved": count}
     except HTTPException:
         raise

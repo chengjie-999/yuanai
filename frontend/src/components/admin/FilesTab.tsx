@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, safeJson, headers, API_BASE } from './shared'
 import { FolderIcon, FileIcon, XIcon } from '../icons'
 import { useSecuredUrl, fetchSseToken } from '../chat/helpers'
@@ -130,6 +130,11 @@ export default function FilesTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [preview, setPreview] = useState<any>(null)
+  const [busy, setBusy] = useState('')  // 进行中的操作提示
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [renameTarget, setRenameTarget] = useState<{ path: string; name: string } | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  const [mkdirDraft, setMkdirDraft] = useState('')
 
   const load = async (p: string) => {
     setLoading(true); setError(''); setCurrentPath(p)
@@ -143,6 +148,62 @@ export default function FilesTab() {
   useEffect(() => { load('') }, [])
 
   const goUp = () => { const parts = currentPath.split(/[/\\]/).filter(Boolean); parts.pop(); load(parts.join('/')) }
+
+  const api = async (url: string, init?: RequestInit) => {
+    const res = await fetch(url, { ...init, headers: headers() })
+    const d = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((d as any).detail || `HTTP ${res.status}`)
+    return d
+  }
+
+  const handleUpload = async (f: File) => {
+    setBusy('上传中...')
+    try {
+      const form = new FormData()
+      form.append('file', f)
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${API_BASE}/admin/file/upload?path=${encodeURIComponent(currentPath)}`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).detail || '上传失败') }
+      await load(currentPath)
+    } catch (e: any) { setError(e.message) }
+    setBusy('')
+  }
+
+  const handleMkdir = async () => {
+    if (!mkdirDraft.trim()) return
+    setBusy('创建中...')
+    try {
+      await api(`${API_BASE}/admin/file/mkdir`, { method: 'POST', body: JSON.stringify({ path: currentPath, name: mkdirDraft.trim() }) })
+      setMkdirDraft('')
+      await load(currentPath)
+    } catch (e: any) { setError(e.message) }
+    setBusy('')
+  }
+
+  const handleRename = async () => {
+    if (!renameTarget || !renameDraft.trim()) return
+    setBusy('重命名中...')
+    try {
+      await api(`${API_BASE}/admin/file/rename`, { method: 'POST', body: JSON.stringify({ path: renameTarget.path, name: renameDraft.trim() }) })
+      setRenameTarget(null)
+      await load(currentPath)
+    } catch (e: any) { setError(e.message) }
+    setBusy('')
+  }
+
+  const handleDelete = async (d: { name: string; path: string; is_dir: boolean }) => {
+    if (!window.confirm(`确定删除 ${d.name} 吗？${d.is_dir ? '（目录必须为空）' : '（不可恢复）'}`)) return
+    setBusy('删除中...')
+    try {
+      await api(`${API_BASE}/admin/file/delete?path=${encodeURIComponent(d.path)}`, { method: 'DELETE' })
+      await load(currentPath)
+    } catch (e: any) { setError(e.message) }
+    setBusy('')
+  }
 
   const handlePreview = async (d: { name: string; path: string; is_dir: boolean }) => {
     if (d.is_dir) { load(d.path); return }
@@ -162,15 +223,25 @@ export default function FilesTab() {
         {currentPath && <button onClick={goUp} title="上级目录" aria-label="上级目录" style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg-primary)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)' }}>上级目录</button>}
         <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-primary)' }}>data/{currentPath || '.'}</span>
         <button onClick={() => load(currentPath)} title="刷新" aria-label="刷新" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--accent)' }}>刷新</button>
+        <div style={{ flex: 1 }} />
+        <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }}
+          onChange={(e) => { const fs = Array.from(e.target.files || []); fs.forEach(handleUpload); e.target.value = '' }} />
+        <button onClick={() => fileInputRef.current?.click()} disabled={!!busy}
+          style={{ fontSize: 12, padding: '5px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', cursor: 'pointer', color: 'var(--text-primary)' }}>上传文件</button>
+        <input value={mkdirDraft} onChange={(e) => setMkdirDraft(e.target.value)} placeholder="新文件夹名"
+          style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', width: 110 }} />
+        <button onClick={handleMkdir} disabled={!!busy || !mkdirDraft.trim()}
+          style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', cursor: 'pointer', color: 'var(--text-primary)' }}>新建</button>
+        {busy && <span style={{ fontSize: 12, color: 'var(--accent)' }}>{busy}</span>}
       </div>
       {loading ? <Spinner /> : (
         <Card>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
-              {['名称', '类型', '大小'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>{h}</th>)}
+              {['名称', '类型', '大小', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {dirs.length === 0 && <tr><td colSpan={3}><Empty msg="空目录" /></td></tr>}
+              {dirs.length === 0 && <tr><td colSpan={4}><Empty msg="空目录" /></td></tr>}
               {dirs.map((d, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid var(--border-light)', cursor: 'pointer', transition: 'background 0.1s', color: 'var(--text-primary)' }}
                   onClick={() => handlePreview(d)}
@@ -184,11 +255,35 @@ export default function FilesTab() {
                   </td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: 12 }}>{d.is_dir ? '目录' : '文件'}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: 12 }}>{d.is_dir ? '-' : `${d.size_kb} KB`}</td>
+                  <td style={{ padding: '10px 14px' }} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => { setRenameTarget({ path: d.path, name: d.name }); setRenameDraft(d.name) }}
+                        title="重命名" aria-label="重命名" className="yuan-tip" data-tip="重命名"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: 12 }}>重命名</button>
+                      <button onClick={() => handleDelete(d)}
+                        title="删除" aria-label="删除" className="yuan-tip" data-tip="删除"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: 12 }}>删除</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </Card>
+      )}
+      {renameTarget && (
+        <div onClick={() => setRenameTarget(null)} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 20, minWidth: 320, boxShadow: '0 8px 40px var(--shadow-md)' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>重命名 {renameTarget.name}</div>
+            <input value={renameDraft} onChange={(e) => setRenameDraft(e.target.value)} autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameTarget(null) }}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <button onClick={() => setRenameTarget(null)} style={{ padding: '7px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>取消</button>
+              <button onClick={handleRename} style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: 13 }}>确定</button>
+            </div>
+          </div>
+        </div>
       )}
       {preview && (
         <div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>

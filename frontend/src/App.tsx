@@ -175,6 +175,11 @@ function AppLayout() {
 /* 预取常用页面代码：页面加载完成后空闲时间提前下载，切换页面时秒开 */
 function AppInner() {
   const { token, isAdmin } = useAuth()
+  // 路由级访问埋点：location 变化上报（登录后页面全覆盖，用户维度分析数据源）
+  const location = useLocation()
+  useEffect(() => {
+    trackVisit(location.pathname)
+  }, [location.pathname])
   useEffect(() => {
     const timer = setTimeout(() => {
       if (token) {
@@ -207,11 +212,6 @@ function AppInner() {
 }
 
 export default function App() {
-  // 路由级访问埋点：location 变化上报（登录后页面全覆盖，用户维度分析数据源）
-  const location = useLocation()
-  useEffect(() => {
-    trackVisit(location.pathname)
-  }, [location.pathname])
   return (
     <BrowserRouter>
       <ThemeProvider>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, safeJson, headers, API_BASE } from './shared'
 import { FolderIcon, FileIcon, XIcon } from '../icons'
 import { useSecuredUrl } from '../chat/helpers'
+import MarkdownContent from '../MarkdownContent'
 
 /* HTML 渲染预览：沙箱 iframe（sse token）+ 源码切换 */
 function HtmlPreview({ path, content, name }: { path: string; content: string; name: string }) {
@@ -20,6 +21,28 @@ function HtmlPreview({ path, content, name }: { path: string; content: string; n
       ) : (
         <iframe src={src} sandbox="allow-scripts" title={name}
           style={{ width: '100%', height: '70vh', border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }} />
+      )}
+    </div>
+  )
+}
+
+/* Markdown 渲染预览：复用聊天页渲染器（表格/代码/图片）+ 源码切换 */
+function MarkdownPreview({ content }: { content: string }) {
+  const [showSource, setShowSource] = useState(false)
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button onClick={() => setShowSource(v => !v)}
+          style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-secondary)' }}>
+          {showSource ? '渲染' : '源码'}
+        </button>
+      </div>
+      {showSource ? (
+        <pre style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, overflow: 'auto', maxHeight: '65vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>{content}</pre>
+      ) : (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '14px 20px', maxHeight: '70vh', overflow: 'auto' }}>
+          <MarkdownContent content={content} />
+        </div>
       )}
     </div>
   )
@@ -100,6 +123,7 @@ export default function FilesTab() {
             </div>
             {preview.type === 'image' && <img src={`data:image/${preview.ext?.replace('.', '')};base64,${preview.data}`} style={{ maxWidth: '100%', borderRadius: 8 }} />}
             {preview.type === 'html' && <HtmlPreview path={preview.path} content={preview.content} name={preview.name} />}
+            {preview.type === 'markdown' && <MarkdownPreview content={preview.content} />}
             {preview.type === 'text' && <pre style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, overflow: 'auto', maxHeight: '65vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>{preview.content}</pre>}
             {!preview.type && <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{preview.detail || '无法预览'}</div>}
           </div>

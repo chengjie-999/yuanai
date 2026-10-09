@@ -118,7 +118,15 @@ async def read_file(request: Request, path: str = ""):
         except UnicodeDecodeError:
             text = ""
         return {"type": "html", "path": path, "content": text}
-    if ext in ('.txt', '.csv', '.json', '.py', '.js', '.tsx', '.ts', '.css', '.md', '.yml', '.yaml', '.xml', '.log'):
+    if ext == '.md':
+        # Markdown 渲染预览（前端 MarkdownContent）；content 供「源码」切换
+        try:
+            with open(target, 'r', encoding='utf-8') as f:
+                text = f.read()
+        except UnicodeDecodeError:
+            text = ""
+        return {"type": "markdown", "path": path, "content": text}
+    if ext in ('.txt', '.csv', '.json', '.py', '.js', '.tsx', '.ts', '.css', '.yml', '.yaml', '.xml', '.log'):
         try:
             with open(target, 'r', encoding='utf-8') as f:
                 text = f.read()

@@ -176,3 +176,24 @@ async def user_analytics(request: Request, days: int = 30):
     from api.v1.middleware import require_admin
     require_admin(request)
     return get_db().query_visit_analytics(days=max(7, min(days, 90)))
+
+
+# ===================== 多维度经营分析（对话/功能/留存/成本） =====================
+
+
+@router.get("/analytics/{scope}")
+async def analytics_scope(request: Request, scope: str, days: int = 30):
+    """经营分析统一端点：scope = chat / features / retention / cost"""
+    from api.v1.middleware import require_admin
+    require_admin(request)
+    db = get_db()
+    scopes = {
+        "chat": db.query_chat_analytics,
+        "features": db.query_feature_analytics,
+        "retention": db.query_retention_analytics,
+        "cost": db.query_cost_analytics,
+    }
+    fn = scopes.get(scope)
+    if not fn:
+        raise HTTPException(status_code=400, detail="scope 必须为 chat/features/retention/cost")
+    return fn(days=max(7, min(days, 90)))

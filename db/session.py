@@ -1566,6 +1566,173 @@ class AgentDatabase:
         finally:
             sess.close()
 
+    def query_chat_analytics(self, days: int = 30) -> dict:
+        """对话维度分析：消息/会话趋势、深度使用（长会话）、满意度（点赞率）、活跃时段"""
+        from sqlalchemy import func as _func, distinct, text as _text
+        sess = self.Session()
+        try:
+            since = _text(f"DATE_SUB(CURDATE(), INTERVAL {int(days) - 1} DAY)")
+
+            daily_rows = (sess.query(_func.date(AIChat.create_time).label("d"),
+                                     _func.count(AIChat.id).label("messages"),
+                                     _func.count(distinct(AIChat.session_id)).label("sessions"))
+                          .filter(AIChat.create_time >= since)
+                          .group_by("d").order_by("d").all())
+            daily = [{"date": str(r.d), "messages": int(r.messages or 0),
+                      "sessions": int(r.sessions or 0)} for r in daily_rows]
+
+            total_msgs = sess.query(_func.count(AIChat.id)).filter(AIChat.create_time >= since).scalar() or 0
+            total_sessions = sess.query(_func.count(distinct(AIChat.session_id))).filter(AIChat.create_time >= since).scalar() or 0
+            per_session = (sess.query(AIChat.session_id.label("sid"), _func.count(AIChat.id).label("c"))
+                           .filter(AIChat.create_time >= since)
+                           .group_by(AIChat.session_id).all())
+            long_sessions = sum(1 for r in per_session if (r.c or 0) >= 10)
+
+            likes = sess.query(_func.count(AIChatFeedback.id)).filter(
+                AIChatFeedback.liked == 1, AIChatFeedback.create_time >= since).scalar() or 0
+            dislikes = sess.query(_func.count(AIChatFeedback.id)).filter(
+                AIChatFeedback.disliked == 1, AIChatFeedback.create_time >= since).scalar() or 0
+
+            hour_rows = (sess.query(_func.hour(AIChat.create_time).label("h"), _func.count(AIChat.id).label("c"))
+                         .filter(AIChat.create_time >= since)
+                         .group_by("h").order_by("h").all())
+            hours = [{"hour": int(r.h or 0), "count": int(r.c or 0)} for r in hour_rows]
+
+            return {
+                "daily": daily,
+                "overview": {
+                    "messages": int(total_msgs),
+                    "sessions": int(total_sessions),
+                    "avg_per_session": round(int(total_msgs) / max(int(total_sessions), 1), 1),
+                    "long_session_ratio": round(long_sessions / max(len(per_session), 1) * 100, 1),
+                    "likes": int(likes), "dislikes": int(dislikes),
+                    "like_ratio": round(int(likes) / max(int(likes) + int(dislikes), 1) * 100, 1),
+                },
+                "hours": hours,
+                "days": days,
+            }
+        finally:
+            sess.close()
+
+    def query_feature_analytics(self, days: int = 30) -> dict:
+        """功能维度分析：各功能数据量与近 N 天新增 + 使用用户数（渗透率）"""
+        from sqlalchemy import func as _func, distinct, text as _text
+        sess = self.Session()
+        try:
+            since = _text(f"DATE_SUB(CURDATE(), INTERVAL {int(days) - 1} DAY)")
+
+            def counts(model, user_col="user_id"):
+                total = sess.query(_func.count(model.id)).scalar() or 0
+                recent = sess.query(_func.count(model.id)).filter(model.create_time >= since).scalar() or 0
+                users = sess.query(_func.count(distinct(getattr(model, user_col)))).filter(
+                    getattr(model, "create_time") >= since,
+                    getattr(model, user_col).isnot(None)).scalar() or 0
+                return {"total": int(total), "recent": int(recent), "active_users": int(users)}
+
+            active_users = sess.query(_func.count(distinct(VisitLog.user_id))).filter(
+                VisitLog.user_id > 0, VisitLog.create_time >= since).scalar() or 0
+
+            features = {
+                "planet": {"label": "知识星球（笔记）", **counts(PlanetNote)},
+                "datasets": {"label": "数据集上传", **counts(Dataset)},
+                "analysis": {"label": "分析大屏", **counts(AnalysisHistory)},
+                "crawl": {"label": "数据采集记录", **counts(CrawlRecord)},
+            }
+            for key in features:
+                f = features[key]
+                f["penetration"] = round(f["active_users"] / max(int(active_users), 1) * 100, 1)
+            return {"features": features, "active_users": int(active_users), "days": days}
+        finally:
+            sess.close()
+
+    def query_retention_analytics(self, days: int = 90) -> dict:
+        """留存维度分析：注册趋势 + 注册周留存矩阵（第1/2/3/4周回访率）
+
+        口径：按注册周分组，注册后第 k 周内（7k,7k+7 天）有访问的用户占比。
+        """
+        from sqlalchemy import func as _func, text as _text
+        from datetime import datetime, timedelta
+        sess = self.Session()
+        try:
+            since = _text(f"DATE_SUB(CURDATE(), INTERVAL {int(days) - 1} DAY)")
+
+            reg_rows = (sess.query(User.id, User.create_time)
+                        .filter(User.create_time >= since).all())
+            users = [(r.id, r.create_time) for r in reg_rows]
+            reg_daily = {}
+            for _uid, ct in users:
+                d = str(ct)[:10]
+                reg_daily[d] = reg_daily.get(d, 0) + 1
+
+            visits = (sess.query(VisitLog.user_id, VisitLog.create_time)
+                      .filter(VisitLog.user_id > 0).all())
+            user_visits = {}
+            for uid, vt in visits:
+                user_visits.setdefault(uid, []).append(vt)
+
+            matrix = []
+            today = datetime.utcnow().date()
+            for week_off in range(7, -1, -1):
+                w_start = today - timedelta(days=today.weekday()) - timedelta(weeks=week_off)
+                w_end = w_start + timedelta(days=7)
+                cohort = [uid for uid, ct in users
+                          if w_start.date() <= ct.date() < w_end.date()]
+                if not cohort:
+                    matrix.append({"week": w_start.strftime("%m-%d"), "registered": 0,
+                                   "r1": 0, "r2": 0, "r3": 0, "r4": 0})
+                    continue
+                ret = {}
+                for k in (1, 2, 3, 4):
+                    lo = w_end + timedelta(days=7 * (k - 1))
+                    hi = w_end + timedelta(days=7 * k)
+                    cnt = 0
+                    for uid in cohort:
+                        for vt in user_visits.get(uid, []):
+                            if lo.date() <= vt.date() < hi.date():
+                                cnt += 1
+                                break
+                    ret[f"r{k}"] = round(cnt / len(cohort) * 100, 1)
+                matrix.append({"week": w_start.strftime("%m-%d"), "registered": len(cohort), **ret})
+
+            reg_trend = sorted(reg_daily.items())
+            return {"daily": [{"date": d, "count": c} for d, c in reg_trend],
+                    "matrix": matrix, "days": days}
+        finally:
+            sess.close()
+
+    def query_cost_analytics(self, days: int = 30) -> dict:
+        """成本维度分析：每模型成本 / 成本效率（每用户成本待明细拆分后补充）"""
+        from sqlalchemy import func as _func, text as _text
+        from yuanai_core.usage import model_cost
+        sess = self.Session()
+        try:
+            since = _text(f"DATE_SUB(CURDATE(), INTERVAL {int(days) - 1} DAY)")
+
+            model_rows = (sess.query(TokenUsage.model.label("m"),
+                                     _func.sum(TokenUsage.prompt_tokens).label("p"),
+                                     _func.sum(TokenUsage.completion_tokens).label("c"),
+                                     _func.count(TokenUsage.id).label("n"))
+                          .filter(TokenUsage.create_time >= since)
+                          .group_by(TokenUsage.model).all())
+            models = []
+            total_cost = 0.0
+            for r in model_rows:
+                cost = model_cost(r.m, int(r.p or 0), int(r.c or 0))
+                total_cost += cost
+                models.append({"model": r.m, "prompt_tokens": int(r.p or 0),
+                               "completion_tokens": int(r.c or 0), "calls": int(r.n or 0),
+                               "cost": round(cost, 2)})
+            models.sort(key=lambda x: -x["cost"])
+
+            msgs = sess.query(_func.count(AIChat.id)).filter(AIChat.create_time >= since).scalar() or 0
+            return {"models": models,
+                    "overview": {"total_cost": round(total_cost, 2),
+                                 "cost_per_message": round(total_cost / max(int(msgs), 1), 6),
+                                 "messages": int(msgs)},
+                    "days": days}
+        finally:
+            sess.close()
+
     def add_token_usage_rows(self, rows: list) -> None:
         """批量落库用量记录（usage.py 缓冲冲刷用；失败整批回滚）"""
         sess = self.Session()

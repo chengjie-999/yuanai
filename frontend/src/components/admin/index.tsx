@@ -3,6 +3,7 @@ import { ErrorBoundary } from './shared'
 import DashboardTab from './DashboardTab'
 import UsersTab from './UsersTab'
 import UserAnalyticsTab from './UserAnalyticsTab'
+import { ChatAnalyticsTab, FeatureAnalyticsTab, RetentionAnalyticsTab, CostAnalyticsTab } from './AnalyticsTabs'
 import AgentsTab from './AgentsTab'
 import AgentDevicesTab from './AgentDevicesTab'
 import SessionsTab from './SessionsTab'
@@ -34,7 +35,17 @@ const NAV_GROUPS: { label: string; icon: React.ReactNode; items: { key: string; 
     items: [
       { key: 'users', label: '用户管理' },
       { key: 'sessions', label: '会话记录' },
+    ],
+  },
+  {
+    label: '数据分析',
+    icon: <GIcon d={<><path d="M3 3v18h18" /><path d="m19 9-5 5-4-4-3 3" /></>} />,
+    items: [
       { key: 'user-analytics', label: '用户分析' },
+      { key: 'chat-analytics', label: '对话分析' },
+      { key: 'feature-analytics', label: '功能分析' },
+      { key: 'retention-analytics', label: '留存分析' },
+      { key: 'cost-analytics', label: '成本分析' },
     ],
   },
   {
@@ -159,6 +170,10 @@ function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
             <Route path="agent-devices" element={<AgentDevicesTab />} />
             <Route path="sessions" element={<SessionsTab />} />
             <Route path="user-analytics" element={<UserAnalyticsTab />} />
+            <Route path="chat-analytics" element={<ChatAnalyticsTab />} />
+            <Route path="feature-analytics" element={<FeatureAnalyticsTab />} />
+            <Route path="retention-analytics" element={<RetentionAnalyticsTab />} />
+            <Route path="cost-analytics" element={<CostAnalyticsTab />} />
             <Route path="models" element={<ModelsTab />} />
             <Route path="websites" element={<WebsitesTab />} />
             <Route path="datasets" element={<DatasetsTab />} />

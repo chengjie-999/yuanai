@@ -97,7 +97,7 @@ async def list_files(request: Request, path: str = ""):
 
 @router.get("/file/read")
 async def read_file(request: Request, path: str = ""):
-    """读取文件内容（图片返回 base64，文本返回内容）"""
+    """读取文件内容（图片返回 base64，HTML 走渲染预览，其余文本返回内容）"""
     require_admin(request)
     base = os.path.realpath(os.path.join(root_path(), "data"))
     target = os.path.realpath(os.path.join(base, path))
@@ -110,7 +110,15 @@ async def read_file(request: Request, path: str = ""):
         with open(target, 'rb') as f:
             b64 = base64.b64encode(f.read()).decode()
         return {"type": "image", "ext": ext, "data": b64}
-    if ext in ('.txt', '.csv', '.json', '.py', '.js', '.tsx', '.ts', '.css', '.html', '.md', '.yml', '.yaml', '.xml', '.log'):
+    if ext == '.html':
+        # HTML 渲染预览（iframe 走 /file-html 端点 + 沙箱）；content 供「源码」切换
+        try:
+            with open(target, 'r', encoding='utf-8') as f:
+                text = f.read()
+        except UnicodeDecodeError:
+            text = ""
+        return {"type": "html", "path": path, "content": text}
+    if ext in ('.txt', '.csv', '.json', '.py', '.js', '.tsx', '.ts', '.css', '.md', '.yml', '.yaml', '.xml', '.log'):
         try:
             with open(target, 'r', encoding='utf-8') as f:
                 text = f.read()
@@ -118,6 +126,26 @@ async def read_file(request: Request, path: str = ""):
         except UnicodeDecodeError:
             return {"type": "binary", "detail": "无法解码为文本"}
     return {"type": "unsupported", "detail": f"暂不支持预览 {ext} 文件"}
+
+
+@router.get("/file-html")
+async def serve_file_html(request: Request, path: str = ""):
+    """HTML 文件渲染预览（iframe 加载；S1.2 同款沙箱头防存储型 XSS）"""
+    require_admin(request)
+    base = os.path.realpath(os.path.join(root_path(), "data"))
+    target = os.path.realpath(os.path.join(base, path))
+    if not target.startswith(base + os.sep) and target != base:
+        raise HTTPException(status_code=400, detail="路径越权")
+    if not os.path.isfile(target) or not path.lower().endswith(".html"):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    from fastapi.responses import HTMLResponse
+    with open(target, "r", encoding="utf-8") as f:
+        content = f.read()
+    return HTMLResponse(content=content, headers={
+        "Content-Security-Policy": "sandbox allow-scripts; frame-ancestors 'self'",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-cache",
+    })
 
 
 # ===================== 模型配置 =====================

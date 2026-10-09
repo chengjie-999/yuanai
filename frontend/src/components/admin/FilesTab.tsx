@@ -1,6 +1,29 @@
 import { useState, useEffect } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, safeJson, headers, API_BASE } from './shared'
 import { FolderIcon, FileIcon, XIcon } from '../icons'
+import { useSecuredUrl } from '../chat/helpers'
+
+/* HTML 渲染预览：沙箱 iframe（sse token）+ 源码切换 */
+function HtmlPreview({ path, content, name }: { path: string; content: string; name: string }) {
+  const [showSource, setShowSource] = useState(false)
+  const src = useSecuredUrl(`${API_BASE}/admin/file-html?path=${encodeURIComponent(path)}`)
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button onClick={() => setShowSource(v => !v)}
+          style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-secondary)' }}>
+          {showSource ? '渲染' : '源码'}
+        </button>
+      </div>
+      {showSource ? (
+        <pre style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, overflow: 'auto', maxHeight: '65vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>{content}</pre>
+      ) : (
+        <iframe src={src} sandbox="allow-scripts" title={name}
+          style={{ width: '100%', height: '70vh', border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }} />
+      )}
+    </div>
+  )
+}
 
 export default function FilesTab() {
   const [dirs, setDirs] = useState<{ name: string; path: string; is_dir: boolean; size_kb: number }[]>([])
@@ -70,12 +93,13 @@ export default function FilesTab() {
       )}
       {preview && (
         <div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '80%', maxHeight: '85%', background: 'var(--bg-primary)', borderRadius: 12, padding: 24, overflow: 'auto', minWidth: 360, boxShadow: '0 8px 40px var(--shadow-md)' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '80%', maxWidth: '80%', maxHeight: '85%', background: 'var(--bg-primary)', borderRadius: 12, padding: 24, overflow: 'auto', minWidth: 360, boxShadow: '0 8px 40px var(--shadow-md)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{preview.name}</span>
               <span onClick={() => setPreview(null)} title="关闭" aria-label="关闭" style={{ cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><XIcon size={18} /></span>
             </div>
             {preview.type === 'image' && <img src={`data:image/${preview.ext?.replace('.', '')};base64,${preview.data}`} style={{ maxWidth: '100%', borderRadius: 8 }} />}
+            {preview.type === 'html' && <HtmlPreview path={preview.path} content={preview.content} name={preview.name} />}
             {preview.type === 'text' && <pre style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, overflow: 'auto', maxHeight: '65vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>{preview.content}</pre>}
             {!preview.type && <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{preview.detail || '无法预览'}</div>}
           </div>

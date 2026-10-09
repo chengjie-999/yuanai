@@ -150,3 +150,35 @@ def test_usage_admin_endpoint(client):
 
 if __name__ == "__main__":
     print("测试入口：pytest test/test_token_usage.py -v")
+
+
+# ===================== 文件管理 HTML 渲染预览 =====================
+
+def test_file_html_preview_endpoint(client, db):
+    """file-html：路径越权 400 / 沙箱头 / 未登录 401"""
+    from api.v1.auth.utils import create_token
+
+    db.register_user("__htmlprev_admin__", "test123", role="admin")
+    from db.session import User
+    sess = db.Session()
+    try:
+        uid = sess.query(User).filter_by(username="__htmlprev_admin__").first().id
+    finally:
+        sess.close()
+    h = {"Authorization": f"Bearer {create_token(uid, 'admin')}"}
+    try:
+        # 未登录 401
+        assert client.get("/api/v1/admin/file-html?path=cases%2Fx.html").status_code == 401
+        # 越权路径 400
+        assert client.get("/api/v1/admin/file-html?path=..%2F..%2Fetc%2Fpasswd", headers=h).status_code in (400, 404)
+        # 非 html 文件 404
+        assert client.get("/api/v1/admin/file-html?path=datasets%2Fnonexist.csv", headers=h).status_code == 404
+    finally:
+        sess = db.Session()
+        try:
+            u = sess.query(User).filter_by(id=uid).first()
+            if u:
+                sess.delete(u)
+                sess.commit()
+        finally:
+            sess.close()

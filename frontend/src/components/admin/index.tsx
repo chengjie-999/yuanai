@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { ErrorBoundary } from './shared'
 import DashboardTab from './DashboardTab'
 import UsersTab from './UsersTab'
+import UserAnalyticsTab from './UserAnalyticsTab'
 import AgentsTab from './AgentsTab'
 import AgentDevicesTab from './AgentDevicesTab'
 import SessionsTab from './SessionsTab'
@@ -33,6 +34,7 @@ const NAV_GROUPS: { label: string; icon: React.ReactNode; items: { key: string; 
     items: [
       { key: 'users', label: '用户管理' },
       { key: 'sessions', label: '会话记录' },
+      { key: 'user-analytics', label: '用户分析' },
     ],
   },
   {
@@ -156,6 +158,7 @@ function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
             <Route path="agents" element={<AgentsTab />} />
             <Route path="agent-devices" element={<AgentDevicesTab />} />
             <Route path="sessions" element={<SessionsTab />} />
+            <Route path="user-analytics" element={<UserAnalyticsTab />} />
             <Route path="models" element={<ModelsTab />} />
             <Route path="websites" element={<WebsitesTab />} />
             <Route path="datasets" element={<DatasetsTab />} />

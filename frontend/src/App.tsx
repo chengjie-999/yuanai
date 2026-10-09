@@ -1,3 +1,4 @@
+import { trackVisit } from './api'
 import { useState, useCallback, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -206,6 +207,11 @@ function AppInner() {
 }
 
 export default function App() {
+  // 路由级访问埋点：location 变化上报（登录后页面全覆盖，用户维度分析数据源）
+  const location = useLocation()
+  useEffect(() => {
+    trackVisit(location.pathname)
+  }, [location.pathname])
   return (
     <BrowserRouter>
       <ThemeProvider>

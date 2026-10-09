@@ -162,3 +162,17 @@ async def token_usage_stats(request: Request, days: int = 7, group_by: str = "da
         model_cost(mr["key"], mr["prompt_tokens"], mr["completion_tokens"])
         for mr in model_rows), 2)
     return {"rows": rows, "totals": totals}
+
+
+# ===================== 用户行为分析（用户维度指标体系） =====================
+
+
+@router.get("/user-analytics")
+async def user_analytics(request: Request, days: int = 30):
+    """用户维度数据分析（admin）：流量/页面价值/用户活跃/活跃分层。
+
+    指标体系见 CLAUDE.md 用户分析小节；前端后台「用户维度 → 用户分析」页。
+    """
+    from api.v1.middleware import require_admin
+    require_admin(request)
+    return get_db().query_visit_analytics(days=max(7, min(days, 90)))

@@ -11,21 +11,24 @@ class VisitReport(BaseModel):
 
 @router.post("/visit")
 def report_visit(req: VisitReport, request: Request):
-    """前端埋点：记录一次页面访问（公开路径，走全局限流）"""
+    """前端埋点：记录一次页面访问（公开路径，走全局限流）。
+
+    用户维度分析：带 Authorization 头则解析 user_id 关联登录用户（游客=0），
+    登录后页面的路由级埋点与公开页共用本端点。
+    """
     from api.v1.ratelimit import get_client_ip
-    from db.session import VisitLog
-    db = get_db()
-    sess = db.Session()
-    try:
-        sess.add(VisitLog(
-            path=req.path[:200],
-            ip=get_client_ip(request)[:64],
-            user_agent=(request.headers.get("User-Agent", "") or "")[:300],
-        ))
-        sess.commit()
-        return {"ok": True}
-    finally:
-        sess.close()
+
+    user_id = 0
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        from api.v1.auth.utils import verify_token
+        payload = verify_token(auth[7:])
+        if payload:
+            user_id = int(payload.get("user_id") or 0)
+
+    get_db().record_visit(req.path, get_client_ip(request),
+                          request.headers.get("User-Agent", "") or "", user_id)
+    return {"ok": True}
 
 
 @router.get("/all")

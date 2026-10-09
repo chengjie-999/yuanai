@@ -102,6 +102,7 @@ class VisitLog(Base):
     path = Column(String(200), nullable=False, default='/')
     ip = Column(String(64), nullable=True)
     user_agent = Column(String(300), nullable=True)
+    user_id = Column(Integer, nullable=True, index=True)  # 登录用户行为分析（游客=0）
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -1451,6 +1452,120 @@ class AgentDatabase:
     # --------------------------------------------------------------------------
     # Token 用量统计（支付与金融分析）
     # --------------------------------------------------------------------------
+    def record_visit(self, path: str, ip: str, user_agent: str, user_id: int = 0) -> None:
+        """记录一次页面访问（用户维度分析数据源；游客 user_id=0）"""
+        sess = self.Session()
+        try:
+            sess.add(VisitLog(path=path[:200], ip=ip[:64],
+                              user_agent=user_agent[:300], user_id=user_id or 0))
+            sess.commit()
+        finally:
+            sess.close()
+
+    def query_visit_analytics(self, days: int = 30) -> dict:
+        """用户行为分析（指标体系 L1-L3）：
+        - overview: 今日/近N天 PV、UV（按 IP 去重）、登录用户 PV 占比
+        - pages: 页面访问排行（path → PV/UV/登录PV）
+        - daily: 近 N 天 PV/UV 趋势
+        - users: 活跃用户排行（用户名/访问次数/访问天数/会话数/消息数/最后活跃）
+        - segments: 活跃分层（高活≥15天/中活7-14/低活1-6/流失0，近30天口径）
+        """
+        from sqlalchemy import func as _func, distinct, text as _text, case as _case
+        sess = self.Session()
+        try:
+            since = _text(f"DATE_SUB(CURDATE(), INTERVAL {int(days) - 1} DAY)")
+            today = _text("CURDATE()")
+
+            # 今日
+            t_pv, t_uv, t_login = sess.query(
+                _func.count(VisitLog.id),
+                _func.count(distinct(VisitLog.ip)),
+                _func.count(VisitLog.id),
+            ).filter(VisitLog.create_time >= today).first()
+            t_login_uv = sess.query(_func.count(distinct(VisitLog.user_id))).filter(
+                VisitLog.create_time >= today, VisitLog.user_id > 0).first()[0] or 0
+            # 近 N 天
+            n_pv, n_uv, n_login = sess.query(
+                _func.count(VisitLog.id),
+                _func.count(distinct(VisitLog.ip)),
+                _func.count(VisitLog.id),
+            ).filter(VisitLog.create_time >= since).first()
+            n_login_uv = sess.query(_func.count(distinct(VisitLog.user_id))).filter(
+                VisitLog.create_time >= since, VisitLog.user_id > 0).first()[0] or 0
+
+            overview = {
+                "today": {"pv": int(t_pv or 0), "uv": int(t_uv or 0),
+                          "login_uv": int(t_login_uv)},
+                "period": {"pv": int(n_pv or 0), "uv": int(n_uv or 0),
+                           "login_uv": int(n_login_uv),
+                           "login_ratio": round((int(n_login or 0) / max(int(n_pv or 0), 1)) * 100, 1)},
+            }
+
+            # 页面排行（近 N 天，前 12）
+            page_rows = (sess.query(VisitLog.path.label("path"),
+                                    _func.count(VisitLog.id).label("pv"),
+                                    _func.count(distinct(VisitLog.ip)).label("uv"),
+                                    _func.sum(_case((VisitLog.user_id > 0, 1), else_=0)).label("login_pv"))
+                         .filter(VisitLog.create_time >= since)
+                         .group_by(VisitLog.path)
+                         .order_by(_func.count(VisitLog.id).desc()).limit(12).all())
+            pages = [{"path": r.path, "pv": int(r.pv or 0), "uv": int(r.uv or 0),
+                      "login_pv": int(r.login_pv or 0)} for r in page_rows]
+
+            # 日趋势（补零由前端做）
+            daily_rows = (sess.query(_func.date(VisitLog.create_time).label("d"),
+                                     _func.count(VisitLog.id).label("pv"),
+                                     _func.count(distinct(VisitLog.ip)).label("uv"))
+                          .filter(VisitLog.create_time >= since)
+                          .group_by("d").order_by("d").all())
+            daily = [{"date": str(r.d), "pv": int(r.pv or 0), "uv": int(r.uv or 0)}
+                     for r in daily_rows]
+
+            # 活跃用户排行（JOIN users；访问天数 = 有访问记录的不同日期数）
+            user_rows = (sess.query(VisitLog.user_id.label("uid"),
+                                    User.username.label("username"),
+                                    _func.count(VisitLog.id).label("visits"),
+                                    _func.count(distinct(_func.date(VisitLog.create_time))).label("days"),
+                                    _func.max(VisitLog.create_time).label("last"))
+                         .join(User, User.id == VisitLog.user_id)
+                         .filter(VisitLog.user_id > 0, VisitLog.create_time >= since)
+                         .group_by(VisitLog.user_id, User.username)
+                         .order_by(_func.count(VisitLog.id).desc()).limit(15).all())
+            users = [{"user_id": r.uid, "username": r.username, "visits": int(r.visits or 0),
+                      "active_days": int(r.days or 0),
+                      "last_active": str(r.last)[:10] if r.last else ""} for r in user_rows]
+
+            # 会话/消息数（JOIN chat_session / ai_chat 聚合）
+            sess_rows = (sess.query(ChatSession.user_id.label("uid"),
+                                    _func.count(ChatSession.id).label("sessions"),
+                                    _func.count(AIChat.id).label("messages"))
+                         .outerjoin(AIChat, AIChat.session_id == ChatSession.session_id)
+                         .filter(ChatSession.user_id.isnot(None))
+                         .group_by(ChatSession.user_id).all())
+            sess_map = {r.uid: {"sessions": int(r.sessions or 0), "messages": int(r.messages or 0)}
+                        for r in sess_rows}
+            for u in users:
+                u.update(sess_map.get(u["user_id"], {"sessions": 0, "messages": 0}))
+
+            # 活跃分层（近 30 天访问天数）
+            seg = {"high": 0, "mid": 0, "low": 0, "churned": 0}
+            for u in users:
+                d = u["active_days"]
+                if d >= 15:
+                    seg["high"] += 1
+                elif d >= 7:
+                    seg["mid"] += 1
+                elif d >= 1:
+                    seg["low"] += 1
+            # 流失 = 有账号但从未来过（30 天内 0 访问）
+            total_users = sess.query(_func.count(User.id)).scalar() or 0
+            seg["churned"] = max(0, int(total_users) - (seg["high"] + seg["mid"] + seg["low"]))
+
+            return {"overview": overview, "pages": pages, "daily": daily,
+                    "users": users, "segments": seg, "days": days}
+        finally:
+            sess.close()
+
     def add_token_usage_rows(self, rows: list) -> None:
         """批量落库用量记录（usage.py 缓冲冲刷用；失败整批回滚）"""
         sess = self.Session()

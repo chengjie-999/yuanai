@@ -182,3 +182,76 @@ def test_file_html_preview_endpoint(client, db):
                 sess.commit()
         finally:
             sess.close()
+
+
+# ===================== 用户行为分析（访问埋点 uid 归因 + 分析端点） =====================
+
+def test_visit_attribution(client, db):
+    """埋点带登录态 → visit_log.user_id 关联；无登录态 → 0"""
+    from api.v1.auth.utils import create_token
+
+    r = client.post("/api/v1/stats/visit", json={"path": "/public-page"})
+    assert r.status_code == 200
+
+    db.register_user("__visit_attr__", "test123")
+    from db.session import User
+    sess = db.Session()
+    try:
+        uid = sess.query(User).filter_by(username="__visit_attr__").first().id
+    finally:
+        sess.close()
+    h = {"Authorization": f"Bearer {create_token(uid, 'user')}"}
+    r = client.post("/api/v1/stats/visit", json={"path": "/chat"}, headers=h)
+    assert r.status_code == 200
+
+    from db.session import VisitLog
+    sess = db.Session()
+    try:
+        row = sess.query(VisitLog).filter_by(path="/chat").order_by(VisitLog.id.desc()).first()
+        assert row.user_id == uid
+        pub = sess.query(VisitLog).filter_by(path="/public-page").order_by(VisitLog.id.desc()).first()
+        assert pub.user_id == 0
+        # 清理
+        sess.query(VisitLog).filter(VisitLog.path.in_(["/chat", "/public-page"])).delete()
+        u = sess.query(User).filter_by(id=uid).first()
+        if u:
+            sess.delete(u)
+        sess.commit()
+    finally:
+        sess.close()
+
+
+def test_user_analytics_endpoint(client, db):
+    """/admin/user-analytics：非 admin 拒绝；admin 返回指标体系结构"""
+    from api.v1.auth.utils import create_token
+
+    db.register_user("__ua_admin__", "test123", role="admin")
+    db.register_user("__ua_normal__", "test123")
+    from db.session import User
+    sess = db.Session()
+    try:
+        admin_uid = sess.query(User).filter_by(username="__ua_admin__").first().id
+        normal_uid = sess.query(User).filter_by(username="__ua_normal__").first().id
+    finally:
+        sess.close()
+
+    h_admin = {"Authorization": f"Bearer {create_token(admin_uid, 'admin')}"}
+    h_normal = {"Authorization": f"Bearer {create_token(normal_uid, 'user')}"}
+    try:
+        assert client.get("/api/v1/admin/user-analytics", headers=h_normal).status_code in (401, 403)
+        r = client.get("/api/v1/admin/user-analytics?days=7", headers=h_admin)
+        assert r.status_code == 200
+        data = r.json()
+        assert set(data) >= {"overview", "pages", "daily", "users", "segments"}
+        assert set(data["overview"]) >= {"today", "period"}
+        assert set(data["segments"]) >= {"high", "mid", "low", "churned"}
+    finally:
+        sess = db.Session()
+        try:
+            for name in ("__ua_admin__", "__ua_normal__"):
+                u = sess.query(User).filter_by(username=name).first()
+                if u:
+                    sess.delete(u)
+            sess.commit()
+        finally:
+            sess.close()

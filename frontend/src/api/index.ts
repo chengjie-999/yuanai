@@ -364,7 +364,8 @@ export async function trackVisit(path: string) {
   try {
     await fetch(`${API_BASE}/stats/visit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // 带登录态：后端解析 uid 关联用户（用户维度分析数据源）
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ path }),
     })
   } catch { /* 埋点失败不影响体验 */ }

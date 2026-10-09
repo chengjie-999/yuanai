@@ -1696,7 +1696,8 @@ class AgentDatabase:
                     cnt = 0
                     for uid in cohort:
                         for vt in user_visits.get(uid, []):
-                            if lo.date() <= vt.date() < hi.date():
+                            # lo/hi 是 date；vt 是 datetime（TIMESTAMP 列）→ vt.date()
+                            if lo <= vt.date() < hi:
                                 cnt += 1
                                 break
                     ret[f"r{k}"] = round(cnt / len(cohort) * 100, 1)

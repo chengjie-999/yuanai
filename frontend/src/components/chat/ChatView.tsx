@@ -30,17 +30,26 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   onSuggest: (text: string) => void
 }) {
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const lastSidRef = useRef(currentSid)
 
   useEffect(() => {
-    // 流式输出时用 auto（无动画）且只在用户贴近底部时跟随——
-    // 防止逐 token 平滑滚动造成「一上一下闪」的抖动
+    // 进入/切换会话（含登录落主对话）：无条件直达最新消息——用户习惯，
+    // 不看当前位置判定（刚进入时 scrollTop=0 会被误判为「不在底部」）
+    const sessionChanged = lastSidRef.current !== currentSid
+    lastSidRef.current = currentSid
     const el = chatEndRef.current
     if (!el) return
     const container = el.closest('.chat-main')
     if (!container) { el.scrollIntoView({ behavior: 'auto' }); return }
+    if (sessionChanged) {
+      container.scrollTop = container.scrollHeight
+      return
+    }
+    // 流式输出时用 auto（无动画）且只在用户贴近底部时跟随——
+    // 防止逐 token 平滑滚动造成「一上一下闪」的抖动
     const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120
     if (nearBottom) el.scrollIntoView({ behavior: loading ? 'auto' : 'smooth' })
-  }, [messages, pendingApproval, loading])
+  }, [messages, pendingApproval, loading, currentSid])
 
   return (
     <>

@@ -213,7 +213,7 @@ data/                   数据目录
 python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户id> --agent-token <长令牌>
 ```
 
-- 入口端点：`POST /api/v1/chat/claude-stream`（复用 SSE 桥；离线回退云端 LLM）；前端输入区/欢迎页三模式选择器「云端 / 本地 Agent / ⌘ Claude Code」（离线置灰，在线状态轮询 `/admin/agent-status`，白名单用户可见桥接状态）
+- 入口端点：`POST /api/v1/chat/claude-stream`（复用 SSE 桥；离线回退云端 LLM）；**微信式群聊下模式下拉已移除**——@Claude Code 即原 ⌘ 桥接模式（前端 sendMessages 里 `isClaude = target==='claude'` 走 claude-stream + 会话续接语义），chatMode 内部自动切换（本地离线 → cloud 标签），ChatModeSelector 组件仅欢迎页兜底保留；手机端顶部栏显示本地 Agent 在线状态（能力清单小屏隐藏），@ 面板内每个智能体标在线/离线
 - 会话映射：`data/claude_sessions.json`（cloud session_id → claude session uuid，`--resume` 续接；`--session-id` 仅用于新建）
 - 事件扩展：`sender_event`（type=agent，声明气泡归属）与 `approval_event`（type=approval，审批卡）
 - **审批流未启用**：依赖 claude-agent-sdk 的 `can_use_tool`，当前网络装不了该包（pypi.org 不通、清华源无包）。review 级命令目前靠提示词黑名单约束（同 Phase 1 delegate）

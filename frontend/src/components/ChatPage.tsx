@@ -51,7 +51,8 @@ export default function ChatPage({ user }: { user?: any }) {
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
   const [images, setImages] = useState<string[]>([])
   const [expandedImage, setExpandedImage] = useState<string | null>(null)
-  // 聊天模式：local=本地统筹 Agent / cloud=云端直连 / claude=Claude Code 桥接
+  // 聊天模式（内部自动切换，不再暴露下拉框——微信式群聊由 @指定接管）：
+  // local=本地统筹 Agent（默认）→ 本地离线时自动落 cloud；claude 模式已并入 @Claude Code
   const [chatMode, setChatMode] = useState<'local' | 'cloud' | 'claude'>('local')
   // @指定智能体（群聊式定向委派；空 = 统筹自行路由；发送后自动复位）
   const [targetAgent, setTargetAgent] = useState('')
@@ -118,7 +119,6 @@ export default function ChatPage({ user }: { user?: any }) {
   useEffect(() => {
     if (!statusKnown) return
     if (chatMode === 'local' && !localOnline) setChatMode('cloud')
-    if (chatMode === 'claude' && !claudeOnline) setChatMode('cloud')
   }, [chatMode, localOnline, claudeOnline, statusKnown])
 
   const refreshSessions = useCallback(async () => {
@@ -203,7 +203,7 @@ export default function ChatPage({ user }: { user?: any }) {
 
   const makeStreamHandlers = () => {
     // 本地 Agent 模式气泡显示「小元AI · 本机」，云端模式显示「小元AI」，Claude 模式显示 Claude Code
-    let currentSender = chatMode === 'claude' ? 'claude' : chatMode === 'local' ? 'local' : 'orchestrator'
+    let currentSender = chatMode === 'cloud' ? 'orchestrator' : 'local'
     const onEvent = (event: any) => {
       if (event.type === 'token') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender) as any }; return last })
@@ -276,23 +276,25 @@ export default function ChatPage({ user }: { user?: any }) {
     setLoading(true)
     // 普通消息自动撤销未决审批（桥接侧会 deny pending 后正常处理）
     setPendingApproval(null)
-    // @指定智能体：发送时捕获并复位（单次生效，下一条恢复统筹自行路由）
+    // @指定智能体：发送时捕获并复位（单次生效，下一条恢复统筹自行路由）；
+    // @Claude Code = 原 ⌘ 桥接模式（走 claude-stream 端点 + 会话续接语义）
     const target = targetAgentRef.current
     if (target) setTargetAgent('')
+    const isClaude = target === 'claude' || chatMode === 'claude'
     // 说话人协议：自己（统筹/本地/桥接对象）说的话不加前缀，
     // 其他智能体的话加【xx Agent】前缀——模型由此分清群聊里谁说过什么
     const selfSenders = target ? [target]
-      : chatMode === 'claude' ? ['claude'] : ['local', 'orchestrator']
+      : chatMode === 'cloud' ? ['orchestrator'] : ['local', 'orchestrator']
     const history = buildHistoryWithToolContext(msgs, selfSenders)
     const placeholderSender = target && AGENT_CONFIG[target]
       ? target
-      : chatMode === 'claude' ? 'claude' : chatMode === 'local' ? 'local' : 'orchestrator'
+      : chatMode === 'cloud' ? 'orchestrator' : 'local'
     setMessages([...msgs, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
     streamChat(
       { model, temperature: 0.7, prompt, images: sentImages, history, system_prompt: (chatMode === 'local' ? '注意：你正运行在用户的本地电脑上（本地 Agent 模式），自我介绍时应说明这一点。\n' : '') + SYSTEM_PROMPT_BASE,
-        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
+        session_id: isClaude ? sid : undefined, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
       onEvent, onError,
       () => {
         setLoading(false)
@@ -368,17 +370,18 @@ export default function ChatPage({ user }: { user?: any }) {
     // @指定智能体：发送时捕获并复位（欢迎页新建会话入口同规则）
     const target = targetAgentRef.current
     if (target) setTargetAgent('')
+    const isClaude = target === 'claude' || chatMode === 'claude'
     const sentImages = [...images]; setImages([])
     setMessages([{ role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }])
     const placeholderSender = target && AGENT_CONFIG[target]
       ? target
-      : chatMode === 'claude' ? 'claude' : chatMode === 'local' ? 'local' : 'orchestrator'
+      : chatMode === 'cloud' ? 'orchestrator' : 'local'
     setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
     streamChat(
       { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: (chatMode === 'local' ? '注意：你正运行在用户的本地电脑上（本地 Agent 模式），自我介绍时应说明这一点。\n' : '') + SYSTEM_PROMPT_BASE,
-        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
+        session_id: isClaude ? sid : undefined, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
       onEvent, onError,
       () => {
         setLoading(false)
@@ -462,7 +465,6 @@ export default function ChatPage({ user }: { user?: any }) {
             images={images} setImages={setImages}
             currentSid={currentSid}
             sessions={sessions}
-            chatMode={chatMode} setChatMode={setChatMode}
             localOnline={localOnline} claudeOnline={claudeOnline}
             effort={effort} setEffort={setEffort}
             autoRead={autoRead}

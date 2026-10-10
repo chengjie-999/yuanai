@@ -152,11 +152,10 @@ function AppLayout() {
               )}
             </span>
           </button>
-          <span className="hide-mobile">
-            <Link to="/chat/agent" style={{ textDecoration: 'none' }}>
-              <AgentStatus userId={user?.id} />
-            </Link>
-          </span>
+          {/* 手机端也显示本地 Agent 在线状态（能力清单小屏自动隐藏） */}
+          <Link to="/chat/agent" style={{ textDecoration: 'none' }}>
+            <AgentStatus userId={user?.id} />
+          </Link>
           <Link to="/chat/user" style={{
             fontSize: 13, color: 'var(--accent)', cursor: 'pointer', textDecoration: 'none',
             whiteSpace: 'nowrap',

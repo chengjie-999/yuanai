@@ -2,8 +2,6 @@ import { useRef, useState } from 'react'
 import { downloadChat } from './helpers'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
-import type { ChatMode } from './ChatModeSelector'
-import ChatModeSelector from './ChatModeSelector'
 import type { ReasoningEffort } from './ReasoningSelector'
 import ReasoningSelector from './ReasoningSelector'
 import { compressImage } from './imageUtils'
@@ -20,12 +18,11 @@ const TARGET_AGENTS = [
   { key: 'claude', desc: '本机代码、终端、Git 任务' },
 ]
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, onStartVoiceCall, targetAgent, setTargetAgent }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, effort, setEffort, onStartVoiceCall, targetAgent, setTargetAgent }: {
   input: string; setInput: (v: string | ((p: string) => string)) => void; loading: boolean; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
   sessions: SessionInfo[]; messages: ChatMessage[]
-  chatMode: ChatMode; setChatMode: (v: ChatMode) => void
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   localOnline: boolean; claudeOnline: boolean
   onStartVoiceCall: () => void
@@ -124,13 +121,16 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   e.target.value = ''
                 }}
               />
-              <button onClick={() => setPickerOpen((o) => !o)} className="yuan-tip"
-                data-tip={targetAgent ? `已指定：${AGENT_CONFIG[targetAgent]?.label || ''}` : '指定智能体回答'} aria-label="指定智能体"
-                style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', color: targetAgent ? 'var(--accent)' : 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: targetAgent ? 1 : 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = targetAgent ? '1' : '0.7' }}
-              >
-                <AtSignIcon size={17} />
+              {/* @ 面板与按钮为兄弟节点：面板点击不冒泡回按钮（曾因冒泡 toggle 导致面板关不掉） */}
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <button onClick={() => setPickerOpen((o) => !o)} className="yuan-tip"
+                  data-tip={targetAgent ? `已指定：${AGENT_CONFIG[targetAgent]?.label || ''}` : '指定智能体回答'} aria-label="指定智能体"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: targetAgent ? 'var(--accent)' : 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: targetAgent ? 1 : 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = targetAgent ? '1' : '0.7' }}
+                >
+                  <AtSignIcon size={17} />
+                </button>
                 {pickerOpen && (
                   <>
                     <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setPickerOpen(false)} />
@@ -172,7 +172,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                     </div>
                   </>
                 )}
-              </button>
+              </div>
               <button onClick={() => fileRef.current?.click()} className="yuan-tip" data-tip="上传图片" aria-label="上传图片"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
@@ -205,8 +205,6 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <ChatModeSelector chatMode={chatMode} setChatMode={setChatMode}
-                localOnline={localOnline} claudeOnline={claudeOnline} />
               <ReasoningSelector effort={effort} setEffort={setEffort} />
             </div>
           </div>

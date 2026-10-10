@@ -67,7 +67,7 @@ export default function AgentStatus({ userId }: { userId?: number }) {
         boxShadow: '0 0 6px rgba(76,175,80,0.5)',
       }} />
       {agent.agent_name}
-      <span style={{ color: 'var(--text-muted)' }}>
+      <span className="hide-mobile" style={{ color: 'var(--text-muted)' }}>
         {agent.capabilities.map((c: string) => capLabels[c] || c).join('·')}
       </span>
     </span>

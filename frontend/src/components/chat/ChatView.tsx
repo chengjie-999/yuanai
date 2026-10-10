@@ -1,21 +1,19 @@
 import { useRef, useEffect } from 'react'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
-import type { ChatMode } from './ChatModeSelector'
 import type { ReasoningEffort } from './ReasoningSelector'
 import { SUGGESTIONS } from '../../config/agents'
 import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
   sessions: SessionInfo[]
-  chatMode: ChatMode; setChatMode: (v: ChatMode) => void
   localOnline: boolean; claudeOnline: boolean
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   autoRead: boolean; autoReadTick: number
@@ -99,7 +97,6 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         handleSend={handleSend} images={images} setImages={setImages}
         currentSid={currentSid}
         sessions={sessions} messages={messages}
-        chatMode={chatMode} setChatMode={setChatMode}
         localOnline={localOnline} claudeOnline={claudeOnline}
         effort={effort} setEffort={setEffort}
         onStartVoiceCall={onStartVoiceCall}

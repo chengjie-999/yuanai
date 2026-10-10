@@ -19,6 +19,25 @@ function normalizePageLink(p: any): string | undefined {
   return p
 }
 
+/* 历史消息解析：\x00META\x00 前缀解出 sender/toolCalls/reasoning/pageLink（挂载落主对话与切换会话共用） */
+function parseHistory(history: any[]): ChatMessage[] {
+  return history.map((m: any) => {
+    let sender: any = undefined
+    let toolCalls: any = undefined
+    let reasoning: string | undefined
+    let pageLink: string | undefined
+    let content = m.content || ''
+    if (typeof content === 'string' && content.startsWith('\x00META\x00')) {
+      const end = content.indexOf('\x00', 6)
+      if (end > 6) {
+        try { const meta = JSON.parse(content.substring(6, end)); sender = meta.s; toolCalls = meta.t; reasoning = meta.r; pageLink = normalizePageLink(meta.p) } catch {}
+        content = content.substring(end + 1)
+      }
+    }
+    return { role: m.role, content, images: m.images, sender, toolCalls, reasoning, pageLink }
+  })
+}
+
 export default function ChatPage({ user }: { user?: any }) {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [currentSid, setCurrentSid] = useState<string>('')
@@ -107,13 +126,22 @@ export default function ChatPage({ user }: { user?: any }) {
     setSessions(list)
   }, [])
 
-  // 挂载时确保置顶主对话存在（豆包式：每用户一条，取/建幂等），再刷新侧栏
+  // 挂载时确保置顶主对话存在（豆包式：每用户一条，取/建幂等）并直接落主对话——
+  // 登录即进主对话，欢迎页仅在接口异常时作兜底
   useEffect(() => {
     const init = async () => {
-      await ensureMainSession()
+      const main = await ensureMainSession()
       await refreshSessions()
+      if (main && !sidRef.current) {
+        setCurrentSid(main.session_id)
+        const history = await loadMessages(main.session_id)
+        setMessages(history.length === 0
+          ? [{ role: 'assistant', content: '你好！有什么可以帮你的？' }]
+          : parseHistory(history))
+      }
     }
     init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshSessions])
 
   // 语音通话状态机（会话锚定/转录队列/保存快照 flush，独立 hook）
@@ -141,12 +169,16 @@ export default function ChatPage({ user }: { user?: any }) {
   }
 
   const handleNewSession = async () => {
-    setCurrentSid('')
-    setMessages([])
+    // 新建普通对话并立即打开（登录已直接落主对话，新对话按钮=另开一个会话）
+    const sid = await createSession()
+    setCurrentSid(sid)
+    setMessages([{ role: 'assistant', content: '你好！有什么可以帮你的？' }])
     setQuickInput('')
     setInput('')
+    setImages([])
     setFeedbackState({})
     setEditingIndex(null)
+    refreshSessions()
   }
 
   const handleSelectSession = async (sid: string) => {
@@ -155,25 +187,9 @@ export default function ChatPage({ user }: { user?: any }) {
     const feedbackData = await loadFeedback(sid)
     setFeedbackState(feedbackData)
     setEditingIndex(null)
-    if (history.length === 0) {
-      setMessages([{ role: 'assistant', content: '你好！有什么可以帮你的？' }])
-    } else {
-      setMessages(history.map((m: any) => {
-        let sender: any = undefined
-        let toolCalls: any = undefined
-        let reasoning: string | undefined
-        let pageLink: string | undefined
-        let content = m.content || ''
-        if (typeof content === 'string' && content.startsWith('\x00META\x00')) {
-          const end = content.indexOf('\x00', 6)
-          if (end > 6) {
-            try { const meta = JSON.parse(content.substring(6, end)); sender = meta.s; toolCalls = meta.t; reasoning = meta.r; pageLink = normalizePageLink(meta.p) } catch {}
-            content = content.substring(end + 1)
-          }
-        }
-        return { role: m.role, content, images: m.images, sender, toolCalls, reasoning, pageLink }
-      }))
-    }
+    setMessages(history.length === 0
+      ? [{ role: 'assistant', content: '你好！有什么可以帮你的？' }]
+      : parseHistory(history))
   }
 
   const handleDeleteSession = async (e: React.MouseEvent, sid: string) => {
@@ -286,13 +302,14 @@ export default function ChatPage({ user }: { user?: any }) {
     )
   }
 
-  const handleSend = () => {
-    if (!input.trim() || loading || !currentSid) return
+  const handleSend = (textOverride?: string) => {
+    const text = (textOverride ?? input).trim()
+    if (!text || loading || !currentSid) return
     const sentImages = images.length > 0 ? [...images] : undefined
-    const prevMsgs = [...messages, { role: 'user' as const, content: input, images: sentImages }]
+    const prevMsgs = [...messages, { role: 'user' as const, content: text, images: sentImages }]
     setMessages(prevMsgs)
     setImages([]); setInput('')
-    sendMessages(prevMsgs, input, sentImages)
+    sendMessages(prevMsgs, text, sentImages)
   }
 
   // 修改用户消息：替换内容 → 截断其后所有消息 → 重新发送
@@ -382,12 +399,17 @@ export default function ChatPage({ user }: { user?: any }) {
         .chat-input-area { padding: 6px 6px 10px !important; }
         .chat-input-inner { max-width: 100% !important; }
         .chat-input-area textarea { font-size: 16px !important; }
+        /* 推荐问题横滑一行（手机不换行堆叠） */
+        .chat-suggest-row { flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 4px; scrollbar-width: none; }
+        .chat-suggest-row::-webkit-scrollbar { display: none; }
       }
       @media (max-width: 480px) {
         .chat-msg-bubble { max-width: 94% !important; font-size: 13px !important; padding: 8px 12px !important; }
         .chat-welcome h1 { font-size: 18px !important; }
         .chat-input-area textarea { font-size: 16px !important; }
-        .chat-tool-row { flex-wrap: wrap !important; gap: 6px !important; padding: 4px 10px 8px !important; }
+        .chat-tool-row { flex-wrap: wrap !important; gap: 6px !important; padding: 0 10px 8px !important; }
+        /* 小屏藏低频按钮：下载聊天记录（桌面端悬浮提示按钮） */
+        .chat-tool-download { display: none !important; }
         .msg-edit-textarea { font-size: 16px !important; }
       }
       /* 气泡内操作行常显（图标本身 0.65 → 1 hover 微反馈） */
@@ -446,6 +468,7 @@ export default function ChatPage({ user }: { user?: any }) {
             onEditMessage={handleEditMessage} onFeedback={handleFeedback}
             onStartVoiceCall={startVoiceCallWithPermission}
             targetAgent={targetAgent} setTargetAgent={setTargetAgent}
+            onSuggest={handleSend}
           />
         )}
       </div>

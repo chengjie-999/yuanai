@@ -3,7 +3,7 @@ import type { ChatMessage } from '../../types'
 import ToolCallCard from '../ToolCallCard'
 import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
-import { voiceTts } from '../../api'
+import { voiceTtsStream } from '../../api'
 import { LoadingDots, addToken, stripMarkdown, useSecuredUrl } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon } from '../icons'
 
@@ -98,7 +98,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     setTimeout(() => setCopied(false), 1500)
   }
 
-  // 朗读消息（豆包 TTS）：markdown 去符号后合成语音播放；再点一次打断（作废在途请求）
+  // 朗读消息（豆包 TTS 流式）：markdown 去符号后合成语音，边收边播——首个分片到达即出声，
+  // 不再等整段合成+整段下载（原实现首声延迟数秒）。再点一次打断（作废在途请求）
   const toggleRead = async () => {
     if (speaking) {
       readSeqRef.current += 1  // 作废在途合成请求
@@ -113,14 +114,34 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     try {
       const text = stripMarkdown(msg.content).trim().slice(0, 1000)
       if (!text) throw new Error('没有可朗读的内容')
-      const blob = await voiceTts(text, sender || undefined)
-      if (seq !== readSeqRef.current) return  // 已被打断：不创建音频
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audioRef.current = audio
-      audio.onended = () => stopReading()
-      audio.onerror = () => stopReading()
-      await audio.play()
+      // 分片播放队列：流式到达即入队，播放器空闲即出队播放（播完自动接下一段）
+      const queue: Blob[] = []
+      let fetching = true
+      let playing = false
+      const pump = () => {
+        if (seq !== readSeqRef.current) return  // 已打断：队列作废
+        if (playing || queue.length === 0) {
+          if (!fetching && queue.length === 0) stopReading()  // 流结束且播完：正常收尾
+          return
+        }
+        playing = true
+        const blob = queue.shift()!
+        const url = URL.createObjectURL(blob)
+        const audio = new Audio(url)
+        audioRef.current = audio
+        audio.onended = () => { URL.revokeObjectURL(url); playing = false; pump() }
+        audio.onerror = () => { URL.revokeObjectURL(url); playing = false; pump() }
+        const p = audio.play()
+        if (p && p.catch) p.catch(() => { playing = false; pump() })
+      }
+      await voiceTtsStream(
+        text,
+        sender || undefined,
+        (blob) => { if (seq !== readSeqRef.current) return; queue.push(blob); pump() },
+        () => { fetching = false; pump() },
+      )
+      // 流收完但还有残余队列（或全部为空），统一走 pump 收尾
+      pump()
     } catch (err: any) {
       if (seq === readSeqRef.current) {
         stopReading()

@@ -254,76 +254,85 @@ def append_voice_message(req: VoiceMessageRequest, request: Request):
 
 @router.post("/tts")
 def voice_tts(req: VoiceTtsRequest, request: Request):
-    """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型 2.0，按消息归属 Agent 选音色"""
+    """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型 2.0，按消息归属 Agent 选音色。
+
+    流式边到边转发：火山返回的音频分片逐段透传（不再整段 read 拼好才回），
+    前端边收边播——首声延迟从「整段合成+整段下载」降到「首个分片合成」（约 0.3-0.8s）。
+    nginx /api/v1/ 已 proxy_buffering off，分片可实时透传。
+    """
     from config.settings import VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE, AGENT_VOICE_MAP, VOICE_ENABLED
-    from fastapi.responses import Response
+    from fastapi.responses import StreamingResponse
     if not VOICE_ENABLED:
         raise HTTPException(status_code=503, detail="语音功能已关闭")
     if not (VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN):
         raise HTTPException(status_code=503, detail="语音合成未配置：请先配置 VOICE_TTS_* 凭据")
-    try:
-        # 音色按 Agent 查表（用户设置页可改），未知 sender 回退 env 默认音色
-        speaker = AGENT_VOICE_MAP.get(req.sender, VOICE_TTS_VOICE) if req.sender else VOICE_TTS_VOICE
-        body = {
-            "user": {"uid": f"tts_{getattr(request.state, 'user_id', 0)}"},
-            "req_params": {
-                "text": req.text,
-                "speaker": speaker,
-                "audio_params": {"format": "mp3", "sample_rate": 24000},
-            },
-        }
-        headers = {
-            "X-Api-App-Key": VOICE_TTS_APP_ID,
-            "X-Api-Access-Key": VOICE_TTS_ACCESS_TOKEN,
-            # 语音合成大模型 2.0（音色须为 2.0 系列，如 zh_female_xiaohe_uranus_bigtts）
-            "X-Api-Resource-Id": "seed-tts-2.0",
-            "X-Api-Request-Id": uuid.uuid4().hex,
-            "X-Api-Connect-Id": uuid.uuid4().hex,
-            "Content-Type": "application/json",
-        }
-        url = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
-        r = urllib.request.Request(
-            url, data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-            headers=headers, method="POST",
-        )
-        with urllib.request.urlopen(r, timeout=20) as resp:
-            raw = resp.read()
-        # 响应为换行分隔的 JSON 流：每段 {"code":0,"data":"<base64 音频片段>"}，
-        # 末尾 {"code":20000000,"message":"OK","data":null} 结束标记
+    # 音色按 Agent 查表（用户设置页可改），未知 sender 回退 env 默认音色
+    speaker = AGENT_VOICE_MAP.get(req.sender, VOICE_TTS_VOICE) if req.sender else VOICE_TTS_VOICE
+    body = {
+        "user": {"uid": f"tts_{getattr(request.state, 'user_id', 0)}"},
+        "req_params": {
+            "text": req.text,
+            "speaker": speaker,
+            "audio_params": {"format": "mp3", "sample_rate": 24000},
+        },
+    }
+    headers = {
+        "X-Api-App-Key": VOICE_TTS_APP_ID,
+        "X-Api-Access-Key": VOICE_TTS_ACCESS_TOKEN,
+        # 语音合成大模型 2.0（音色须为 2.0 系列，如 zh_female_xiaohe_uranus_bigtts）
+        "X-Api-Resource-Id": "seed-tts-2.0",
+        "X-Api-Request-Id": uuid.uuid4().hex,
+        "X-Api-Connect-Id": uuid.uuid4().hex,
+        "Content-Type": "application/json",
+    }
+    url = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+
+    def gen():
+        """逐行解析火山流式响应（换行分隔 JSON），边到边产出音频分片。
+
+        响应协议：每段 {"code":0,"data":"<base64 音频片段>"}，
+        末尾 {"code":20000000,"message":"OK","data":null} 结束标记。
+        流开始后无法改 HTTP 状态码：合成中途失败 = 提前结束流，
+        前端收不到完整音频会兜底提示（多数情况用户已听到前半段）。
+        """
         import base64
-        audio_parts = []
-        for line in raw.split(b"\n"):
-            line = line.strip()
-            if not line or line[:1] != b"{":
-                continue
-            try:
-                payload = json.loads(line.decode("utf-8"))
-            except Exception:
-                continue
-            code = payload.get("code")
-            if code is None:
-                continue
-            if code == 20000000:
-                break  # 正常结束标记
-            if code != 0:
-                err = json.dumps(payload, ensure_ascii=False)[:300]
-                logger.error("TTS 合成失败: %s", err)
-                raise HTTPException(status_code=502, detail=f"语音合成失败：{err}")
-            if payload.get("data"):
-                try:
-                    audio_parts.append(base64.b64decode(payload["data"]))
-                except Exception:
-                    # 单个坏分片跳过，不因一段损坏丢弃已合成的完整音频
-                    logger.warning("TTS 音频分片 base64 解码失败，跳过该段")
-        if not audio_parts:
-            raise HTTPException(status_code=502, detail="语音合成失败：未返回音频")
-        return Response(content=b"".join(audio_parts), media_type="audio/mpeg")
-    except HTTPException:
-        raise
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace")[:300]
-        logger.error("TTS 合成失败(%s): %s", e.code, detail)
-        raise HTTPException(status_code=502, detail=f"语音合成失败（{e.code}）：{detail}")
-    except Exception as e:
-        logger.error("TTS 合成异常: %s", e)
-        raise HTTPException(status_code=500, detail="语音合成服务不可用，请稍后重试")
+        try:
+            r = urllib.request.Request(
+                url, data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                headers=headers, method="POST",
+            )
+            with urllib.request.urlopen(r, timeout=30) as resp:
+                buf = b""
+                for chunk in iter(lambda: resp.read(4096), b""):
+                    buf += chunk
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        line = line.strip()
+                        if not line or line[:1] != b"{":
+                            continue
+                        try:
+                            payload = json.loads(line.decode("utf-8"))
+                        except Exception:
+                            continue
+                        code = payload.get("code")
+                        if code is None:
+                            continue
+                        if code == 20000000:
+                            return  # 正常结束标记
+                        if code != 0:
+                            logger.error("TTS 合成失败: %s", json.dumps(payload, ensure_ascii=False)[:300])
+                            return
+                        if payload.get("data"):
+                            try:
+                                yield base64.b64decode(payload["data"])
+                            except Exception:
+                                # 单个坏分片跳过，不因一段损坏中断整条流
+                                logger.warning("TTS 音频分片 base64 解码失败，跳过该段")
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace")[:300]
+            logger.error("TTS 合成失败(%s): %s", e.code, detail)
+        except Exception as e:
+            logger.error("TTS 流式转发异常: %s", e)
+
+    return StreamingResponse(gen(), media_type="audio/mpeg",
+                             headers={"X-Accel-Buffering": "no", "Cache-Control": "no-store"})

@@ -8,6 +8,7 @@ import type { ReasoningEffort } from './ReasoningSelector'
 import ReasoningSelector from './ReasoningSelector'
 import { compressImage } from './imageUtils'
 import { AGENT_CONFIG } from '../../config/agents'
+import { uploadDataset } from '../../api'
 import { PaperclipIcon, XIcon, AtSignIcon } from '../icons'
 
 // @指定智能体候选（群聊式定向委派；orchestrator=统筹亲自回答）
@@ -20,7 +21,7 @@ const TARGET_AGENTS = [
 ]
 
 export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, setAutoRead, onStartVoiceCall, targetAgent, setTargetAgent }: {
-  input: string; setInput: (v: string) => void; loading: boolean; handleSend: () => void
+  input: string; setInput: (v: string | ((p: string) => string)) => void; loading: boolean; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
   sessions: SessionInfo[]; messages: ChatMessage[]
@@ -80,127 +81,138 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>本条消息将定向该智能体处理</span>
             </div>
           )}
+          {/* 输入行：只留输入框 + 发送（豆包式，功能键全部下沉工具行） */}
           <div style={{ display: 'flex', alignItems: 'flex-end', padding: '4px 4px 4px 16px' }}>
             <textarea value={input} onChange={(e) => { setInput(e.target.value); if (!pickerOpen && e.target.value.endsWith('@')) setPickerOpen(true); const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; t.style.overflowY = t.scrollHeight > 200 ? 'auto' : 'hidden' }}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-              placeholder="输入消息..." disabled={loading}
+              placeholder="输入消息，@ 可指定智能体..." disabled={loading}
               rows={1}
               style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflow: 'hidden', color: 'var(--text-primary)' }}
             />
-            <input ref={fileRef} type="file" accept="image/*" multiple hidden
-              onChange={(e) => {
-                const files = e.target.files
-                if (files) {
-                  setUploading(true)
-                  Promise.all(Array.from(files).map(async (f) => {
-                    try {
-                      return await compressImage(f)
-                    } catch {
-                      return await new Promise<string>((resolve) => {
-                        const reader = new FileReader()
-                        reader.onload = () => resolve(reader.result as string)
-                        reader.readAsDataURL(f)
-                      })
-                    }
-                  })).then((results) => {
-                    setImages((p) => [...p, ...results])
-                    setUploading(false)
-                  }).catch(() => setUploading(false))
-                  e.target.value = ''
-                }
-              }}
-            />
-            <button onClick={() => setPickerOpen((o) => !o)} className="yuan-tip"
-              data-tip={targetAgent ? `已指定：${AGENT_CONFIG[targetAgent]?.label || ''}` : '指定智能体回答'} aria-label="指定智能体"
-              style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', color: targetAgent ? 'var(--accent)' : 'var(--text-secondary)', padding: '8px', lineHeight: 1, opacity: targetAgent ? 1 : 0.5, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = targetAgent ? '1' : '0.5' }}
-            >
-              <AtSignIcon size={18} />
-              {pickerOpen && (
-                <>
-                  <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setPickerOpen(false)} />
-                  <div style={{
-                    position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 41,
-                    minWidth: 210, background: 'var(--bg-primary)', border: '1px solid var(--border)',
-                    borderRadius: 10, boxShadow: '0 8px 28px var(--shadow-md)', padding: 6, textAlign: 'left',
-                  }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px 6px', fontWeight: 600 }}>
-                      @指定智能体处理本条消息
-                    </div>
-                    {TARGET_AGENTS.map((a) => {
-                      const cfg = AGENT_CONFIG[a.key]
-                      const active = targetAgent === a.key
-                      return (
-                        <div key={a.key}
-                          onClick={() => { setTargetAgent(a.key); setPickerOpen(false) }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover-bg)' }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--hover-bg)' : 'transparent' }}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px',
-                            borderRadius: 7, cursor: 'pointer', fontSize: 13,
-                            color: 'var(--text-primary)', background: active ? 'var(--hover-bg)' : 'transparent',
-                          }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
-                          <span style={{ fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {a.desc}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </>
-              )}
-            </button>
-            <button onClick={() => fileRef.current?.click()} className="yuan-tip" data-tip="上传图片" aria-label="上传图片"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', lineHeight: 1, opacity: 0.5, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
-            ><PaperclipIcon size={18} /></button>
-            <button onClick={onStartVoiceCall} className="yuan-tip" data-tip="语音通话" aria-label="语音通话"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', lineHeight: 1, opacity: 0.5, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
-            >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-              </svg>
-            </button>
-            <button onClick={() => setAutoRead(!autoRead)} className="yuan-tip"
-              data-tip={autoRead ? '自动朗读已开：AI 回复自动出声' : '自动朗读：AI 回复完成后自动出声'} aria-label="自动朗读"
-              style={{
-                background: autoRead ? 'var(--accent)' : 'transparent',
-                border: '1px solid ' + (autoRead ? 'var(--accent)' : 'var(--border)'),
-                cursor: 'pointer', color: autoRead ? '#fff' : 'var(--text-secondary)',
-                padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                lineHeight: 1, whiteSpace: 'nowrap', margin: '0 2px',
-              }}>朗读</button>
-            <button onClick={handleSend} disabled={loading || !input.trim() || !currentSid}
+            <button onClick={() => handleSend()} disabled={loading || !input.trim() || !currentSid}
               className="btn btn-primary"
               style={{ padding: '10px 24px', fontSize: 14, fontWeight: 600, borderRadius: 10, opacity: loading || !input.trim() || !currentSid ? 0.5 : 1 }}
             >{loading ? '...' : '发送'}</button>
           </div>
-          <div className="chat-tool-row" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px 10px' }}>
-            <button onClick={() => {
-              const s = sessions.find(s => s.session_id === currentSid)
-              downloadChat(messages, `${s?.title || 'chat'}.txt`)
-            }} className="yuan-tip" data-tip="下载聊天记录" aria-label="下载聊天记录"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '6px', lineHeight: 1, opacity: 0.6, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-            </button>
-            <ChatModeSelector chatMode={chatMode} setChatMode={setChatMode}
-              localOnline={localOnline} claudeOnline={claudeOnline} />
-            <ReasoningSelector effort={effort} setEffort={setEffort} />
+          {/* 工具行：左侧动作群（@指定/图片/语音/朗读/下载），右侧设置群（模式/推理强度） */}
+          <div className="chat-tool-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '0 14px 10px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <input ref={fileRef} type="file" accept="image/*,.csv,.xlsx,.xls,.json" multiple hidden
+                onChange={async (e) => {
+                  const files = e.target.files
+                  if (!files) return
+                  setUploading(true)
+                  for (const f of Array.from(files)) {
+                    const ext = f.name.split('.').pop()?.toLowerCase()
+                    if (['csv', 'xlsx', 'xls', 'json'].includes(ext || '')) {
+                      // 数据集文件：上传后以 [数据集 #id] 引用注入输入框（原欢迎页入口）
+                      try {
+                        const result = await uploadDataset(f)
+                        setInput((p) => p + ` [数据集 #${result.id}: ${result.name}]`)
+                      } catch { /* ignore */ }
+                    } else {
+                      try {
+                        const compressed = await compressImage(f)
+                        setImages((p) => [...p, compressed])
+                      } catch {
+                        const reader = new FileReader()
+                        reader.onload = () => setImages((p) => [...p, reader.result as string])
+                        reader.readAsDataURL(f)
+                      }
+                    }
+                  }
+                  setUploading(false)
+                  e.target.value = ''
+                }}
+              />
+              <button onClick={() => setPickerOpen((o) => !o)} className="yuan-tip"
+                data-tip={targetAgent ? `已指定：${AGENT_CONFIG[targetAgent]?.label || ''}` : '指定智能体回答'} aria-label="指定智能体"
+                style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', color: targetAgent ? 'var(--accent)' : 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: targetAgent ? 1 : 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = targetAgent ? '1' : '0.7' }}
+              >
+                <AtSignIcon size={17} />
+                {pickerOpen && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setPickerOpen(false)} />
+                    <div style={{
+                      position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 41,
+                      minWidth: 210, background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                      borderRadius: 10, boxShadow: '0 8px 28px var(--shadow-md)', padding: 6, textAlign: 'left',
+                    }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px 6px', fontWeight: 600 }}>
+                        @指定智能体处理本条消息
+                      </div>
+                      {TARGET_AGENTS.map((a) => {
+                        const cfg = AGENT_CONFIG[a.key]
+                        const active = targetAgent === a.key
+                        return (
+                          <div key={a.key}
+                            onClick={() => { setTargetAgent(a.key); setPickerOpen(false) }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover-bg)' }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--hover-bg)' : 'transparent' }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px',
+                              borderRadius: 7, cursor: 'pointer', fontSize: 13,
+                              color: 'var(--text-primary)', background: active ? 'var(--hover-bg)' : 'transparent',
+                            }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
+                            <span style={{ fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {a.desc}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+              </button>
+              <button onClick={() => fileRef.current?.click()} className="yuan-tip" data-tip="上传图片" aria-label="上传图片"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
+              ><PaperclipIcon size={17} /></button>
+              <button onClick={onStartVoiceCall} className="yuan-tip" data-tip="语音通话" aria-label="语音通话"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                </svg>
+              </button>
+              <button onClick={() => setAutoRead(!autoRead)} className="yuan-tip"
+                data-tip={autoRead ? '自动朗读已开：AI 回复自动出声' : '自动朗读：AI 回复完成后自动出声'} aria-label="自动朗读"
+                style={{
+                  background: autoRead ? 'var(--accent)' : 'transparent',
+                  border: '1px solid ' + (autoRead ? 'var(--accent)' : 'var(--border)'),
+                  cursor: 'pointer', color: autoRead ? '#fff' : 'var(--text-secondary)',
+                  padding: '4px 9px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                  lineHeight: 1, whiteSpace: 'nowrap', margin: '0 2px',
+                }}>朗读</button>
+              <button onClick={() => {
+                const s = sessions.find(s => s.session_id === currentSid)
+                downloadChat(messages, `${s?.title || 'chat'}.txt`)
+              }} className="yuan-tip chat-tool-download" data-tip="下载聊天记录" aria-label="下载聊天记录"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <ChatModeSelector chatMode={chatMode} setChatMode={setChatMode}
+                localOnline={localOnline} claudeOnline={claudeOnline} />
+              <ReasoningSelector effort={effort} setEffort={setEffort} />
+            </div>
           </div>
         </div>
       </div>

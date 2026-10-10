@@ -3,14 +3,15 @@ import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
 import type { ChatMode } from './ChatModeSelector'
 import type { ReasoningEffort } from './ReasoningSelector'
+import { SUGGESTIONS } from '../../config/agents'
 import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, setAutoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall, targetAgent, setTargetAgent }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, setAutoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
-  input: string; setInput: (v: string) => void; handleSend: () => void
+  input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
   sessions: SessionInfo[]
@@ -28,6 +29,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   onStartVoiceCall: () => void
   targetAgent: string
   setTargetAgent: (v: string) => void
+  onSuggest: (text: string) => void
 }) {
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -61,6 +63,24 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
               onEditCancel={() => setEditingIndex(null)}
               onFeedback={onFeedback} />
           ))}
+          {/* 空对话推荐问题（豆包式：欢迎页已退场，登录直接落主对话，此处承接快捷入口） */}
+          {messages.length <= 1 && !loading && (
+            <div className="chat-suggest-row" style={{
+              display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4,
+            }}>
+              {SUGGESTIONS.slice(0, 5).map((s) => (
+                <button key={s.text} onClick={() => onSuggest(s.text)}
+                  style={{
+                    padding: '5px 10px', borderRadius: 999, border: '1px solid var(--border)',
+                    background: 'var(--bg-input)', cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)',
+                    transition: 'all 0.15s', whiteSpace: 'nowrap',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+                >{s.text}</button>
+              ))}
+            </div>
+          )}
           <div ref={chatEndRef} />
           {pendingApproval && (
             <div style={{ display: 'flex', justifyContent: 'flex-start', maxWidth: 720, width: '100%' }}>

@@ -419,7 +419,13 @@ export async function voiceMessage(sessionId: string, role: 'user' | 'assistant'
   } catch { /* 转录持久化尽力而为 */ }
 }
 
-export async function voiceTts(text: string, sender?: string): Promise<Blob> {
+/** 流式 TTS：后端边到边转发豆包音频分片，前端边收边播（首声延迟 ≈ 首个分片合成时间） */
+export async function voiceTtsStream(
+  text: string,
+  sender: string | undefined,
+  onFragment: (blob: Blob) => void,
+  onDone: () => void,
+): Promise<void> {
   const res = await fetch(`${API_BASE}/voice/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -429,7 +435,19 @@ export async function voiceTts(text: string, sender?: string): Promise<Blob> {
     const data = await safeJson(res)
     throw new Error(data?.detail || `语音合成错误（${res.status}）`)
   }
-  return await res.blob()
+  const reader = res.body?.getReader()
+  if (!reader) throw new Error('浏览器不支持流式播放')
+  let received = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value && value.byteLength > 0) {
+      received += value.byteLength
+      onFragment(new Blob([value], { type: 'audio/mpeg' }))
+    }
+  }
+  if (received === 0) throw new Error('语音合成失败：未返回音频')
+  onDone()
 }
 
 // ---- Stream Chat ----

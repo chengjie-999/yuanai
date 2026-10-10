@@ -153,7 +153,7 @@ data/                   数据目录
 
 **@指定智能体（群聊式定向）**：输入区 @ 按钮（或输入 `@`）弹出选择面板（统筹/分析/采集/自动化/Claude），选定后本条消息确定性分派。分派链路：`target_agent` 字段贯穿 ChatRequest（云端 models/schemas → chat/router → ws_client）→ Agent 端 `agent/main.py` + `agent/tray.py` 的 `route()` 三路分派（mode=claude 桥接 / target∈{analysis,collection,automation} → `Orchestrator.stream_target()` 直接调 skill Agent / 其余统筹）。`stream_target` 与 delegate 工具共用 `_extract_tool_output`（图片/大屏/HTML 协议提取）。Agent 离线时云端回退角色扮演（chat/router.py offline_prompt role_hint）。
 
-**置顶主对话（豆包式）**：`chat_session.is_main`（迁移 0013）每用户一条，`ensure_main_session()` 幂等取/建，`POST /api/v1/chat/main-session`；侧栏图钉置顶显示；前端挂载时自动确保存在。主对话历史截断最近 **60 条**（chat/router.py `/stream` 主链路，前置「更早的对话已整理进长期记忆」HumanMessage）——与记忆机制配套（二期挂账的 history 截断在此落地）；claude-stream 不截断。
+**置顶主对话（豆包式）**：`chat_session.is_main`（迁移 0013）每用户一条，`ensure_main_session()` 幂等取/建，`POST /api/v1/chat/main-session`；侧栏图钉置顶显示；**登录直接落主对话**（挂载时 ensure + setCurrentSid + parseHistory，欢迎页仅接口异常兜底）；「新对话」按钮=另开普通会话。主对话历史截断最近 **60 条**（chat/router.py `/stream` 主链路，前置「更早的对话已整理进长期记忆」HumanMessage）——与记忆机制配套（二期挂账的 history 截断在此落地）；claude-stream 不截断。欢迎页退场后：推荐问题卡移到对话空状态（ChatView SUGGESTIONS 前 5 条，手机横滑一行）、数据集上传并入输入区回形针（csv/xlsx/xls/json → uploadDataset → `[数据集 #id]` 注入输入框）。输入区布局：textarea 行只留输入框+发送，功能键全部下沉工具行（左动作群 @/图片/语音/朗读/下载，右设置群 模式/推理强度，小屏藏下载）。
 
 聊天图片：`data/chat_images/` 文件存储，经公开路由 `/api/v1/chat/image/{sid}/{fname}` 提供（`Cache-Control: immutable`，文件名含 UUID）。前端 `addToken` 对此路由**不拼接 JWT**——拼 token 会在每次登录后改变 URL，击穿浏览器缓存导致历史图片全部重新下载。
 
@@ -261,7 +261,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - 请求体已对齐官方 rtc-server-demo-open 1201 大模型模板（ASR 直接字段 + ApiResourceId=并发版；TTS 走 volcano_bidirection + volc.service_type.10029）；联调参数集中在 `_build_start_body()`
 - 前端 `VoiceCall.tsx` 悬浮通话卡（桌面居中 / 手机全屏）：音量波形、通话计时、机器人状态/字幕实时展示（subv/conv 协议）、转录落聊天会话；SDK 动态 import 分包（约 2MB，点击才加载）
 - 配置：`.env` 的 VOLCANO_ACCESS_KEY/SECRET_KEY（IAM）、VOLCANO_RTC_APP_ID/APP_KEY（RTC 应用）、VOICE_LLM_ENDPOINT_ID（方舟接入点）、VOICE_ASR/TTS_APP_ID+ACCESS_TOKEN（豆包语音控制台）、VOICE_ASR_RESOURCE_ID（须并发版）、VOICE_TTS_VOICE_BOT（通话机器人音色，主智能体=少年梓辛小男孩）；未配置时 /voice/start 返回 503；**调参**（VolumeGain/StreamMode/end_window_size/MaxTokens/TopP/Prefill 等 12 项）已下沉 `config/settings.py` 的 VOICE_* 常量，`.env` 可覆盖（.env.example 有注释档）
-- **气泡朗读（豆包同款）**：AI 消息喇叭图标 → `POST /api/v1/voice/tts`（seed-tts-2.0 单向流式，响应为换行分隔 JSON 流 + base64 mp3）→ 浏览器播放，播放中波形动画可打断
+- **气泡朗读（豆包同款，流式边收边播）**：AI 消息喇叭图标 → `POST /api/v1/voice/tts`（seed-tts-2.0 单向流式，响应为换行分隔 JSON 流 + base64 mp3）→ 后端 `voice_tts` **边到边转发**火山分片（StreamingResponse + X-Accel-Buffering: no，nginx /api/v1/ 已 proxy_buffering off）→ 前端 `voiceTtsStream` 读流 + MessageBubble 分片队列播放（pump 模式，播完自动接下一段，可打断）——首声延迟从「整段合成+整段下载」降到「首个分片合成」约 0.3-0.8s；流中途失败无法改状态码=提前结束，前端空音频兜底提示
 - **每 Agent 独立音色**：`config/settings.py` 的 `AGENT_VOICE_MAP`（6 键：orchestrator/local/analysis/collection/automation/claude，默认小元=少年梓辛）；用户设置页（/chat/settings）「语音音色」卡经 `GET/PUT /api/v1/auth/agent-voices` 改 models.json 的 `_agent_voices` 键；`voice_tts` 按消息 sender 查表选音色。**音色须为 2.0 uranus 系列**（1.0 mars 会 55000000 不匹配），预置 12 个音色全部本地实测有效
 
 ## 工具系统

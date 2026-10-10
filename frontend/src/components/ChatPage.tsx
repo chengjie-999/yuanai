@@ -43,6 +43,10 @@ export default function ChatPage({ user }: { user?: any }) {
   const [pendingApproval, setPendingApproval] = useState<{ decision_id: string; tool_name: string; command: string } | null>(null)
   // 消息点赞（下标 → 已赞）与修改编辑态（消息下标，null = 非编辑态）
   const [feedback, setFeedbackState] = useState<Record<number, { liked: boolean; disliked: boolean }>>({})
+  // 自动朗读：AI 回复完成后自动出声（localStorage 持久化）
+  const [autoRead, setAutoRead] = useState(() => localStorage.getItem('autoRead') === '1')
+  const [autoReadTick, setAutoReadTick] = useState(0)
+  const setAutoReadPersist = (v: boolean) => { setAutoRead(v); localStorage.setItem('autoRead', v ? '1' : '0') }
   const feedbackPendingRef = useRef<Set<number>>(new Set())
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const messagesRef = useRef(messages)
@@ -256,6 +260,7 @@ export default function ChatPage({ user }: { user?: any }) {
       onEvent, onError,
       () => {
         setLoading(false)
+        if (autoRead) setAutoReadTick((t) => t + 1)  // 触发最后一条 AI 气泡自动朗读
         const finalMsgs = flushVoiceTranscripts(messagesRef.current)
         const msgs = finalMsgs.map(encodeMsg)
         saveMessages(sid, msgs, title || (prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt))
@@ -335,6 +340,7 @@ export default function ChatPage({ user }: { user?: any }) {
       onEvent, onError,
       () => {
         setLoading(false)
+        if (autoRead) setAutoReadTick((t) => t + 1)
         const finalMsgs = flushVoiceTranscripts(messagesRef.current)
         const msgs = finalMsgs.map(encodeMsg)
         saveMessages(sid, msgs, text.length > 50 ? text.slice(0, 50) + '...' : text)
@@ -408,11 +414,12 @@ export default function ChatPage({ user }: { user?: any }) {
             input={input} setInput={setInput} handleSend={handleSend}
             images={images} setImages={setImages}
             currentSid={currentSid}
-            sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
             sessions={sessions}
             chatMode={chatMode} setChatMode={setChatMode}
             localOnline={localOnline} claudeOnline={claudeOnline}
             effort={effort} setEffort={setEffort}
+            autoRead={autoRead} setAutoRead={setAutoReadPersist}
+            autoReadTick={autoReadTick}
             pendingApproval={pendingApproval} handleDecision={handleDecision}
             likes={feedback} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
             onEditMessage={handleEditMessage} onFeedback={handleFeedback}

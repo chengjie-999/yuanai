@@ -249,7 +249,7 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAs
           align-self: flex-start; background: var(--bg-tertiary); color: var(--text-primary);
         }
         @media (max-width: 768px) {
-          .voice-call-card { width: 100vw; height: 100vh; max-height: 100vh; inset: 0;
+          .voice-call-card { width: 100vw; height: 100dvh; max-height: 100dvh; inset: 0;
             top: 0; left: 0; transform: none; border-radius: 0; border: none; justify-content: flex-start;
             padding-top: 12vh; }
           .voice-transcript { max-height: 40vh; }

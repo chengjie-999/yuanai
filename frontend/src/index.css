@@ -57,6 +57,7 @@ body {
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh; /* 移动端地址栏自适应（dvh），老浏览器回退 vh */
   background: var(--bg-primary);
 }
 
@@ -456,4 +457,10 @@ input, textarea, select {
     margin: 0 12px !important;
     padding: 24px 18px !important;
   }
+}
+
+/* iOS 刘海安全区（viewport-fit=cover 时生效） */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }

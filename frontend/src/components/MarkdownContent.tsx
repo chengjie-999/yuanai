@@ -1,3 +1,4 @@
+import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getToken } from '../api'
@@ -11,7 +12,7 @@ function withAssetToken(src?: string): string | undefined {
   return src
 }
 
-function MarkdownContent({ content, indent }: { content: string; indent?: boolean }) {
+function MarkdownContentInner({ content, indent }: { content: string; indent?: boolean }) {
   if (!content) return null
   return (
     <ReactMarkdown
@@ -58,4 +59,4 @@ function MarkdownContent({ content, indent }: { content: string; indent?: boolea
   )
 }
 
-export default MarkdownContent
+export default React.memo(MarkdownContentInner)

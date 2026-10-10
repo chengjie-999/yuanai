@@ -206,7 +206,7 @@ export default function LoginPage() {
            登录页 — 全局样式
            ============================ */
         .login-page {
-          min-height: 100vh;
+          min-height: 100dvh;
           display: flex;
           opacity: 0;
           transition: opacity 0.5s ease;

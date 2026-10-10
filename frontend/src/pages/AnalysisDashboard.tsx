@@ -178,7 +178,7 @@ export default function AnalysisDashboard() {
   const body = renderBody(rest)
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100dvh', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
       <header style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg-primary)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
         <Link to="/chat" style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1 }}><ArrowLeftIcon size={13} /> 返回</Link>
         <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>分析大屏</span>

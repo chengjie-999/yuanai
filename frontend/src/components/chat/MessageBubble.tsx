@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { ChatMessage } from '../../types'
 import ToolCallCard from '../ToolCallCard'
 import MarkdownContent from '../MarkdownContent'
@@ -34,7 +34,7 @@ function HtmlFrame({ url, title }: { url: string; title: string }) {
   )
 }
 
-export default function MessageBubble({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback }: {
+const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, autoRead, autoReadTick }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
@@ -42,6 +42,7 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, disl
   onEditConfirm: (i: number, content: string) => void
   onEditCancel: () => void
   onFeedback: (i: number, kind: 'like' | 'dislike') => void
+  autoRead?: boolean; autoReadTick?: number
 }) {
   const isUser = msg.role === 'user'
   const sender = !isUser ? (msg.sender || 'orchestrator') : null
@@ -55,6 +56,17 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, disl
   const readSeqRef = useRef(0)
   // 进入编辑态时预填原内容
   useEffect(() => { if (editing) setDraft(msg.content) }, [editing])
+  // 自动朗读：AI 回复完成后（autoReadTick 递增）触发一次；仅在最后一条且开启时
+  const autoReadFired = useRef(0)
+  useEffect(() => {
+    if (!autoRead || !autoReadTick || autoReadTick <= autoReadFired.current) return
+    if (isLast && !isUser && msg.content.trim()) {
+      autoReadFired.current = autoReadTick
+      toggleRead()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoReadTick])
+
   // 统一停止朗读：暂停 + revoke blob URL + 复位（所有路径必须走这里，防泄漏）
   const stopReading = () => {
     const audio = audioRef.current
@@ -338,3 +350,6 @@ export default function MessageBubble({ msg, index, isLast, loading, liked, disl
     </div>
   )
 }
+)
+
+export default MessageBubble

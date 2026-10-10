@@ -38,7 +38,7 @@ export default function RFMDashboard() {
   const chartSrc = useSecuredUrl(data?.chart_html || '')
 
   return (
-    <div style={{ minHeight: '100vh', background: '#1a1a2e' }}>
+    <div style={{ minHeight: '100dvh', background: '#1a1a2e' }}>
       <header style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 16, background: '#16213e', borderBottom: '1px solid #0f3460' }}>
         <Link to="/chat" style={{ color: '#e94560', textDecoration: 'none', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1 }}><ArrowLeftIcon size={13} /> Back</Link>
         <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>RFM Customer Analysis</span>

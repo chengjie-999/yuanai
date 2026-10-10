@@ -82,7 +82,7 @@ function AppLayout() {
   })
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
       <header className="app-header" style={{
         background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
         padding: '0 12px', display: 'flex', alignItems: 'center', height: 52, flexShrink: 0,

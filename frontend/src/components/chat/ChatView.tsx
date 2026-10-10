@@ -7,17 +7,17 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sidebarOpen, setSidebarOpen, sessions, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, setAutoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string) => void; handleSend: () => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
-  sidebarOpen: boolean; setSidebarOpen: (v: boolean) => void
   sessions: SessionInfo[]
   chatMode: ChatMode; setChatMode: (v: ChatMode) => void
   localOnline: boolean; claudeOnline: boolean
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
+  autoRead: boolean; setAutoRead: (v: boolean) => void; autoReadTick: number
   pendingApproval: { decision_id: string; tool_name: string; command: string } | null
   handleDecision: (approve: boolean) => void
   likes: Record<number, { liked: boolean; disliked: boolean }>
@@ -45,6 +45,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
             <MessageBubble key={i} msg={msg} index={i} isLast={i === messages.length - 1}
               loading={loading} user={user}
               liked={!!likes[i]?.liked} disliked={!!likes[i]?.disliked} editing={editingIndex === i}
+              autoRead={autoRead} autoReadTick={autoReadTick}
               setExpandedImage={setExpandedImage}
               onEditStart={setEditingIndex}
               onEditConfirm={onEditMessage}
@@ -68,11 +69,11 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
       <InputArea input={input} setInput={setInput} loading={loading}
         handleSend={handleSend} images={images} setImages={setImages}
         currentSid={currentSid}
-        sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
         sessions={sessions} messages={messages}
         chatMode={chatMode} setChatMode={setChatMode}
         localOnline={localOnline} claudeOnline={claudeOnline}
         effort={effort} setEffort={setEffort}
+        autoRead={autoRead} setAutoRead={setAutoRead}
         onStartVoiceCall={onStartVoiceCall} />
     </>
   )

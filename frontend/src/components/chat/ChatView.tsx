@@ -8,7 +8,7 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, setAutoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
@@ -18,7 +18,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   chatMode: ChatMode; setChatMode: (v: ChatMode) => void
   localOnline: boolean; claudeOnline: boolean
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
-  autoRead: boolean; setAutoRead: (v: boolean) => void; autoReadTick: number
+  autoRead: boolean; autoReadTick: number
   pendingApproval: { decision_id: string; tool_name: string; command: string } | null
   handleDecision: (approve: boolean) => void
   likes: Record<number, { liked: boolean; disliked: boolean }>
@@ -102,7 +102,6 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         chatMode={chatMode} setChatMode={setChatMode}
         localOnline={localOnline} claudeOnline={claudeOnline}
         effort={effort} setEffort={setEffort}
-        autoRead={autoRead} setAutoRead={setAutoRead}
         onStartVoiceCall={onStartVoiceCall}
         targetAgent={targetAgent} setTargetAgent={setTargetAgent} />
     </>

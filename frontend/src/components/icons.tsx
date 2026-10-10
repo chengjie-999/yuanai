@@ -27,6 +27,12 @@ export const AtSignIcon = (p: IconProps) => <Svg {...p}><circle cx="12" cy="12" 
 /* 图钉（置顶主对话） */
 export const PinIcon = (p: IconProps) => <Svg {...p}><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z" /></Svg>
 
+/* 喇叭（自动朗读开关） */
+export const SpeakerIcon = (p: IconProps) => <Svg {...p}><path d="M11 5 6 9H2v6h4l5 4V5Z" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></Svg>
+
+/* 喇叭静音（自动朗读关闭态） */
+export const SpeakerOffIcon = (p: IconProps) => <Svg {...p}><path d="M11 5 6 9H2v6h4l5 4V5Z" /><line x1="22" x2="16" y1="9" y2="15" /><line x1="16" x2="22" y1="9" y2="15" /></Svg>
+
 /* 回形针（上传附件） */
 export const PaperclipIcon = (p: IconProps) => <Svg {...p}><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" /></Svg>
 

@@ -20,14 +20,13 @@ const TARGET_AGENTS = [
   { key: 'claude', desc: '本机代码、终端、Git 任务' },
 ]
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, setAutoRead, onStartVoiceCall, targetAgent, setTargetAgent }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, onStartVoiceCall, targetAgent, setTargetAgent }: {
   input: string; setInput: (v: string | ((p: string) => string)) => void; loading: boolean; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
   sessions: SessionInfo[]; messages: ChatMessage[]
   chatMode: ChatMode; setChatMode: (v: ChatMode) => void
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
-  autoRead: boolean; setAutoRead: (v: boolean) => void
   localOnline: boolean; claudeOnline: boolean
   onStartVoiceCall: () => void
   targetAgent: string; setTargetAgent: (v: string) => void
@@ -183,15 +182,6 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
                 </svg>
               </button>
-              <button onClick={() => setAutoRead(!autoRead)} className="yuan-tip"
-                data-tip={autoRead ? '自动朗读已开：AI 回复自动出声' : '自动朗读：AI 回复完成后自动出声'} aria-label="自动朗读"
-                style={{
-                  background: autoRead ? 'var(--accent)' : 'transparent',
-                  border: '1px solid ' + (autoRead ? 'var(--accent)' : 'var(--border)'),
-                  cursor: 'pointer', color: autoRead ? '#fff' : 'var(--text-secondary)',
-                  padding: '4px 9px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                  lineHeight: 1, whiteSpace: 'nowrap', margin: '0 2px',
-                }}>朗读</button>
               <button onClick={() => {
                 const s = sessions.find(s => s.session_id === currentSid)
                 downloadChat(messages, `${s?.title || 'chat'}.txt`)

@@ -262,6 +262,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - 前端 `VoiceCall.tsx` 悬浮通话卡（桌面居中 / 手机全屏）：音量波形、通话计时、机器人状态/字幕实时展示（subv/conv 协议）、转录落聊天会话；SDK 动态 import 分包（约 2MB，点击才加载）
 - 配置：`.env` 的 VOLCANO_ACCESS_KEY/SECRET_KEY（IAM）、VOLCANO_RTC_APP_ID/APP_KEY（RTC 应用）、VOICE_LLM_ENDPOINT_ID（方舟接入点）、VOICE_ASR/TTS_APP_ID+ACCESS_TOKEN（豆包语音控制台）、VOICE_ASR_RESOURCE_ID（须并发版）、VOICE_TTS_VOICE_BOT（通话机器人音色，主智能体=少年梓辛小男孩）；未配置时 /voice/start 返回 503；**调参**（VolumeGain/StreamMode/end_window_size/MaxTokens/TopP/Prefill 等 12 项）已下沉 `config/settings.py` 的 VOICE_* 常量，`.env` 可覆盖（.env.example 有注释档）
 - **气泡朗读（豆包同款，流式边收边播）**：AI 消息喇叭图标 → `POST /api/v1/voice/tts`（seed-tts-2.0 单向流式，响应为换行分隔 JSON 流 + base64 mp3）→ 后端 `voice_tts` **边到边转发**火山分片（StreamingResponse + X-Accel-Buffering: no，nginx /api/v1/ 已 proxy_buffering off）→ 前端 `voiceTtsStream` 读流 + MessageBubble 分片队列播放（pump 模式，播完自动接下一段，可打断）——首声延迟从「整段合成+整段下载」降到「首个分片合成」约 0.3-0.8s；流中途失败无法改状态码=提前结束，前端空音频兜底提示
+- **自动朗读开关**：**顶部栏右上角喇叭图标**（豆包同款位置，开=accent 喇叭/关=斜线喇叭）+ 设置页「自动朗读」卡；`hooks/useAutoRead.ts` useSyncExternalStore 跨组件同步（localStorage 键 `autoRead`，**默认开启**，仅显式存 '0' 为关）
 - **每 Agent 独立音色**：`config/settings.py` 的 `AGENT_VOICE_MAP`（6 键：orchestrator/local/analysis/collection/automation/claude，默认小元=少年梓辛）；用户设置页（/chat/settings）「语音音色」卡经 `GET/PUT /api/v1/auth/agent-voices` 改 models.json 的 `_agent_voices` 键；`voice_tts` 按消息 sender 查表选音色。**音色须为 2.0 uranus 系列**（1.0 mars 会 55000000 不匹配），预置 12 个音色全部本地实测有效
 
 ## 工具系统

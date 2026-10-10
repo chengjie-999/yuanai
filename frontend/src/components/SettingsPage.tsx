@@ -5,6 +5,7 @@ import { fetchAgentVoices, updateAgentVoice } from '../api'
 import { XIcon } from './icons'
 import { useAuth } from '../contexts/AuthContext'
 import MemoryCard from './MemoryCard'
+import { useAutoRead, toggleAutoRead } from '../hooks/useAutoRead'
 
 const C = {
   card: { background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' } as const,
@@ -63,6 +64,8 @@ export default function SettingsPage() {
   const { isAdmin } = useAuth()
   const [chatModel, setChatModel] = useState(getStoredModel())
   const [models, setModels] = useState<Record<string, { label: string; provider: string }>>({})
+  // 自动朗读开关：默认开启，与顶部栏喇叭共用 useAutoRead 同步
+  const autoRead = useAutoRead()
   const [agentModels, setAgentModels] = useState<Record<string, string>>({})
   const [savingRole, setSavingRole] = useState('')
   // 语音音色
@@ -227,6 +230,34 @@ export default function SettingsPage() {
               </select>
             </div>
           ))}
+        </div>
+
+        {/* ---- 自动朗读（默认开启，与输入区「朗读」按钮共用 localStorage 键） ---- */}
+        <div style={C.card}>
+          <div style={C.title}>
+            自动朗读
+            <span style={C.sub}>　AI 回复完成后自动出声（顶部栏喇叭图标与这里同步）</span>
+          </div>
+          <div style={{ ...C.row, borderBottom: 'none' }}>
+            <div style={{ flex: 1 }}>
+              <div style={C.label}>默认开启自动朗读</div>
+              <div style={C.hint}>关闭后需手动点击气泡上的喇叭图标朗读；也可随时点击顶部栏喇叭快速开关</div>
+            </div>
+            <button onClick={() => toggleAutoRead()} role="switch" aria-checked={autoRead}
+              aria-label={autoRead ? '关闭自动朗读' : '开启自动朗读'}
+              style={{
+                width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+                position: 'relative', flexShrink: 0,
+                background: autoRead ? 'var(--accent)' : 'var(--border)',
+                transition: 'background 0.2s',
+              }}>
+              <span style={{
+                position: 'absolute', top: 2, left: autoRead ? 20 : 2,
+                width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                transition: 'left 0.2s',
+              }} />
+            </button>
+          </div>
         </div>
 
         {/* ---- 语音音色 ---- */}

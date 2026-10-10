@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import AgentStatus from './components/AgentStatus'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { useAutoRead, toggleAutoRead } from './hooks/useAutoRead'
+import { SpeakerIcon, SpeakerOffIcon } from './components/icons'
 
 /* 路由级懒加载：公开页访客无需下载聊天/后台代码，首屏体积大减 */
 const ChatPage = lazy(() => import('./components/ChatPage'))
@@ -38,6 +40,27 @@ function PageLoading() {
       }} />
       加载中...
     </div>
+  )
+}
+
+/* 右上角自动朗读开关（喇叭图标，豆包同款位置）：开启后 AI 回复完成自动出声 */
+function AutoReadToggle() {
+  const autoRead = useAutoRead()
+  return (
+    <button onClick={() => toggleAutoRead()} role="switch" aria-checked={autoRead}
+      className="yuan-tip" data-tip={autoRead ? '自动朗读已开：AI 回复自动出声' : '自动朗读已关：点击开启'}
+      aria-label={autoRead ? '关闭自动朗读' : '开启自动朗读'}
+      style={{
+        background: 'none', border: 'none', cursor: 'pointer', padding: 6, lineHeight: 1,
+        color: autoRead ? 'var(--accent)' : 'var(--text-muted)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        opacity: autoRead ? 1 : 0.7, transition: 'all 0.15s',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+      onMouseLeave={(e) => { e.currentTarget.style.opacity = autoRead ? '1' : '0.7' }}
+    >
+      {autoRead ? <SpeakerIcon size={18} /> : <SpeakerOffIcon size={18} />}
+    </button>
   )
 }
 
@@ -100,6 +123,7 @@ function AppLayout() {
         </nav>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AutoReadToggle />
           <button onClick={toggleTheme} aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}
             className="theme-toggle yuan-tip" data-tip={isDark ? '切换亮色模式' : '切换暗色模式'}
             style={{

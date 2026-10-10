@@ -9,6 +9,7 @@ import ChatView from './chat/ChatView'
 import VoiceCall from './chat/VoiceCall'
 import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
+import { useAutoRead } from '../hooks/useAutoRead'
 import { ChevronLeftIcon, ChevronRightIcon } from './icons'
 
 type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean }
@@ -66,10 +67,9 @@ export default function ChatPage({ user }: { user?: any }) {
   const [pendingApproval, setPendingApproval] = useState<{ decision_id: string; tool_name: string; command: string } | null>(null)
   // 消息点赞（下标 → 已赞）与修改编辑态（消息下标，null = 非编辑态）
   const [feedback, setFeedbackState] = useState<Record<number, { liked: boolean; disliked: boolean }>>({})
-  // 自动朗读：AI 回复完成后自动出声（localStorage 持久化）
-  const [autoRead, setAutoRead] = useState(() => localStorage.getItem('autoRead') === '1')
+  // 自动朗读（默认开启，与顶部栏喇叭/设置页开关共享 useAutoRead 同步）
+  const autoRead = useAutoRead()
   const [autoReadTick, setAutoReadTick] = useState(0)
-  const setAutoReadPersist = (v: boolean) => { setAutoRead(v); localStorage.setItem('autoRead', v ? '1' : '0') }
   const feedbackPendingRef = useRef<Set<number>>(new Set())
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const messagesRef = useRef(messages)
@@ -461,7 +461,7 @@ export default function ChatPage({ user }: { user?: any }) {
             chatMode={chatMode} setChatMode={setChatMode}
             localOnline={localOnline} claudeOnline={claudeOnline}
             effort={effort} setEffort={setEffort}
-            autoRead={autoRead} setAutoRead={setAutoReadPersist}
+            autoRead={autoRead}
             autoReadTick={autoReadTick}
             pendingApproval={pendingApproval} handleDecision={handleDecision}
             likes={feedback} editingIndex={editingIndex} setEditingIndex={setEditingIndex}

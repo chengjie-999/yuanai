@@ -153,7 +153,8 @@ export function groupSessions(sessions: SessionInfo[]): { label: string; items: 
   let currentGroup: SessionInfo[] = []
 
   for (const s of sessions) {
-    const label = timeAgo(s.create_time)
+    // 按最后活跃时间分组：旧会话发新消息后跳到「今天」组置顶（后端已按 update_time 排序）
+    const label = timeAgo(s.update_time || s.create_time)
     if (label !== currentLabel) {
       if (currentGroup.length > 0) groups.push({ label: currentLabel, items: currentGroup })
       currentLabel = label

@@ -52,6 +52,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   // 朗读状态（AI 气泡）：获取中/播放中
   const [speaking, setSpeaking] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  // 下一段预加载的音频（播完当前立即接上，消除分片接缝）
+  const preloadRef = useRef<{ el: HTMLAudioElement; url: string } | null>(null)
   // 朗读序号：打断/重新朗读时递增，作废在途的合成请求
   const readSeqRef = useRef(0)
   // 进入编辑态时预填原内容
@@ -73,6 +75,12 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     if (audio) {
       try { audio.pause() } catch { /* 忽略 */ }
       try { if (audio.src) URL.revokeObjectURL(audio.src) } catch { /* 忽略 */ }
+    }
+    const pre = preloadRef.current
+    if (pre) {
+      try { pre.el.pause() } catch { /* 忽略 */ }
+      try { URL.revokeObjectURL(pre.url) } catch { /* 忽略 */ }
+      preloadRef.current = null
     }
     audioRef.current = null
     setSpeaking(false)
@@ -114,31 +122,66 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     try {
       const text = stripMarkdown(msg.content).trim().slice(0, 1000)
       if (!text) throw new Error('没有可朗读的内容')
-      // 分片播放队列：流式到达即入队，播放器空闲即出队播放（播完自动接下一段）
+      // 分片播放队列：流式到达即入队，播放器空闲即出队播放（播完自动接下一段）。
+      // 火山分片细碎（数百 ms），逐个切换 Audio 的接缝会听成断断续续——
+      // 先把小分片合并成 ≈1.5s 的大段再入队（同源 mp3 可安全拼接），
+      // 配合下一段预加载（preloadRef），切换接缝降到不可闻。
       const queue: Blob[] = []
+      let bufParts: BlobPart[] = []
+      let bufSize = 0
       let fetching = true
       let playing = false
+      const MIN_FRAGMENT_BYTES = 12 * 1024
+      const flushBuf = () => {
+        if (!bufParts.length) return
+        queue.push(new Blob(bufParts, { type: 'audio/mpeg' }))
+        bufParts = []; bufSize = 0
+      }
+      const preloadNext = () => {
+        if (preloadRef.current || !queue.length) return
+        const url = URL.createObjectURL(queue[0])
+        const el = new Audio(url)
+        el.preload = 'auto'
+        try { el.load() } catch { /* 忽略 */ }
+        preloadRef.current = { el, url }
+      }
       const pump = () => {
         if (seq !== readSeqRef.current) return  // 已打断：队列作废
-        if (playing || queue.length === 0) {
-          if (!fetching && queue.length === 0) stopReading()  // 流结束且播完：正常收尾
+        if (playing) return
+        if (!queue.length) {
+          if (!fetching) stopReading()  // 流结束且播完：正常收尾
           return
         }
         playing = true
-        const blob = queue.shift()!
-        const url = URL.createObjectURL(blob)
-        const audio = new Audio(url)
+        let audio: HTMLAudioElement
+        let url: string
+        if (preloadRef.current) {
+          // 预加载命中：直接复用已 decode 的音频，接缝最小
+          audio = preloadRef.current.el
+          url = preloadRef.current.url
+          preloadRef.current = null
+          queue.shift()
+        } else {
+          const blob = queue.shift()!
+          url = URL.createObjectURL(blob)
+          audio = new Audio(url)
+        }
         audioRef.current = audio
         audio.onended = () => { URL.revokeObjectURL(url); playing = false; pump() }
         audio.onerror = () => { URL.revokeObjectURL(url); playing = false; pump() }
         const p = audio.play()
         if (p && p.catch) p.catch(() => { playing = false; pump() })
+        preloadNext()
       }
       await voiceTtsStream(
         text,
         sender || undefined,
-        (blob) => { if (seq !== readSeqRef.current) return; queue.push(blob); pump() },
-        () => { fetching = false; pump() },
+        (blob) => {
+          if (seq !== readSeqRef.current) return
+          bufParts.push(blob); bufSize += blob.size
+          if (bufSize >= MIN_FRAGMENT_BYTES) { flushBuf(); pump() }
+        },
+        () => { flushBuf(); fetching = false; pump() },
       )
       // 流收完但还有残余队列（或全部为空），统一走 pump 收尾
       pump()

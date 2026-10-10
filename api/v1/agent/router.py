@@ -370,3 +370,32 @@ async def forward_to_agent(user_id: int, chat_request: dict) -> str | None:
         logger.error("向 Agent 转发消息失败: %s", e)
         cleanup_pending(request_id)
         return None
+
+
+class BridgeMemoryBody(BaseModel):
+    user_id: int = 0
+    facts: list = []
+
+
+@router.post("/bridge-memory")
+def bridge_memory(request: Request, body: BridgeMemoryBody):
+    """CC 桥接记忆写入：Agent 凭据校验 → 对 user_id 合并事实进长期记忆。
+
+    安全边界：持有设备 secret 即持有写权限（桥接设备属于站主），
+    调用方（claude_bridge）只传 chat_request 里的真实 user_id。
+    """
+    agent_id = request.headers.get("X-Agent-Id", "")
+    secret = request.headers.get("X-Agent-Secret", "")
+    if not _verify_agent_secret(agent_id, secret):
+        raise HTTPException(status_code=401, detail="Agent 凭据无效")
+    if not body.user_id or not body.facts:
+        return {"ok": True, "added": 0}
+
+    facts = [str(f)[:200] for f in body.facts[:20] if str(f).strip()]
+    if not facts:
+        return {"ok": True, "added": 0}
+
+    from config.settings import MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS
+    from db.session import get_db
+    r = get_db().merge_user_memory(body.user_id, facts, MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS)
+    return {"ok": True, "added": r["added"]}

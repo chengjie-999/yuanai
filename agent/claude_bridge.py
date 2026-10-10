@@ -54,7 +54,12 @@ BRIDGE_TIMEOUT = 900  # 单次会话最长 15 分钟
 _DISALLOWED_TOOLS = "WebFetch,WebSearch"
 
 _BRIDGE_SYSTEM_PROMPT = (
-    "你在以无头模式（非交互）为小元AI平台执行任务，用户通过云端聊天与你对话。"
+    "你正运行在用户本机（本地 Claude Code 模式），身份是 Claude Code 本机助手，"
+    "不是小元AI的统筹 Agent——自我介绍时说明你是本机 Claude Code。"
+    "你以无头模式（非交互）为小元AI平台执行任务，用户通过云端聊天与你对话。"
+    "复杂任务先用 TodoWrite 制定计划（分步骤），再逐步执行并更新完成状态。"
+    "当用户要求记住信息（如「记住我喜欢…」）时，在回复末尾单独加一行，格式："
+    "【记住】要记住的事实（每行一条，可多行）——系统会把它们写入用户的长期记忆。"
     "严格遵守以下安全规则（违反即任务失败）："
     "绝不执行 git push / git remote add/set-url / git reset --hard / git clean / rm -rf / rmdir /s / "
     "curl / wget / ssh / scp / rsync 等外联命令；绝不读取 ~/.ssh、~/.aws 等凭据文件或导出环境变量；"
@@ -116,6 +121,23 @@ class SessionStore:
             logger.warning("会话映射保存失败: %s", e)
 
 
+def _urlreq_request_json(base: str, agent_id: str, secret: str, body: dict):
+    """带 Agent 鉴权头的 POST（返回 None 表示失败）"""
+    import urllib.request as _urlreq
+
+    try:
+        req = _urlreq.Request(f"{base}/api/v1/agent/bridge-memory",
+                              data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                              method="POST")
+        req.add_header("X-Agent-Id", agent_id)
+        req.add_header("X-Agent-Secret", secret)
+        req.add_header("Content-Type", "application/json")
+        with _urlreq.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+
+
 def _extract_prompt(req: ChatRequest) -> str:
     """取最后一条 user 消息文本（兼容 content 为 str 或文本块列表）"""
     for m in reversed(req.messages):
@@ -145,8 +167,10 @@ def _tool_result_content(result_block: dict) -> str:
 class ClaudeBridgeHandler:
     """把 chat_request 交给 headless Claude Code 并流式映射为 WS 事件"""
 
-    def __init__(self, ws_send=None):
+    def __init__(self, ws_send=None, server_url: str = "", agent_id: str = "",
+                 agent_token: str = ""):
         self._ws_send = ws_send  # callable(event) fire-and-forget（心跳等旁路事件）
+        self._server_url = server_url  # 记忆上传用（【记住】标记 → 云端 REST）
         self._sessions = SessionStore(SESSIONS_FILE)
         self._sessions.load()
         self._locks = {}  # cloud session_id -> asyncio.Lock（防并发 query）
@@ -328,7 +352,38 @@ class ClaudeBridgeHandler:
         if is_error:
             yield error_event(f"Claude Code 执行失败: {final_result[:500]}", rid)
         else:
+            # 解析【记住】标记 → 云端写入用户长期记忆（失败静默，不阻塞回复）
+            self._flush_memory_markers(req, final_result)
             yield ev_done(final_result, "", rid)
+
+    def _flush_memory_markers(self, req: ChatRequest, text: str) -> None:
+        """从回复中提取【记住】行，经云端端点写入用户长期记忆"""
+        import re as _re
+        import urllib.request as _urlreq
+
+        facts = []
+        for line in text.splitlines():
+            m = _re.match(r"^【记住】(.*)$", line.strip())
+            if m and m.group(1).strip():
+                facts.append(m.group(1).strip())
+        if not facts or not self._server_url:
+            return
+        try:
+            base = self._server_url.replace("ws://", "http://").replace("wss://", "https://").rstrip("/")
+            # 二合一进程走 tray：server_url/agent_id/token 从 main 传入；
+            # 独立桥接进程：agent_token 即设备 secret
+            from agent.main import load_identity
+            identity = load_identity()
+            agent_id = str(getattr(self, "_agent_id", "") or identity.get("agent_id") or "")
+            secret = str(getattr(self, "_agent_token", "") or identity.get("agent_secret") or "")
+            payload = _urlreq_request_json(base, agent_id, secret, {
+                "user_id": int(getattr(req, "user_id", 0) or 0),
+                "facts": facts[:20],
+            })
+            if payload:
+                logger.info("记忆标记已写入: %d 条 (user=%s)", len(facts), getattr(req, "user_id", 0))
+        except Exception:
+            logger.warning("记忆标记写入失败（忽略）", exc_info=True)
 
 
 def parse_args():
@@ -384,7 +439,7 @@ async def main():
         logger.error("未找到 Claude Code CLI（claude），请先安装并登录；桥接进程退出")
         return
 
-    handler = ClaudeBridgeHandler()
+    handler = ClaudeBridgeHandler(server_url=args.server_url, agent_id=args.agent_id, agent_token=args.agent_token)
     client = AgentWSClient(
         server_url=args.server_url,
         agent_id=args.agent_id,

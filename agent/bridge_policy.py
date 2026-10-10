@@ -67,14 +67,30 @@ _BASH_REVIEW = [
 # 因此不能只依赖钩子。三层防线：① 钩子注册（交互会话可用）② guard_ready 门禁
 # ③ --allowedTools 移除裸 Bash（不依赖任何运行时行为）。
 
-_BASE_TOOLS = "Read,Glob,Grep,Write,Edit"
+_BASE_TOOLS = "Read,Glob,Grep,Write,Edit,TodoWrite"  # TodoWrite = CC 制定/跟踪计划
 # 只读/测试类常用命令白名单（Bash(前缀:*) 语法）
+# 白名单放宽原则：桥接只服务白名单用户名（CLAUDE_BRIDGE_ALLOWED_USERNAMES），
+# 且黑名单（外联/提权/破坏性命令）仍在提示词与钩子层拦截；
+# 覆盖日常开发闭环：查看/编辑/测试/运行/提交（提交不推送）
 _DEFAULT_BASH_ALLOW = [
     "Bash(git status:*)",
     "Bash(git diff:*)",
     "Bash(git log:*)",
+    "Bash(git add:*)",
+    "Bash(git commit:*)",
     "Bash(python -m pytest:*)",
     "Bash(python -m py_compile:*)",
+    "Bash(python -m:*)",
+    "Bash(python:*)",
+    "Bash(ls:*)",
+    "Bash(cat:*)",
+    "Bash(pwd:*)",
+    "Bash(mkdir:*)",
+    "Bash(cp:*)",
+    "Bash(mv:*)",
+    "Bash(node:*)",
+    "Bash(npm run:*)",
+    "Bash(npx:*)",
 ]
 
 

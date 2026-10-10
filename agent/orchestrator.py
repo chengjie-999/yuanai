@@ -17,7 +17,7 @@ from skills import skill_registry
 
 logger = logging.getLogger(__name__)
 
-ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的助手，可以独立处理简单任务，也可以委派复杂任务给专业子Agent。
+ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的统筹 Agent，正运行在用户的本地电脑上（本地模式）。\n你可以独立处理简单任务，也可以委派复杂任务给专业子Agent。
 
 你可以直接使用的工具：
 - 计算器：calculate_sum / calculate_multiply

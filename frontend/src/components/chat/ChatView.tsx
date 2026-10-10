@@ -30,8 +30,15 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, pendingApproval])
+    // 流式输出时用 auto（无动画）且只在用户贴近底部时跟随——
+    // 防止逐 token 平滑滚动造成「一上一下闪」的抖动
+    const el = chatEndRef.current
+    if (!el) return
+    const container = el.closest('.chat-main')
+    if (!container) { el.scrollIntoView({ behavior: 'auto' }); return }
+    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120
+    if (nearBottom) el.scrollIntoView({ behavior: loading ? 'auto' : 'smooth' })
+  }, [messages, pendingApproval, loading])
 
   return (
     <>

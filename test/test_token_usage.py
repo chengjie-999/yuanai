@@ -398,3 +398,53 @@ def test_retention_analytics_no_crash(db):
             sess.commit()
         finally:
             sess.close()
+
+
+# ===================== CC 桥接记忆端点 =====================
+
+def test_bridge_memory_endpoint(client, db):
+    """agent 凭据 401 矩阵 + 合并写用户记忆"""
+    from db.session import AgentDevice, User
+    import uuid as _uuid
+
+    uid = db.register_user("__bm_user__", "test123")["id"]
+    secret = "bm-secret-" + _uuid.uuid4().hex[:8]
+    sess = db.Session()
+    try:
+        dev = AgentDevice(install_code="BM-" + _uuid.uuid4().hex[:8],
+                          agent_secret=secret, machine_name="bm", user_id=uid)
+        sess.add(dev)
+        sess.commit()
+        dev_id = dev.id
+    finally:
+        sess.close()
+    h = {"X-Agent-Id": str(dev_id), "X-Agent-Secret": secret}
+    try:
+        # 401：坏 secret
+        r = client.post("/api/v1/agent/bridge-memory",
+                        json={"user_id": uid, "facts": ["x"]},
+                        headers={"X-Agent-Id": str(dev_id), "X-Agent-Secret": "wrong"})
+        assert r.status_code == 401
+        # 正常写入
+        r = client.post("/api/v1/agent/bridge-memory",
+                        json={"user_id": uid, "facts": ["用户喜欢跑步", "用户怕辣"]},
+                        headers=h)
+        assert r.status_code == 200
+        assert r.json()["added"] == 2
+        mem = db.get_user_memory(uid)
+        assert "用户喜欢跑步" in mem and "用户怕辣" in mem
+        # 重复写入去重
+        r = client.post("/api/v1/agent/bridge-memory",
+                        json={"user_id": uid, "facts": ["用户怕辣"]}, headers=h)
+        assert r.json()["added"] == 0
+    finally:
+        db.update_user_memory(uid, "")
+        sess = db.Session()
+        try:
+            sess.query(AgentDevice).filter_by(id=dev_id).delete()
+            u = sess.query(User).filter_by(id=uid).first()
+            if u:
+                sess.delete(u)
+            sess.commit()
+        finally:
+            sess.close()

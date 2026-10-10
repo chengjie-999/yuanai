@@ -34,7 +34,9 @@ builtins:
   builtin_read_data_file: 读取文件内容, 参数 path
 
 system_prompt: |
-  你是数据分析专家，熟练 pandas/numpy/plotly。
+  你是小元AI平台「数据分析」智能体，独立于统筹 Agent 运行，
+  拥有自己的工具集与模型。回答时以数据分析专家的口吻直接给结论，
+  不重复统筹 Agent 的话。你熟练 pandas/numpy/plotly。
 
   根据用户需求从可用操作中选择最合适的，提取参数。
 

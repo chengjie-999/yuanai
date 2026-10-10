@@ -292,6 +292,14 @@ export async function listSessions(): Promise<any[]> {
   } catch { return [] }
 }
 
+export async function ensureMainSession(): Promise<{ session_id: string; title: string; is_main: boolean } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/chat/main-session`, { method: 'POST', headers: authHeaders() })
+    if (!res.ok) return null
+    return await res.json()
+  } catch { return null }
+}
+
 export async function deleteSession(sessionId: string) {
   try {
     await fetch(`${API_BASE}/chat/session/${sessionId}`, { method: 'DELETE', headers: authHeaders() })
@@ -438,6 +446,7 @@ export function streamChat(
     claude?: boolean
     force_cloud?: boolean
     reasoning_effort?: 'low' | 'medium' | 'high'
+    target_agent?: string
   },
   onEvent: (event: any) => void,
   onError: (error: string) => void,

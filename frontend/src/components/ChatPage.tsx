@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { streamChat, createSession, listSessions, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
+import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
@@ -11,7 +11,7 @@ import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
 import { ChevronLeftIcon, ChevronRightIcon } from './icons'
 
-type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string }
+type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean }
 
 /* 兼容历史消息：路由迁移后旧路径 /agent/... 顶层已不存在（会落到兜底路由跳首页），渲染时统一补 /chat 前缀 */
 function normalizePageLink(p: any): string | undefined {
@@ -33,6 +33,10 @@ export default function ChatPage({ user }: { user?: any }) {
   const [expandedImage, setExpandedImage] = useState<string | null>(null)
   // 聊天模式：local=本地统筹 Agent / cloud=云端直连 / claude=Claude Code 桥接
   const [chatMode, setChatMode] = useState<'local' | 'cloud' | 'claude'>('local')
+  // @指定智能体（群聊式定向委派；空 = 统筹自行路由；发送后自动复位）
+  const [targetAgent, setTargetAgent] = useState('')
+  const targetAgentRef = useRef('')
+  targetAgentRef.current = targetAgent
   // 推理强度开关（快答/深思）：localStorage 持久化，仅对 DeepSeek 系列生效
   const [effort, setEffortState] = useState<'low' | 'medium' | 'high'>(getStoredEffort())
   const setEffort = (v: 'low' | 'medium' | 'high') => { setEffortState(v); setStoredEffort(v) }
@@ -103,7 +107,14 @@ export default function ChatPage({ user }: { user?: any }) {
     setSessions(list)
   }, [])
 
-  useEffect(() => { refreshSessions() }, [refreshSessions])
+  // 挂载时确保置顶主对话存在（豆包式：每用户一条，取/建幂等），再刷新侧栏
+  useEffect(() => {
+    const init = async () => {
+      await ensureMainSession()
+      await refreshSessions()
+    }
+    init()
+  }, [refreshSessions])
 
   // 语音通话状态机（会话锚定/转录队列/保存快照 flush，独立 hook）
   const {
@@ -249,14 +260,19 @@ export default function ChatPage({ user }: { user?: any }) {
     setLoading(true)
     // 普通消息自动撤销未决审批（桥接侧会 deny pending 后正常处理）
     setPendingApproval(null)
+    // @指定智能体：发送时捕获并复位（单次生效，下一条恢复统筹自行路由）
+    const target = targetAgentRef.current
+    if (target) setTargetAgent('')
     const history = buildHistoryWithToolContext(msgs)
-    const placeholderSender = chatMode === 'claude' ? 'claude' : chatMode === 'local' ? 'local' : 'orchestrator'
+    const placeholderSender = target && AGENT_CONFIG[target]
+      ? target
+      : chatMode === 'claude' ? 'claude' : chatMode === 'local' ? 'local' : 'orchestrator'
     setMessages([...msgs, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
     streamChat(
       { model, temperature: 0.7, prompt, images: sentImages, history, system_prompt: (chatMode === 'local' ? '注意：你正运行在用户的本地电脑上（本地 Agent 模式），自我介绍时应说明这一点。\n' : '') + SYSTEM_PROMPT_BASE,
-        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud', reasoning_effort: effort },
+        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
       onEvent, onError,
       () => {
         setLoading(false)
@@ -328,15 +344,20 @@ export default function ChatPage({ user }: { user?: any }) {
     const sid = await createSession()
     setCurrentSid(sid); refreshSessions()
     setInput(''); setQuickInput('')
+    // @指定智能体：发送时捕获并复位（欢迎页新建会话入口同规则）
+    const target = targetAgentRef.current
+    if (target) setTargetAgent('')
     const sentImages = [...images]; setImages([])
     setMessages([{ role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }])
-    const placeholderSender = chatMode === 'claude' ? 'claude' : chatMode === 'local' ? 'local' : 'orchestrator'
+    const placeholderSender = target && AGENT_CONFIG[target]
+      ? target
+      : chatMode === 'claude' ? 'claude' : chatMode === 'local' ? 'local' : 'orchestrator'
     setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
     streamChat(
       { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: (chatMode === 'local' ? '注意：你正运行在用户的本地电脑上（本地 Agent 模式），自我介绍时应说明这一点。\n' : '') + SYSTEM_PROMPT_BASE,
-        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud', reasoning_effort: effort },
+        session_id: chatMode === 'claude' ? sid : undefined, claude: chatMode === 'claude', force_cloud: chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
       onEvent, onError,
       () => {
         setLoading(false)
@@ -424,6 +445,7 @@ export default function ChatPage({ user }: { user?: any }) {
             likes={feedback} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
             onEditMessage={handleEditMessage} onFeedback={handleFeedback}
             onStartVoiceCall={startVoiceCallWithPermission}
+            targetAgent={targetAgent} setTargetAgent={setTargetAgent}
           />
         )}
       </div>

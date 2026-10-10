@@ -1,6 +1,6 @@
 import type { SessionInfo } from './helpers'
 import { groupSessions } from './helpers'
-import { PlusIcon, TrashIcon } from '../icons'
+import { PlusIcon, TrashIcon, PinIcon } from '../icons'
 
 export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete }: {
   sessions: SessionInfo[]; currentSid: string; sidebarOpen: boolean; isMobile: boolean
@@ -41,8 +41,16 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                   transition: 'all 0.12s',
                 }}
               >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                  {s.title.startsWith('🔧') ? <>{s.title}</> : s.title}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {s.is_main && (
+                    <span className="yuan-tip" data-tip="置顶主对话" aria-label="置顶主对话"
+                      style={{ color: 'var(--accent)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                      <PinIcon size={11} />
+                    </span>
+                  )}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {s.title.startsWith('🔧') ? <>{s.title}</> : s.title}
+                  </span>
                 </span>
                 <span onClick={(e) => onDelete(e, s.session_id)} title="删除对话" aria-label="删除对话"
                   style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', flexShrink: 0, opacity: 0, transition: 'opacity 0.12s', display: 'flex', alignItems: 'center' }}

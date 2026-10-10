@@ -53,6 +53,15 @@ def _save_chat_image(session_id: str, data_url: str) -> str:
         return data_url
 
 
+@router.post("/main-session")
+async def ensure_main_session(request: Request):
+    """取/建当前用户的置顶主对话（豆包式；每用户一条）"""
+    user_id = _get_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="未登录")
+    return _get_db().ensure_main_session(user_id)
+
+
 @router.get("/image/{session_id}/{filename}")
 async def serve_chat_image(session_id: str, filename: str):
     """提供聊天图片（文件名含 UUID 永久有效，缓存 1 年）"""
@@ -143,7 +152,12 @@ async def chat_stream(req: ChatRequest, request: Request):
             model = VISION_MODEL
 
         history = []
-        for m in _fix_history_for_api(req.history):
+        # 上下文护栏：历史只保留最近 60 条——更早的对话已由记忆机制折叠进
+        # 长期记忆（system prompt 已注入），避免主对话无限增长打爆上下文
+        raw_history = req.history[-60:] if len(req.history) > 60 else req.history
+        if len(req.history) > 60:
+            history.append(HumanMessage(content="（更早的对话已整理进长期记忆，见上方用户信息）"))
+        for m in _fix_history_for_api(raw_history):
             msg_role = m.get("role", "")
             content = m.get("content", "")
             if msg_role == "user":
@@ -191,6 +205,8 @@ async def chat_stream(req: ChatRequest, request: Request):
                 "images": req.images,
                 # 聊天框推理强度开关（low/high）透传本地 Agent
                 "reasoning_effort": req.reasoning_effort if req.reasoning_effort in ("low", "medium", "high") else "low",
+                # @指定智能体（群聊式定向委派；空=统筹自行路由）
+                "target_agent": getattr(req, "target_agent", "") or "",
             }
             bridged_request_id = await forward_to_agent(user_id, agent_chat_request)
 
@@ -204,6 +220,11 @@ async def chat_stream(req: ChatRequest, request: Request):
         # Agent 离线时没有 delegate 工具，修正系统提示。
         # 记忆机制修复：原来整段覆盖会丢掉已注入的用户记忆——改为前置拼接
         offline_prompt = "你是小元AI助手，可以直接使用工具完成任务。可用的工具包括：list_datasets(列出数据集)、preview_dataset(预览)、analyze_dataset(分析)、fetch_url(抓取网页)、parse_html(解析HTML)、get_today_temperature(天气)、calculate_sum(计算)、get_user_memory(用户记忆)、retrieve_planet_knowledge(知识星球检索) 等。直接用工具处理用户请求，简洁回复。任务完成或对话结束时，用表格总结本次完成了什么。"
+        target = getattr(req, "target_agent", "") or ""
+        if target and target in ("analysis", "collection", "automation", "claude"):
+            role_hint = {"analysis": "数据分析", "collection": "数据采集",
+                         "automation": "自动化", "claude": "Claude Code"}[target]
+            offline_prompt += f"\n本轮用户 @{role_hint} 指定你以「{role_hint}智能体」的身份与口吻回答（云端模式无多智能体委派）。"
         input_messages[0]["content"] = offline_prompt + "\n\n" + str(input_messages[0]["content"])
         effort = req.reasoning_effort if req.reasoning_effort in ("low", "medium", "high") else "low"
         llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True,

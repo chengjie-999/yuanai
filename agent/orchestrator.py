@@ -267,6 +267,77 @@ class Orchestrator:
                 return m.content if hasattr(m, "content") else str(m)
         return ""
 
+    def _extract_tool_output(self, output: str, session_id: str, rid: str):
+        """提取 delegate 工具输出协议（图片/大屏/HTML），返回 (事件列表, 清洗后文本)"""
+        events = []
+        img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
+        for img_url in img_urls:
+            events.append(image_event(img_url, rid))
+        dash_match = re.search(r'__DASHBOARD__:(.+)', str(output))
+        if dash_match:
+            result_path = dash_match.group(1).strip()
+            try:
+                with open(result_path, "r", encoding="utf-8") as f:
+                    dash_data = json.load(f)
+                cache_key = f"dashboard:{session_id}"
+                try:
+                    from db.redis_client import get_redis
+                    rds = get_redis()
+                    rds.setex(cache_key, 3600, json.dumps(dash_data, ensure_ascii=False))
+                except Exception:
+                    pass
+                # 持久化到 analysis_history（Redis TTL 过期后恢复用）
+                try:
+                    from db.session import get_db as _db, AnalysisHistory
+                    _db().add_analysis_history(session_id, json.dumps(dash_data, ensure_ascii=False))
+                except Exception as e:
+                    logger.warning("analysis history persist failed: %s", e)
+                events.append(dashboard_event(session_id, rid))
+            except Exception as e:
+                logger.warning("dashboard parse failed: %s", e)
+        html_match = re.search(r'__HTML__URL:(.+)', str(output))
+        if html_match:
+            for url in html_match.group(1).split(","):
+                events.append(html_event(url.strip(), rid))
+        clean_output = re.sub(r',data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
+        clean_output = re.sub(r'\n__DASHBOARD__:\S+', '', clean_output)
+        clean_output = re.sub(r'\n__HTML__URL:\S+', '', clean_output).strip()
+        return events, clean_output
+
+    async def stream_target(self, req: ChatRequest, skill_name: str) -> AsyncGenerator[AgentEvent, None]:
+        """确定性分派：@指定智能体时跳过统筹 LLM，直接调对应 skill Agent
+
+        与 mode=claude 桥接分支同构（agent/main.py route 调用）；云端离线回退时
+        无本地子 Agent，才由 chat/router.py 用提示词扮演角色（合理降级）。
+        """
+        rid = req.request_id
+        cfg = skill_registry.get(skill_name)
+        if not cfg:
+            yield error_event(f"未找到技能: {skill_name}", rid)
+            return
+        if not self._skill_enabled(skill_name):
+            yield error_event(f"{cfg.display_name}未启用（请在托盘菜单开启对应 Agent 开关）", rid)
+            return
+        agent = self._get_or_create_agent(cfg)
+        prompt = self._extract_latest_message(req.messages)
+        self._emit_activity(f"委派{cfg.display_name}", prompt[:80])
+        from yuanai_core.core.schemas import progress
+        from yuanai_core.rag import current_request_id
+        rid_ctx = current_request_id.get() or ""
+        progress_cb = lambda cur, total, msg: self._emit_event(progress(cur, total, msg, rid_ctx))  # noqa: E731
+        try:
+            result = await asyncio.to_thread(agent.run, prompt, progress_cb=progress_cb)
+        except Exception as e:
+            logger.error("定向分派 %s 异常: %s", skill_name, e, exc_info=True)
+            yield error_event(str(e), rid)
+            return
+        self._emit_activity(f"{cfg.display_name}已完成", "")
+        events, clean = self._extract_tool_output(result, req.session_id, rid)
+        for ev in events:
+            yield ev
+        yield ev_token(clean, rid)
+        yield done(clean, "", rid)
+
     async def stream(self, req: ChatRequest) -> AsyncGenerator[AgentEvent, None]:
         """两级路由：意图分类 → 动态加载工具子集 → 流式执行"""
         rid = req.request_id
@@ -357,42 +428,9 @@ class Orchestrator:
 
                 elif kind == "on_tool_end":
                     output = event["data"].get("output", "")
-                    # images
-                    img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
-                    for img_url in img_urls:
-                        yield image_event(img_url, rid)
-                    # dashboard
-                    dash_match = re.search(r'__DASHBOARD__:(.+)', str(output))
-                    if dash_match:
-                        result_path = dash_match.group(1).strip()
-                        try:
-                            with open(result_path, "r", encoding="utf-8") as f:
-                                dash_data = json.load(f)
-                            cache_key = f"dashboard:{req.session_id}"
-                            try:
-                                from db.redis_client import get_redis
-                                rds = get_redis()
-                                rds.setex(cache_key, 3600, json.dumps(dash_data, ensure_ascii=False))
-                            except Exception:
-                                pass
-                            # 持久化到 analysis_history（Redis TTL 过期后恢复用）
-                            try:
-                                from db.session import get_db as _db, AnalysisHistory
-                                _db().add_analysis_history(req.session_id, json.dumps(dash_data, ensure_ascii=False))
-                            except Exception as e:
-                                logger.warning("analysis history persist failed: %s", e)
-                            yield dashboard_event(req.session_id, rid)
-                        except Exception as e:
-                            logger.warning("dashboard parse failed: %s", e)
-                    # HTML (plotly interactive charts)
-                    html_match = re.search(r'__HTML__URL:(.+)', str(output))
-                    if html_match:
-                        for url in html_match.group(1).split(","):
-                            yield html_event(url.strip(), rid)
-                    # clean
-                    clean_output = re.sub(r',data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
-                    clean_output = re.sub(r'\n__DASHBOARD__:\S+', '', clean_output)
-                    clean_output = re.sub(r'\n__HTML__URL:\S+', '', clean_output).strip()
+                    events, clean_output = self._extract_tool_output(output, req.session_id, rid)
+                    for ev in events:
+                        yield ev
                     yield ev_tool_end(event.get("name", "未知工具"), clean_output, rid)
 
             yield done(full_response, full_reasoning, rid)

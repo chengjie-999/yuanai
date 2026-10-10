@@ -171,13 +171,19 @@ async def main():
         agent_token=agent_token,
     )
 
-    # 二合一进程：mode=claude 的请求走本机 Claude Code 桥接，其余走统筹 Agent
+    # 三路分派：mode=claude → 本机 Claude Code 桥接；@指定子智能体 → 直接调
+    # 对应 skill Agent（确定性路由，跳过统筹 LLM）；其余 → 统筹 Agent 意图路由
     from agent.claude_bridge import ClaudeBridgeHandler
     claude_handler = ClaudeBridgeHandler()
+    TARGET_SKILLS = ("analysis", "collection", "automation")
 
     async def route(req):
-        if req.mode == "claude":
+        target = getattr(req, "target_agent", "") or ""
+        if req.mode == "claude" or target == "claude":
             async for ev in claude_handler.stream(req):
+                yield ev
+        elif target in TARGET_SKILLS:
+            async for ev in orchestrator.stream_target(req, target):
                 yield ev
         else:
             async for ev in orchestrator.stream(req):

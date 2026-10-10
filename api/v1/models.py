@@ -13,6 +13,7 @@ class ChatRequest(BaseModel):
     decision: Optional[dict] = Field(None, description="审批决议（Claude 桥接）：{decision_id, approve}")
     force_cloud: bool = Field(False, description="强制走云端 LLM，跳过本地 Agent WebSocket 桥接")
     reasoning_effort: str = Field("low", description="推理强度：low 快答 / medium 标准 / high 深思（聊天框滑块）")
+    target_agent: str = Field("", description="@指定智能体：analysis/collection/automation/claude/orchestrator；空=统筹自行路由")
 
 
 class MessageResponse(BaseModel):

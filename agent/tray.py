@@ -536,10 +536,15 @@ class AgentTray:
                 )
                 claude_handler = ClaudeBridgeHandler()
 
-                # 二合一路由：mode=claude → Claude 桥接；否则统筹
+                # 三路分派：mode=claude → Claude 桥接；@指定子智能体 → 直接调
+                # 对应 skill Agent（确定性路由，跳过统筹 LLM）；其余 → 统筹
                 async def route(req):
-                    if getattr(req, "mode", "") == "claude":
+                    target = getattr(req, "target_agent", "") or ""
+                    if getattr(req, "mode", "") == "claude" or target == "claude":
                         async for ev in claude_handler.stream(req):
+                            yield ev
+                    elif target in ("analysis", "collection", "automation"):
+                        async for ev in orchestrator.stream_target(req, target):
                             yield ev
                     else:
                         async for ev in orchestrator.stream(req):

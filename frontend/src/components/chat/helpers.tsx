@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ChatMessage } from '../../types'
 import { API_BASE, getToken } from '../../api'
 
-export type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string }
+export type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean }
 
 export function addToken(url: string): string {
   if (url.startsWith('data:')) return url

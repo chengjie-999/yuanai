@@ -137,6 +137,7 @@ class AgentWSClient:
             images=msg.get("images", []),
             mode=msg.get("mode", ""),
             reasoning_effort=msg.get("reasoning_effort", "low"),
+            target_agent=msg.get("target_agent", ""),
             decision=msg.get("decision"),
         )
 

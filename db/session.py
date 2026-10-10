@@ -8,6 +8,7 @@ from sqlalchemy.sql import func
 import os
 import json
 import uuid
+from datetime import datetime
 from utils.data_path import root_path
 from config.settings import DEFAULT_MODEL
 
@@ -26,6 +27,7 @@ class ChatSession(Base):
     user_id = Column(Integer, nullable=True, index=True)
     title = Column(String(200), default='新对话')
     model = Column(String(50), default='doubao-seed-2-0-pro-260215')
+    is_main = Column(Integer, default=0)  # 1 = 豆包式置顶主对话（每用户一条）
     create_time = Column(TIMESTAMP, server_default=func.now())
     update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
@@ -352,11 +354,29 @@ class AgentDatabase:
             q = session.query(ChatSession)
             if user_id is not None:
                 q = q.filter(ChatSession.user_id == user_id)
-            q = q.order_by(ChatSession.update_time.desc()).limit(limit).all()
+            q = q.order_by(ChatSession.is_main.desc(), ChatSession.update_time.desc()).limit(limit).all()
             return [{"session_id": s.session_id, "title": s.title, "model": s.model,
-                     "create_time": str(s.create_time), "update_time": str(s.update_time)} for s in q]
+                     "create_time": str(s.create_time), "update_time": str(s.update_time),
+                     "is_main": bool(s.is_main)} for s in q]
         finally:
             session.close()
+
+    def ensure_main_session(self, user_id: int, model: str = "") -> dict:
+        """取/建当前用户的置顶主对话（豆包式；每用户一条）"""
+        sess = self.Session()
+        try:
+            row = sess.query(ChatSession).filter_by(user_id=user_id, is_main=1).first()
+            if row:
+                return {"session_id": row.session_id, "title": row.title,
+                        "create_time": str(row.create_time), "is_main": True}
+            sid = str(uuid.uuid4())
+            sess.add(ChatSession(session_id=sid, user_id=user_id, title="主对话",
+                                 model=model or DEFAULT_MODEL, is_main=1))
+            sess.commit()
+            return {"session_id": sid, "title": "主对话",
+                    "create_time": str(datetime.now()), "is_main": True}
+        finally:
+            sess.close()
 
     def delete_session(self, session_id: str):
         """删除会话及其所有消息"""

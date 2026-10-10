@@ -7,7 +7,7 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, setAutoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, setAutoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall, targetAgent, setTargetAgent }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string) => void; handleSend: () => void
@@ -26,6 +26,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   onEditMessage: (index: number, content: string) => void
   onFeedback: (index: number, kind: 'like' | 'dislike') => void
   onStartVoiceCall: () => void
+  targetAgent: string
+  setTargetAgent: (v: string) => void
 }) {
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -81,7 +83,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         localOnline={localOnline} claudeOnline={claudeOnline}
         effort={effort} setEffort={setEffort}
         autoRead={autoRead} setAutoRead={setAutoRead}
-        onStartVoiceCall={onStartVoiceCall} />
+        onStartVoiceCall={onStartVoiceCall}
+        targetAgent={targetAgent} setTargetAgent={setTargetAgent} />
     </>
   )
 }

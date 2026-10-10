@@ -21,6 +21,7 @@ class ChatRequest:
     images: List[str] = field(default_factory=list)
     mode: str = ""  # 处理模式："claude" = 本机 Claude Code 桥接；空 = 统筹 Agent
     reasoning_effort: str = "low"  # 推理强度（聊天框开关）：low / high
+    target_agent: str = ""  # @指定智能体：analysis/collection/automation/claude/orchestrator
     decision: Optional[Dict[str, Any]] = None  # 审批决议（Claude 桥接）：{"decision_id", "approve"} | None
 
     def __post_init__(self):

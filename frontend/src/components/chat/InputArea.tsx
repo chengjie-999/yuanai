@@ -7,9 +7,19 @@ import ChatModeSelector from './ChatModeSelector'
 import type { ReasoningEffort } from './ReasoningSelector'
 import ReasoningSelector from './ReasoningSelector'
 import { compressImage } from './imageUtils'
-import { PaperclipIcon, XIcon } from '../icons'
+import { AGENT_CONFIG } from '../../config/agents'
+import { PaperclipIcon, XIcon, AtSignIcon } from '../icons'
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, setAutoRead, onStartVoiceCall }: {
+// @指定智能体候选（群聊式定向委派；orchestrator=统筹亲自回答）
+const TARGET_AGENTS = [
+  { key: 'orchestrator', desc: '统筹亲自回答，不委派' },
+  { key: 'analysis', desc: '数据集管理、统计、图表' },
+  { key: 'collection', desc: '网页爬取、数据抓取' },
+  { key: 'automation', desc: '浏览器控制、审核、截图' },
+  { key: 'claude', desc: '本机代码、终端、Git 任务' },
+]
+
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, autoRead, setAutoRead, onStartVoiceCall, targetAgent, setTargetAgent }: {
   input: string; setInput: (v: string) => void; loading: boolean; handleSend: () => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
@@ -19,9 +29,11 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   autoRead: boolean; setAutoRead: (v: boolean) => void
   localOnline: boolean; claudeOnline: boolean
   onStartVoiceCall: () => void
+  targetAgent: string; setTargetAgent: (v: string) => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   return (
     <div className="chat-input-area" style={{ padding: '12px 24px 20px', borderTop: '1px solid var(--border)' }}>
@@ -49,8 +61,27 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               ))}
             </div>
           )}
+          {targetAgent && AGENT_CONFIG[targetAgent] && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px 0', flexWrap: 'wrap' }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 6px 3px 8px',
+                borderRadius: 999, border: `1px solid ${AGENT_CONFIG[targetAgent].color}55`,
+                background: AGENT_CONFIG[targetAgent].bg, fontSize: 12, fontWeight: 600,
+                color: AGENT_CONFIG[targetAgent].color, lineHeight: 1,
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: AGENT_CONFIG[targetAgent].color, flexShrink: 0 }} />
+                @{AGENT_CONFIG[targetAgent].label}
+                <span onClick={() => setTargetAgent('')} className="yuan-tip" data-tip="取消指定" aria-label="取消指定"
+                  style={{ cursor: 'pointer', padding: '1px 2px', opacity: 0.7, display: 'flex', alignItems: 'center' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
+                ><XIcon size={11} /></span>
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>本条消息将定向该智能体处理</span>
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'flex-end', padding: '4px 4px 4px 16px' }}>
-            <textarea value={input} onChange={(e) => { setInput(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; t.style.overflowY = t.scrollHeight > 200 ? 'auto' : 'hidden' }}
+            <textarea value={input} onChange={(e) => { setInput(e.target.value); if (!pickerOpen && e.target.value.endsWith('@')) setPickerOpen(true); const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; t.style.overflowY = t.scrollHeight > 200 ? 'auto' : 'hidden' }}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
               placeholder="输入消息..." disabled={loading}
               rows={1}
@@ -79,6 +110,49 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                 }
               }}
             />
+            <button onClick={() => setPickerOpen((o) => !o)} className="yuan-tip"
+              data-tip={targetAgent ? `已指定：${AGENT_CONFIG[targetAgent]?.label || ''}` : '指定智能体回答'} aria-label="指定智能体"
+              style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', color: targetAgent ? 'var(--accent)' : 'var(--text-secondary)', padding: '8px', lineHeight: 1, opacity: targetAgent ? 1 : 0.5, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = targetAgent ? '1' : '0.5' }}
+            >
+              <AtSignIcon size={18} />
+              {pickerOpen && (
+                <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setPickerOpen(false)} />
+                  <div style={{
+                    position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 41,
+                    minWidth: 210, background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                    borderRadius: 10, boxShadow: '0 8px 28px var(--shadow-md)', padding: 6, textAlign: 'left',
+                  }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px 6px', fontWeight: 600 }}>
+                      @指定智能体处理本条消息
+                    </div>
+                    {TARGET_AGENTS.map((a) => {
+                      const cfg = AGENT_CONFIG[a.key]
+                      const active = targetAgent === a.key
+                      return (
+                        <div key={a.key}
+                          onClick={() => { setTargetAgent(a.key); setPickerOpen(false) }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover-bg)' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--hover-bg)' : 'transparent' }}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px',
+                            borderRadius: 7, cursor: 'pointer', fontSize: 13,
+                            color: 'var(--text-primary)', background: active ? 'var(--hover-bg)' : 'transparent',
+                          }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
+                          <span style={{ fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {a.desc}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </button>
             <button onClick={() => fileRef.current?.click()} className="yuan-tip" data-tip="上传图片" aria-label="上传图片"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '8px', lineHeight: 1, opacity: 0.5, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}

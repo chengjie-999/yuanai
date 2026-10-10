@@ -145,20 +145,26 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                       {TARGET_AGENTS.map((a) => {
                         const cfg = AGENT_CONFIG[a.key]
                         const active = targetAgent === a.key
+                        // 群聊规则：本地 Agent 离线时子智能体不可 @（不做云端角色冒充）；
+                        // @Claude Code 需桥接在线；@统筹 永远可用（云端小元AI）
+                        const available = a.key === 'orchestrator'
+                          ? true
+                          : a.key === 'claude' ? claudeOnline : localOnline
                         return (
                           <div key={a.key}
-                            onClick={() => { setTargetAgent(a.key); setPickerOpen(false) }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover-bg)' }}
+                            onClick={() => { if (!available) return; setTargetAgent(a.key); setPickerOpen(false) }}
+                            onMouseEnter={(e) => { if (available) e.currentTarget.style.background = 'var(--hover-bg)' }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--hover-bg)' : 'transparent' }}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px',
-                              borderRadius: 7, cursor: 'pointer', fontSize: 13,
+                              borderRadius: 7, cursor: available ? 'pointer' : 'not-allowed',
+                              fontSize: 13, opacity: available ? 1 : 0.45,
                               color: 'var(--text-primary)', background: active ? 'var(--hover-bg)' : 'transparent',
                             }}>
                             <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
                             <span style={{ fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
                             <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {a.desc}
+                              {available ? a.desc : '离线'}
                             </span>
                           </div>
                         )

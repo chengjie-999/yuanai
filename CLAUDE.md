@@ -151,7 +151,9 @@ data/                   数据目录
 
 每个 Agent 气泡上方有彩色标签和身份标识，工具调用卡片显示 Agent 归属。
 
-**@指定智能体（群聊式定向）**：输入区 @ 按钮（或输入 `@`）弹出选择面板（统筹/分析/采集/自动化/Claude），选定后本条消息确定性分派。分派链路：`target_agent` 字段贯穿 ChatRequest（云端 models/schemas → chat/router → ws_client）→ Agent 端 `agent/main.py` + `agent/tray.py` 的 `route()` 三路分派（mode=claude 桥接 / target∈{analysis,collection,automation} → `Orchestrator.stream_target()` 直接调 skill Agent / 其余统筹）。`stream_target` 与 delegate 工具共用 `_extract_tool_output`（图片/大屏/HTML 协议提取）。Agent 离线时云端回退角色扮演（chat/router.py offline_prompt role_hint）。
+**@指定智能体（群聊式定向）**：输入区 @ 按钮（或输入 `@`）弹出选择面板（统筹/分析/采集/自动化/Claude），选定后本条消息确定性分派。分派链路：`target_agent` 字段贯穿 ChatRequest（云端 models/schemas → chat/router → ws_client）→ Agent 端 `agent/main.py` + `agent/tray.py` 的 `route()` 三路分派（mode=claude 桥接 / target∈{analysis,collection,automation} → `Orchestrator.stream_target()` 直接调 skill Agent / 其余统筹）。`stream_target` 与 delegate 工具共用 `_extract_tool_output`（图片/大屏/HTML 协议提取）。**群聊规则（微信式群聊定位）**：本地 Agent 离线时子智能体在 @ 面板置灰不可选（不做云端角色冒充），@Claude Code 需桥接在线；离线降级 role_hint（仅 API 直调时）强制身份不自称小元AI。
+
+**群聊说话人协议（身份错位修复）**：历史消息平铺无说话人标记 → 模型把子 Agent 的话当成自己说过的（复述/冒充）。`buildHistoryWithToolContext(messages, selfSenders)` 给其他智能体的 assistant 消息加 `【xx Agent】` 前缀（selfSenders 按 chatMode/target 动态计算：local 模式='local'+'orchestrator'，cloud='orchestrator'，claude 桥接='claude'，@定向=目标本身）；统筹 system prompt（前端 SYSTEM_PROMPT_BASE + 本地 ORCHESTRATOR_SYSTEM_PROMPT）声明协议「无前缀的才是自己说的，不冒充不复述不替别人总结」。
 
 **置顶主对话（豆包式）**：`chat_session.is_main`（迁移 0013）每用户一条，`ensure_main_session()` 幂等取/建，`POST /api/v1/chat/main-session`；侧栏图钉置顶显示；**登录直接落主对话**（挂载时 ensure + setCurrentSid + parseHistory，欢迎页仅接口异常兜底）；「新对话」按钮=另开普通会话。主对话历史截断最近 **60 条**（chat/router.py `/stream` 主链路，前置「更早的对话已整理进长期记忆」HumanMessage）——与记忆机制配套（二期挂账的 history 截断在此落地）；claude-stream 不截断。欢迎页退场后：推荐问题卡移到对话空状态（ChatView SUGGESTIONS 前 5 条，手机横滑一行）、数据集上传并入输入区回形针（csv/xlsx/xls/json → uploadDataset → `[数据集 #id]` 注入输入框）。输入区布局：textarea 行只留输入框+发送，功能键全部下沉工具行（左动作群 @/图片/语音/朗读/下载，右设置群 模式/推理强度，小屏藏下载）。
 

@@ -224,7 +224,9 @@ async def chat_stream(req: ChatRequest, request: Request):
         if target and target in ("analysis", "collection", "automation", "claude"):
             role_hint = {"analysis": "数据分析", "collection": "数据采集",
                          "automation": "自动化", "claude": "Claude Code"}[target]
-            offline_prompt += f"\n本轮用户 @{role_hint} 指定你以「{role_hint}智能体」的身份与口吻回答（云端模式无多智能体委派）。"
+            offline_prompt += (f"\n本轮用户 @{role_hint} 指定由「{role_hint}智能体」回答："
+                               f"从此刻起你就是{role_hint}智能体本人，直接以该身份与口吻回答，"
+                               f"不要自称小元AI或统筹助手，不要提及委派过程或身份切换。")
         input_messages[0]["content"] = offline_prompt + "\n\n" + str(input_messages[0]["content"])
         effort = req.reasoning_effort if req.reasoning_effort in ("low", "medium", "high") else "low"
         llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True,

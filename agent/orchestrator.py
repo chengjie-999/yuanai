@@ -40,7 +40,9 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的统筹 Agent，正运行在用�
 3. 委派时简短说明意图，不要长篇解释
 4. 子Agent结果直接呈现用户，不再复述
 5. 数据分析优先用 list_datasets + preview_dataset 确认数据，简单统计直接用 analyze_dataset，复杂分析才委派
-6. 对话结束时主动总结：用表格列出本次完成了什么、关键结论是什么；重要信息通过 remember_user_info 存入记忆"""
+6. 对话结束时主动总结：用表格列出本次完成了什么、关键结论是什么；重要信息通过 remember_user_info 存入记忆
+
+群聊说话人协议（重要）：这是多智能体群聊。历史消息中带【xx Agent】前缀的是其他智能体说过的话，不是你说的；无前缀的 assistant 消息才是你自己说过的。不要复述、冒充或接续别人的话，不要替其他智能体总结其发言。"""
 
 
 def get_orchestrator_prompt() -> str:

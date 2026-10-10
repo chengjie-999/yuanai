@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { ChatMessage } from '../../types'
 import { API_BASE, getToken } from '../../api'
+import { AGENT_CONFIG } from '../../config/agents'
 
 export type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean }
 
@@ -95,18 +96,28 @@ export function encodeMsg(m: any) {
 
 /** 将会话消息转为包含工具调用上下文的历史记录（传给模型用）
  * 注意：tool 消息必须紧跟带 tool_calls 的 assistant 消息，否则云端 API 400 拒绝
+ *
+ * 说话人协议（多智能体身份错位修复）：selfSenders 之外的消息加【xx Agent】
+ * 身份前缀——模型由此分清哪些是自己说过的（无前缀）、哪些是其他智能体说的
+ * （有前缀），不再把子 Agent 的话当成自己的话复述/冒充。系统提示词已声明该协议。
  */
-export function buildHistoryWithToolContext(messages: ChatMessage[]): { role: string; content: string; tool_calls?: any[]; tool_call_id?: string }[] {
+export function buildHistoryWithToolContext(messages: ChatMessage[], selfSenders: string[] = []): { role: string; content: string; tool_calls?: any[]; tool_call_id?: string }[] {
   const result: { role: string; content: string; tool_calls?: any[]; tool_call_id?: string }[] = []
+  const labelOf = (sender?: string) => {
+    if (!sender || selfSenders.includes(sender)) return ''
+    const cfg = AGENT_CONFIG[sender]
+    return cfg ? `【${cfg.label}】` : ''
+  }
 
   for (const m of messages) {
     if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
       // assistant 决策消息 + 对应的 tool_calls 列表（保证 tool 消息有合法归属）
+      const label = labelOf(m.sender)
       const toolNames = m.toolCalls.map(tc => tc.name).join(', ')
       const calls = m.toolCalls.map((tc, i) => ({
         id: `hist_${i}`, type: 'function', function: { name: tc.name, arguments: '{}' },
       }))
-      result.push({ role: 'assistant', content: `[决定调用工具: ${toolNames}]`, tool_calls: calls })
+      result.push({ role: 'assistant', content: `${label}[决定调用工具: ${toolNames}]`, tool_calls: calls })
 
       // 每个 tool_call 都必须有一条 tool 结果消息（未完成/出错也占位）
       m.toolCalls.forEach((tc, i) => {
@@ -121,9 +132,10 @@ export function buildHistoryWithToolContext(messages: ChatMessage[]): { role: st
       })
 
       // 最后是助手的实际回复
-      result.push({ role: 'assistant', content: m.content || '' })
+      result.push({ role: 'assistant', content: `${label}${m.content || ''}` })
     } else {
-      result.push({ role: m.role, content: m.content || '' })
+      const label = m.role === 'assistant' ? labelOf(m.sender) : ''
+      result.push({ role: m.role, content: `${label}${m.content || ''}` })
     }
   }
 

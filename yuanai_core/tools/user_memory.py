@@ -125,19 +125,8 @@ def remember_user_info(info: str) -> str:
     return "记忆已保存"
 
 
-@tool
-def forget_user_info(info: str) -> str:
-    """Delete a stored user fact. info: the fact text (or a unique keyword in it)."""
-    kw = (info or "").strip()
-    if not kw:
-        return "请说明要忘记什么"
-    uid = current_user_id.get()
-    r = _call_memory("/memory", "DELETE", {"user_id": uid, "line": kw}, uid=uid)
-    if not r.get("ok"):
-        detail = r.get("detail") or ""
-        if "多条" in str(detail):
-            return "这条内容匹配到多条记忆，请说得更具体"
-        return f"删除记忆失败：{detail or '未知错误'}"
-    if r.get("deleted", 0) == 0:
-        return "记忆中没有找到这条内容"
-    return "已忘记这条记忆"
+# ⚠ 安全事故教训（2026-10-11）：曾定义 forget_user_info 工具供 LLM 调用，
+# 模型在一次对话中自主连续调用 20+ 次删除记忆条目——**删除类操作绝不允许
+# 暴露为 LLM 可自动调用的工具**。删除记忆的唯一入口是设置页「我的记忆」卡
+# （每行删除按钮 + 编辑抽屉），必须由用户有意识地操作。
+# 后端 DELETE /auth/memory 与 /agent/memory 端点保留（设置页与 Agent 同步用）。

@@ -173,7 +173,7 @@ class VoiceMessageRequest(BaseModel):
 
 
 class VoiceTtsRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=1000, description="要朗读的文本")
+    text: str = Field(..., min_length=1, description="要朗读的文本（长度上限由 VOICE_TTS_MAX_CHARS 校验；前端已按句分段）")
     sender: str = Field(None, description="消息归属 Agent（orchestrator/analysis/collection/automation/claude/local），缺省用默认音色")
 
 
@@ -256,16 +256,24 @@ def append_voice_message(req: VoiceMessageRequest, request: Request):
 def voice_tts(req: VoiceTtsRequest, request: Request):
     """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型 2.0，按消息归属 Agent 选音色。
 
-    流式边到边转发：火山返回的音频分片逐段透传（不再整段 read 拼好才回），
-    前端边收边播——首声延迟从「整段合成+整段下载」降到「首个分片合成」（约 0.3-0.8s）。
-    nginx /api/v1/ 已 proxy_buffering off，分片可实时透传。
+    流式帧协议（api/v1/voice/tts_proto.py）：火山分片边到边转发并聚合到
+    ≥VOICE_TTS_CHUNK_BYTES 再发一帧（碎帧是断续根源）；合成中途失败/异常发
+    显式错误帧（不再静默断流）；EOF 冲刷残余 buf（修丢尾段）。nginx /api/v1/
+    已 proxy_buffering off，帧可实时透传；前端首字节嗅探兼容新旧两端。
     """
-    from config.settings import VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE, AGENT_VOICE_MAP, VOICE_ENABLED
+    from config.settings import (VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE,
+                                 AGENT_VOICE_MAP, VOICE_ENABLED, VOICE_TTS_MAX_CHARS,
+                                 VOICE_TTS_CHUNK_BYTES, VOICE_TTS_SPEECH_RATE_BUBBLE)
     from fastapi.responses import StreamingResponse
+    from api.v1.voice.tts_proto import (pack_frame, pack_error, pack_end, KIND_AUDIO,
+                                        clamp_speech_rate)
     if not VOICE_ENABLED:
         raise HTTPException(status_code=503, detail="语音功能已关闭")
     if not (VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN):
         raise HTTPException(status_code=503, detail="语音合成未配置：请先配置 VOICE_TTS_* 凭据")
+    if VOICE_TTS_MAX_CHARS > 0 and len(req.text) > VOICE_TTS_MAX_CHARS:
+        raise HTTPException(status_code=400,
+                            detail=f"文本过长（{len(req.text)} 字，上限 {VOICE_TTS_MAX_CHARS} 字）")
     # 音色按 Agent 查表（用户设置页可改），未知 sender 回退 env 默认音色
     speaker = AGENT_VOICE_MAP.get(req.sender, VOICE_TTS_VOICE) if req.sender else VOICE_TTS_VOICE
     body = {
@@ -273,7 +281,13 @@ def voice_tts(req: VoiceTtsRequest, request: Request):
         "req_params": {
             "text": req.text,
             "speaker": speaker,
-            "audio_params": {"format": "mp3", "sample_rate": 24000},
+            "audio_params": {
+                "format": "mp3",
+                "sample_rate": 24000,
+                "bit_rate": 64000,
+                # 语速 int [-50,100]，100=2.0x（v3 unidirectional 语义，与 RTC float 倍率不同）
+                "speech_rate": clamp_speech_rate(VOICE_TTS_SPEECH_RATE_BUBBLE),
+            },
         },
     }
     headers = {
@@ -288,14 +302,10 @@ def voice_tts(req: VoiceTtsRequest, request: Request):
     url = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
 
     def gen():
-        """逐行解析火山流式响应（换行分隔 JSON），边到边产出音频分片。
-
-        响应协议：每段 {"code":0,"data":"<base64 音频片段>"}，
-        末尾 {"code":20000000,"message":"OK","data":null} 结束标记。
-        流开始后无法改 HTTP 状态码：合成中途失败 = 提前结束流，
-        前端收不到完整音频会兜底提示（多数情况用户已听到前半段）。
-        """
+        """逐行解析火山流式响应，音频聚合到 ≥CHUNK_BYTES 发帧；错误显式帧；EOF flush"""
         import base64
+        yielded_audio = False
+        pending = b""  # 音频聚合缓冲
         try:
             r = urllib.request.Request(
                 url, data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
@@ -318,21 +328,50 @@ def voice_tts(req: VoiceTtsRequest, request: Request):
                         if code is None:
                             continue
                         if code == 20000000:
-                            return  # 正常结束标记
+                            if pending:  # 正常结束前冲刷残余聚合缓冲
+                                yield pack_frame(KIND_AUDIO, pending)
+                                pending = b""
+                            yield pack_end()
+                            return
                         if code != 0:
-                            logger.error("TTS 合成失败: %s", json.dumps(payload, ensure_ascii=False)[:300])
+                            err = json.dumps(payload, ensure_ascii=False)[:300]
+                            logger.error("TTS 合成失败: %s", err)
+                            if pending:
+                                yield pack_frame(KIND_AUDIO, pending)
+                                pending = b""
+                            yield pack_error(code, err)
+                            yield pack_end()
                             return
                         if payload.get("data"):
                             try:
-                                yield base64.b64decode(payload["data"])
+                                pending += base64.b64decode(payload["data"])
                             except Exception:
                                 # 单个坏分片跳过，不因一段损坏中断整条流
                                 logger.warning("TTS 音频分片 base64 解码失败，跳过该段")
+                            if len(pending) >= VOICE_TTS_CHUNK_BYTES:
+                                yield pack_frame(KIND_AUDIO, pending)
+                                yielded_audio = True
+                                pending = b""
+            # EOF 后冲刷残余（最后一行可能无换行符——修丢尾段）
+            if pending:
+                yield pack_frame(KIND_AUDIO, pending)
+                yielded_audio = True
+            yield pack_end()
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", errors="replace")[:300]
             logger.error("TTS 合成失败(%s): %s", e.code, detail)
+            if pending:
+                yield pack_frame(KIND_AUDIO, pending)
+            yield pack_error(getattr(e, "code", 0), detail)
+            yield pack_end()
         except Exception as e:
             logger.error("TTS 流式转发异常: %s", e)
+            if pending:
+                yield pack_frame(KIND_AUDIO, pending)
+            if not yielded_audio:
+                # 一个音频都没出：显式错误帧（前端「未返回音频」兜底升级为明确文案）
+                yield pack_error(0, "语音合成失败，请稍后重试")
+            yield pack_end()
 
-    return StreamingResponse(gen(), media_type="audio/mpeg",
+    return StreamingResponse(gen(), media_type="application/octet-stream",
                              headers={"X-Accel-Buffering": "no", "Cache-Control": "no-store"})

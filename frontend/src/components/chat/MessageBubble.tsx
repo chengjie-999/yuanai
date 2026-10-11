@@ -4,7 +4,7 @@ import ToolCallCard from '../ToolCallCard'
 import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { voiceTtsStream } from '../../api'
-import { LoadingDots, addToken, stripMarkdown, useSecuredUrl } from './helpers'
+import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon } from '../icons'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
@@ -106,8 +106,10 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     setTimeout(() => setCopied(false), 1500)
   }
 
-  // 朗读消息（豆包 TTS 流式）：markdown 去符号后合成语音，边收边播——首个分片到达即出声，
-  // 不再等整段合成+整段下载（原实现首声延迟数秒）。再点一次打断（作废在途请求）
+  // 朗读消息（豆包 TTS 分段连播）：口语化文本 → 按句分段（≤200 字/段）→
+  // 串行合成 + 预取 1 段 → 每段一个 Audio 整段播放（段内不再字节切分，
+  // 根除接缝咔哒；帧协议保证整帧边界）。长文不再截断（原 slice(0,1000)
+  // 静默丢尾）。再点一次打断（作废在途请求）
   const toggleRead = async () => {
     if (speaking) {
       readSeqRef.current += 1  // 作废在途合成请求
@@ -120,71 +122,76 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     globalStopReading = stopReading
     setSpeaking(true)
     try {
-      const text = stripMarkdown(msg.content).trim().slice(0, 1000)
-      if (!text) throw new Error('没有可朗读的内容')
-      // 分片播放队列：流式到达即入队，播放器空闲即出队播放（播完自动接下一段）。
-      // 火山分片细碎（数百 ms），逐个切换 Audio 的接缝会听成断断续续——
-      // 先把小分片合并成 ≈1.5s 的大段再入队（同源 mp3 可安全拼接），
-      // 配合下一段预加载（preloadRef），切换接缝降到不可闻。
-      const queue: Blob[] = []
-      let bufParts: BlobPart[] = []
-      let bufSize = 0
-      let fetching = true
+      const speech = toSpeechText(msg.content)
+      const segments = splitSpeechSegments(speech)
+      if (!segments.length) throw new Error('没有可朗读的内容')
+
+      // 段级队列：每段完整合成后才入队（天然抖动缓冲，不饿死）
+      const queue: { blob: Blob; isLast: boolean }[] = []
       let playing = false
-      const MIN_FRAGMENT_BYTES = 12 * 1024
-      const flushBuf = () => {
-        if (!bufParts.length) return
-        queue.push(new Blob(bufParts, { type: 'audio/mpeg' }))
-        bufParts = []; bufSize = 0
-      }
-      const preloadNext = () => {
-        if (preloadRef.current || !queue.length) return
-        const url = URL.createObjectURL(queue[0])
-        const el = new Audio(url)
-        el.preload = 'auto'
-        try { el.load() } catch { /* 忽略 */ }
-        preloadRef.current = { el, url }
-      }
+      let fetchingIdx = 0          // 下一个要发起的合成段
+      let activeFetches = 0        // 在途合成数（预取 1 段 → ≤2）
+      let allFetched = false
+      let fetchError: string | null = null
+
       const pump = () => {
         if (seq !== readSeqRef.current) return  // 已打断：队列作废
         if (playing) return
         if (!queue.length) {
-          if (!fetching) stopReading()  // 流结束且播完：正常收尾
+          if (allFetched) stopReading()  // 全部段播完：正常收尾
           return
         }
+        const { blob } = queue.shift()!
         playing = true
-        let audio: HTMLAudioElement
-        let url: string
-        if (preloadRef.current) {
-          // 预加载命中：直接复用已 decode 的音频，接缝最小
-          audio = preloadRef.current.el
-          url = preloadRef.current.url
-          preloadRef.current = null
-          queue.shift()
-        } else {
-          const blob = queue.shift()!
-          url = URL.createObjectURL(blob)
-          audio = new Audio(url)
-        }
+        const url = URL.createObjectURL(blob)
+        const audio = new Audio(url)
         audioRef.current = audio
         audio.onended = () => { URL.revokeObjectURL(url); playing = false; pump() }
         audio.onerror = () => { URL.revokeObjectURL(url); playing = false; pump() }
         const p = audio.play()
         if (p && p.catch) p.catch(() => { playing = false; pump() })
-        preloadNext()
       }
-      await voiceTtsStream(
-        text,
-        sender || undefined,
-        (blob) => {
+
+      // 串行预取：发起下一段合成时保持 1 段预取余量（播放第 i 段时第 i+1 段已在途）
+      const fetchNext = () => {
+        if (seq !== readSeqRef.current || fetchError) return
+        if (fetchingIdx >= segments.length) { allFetched = true; pump(); return }
+        if (activeFetches >= 2) return  // 在途 ≤2：当前播放段 + 预取段
+        const i = fetchingIdx++
+        activeFetches += 1
+        let settled = false
+        const done = () => { if (settled) return; settled = true; activeFetches -= 1 }
+        voiceTtsStream(
+          segments[i],
+          sender || undefined,
+          (blob) => {
+            if (seq !== readSeqRef.current) return
+            queue.push({ blob, isLast: i === segments.length - 1 })
+            pump()
+            fetchNext()  // 首个分片到达即可预取下一段
+          },
+          () => { done(); fetchNext() },
+        ).catch((err: any) => {
+          done()
           if (seq !== readSeqRef.current) return
-          bufParts.push(blob); bufSize += blob.size
-          if (bufSize >= MIN_FRAGMENT_BYTES) { flushBuf(); pump() }
-        },
-        () => { flushBuf(); fetching = false; pump() },
-      )
-      // 流收完但还有残余队列（或全部为空），统一走 pump 收尾
-      pump()
+          fetchError = err?.message || '语音合成失败，请稍后重试'
+          allFetched = true
+          pump()
+        })
+      }
+      fetchNext()
+      // 等待全部完成（fetchError 或正常收尾）——由 pump 的 stopReading 或异常分支收口
+      await new Promise<void>((resolve) => {
+        const timer = setInterval(() => {
+          if (seq !== readSeqRef.current) { clearInterval(timer); resolve(); return }
+          if (fetchError) { clearInterval(timer); resolve(); return }
+          if (allFetched && !queue.length && !playing) { clearInterval(timer); resolve(); return }
+        }, 150)
+      })
+      if (seq === readSeqRef.current && fetchError) {
+        stopReading()
+        alert(fetchError)
+      }
     } catch (err: any) {
       if (seq === readSeqRef.current) {
         stopReading()

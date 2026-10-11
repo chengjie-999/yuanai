@@ -239,6 +239,13 @@ VOICE_ASR_END_WINDOW_SIZE = int(os.getenv("VOICE_ASR_END_WINDOW_SIZE", "500"))
 VOICE_ASR_FORCE_TO_SPEECH_TIME = int(os.getenv("VOICE_ASR_FORCE_TO_SPEECH_TIME", "500"))
 VOICE_TTS_PITCH_RATE = float(os.getenv("VOICE_TTS_PITCH_RATE", "1"))
 VOICE_TTS_SPEECH_RATE = float(os.getenv("VOICE_TTS_SPEECH_RATE", "1"))
+# 气泡朗读语速（int [-50,100]，100=2.0x；火山 v3 unidirectional 的 speech_rate 语义，
+# 与上面 RTC 双向通道的 float 倍率 SPEECH_RATE 完全不同，勿混用）
+VOICE_TTS_SPEECH_RATE_BUBBLE = int(os.getenv("VOICE_TTS_SPEECH_RATE_BUBBLE", "0"))
+# 气泡朗读单请求最大字数（前端已按句分段，正常不会触发；0=不限）
+VOICE_TTS_MAX_CHARS = int(os.getenv("VOICE_TTS_MAX_CHARS", "3000"))
+# 流式帧聚合阈值：音频累计到该字节数才发一帧（≈1s @24kHz/64kbps；太小=碎帧断续）
+VOICE_TTS_CHUNK_BYTES = int(os.getenv("VOICE_TTS_CHUNK_BYTES", "8192"))
 VOICE_TTS_RESOURCE_ID = os.getenv("VOICE_TTS_RESOURCE_ID", "volc.service_type.10029")
 VOICE_LLM_MAX_TOKENS = int(os.getenv("VOICE_LLM_MAX_TOKENS", "1024"))
 VOICE_LLM_TEMPERATURE = float(os.getenv("VOICE_LLM_TEMPERATURE", "0.1"))

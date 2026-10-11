@@ -450,15 +450,51 @@ export async function voiceTtsStream(
   }
   const reader = res.body?.getReader()
   if (!reader) throw new Error('浏览器不支持流式播放')
+  // 帧协议（kind 1B + len 4B BE + payload）：0x01 音频 / 0x02 错误 / 0x00 结束；
+  // 首字节嗅探兼容旧后端裸 mp3（0xFF sync / 0x49 ID3）
+  let buf = new Uint8Array(0)
+  let frameMode: boolean | null = null
   let received = 0
+  let errored: string | null = null
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
-    if (value && value.byteLength > 0) {
-      received += value.byteLength
-      onFragment(new Blob([value], { type: 'audio/mpeg' }))
+    if (!value || value.byteLength === 0) continue
+    const merged = new Uint8Array(buf.length + value.byteLength)
+    merged.set(buf, 0)
+    merged.set(value, buf.length)
+    buf = merged
+    if (frameMode === null) {
+      frameMode = buf[0] !== 0xff && buf[0] !== 0x49
     }
+    if (!frameMode) {
+      // 旧后端裸 mp3：整体交给播放器（每段一个 Audio 由 MessageBubble 处理）
+      received += buf.byteLength
+      onFragment(new Blob([buf], { type: 'audio/mpeg' }))
+      buf = new Uint8Array(0)
+      continue
+    }
+    // 帧解析：半帧残留跨 read 续传
+    let pos = 0
+    while (pos + 5 <= buf.length) {
+      const kind = buf[pos]
+      if (kind !== 0x00 && kind !== 0x01 && kind !== 0x02) { pos += 1; continue }
+      const len = (buf[pos + 1] << 24) | (buf[pos + 2] << 16) | (buf[pos + 3] << 8) | buf[pos + 4]
+      if (len > 8 * 1024 * 1024) { pos += 1; continue }
+      const end = pos + 5 + len
+      if (end > buf.length) break  // 半帧
+      if (kind === 0x01 && len > 0) {
+        received += len
+        onFragment(new Blob([buf.slice(pos + 5, end)], { type: 'audio/mpeg' }))
+      } else if (kind === 0x02) {
+        try { errored = JSON.parse(new TextDecoder().decode(buf.slice(pos + 5, end))).message || '合成失败' } catch { errored = '语音合成失败' }
+      }
+      // kind 0x00 结束标记：继续读流（后面不应有数据，但不阻塞）
+      pos = end
+    }
+    buf = buf.slice(pos)
   }
+  if (errored) throw new Error(errored)
   if (received === 0) throw new Error('语音合成失败：未返回音频')
   onDone()
 }

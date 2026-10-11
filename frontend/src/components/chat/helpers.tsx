@@ -153,6 +153,51 @@ export function buildHistoryWithToolContext(messages: ChatMessage[]): { role: st
   return result
 }
 
+/** 朗读文本口语化：markdown 结构替换为口语占位、噪音符号剔除、标点归一（P6 语调优化） */
+export function toSpeechText(text: string): string {
+  let t = stripMarkdown(text)
+  // 代码块整体被 stripMarkdown 吃掉 → 用口语占位替代（原文先替换再 strip）
+  t = text
+    .replace(/```[\s\S]*?```/g, '（这里有一段代码）')
+    .replace(/`[^`]*`/g, '')
+  t = stripMarkdown(t)
+  // 表格残留行（含 | 分隔）→ 口语占位
+  t = t.split('\n').map((ln) => (/^\s*\|.*\|\s*$/.test(ln) ? '（这里有一张表格）' : ln)).join('\n')
+  // 裸 URL → （链接）
+  t = t.replace(/https?:\/\/[^\s)\]]+/g, '（链接）')
+  // emoji / 装饰符号剔除
+  t = t.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
+  // 连续标点归一
+  t = t.replace(/([。！？!?；;，,])\1+/g, '$1')
+  t = t.replace(/\s*\n+\s*/g, '。')  // 换行 → 句号停顿
+  t = t.replace(/。{2,}/g, '。')
+  // 句末缺标点补句号
+  const trimmed = t.trim().replace(/。$/g, '')
+  return trimmed ? trimmed.replace(/([^。！？!?；;])$/u, '$1。') : ''
+}
+
+/** 朗读分段：按句切分贪心合并到 ≤max 字（超长单句硬切），返回段落数组 */
+export function splitSpeechSegments(text: string, max = 200): string[] {
+  const sentences = text.split(/(?<=[。！？!?；;\n])/).map((s) => s.trim()).filter(Boolean)
+  const segments: string[] = []
+  let cur = ''
+  for (let s of sentences) {
+    while (s.length > max) {
+      if (cur) { segments.push(cur); cur = '' }
+      segments.push(s.slice(0, max))
+      s = s.slice(max)
+    }
+    if (cur.length + s.length > max) {
+      segments.push(cur)
+      cur = s
+    } else {
+      cur += s
+    }
+  }
+  if (cur) segments.push(cur)
+  return segments.length ? segments : [text.slice(0, max)]
+}
+
 export function timeAgo(dateStr: string): string {
   const now = new Date()
   const d = new Date(dateStr)

@@ -421,9 +421,12 @@ python -m agent.main                                  # 启动（统筹 + Claude
 ## Docker 部署
 
 ```bash
-cp .env.example .env  # 编辑生产环境变量
-docker-compose up -d   # 启动 MySQL + Redis + Milvus + 后端 + 前端(nginx:80)
+cp .env.example .env            # 编辑生产环境变量
+bash deploy/setup-docker.sh     # 仅首次：配置 Docker 镜像加速（国内拉取 node/nginx/mysql 必需）
+docker-compose up -d --build    # 启动 MySQL + Redis + Milvus + 后端 + 前端(nginx:80)
 ```
+
+> 首次部署必须跑一次 `bash deploy/setup-docker.sh`：国内服务器直连 docker.io 不稳定，脚本安装 `deploy/docker-daemon.json`（xuanyuan/1ms/daocloud 三源容错）并重启 Docker、测试拉取 node:18-alpine。后续更新部署只需 `git pull` + `docker compose up -d --build`。
 
 Nginx 配置（`deploy/nginx.conf`）已包含：WebSocket 升级支持、SSL 443 模板（备案后启用）、安全响应头、分级限流。备案完成后取消注释 SSL 块即可。
 

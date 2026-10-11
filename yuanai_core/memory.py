@@ -25,12 +25,9 @@ FOLD_SYSTEM_PROMPT = """你是用户记忆整理器：从一段对话中提取�
 
 
 def strip_meta(content: str) -> str:
-    """剥离 \x00META\x00{json}\x00 前缀（前端 encodeMsg 的持久化格式）"""
-    if isinstance(content, str) and content.startswith("\x00META\x00"):
-        end = content.find("\x00", 7)
-        if end != -1:
-            return content[end + 1:]
-    return content or ""
+    """剥离 \x00META\x00{json}\x00 前缀（信封协议在 message.py，此处委托）"""
+    from yuanai_core.core.message import split_meta
+    return split_meta(content)[1]
 
 
 def _clip(text: str, limit: int) -> str:

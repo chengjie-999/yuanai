@@ -76,19 +76,26 @@ async def delete_website(wid: int, request: Request):
 
 # ===================== 文件管理 =====================
 
+def _is_hidden_entry(rel_dir: str, name: str) -> bool:
+    """文件列表过滤：data 根级隐藏 '.' 开头条目（.yuan 记忆内部存储、
+    .pt_token.txt 令牌等敏感 dotfile 不对外暴露）；子层不隐藏"""
+    return not rel_dir and name.startswith(".")
+
+
 @router.get("/files")
 async def list_files(request: Request, path: str = ""):
     require_admin(request)
-    base = os.path.realpath(os.path.join(root_path(), "data"))
-    target = os.path.realpath(os.path.join(base, path))
-    if not target.startswith(base + os.sep) and target != base:
-        raise HTTPException(status_code=400, detail="路径越权")
+    path = (path or "").replace("\\", "/")
+    target = _resolve_in_data(path)
     if not os.path.exists(target):
         return {"path": path, "items": []}
     items = []
     for name in sorted(os.listdir(target)):
+        if _is_hidden_entry(path, name):
+            continue
         full = os.path.join(target, name)
-        rel = os.path.join(path, name) if path else name
+        # 正斜杠拼接（Windows 下 os.path.join 会产出 \ 脏路径）
+        rel = f"{path}/{name}" if path else name
         is_dir = os.path.isdir(full)
         size = 0 if is_dir else os.path.getsize(full)
         items.append({"name": name, "path": rel, "is_dir": is_dir, "size_kb": round(size / 1024, 1)})
@@ -99,10 +106,8 @@ async def list_files(request: Request, path: str = ""):
 async def read_file(request: Request, path: str = ""):
     """读取文件内容（图片返回 base64，HTML 走渲染预览，其余文本返回内容）"""
     require_admin(request)
-    base = os.path.realpath(os.path.join(root_path(), "data"))
-    target = os.path.realpath(os.path.join(base, path))
-    if not target.startswith(base + os.sep) and target != base:
-        raise HTTPException(status_code=400, detail="路径越权")
+    path = (path or "").replace("\\", "/")
+    target = _resolve_in_data(path)
     if not os.path.isfile(target):
         raise HTTPException(status_code=404, detail="文件不存在")
     ext = os.path.splitext(path)[1].lower()
@@ -158,10 +163,8 @@ async def read_file(request: Request, path: str = ""):
 async def serve_file_media(request: Request, path: str = ""):
     """音视频/PDF 流式播放（FileResponse 自带 Range 支持，可拖动进度条）"""
     require_admin(request)
-    base = os.path.realpath(os.path.join(root_path(), "data"))
-    target = os.path.realpath(os.path.join(base, path))
-    if not target.startswith(base + os.sep) and target != base:
-        raise HTTPException(status_code=400, detail="路径越权")
+    path = (path or "").replace("\\", "/")
+    target = _resolve_in_data(path)
     if not os.path.isfile(target):
         raise HTTPException(status_code=404, detail="文件不存在")
     ext = os.path.splitext(path)[1].lower()
@@ -179,7 +182,8 @@ async def serve_file_media(request: Request, path: str = ""):
 
 
 _PROTECTED_DATA_ROOTS = {"chat_images", "qimg", "datasets", "analysis", "planet",
-                          "logs", "aiprompt", "file", "crawl", "cases"}
+                          "logs", "aiprompt", "file", "crawl", "cases",
+                          ".yuan", "user_files"}
 
 
 def _is_protected_root(target: str) -> bool:
@@ -190,11 +194,16 @@ def _is_protected_root(target: str) -> bool:
 
 
 def _resolve_in_data(path: str):
-    """realpath 包含校验（文件管理所有写操作共用）；越权抛 400"""
+    """realpath 包含校验（文件管理读写共用）；越权抛 400；.yuan 记忆内部存储封禁 404"""
+    p = (path or "").replace("\\", "/")
     base = os.path.realpath(os.path.join(root_path(), "data"))
-    target = os.path.realpath(os.path.join(base, path))
+    target = os.path.realpath(os.path.join(base, p))
     if not (target == base or target.startswith(base + os.sep)):
         raise HTTPException(status_code=400, detail="路径越权")
+    # 记忆内部存储（data/.yuan/{uid}/）不对外暴露：列表已隐藏，此处防手构造 URL
+    rel = os.path.relpath(target, base)
+    if rel.split(os.sep)[0] == ".yuan":
+        raise HTTPException(status_code=404, detail="文件不存在")
     return target
 
 
@@ -292,10 +301,8 @@ async def delete_file(request: Request, path: str = ""):
 async def serve_file_html(request: Request, path: str = ""):
     """HTML 文件渲染预览（iframe 加载；S1.2 同款沙箱头防存储型 XSS）"""
     require_admin(request)
-    base = os.path.realpath(os.path.join(root_path(), "data"))
-    target = os.path.realpath(os.path.join(base, path))
-    if not target.startswith(base + os.sep) and target != base:
-        raise HTTPException(status_code=400, detail="路径越权")
+    path = (path or "").replace("\\", "/")
+    target = _resolve_in_data(path)
     if not os.path.isfile(target) or not path.lower().endswith(".html"):
         raise HTTPException(status_code=404, detail="文件不存在")
     from fastapi.responses import HTMLResponse

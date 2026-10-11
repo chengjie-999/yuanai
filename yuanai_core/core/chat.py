@@ -206,7 +206,7 @@ async def _deepseek_agent_stream(
                 else:
                     tc_args = tc_args_raw
 
-                yield {"type": "tool_start", "data": {"name": tc_name}}
+                yield {"type": "tool_start", "data": {"name": tc_name, "sender": "orchestrator"}}
 
                 tool_func = tools_by_name.get(tc_name)
                 if tool_func:
@@ -230,7 +230,7 @@ async def _deepseek_agent_stream(
 
                 yield {
                     "type": "tool_end",
-                    "data": {"name": tc_name, "output": clean_output},
+                    "data": {"name": tc_name, "output": clean_output, "sender": "orchestrator"},
                 }
 
                 messages.append({
@@ -276,14 +276,14 @@ async def stream_agent_events(
                     full_reasoning += rc
                     yield {"type": "reasoning", "data": rc}
             elif event["event"] == "on_tool_start":
-                yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具")}}
+                yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator"}}
             elif event["event"] == "on_tool_end":
                 output = event["data"].get("output", "")
                 img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
                 for img_url in img_urls:
                     yield {"type": "image", "data": img_url}
                 clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
-                yield {"type": "tool_end", "data": {"name": event.get("name", "未知工具"), "output": clean_output}}
+                yield {"type": "tool_end", "data": {"name": event.get("name", "未知工具"), "output": clean_output, "sender": "orchestrator"}}
         yield {
             "type": "done",
             "data": {"display_content": full_response, "reasoning_content": full_reasoning},
@@ -356,14 +356,14 @@ async def stream_agent_with_messages(
                     full_reasoning += rc
                     yield {"type": "reasoning", "data": rc}
             elif event["event"] == "on_tool_start":
-                yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具")}}
+                yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator"}}
             elif event["event"] == "on_tool_end":
                 output = event["data"].get("output", "")
                 img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
                 for img_url in img_urls:
                     yield {"type": "image", "data": img_url}
                 clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
-                yield {"type": "tool_end", "data": {"name": event.get("name", "未知工具"), "output": clean_output}}
+                yield {"type": "tool_end", "data": {"name": event.get("name", "未知工具"), "output": clean_output, "sender": "orchestrator"}}
         yield {
             "type": "done",
             "data": {"display_content": full_response, "reasoning_content": full_reasoning},
@@ -393,7 +393,7 @@ async def stream_agent_with_inject(
                         full_reasoning += chunk.reasoning_content
                         yield {"type": "reasoning", "data": chunk.reasoning_content}
                 elif event["event"] == "on_tool_start":
-                    yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具")}}
+                    yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator"}}
                 elif event["event"] == "on_tool_end":
                     name = event.get("name", "未知工具")
                     tool_names.add(name)

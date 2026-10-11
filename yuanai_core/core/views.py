@@ -115,6 +115,10 @@ def view_for(agent: str, messages: List[dict], *,
         if m.get("tool_call_id"):
             item["tool_call_id"] = m["tool_call_id"]
 
+        if role == "system":
+            out.append(item)  # 系统提示词原样透传（不能进摘要/前缀规则）
+            continue
+
         if role == "user":
             if not env.recipient or env.recipient == agent:
                 pass  # 用户广播或对我说 → 原样

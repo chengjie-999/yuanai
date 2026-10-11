@@ -84,3 +84,43 @@ class TestChatSave:
             "content": "你好，这是一条测试消息",
         }, headers=auth_headers)
         assert resp.status_code == 200
+
+
+class TestHistoryEnvelope:
+    """信封协议纯函数：_fix_history_for_api 透传 + _env_of（零 LLM 零 DB）"""
+
+    def test_env_of_keeps_non_defaults(self):
+        from api.v1.chat.router import _env_of
+        assert _env_of({"sender": "analysis", "recipient": "orchestrator",
+                        "turn": 3, "type": "summary", "content": "x"}) == {
+            "sender": "analysis", "recipient": "orchestrator",
+            "turn": 3, "type": "summary"}
+        assert _env_of({"content": "x"}) == {}
+        # turn=0 / type=chat（默认值）不保留
+        assert _env_of({"turn": 0, "type": "chat"}) == {}
+
+    def test_fix_history_passthrough_envelope(self):
+        from api.v1.chat.router import _fix_history_for_api
+        history = [
+            {"role": "user", "content": "帮我分析"},
+            {"role": "assistant", "content": "好的", "sender": "orchestrator",
+             "tool_calls": [{"name": "delegate_to_analysis_agent", "arguments": "{}"}]},
+            {"role": "tool", "content": "分析结果", "sender": "analysis",
+             "type": "tool_result", "tool_call_id": "hist_0"},
+        ]
+        fixed = _fix_history_for_api(history)
+        # tool 扁平化为 user，但信封透传
+        assert fixed[2]["role"] == "user"
+        assert fixed[2]["sender"] == "analysis"
+        assert fixed[2]["type"] == "tool_result"
+        # assistant 带 tool_calls 的拍平保留信封
+        assert fixed[1]["sender"] == "orchestrator"
+        assert "tool_calls" not in fixed[1]
+        # user 原样
+        assert fixed[0] == history[0]
+
+    def test_fix_history_no_envelope_unchanged(self):
+        from api.v1.chat.router import _fix_history_for_api
+        history = [{"role": "user", "content": "hi"},
+                   {"role": "assistant", "content": "hello"}]
+        assert _fix_history_for_api(history) == history

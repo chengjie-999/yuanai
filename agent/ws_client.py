@@ -139,6 +139,7 @@ class AgentWSClient:
             reasoning_effort=msg.get("reasoning_effort", "low"),
             target_agent=msg.get("target_agent", ""),
             decision=msg.get("decision"),
+            envelopes=msg.get("envelopes", []),  # 信封协议（易漏点：手工重建必须显式补）
         )
 
         # 设置当前用户，使 memory / knowledge 等工具能正确隔离用户数据

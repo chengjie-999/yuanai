@@ -52,6 +52,15 @@ def get_orchestrator_prompt() -> str:
     )
 
 
+def _tool_sender(name: str) -> str:
+    """工具归属推断（信封协议）：delegate_to_xxx_agent → xxx；其余 → orchestrator"""
+    if name.startswith("delegate_to_") and name.endswith("_agent"):
+        skill = name[len("delegate_to_"):-len("_agent")]
+        if skill in ("analysis", "collection", "automation", "claude"):
+            return skill
+    return "orchestrator"
+
+
 def _make_delegate_tool(skill_config, orch):
     """为每个 Skill 动态创建一个 delegate 工具（闭包安全：skill_config 通过参数绑定）"""
     from langchain_core.tools import StructuredTool
@@ -61,14 +70,19 @@ def _make_delegate_tool(skill_config, orch):
     skill_desc = skill_config.description
 
     def delegate_fn(prompt: str) -> str:
-        from yuanai_core.core.schemas import progress
+        from yuanai_core.core.schemas import progress, sender_event
         from yuanai_core.rag import current_request_id
         orch._emit_activity(f"委派{skill_display}", prompt[:80])
         agent = orch._get_or_create_agent(skill_config)
-        # 脚本执行进度回调 → 云端 SSE progress 事件（10s 心跳，重置 300s 超时）
+        # 信封协议：声明后续 progress 气泡归属子 Agent，完成后复位统筹
         rid = current_request_id.get() or ""
+        orch._emit_event(sender_event(skill_name, rid))
+        # 脚本执行进度回调 → 云端 SSE progress 事件（10s 心跳，重置 300s 超时）
         progress_cb = lambda cur, total, msg: orch._emit_event(progress(cur, total, msg, rid))  # noqa: E731
-        result = agent.run(prompt, progress_cb=progress_cb)
+        try:
+            result = agent.run(prompt, progress_cb=progress_cb)
+        finally:
+            orch._emit_event(sender_event("orchestrator", rid))
         orch._emit_activity(f"{skill_display}已完成", "")
         return result
 
@@ -321,18 +335,24 @@ class Orchestrator:
             yield error_event(f"{cfg.display_name}未启用（请在托盘菜单开启对应 Agent 开关）", rid)
             return
         agent = self._get_or_create_agent(cfg)
-        prompt = self._extract_latest_message(req.messages)
+        # 视图滤波：子 Agent 只看到定向上下文（别人的话给摘要，自己的身份清楚）
+        from yuanai_core.core.views import view_for, compose_target_prompt
+        view = view_for(skill_name, req.messages, envelopes=getattr(req, "envelopes", []) or [])
+        prompt = compose_target_prompt(view) or self._extract_latest_message(req.messages)
         self._emit_activity(f"委派{cfg.display_name}", prompt[:80])
-        from yuanai_core.core.schemas import progress
+        from yuanai_core.core.schemas import progress, sender_event
         from yuanai_core.rag import current_request_id
         rid_ctx = current_request_id.get() or ""
         progress_cb = lambda cur, total, msg: self._emit_event(progress(cur, total, msg, rid_ctx))  # noqa: E731
+        self._emit_event(sender_event(skill_name, rid_ctx))
         try:
             result = await asyncio.to_thread(agent.run, prompt, progress_cb=progress_cb)
         except Exception as e:
+            self._emit_event(sender_event("orchestrator", rid_ctx))
             logger.error("定向分派 %s 异常: %s", skill_name, e, exc_info=True)
             yield error_event(str(e), rid)
             return
+        self._emit_event(sender_event("orchestrator", rid_ctx))
         self._emit_activity(f"{cfg.display_name}已完成", "")
         events, clean = self._extract_tool_output(result, req.session_id, rid)
         for ev in events:
@@ -344,10 +364,20 @@ class Orchestrator:
         """两级路由：意图分类 → 动态加载工具子集 → 流式执行"""
         rid = req.request_id
 
-        # 构建消息列表
+        # 构建消息列表：视图滤波（统筹视角）——别人的话摘要/前缀、自己的话原样；
+        # 信封全空时 view_for 退化直通（= 旧行为）。输出只取 role/content/tool_calls，
+        # 剥掉信封键防 LangGraph 校验意外。
+        from yuanai_core.core.views import view_for
+        view = view_for("orchestrator", req.messages, self_senders={"local"},
+                        envelopes=getattr(req, "envelopes", []) or [])
         input_messages: List[Dict[str, Any]] = []
-        for m in req.messages:
-            input_messages.append(m)
+        for v in view:
+            item = {"role": v.get("role", ""), "content": v.get("content", "")}
+            if v.get("tool_calls"):
+                item["tool_calls"] = v["tool_calls"]
+            if v.get("tool_call_id"):
+                item["tool_call_id"] = v["tool_call_id"]
+            input_messages.append(item)
 
         # ---- Tier 1: 意图分类（零 API 成本）----
         latest_msg = self._extract_latest_message(input_messages)
@@ -426,14 +456,16 @@ class Orchestrator:
                         yield reasoning(rc, rid)
 
                 elif kind == "on_tool_start":
-                    yield ev_tool_start(event.get("name", "未知工具"), rid)
+                    name = event.get("name", "未知工具")
+                    yield ev_tool_start(name, rid, sender=_tool_sender(name))
 
                 elif kind == "on_tool_end":
+                    name = event.get("name", "未知工具")
                     output = event["data"].get("output", "")
                     events, clean_output = self._extract_tool_output(output, req.session_id, rid)
                     for ev in events:
                         yield ev
-                    yield ev_tool_end(event.get("name", "未知工具"), clean_output, rid)
+                    yield ev_tool_end(name, clean_output, rid, sender=_tool_sender(name))
 
             yield done(full_response, full_reasoning, rid)
         except Exception as e:

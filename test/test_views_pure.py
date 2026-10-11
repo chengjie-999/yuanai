@@ -125,3 +125,14 @@ def test_compose_target_prompt():
 def test_compose_target_prompt_empty():
     assert compose_target_prompt([]) == ""
     assert compose_target_prompt([{"role": "user", "content": "只有一条"}]) == "只有一条"
+
+
+def test_system_message_passthrough():
+    """system 消息原样透传（不能进摘要/前缀规则被截断）"""
+    msgs = [
+        {"role": "system", "content": "你是小元AI的统筹助手……" * 10},
+        {"role": "user", "content": "帮我分析"},
+    ]
+    view = view_for("orchestrator", msgs)
+    assert view[0]["role"] == "system"
+    assert view[0]["content"] == msgs[0]["content"]

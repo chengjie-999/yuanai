@@ -113,23 +113,54 @@ async def _bridge_sse(queue: asyncio.Queue, request_id: str):
         cleanup_pending(request_id)
 
 
+# 信封四字段（视图滤波在 views.py；此处保证扁平化时不丢身份）
+_ENVELOPE_KEEP = ("sender", "recipient", "turn", "type")
+_ENVELOPE_DEFAULTS = {"sender": "", "recipient": "", "turn": 0, "type": "chat"}
+
+
+def _env_of(m: dict) -> dict:
+    """消息的信封字段子集（等于默认值不保留，payload 更小）"""
+    return {k: m[k] for k in _ENVELOPE_KEEP
+            if k in m and m[k] != _ENVELOPE_DEFAULTS[k]}
+
+
 def _fix_history_for_api(history: list) -> list:
     """清洗历史：工具调用结构（tool_calls/tool）统一扁平化为普通文本。
 
     云端 API 对 tool 消息有严格配对校验（400: 'Messages with role tool must be a
     response to a preceding message with tool_calls'），而历史里的工具上下文用文本
     表达已足够让模型理解，故全部转为文本，彻底规避结构校验问题。
+    信封字段（sender/recipient/turn/type）在扁平化时透传。
     """
     fixed = []
     for m in history:
         role = m.get("role", "")
         if role == "tool":
-            fixed.append({"role": "user", "content": f"[工具结果] {str(m.get('content', ''))[:2000]}"})
+            fixed.append({"role": "user", "content": f"[工具结果] {str(m.get('content', ''))[:2000]}",
+                          **_env_of(m)})
         elif role == "assistant" and m.get("tool_calls"):
-            fixed.append({"role": "assistant", "content": m.get("content", "")})
+            fixed.append({"role": "assistant", "content": m.get("content", ""),
+                          **_env_of(m)})
         else:
             fixed.append(m)
     return fixed
+
+
+def _langchain_from_items(items: list, prompt: str, images, system_content: str) -> list:
+    """items（信封视图输出：role/content/tool_calls）→ langchain input_messages"""
+    history = []
+    for v in items:
+        role = v.get("role", "")
+        if role == "user":
+            history.append(HumanMessage(content=v.get("content", "")))
+        elif role == "assistant":
+            history.append(AIMessage(content=v.get("content", "")))
+        elif role == "tool":
+            history.append(ToolMessage(content=v.get("content", ""),
+                                       tool_call_id=v.get("tool_call_id", "")))
+    return build_input_messages(prompt=prompt, images_base64=images,
+                                history=history,
+                                system_message=SystemMessage(content=system_content))
 
 
 @router.post("/stream")
@@ -151,22 +182,36 @@ async def chat_stream(req: ChatRequest, request: Request):
             from config.settings import VISION_MODEL
             model = VISION_MODEL
 
+        target = getattr(req, "target_agent", "") or ""
+
         history = []
+        # 信封数组：与 history 锁步构建（system 首项 + 截断说明 + 历史各项 + 末位 prompt 项），
+        # 再随 payload 传给本地 Agent（build_input_messages 会重建 dict 丢附加键，
+        # 信封必须走并行数组——message.py 协议）
+        envelopes = [{}]  # index 0 = system
         # 上下文护栏：历史只保留最近 60 条——更早的对话已由记忆机制折叠进
         # 长期记忆（system prompt 已注入），避免主对话无限增长打爆上下文
         raw_history = req.history[-60:] if len(req.history) > 60 else req.history
-        if len(req.history) > 60:
+        truncated = len(req.history) > 60
+        if truncated:
             history.append(HumanMessage(content="（更早的对话已整理进长期记忆，见上方用户信息）"))
+            envelopes.append({})
+        turn = 0
         for m in _fix_history_for_api(raw_history):
             msg_role = m.get("role", "")
             content = m.get("content", "")
             if msg_role == "user":
                 history.append(HumanMessage(content=content))
+                turn += 1
             elif msg_role == "assistant":
                 history.append(AIMessage(content=content))
             elif msg_role == "tool":
                 # 工具执行结果消息 — 保留在上下文中让模型知晓历史工具调用
                 history.append(ToolMessage(content=content, tool_call_id=m.get("tool_call_id", "")))
+            envelopes.append(_env_of(m))
+        # 末位 prompt 项信封（新用户消息：sender=user，定向 target，轮次=历史 user 数+1）
+        envelopes.append({"sender": "user", "recipient": target,
+                          "turn": turn + 1, "type": "chat"})
 
         system_prompt = req.system_prompt
 
@@ -206,7 +251,9 @@ async def chat_stream(req: ChatRequest, request: Request):
                 # 聊天框推理强度开关（low/high）透传本地 Agent
                 "reasoning_effort": req.reasoning_effort if req.reasoning_effort in ("low", "medium", "high") else "low",
                 # @指定智能体（群聊式定向委派；空=统筹自行路由）
-                "target_agent": getattr(req, "target_agent", "") or "",
+                "target_agent": target,
+                # 消息信封（与 messages 等长，本地 Agent 视图滤波用）
+                "envelopes": envelopes,
             }
             bridged_request_id = await forward_to_agent(user_id, agent_chat_request)
 
@@ -217,10 +264,18 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         # --- 回退：云端直接调用 LLM ---
         logger.info("chat/stream → 云端直接调用 (user=%s, agent offline)", user_id)
+        # 视图滤波：云端直连（或 Agent 离线回退）按 viewer 身份裁剪历史
+        # （信封全空时 view_for 退化为直通 = 旧行为）
+        from yuanai_core.core.views import view_for
+        viewer = target or "orchestrator"
+        fixed_items = _fix_history_for_api(raw_history)
+        fixed_envs = envelopes[1 + (1 if truncated else 0):-1]
+        view = view_for(viewer, fixed_items, envelopes=fixed_envs)
+        input_messages = _langchain_from_items(view, req.prompt, req.images, system_prompt)
+
         # Agent 离线时没有 delegate 工具，修正系统提示。
         # 记忆机制修复：原来整段覆盖会丢掉已注入的用户记忆——改为前置拼接
         offline_prompt = "你是小元AI助手，可以直接使用工具完成任务。可用的工具包括：list_datasets(列出数据集)、preview_dataset(预览)、analyze_dataset(分析)、fetch_url(抓取网页)、parse_html(解析HTML)、get_today_temperature(天气)、calculate_sum(计算)、get_user_memory(用户记忆)、retrieve_planet_knowledge(知识星球检索) 等。直接用工具处理用户请求，简洁回复。任务完成或对话结束时，用表格总结本次完成了什么。"
-        target = getattr(req, "target_agent", "") or ""
         if target and target in ("analysis", "collection", "automation", "claude"):
             role_hint = {"analysis": "数据分析", "collection": "数据采集",
                          "automation": "自动化", "claude": "Claude Code"}[target]
@@ -272,13 +327,20 @@ async def claude_stream(req: ChatRequest, request: Request):
             model = VISION_MODEL
 
         history = []
-        for m in _fix_history_for_api(req.history):
+        envelopes = [{}]  # 与 /stream 同构：system 首项 + 历史 + 末位 prompt 项
+        fixed_items = _fix_history_for_api(req.history)
+        turn = 0
+        for m in fixed_items:
             if m.get("role") == "user":
                 history.append(HumanMessage(content=m.get("content", "")))
+                turn += 1
             elif m.get("role") == "assistant":
                 history.append(AIMessage(content=m.get("content", "")))
             elif m.get("role") == "tool":
                 history.append(ToolMessage(content=m.get("content", ""), tool_call_id=m.get("tool_call_id", "")))
+            envelopes.append(_env_of(m))
+        envelopes.append({"sender": "user", "recipient": "claude",
+                          "turn": turn + 1, "type": "chat"})
 
         input_messages = build_input_messages(
             prompt=req.prompt,
@@ -305,6 +367,7 @@ async def claude_stream(req: ChatRequest, request: Request):
                 "images": req.images,
                 "mode": "claude",  # 本机 Agent 的 claude 分支
                 "decision": req.decision,  # 审批决议原样转发（无则 None）
+                "envelopes": envelopes,
             }
             bridged_request_id = await forward_to_agent(target_agent_id, agent_chat_request)
             if bridged_request_id:
@@ -315,6 +378,10 @@ async def claude_stream(req: ChatRequest, request: Request):
 
         # 回退：云端直接调用 LLM
         logger.info("chat/claude-stream → Claude 桥离线，云端回退 (user=%s)", user_id)
+        # 视图滤波：以 Claude 身份裁剪历史（信封全空退化为直通）
+        from yuanai_core.core.views import view_for
+        view = view_for("claude", fixed_items, envelopes=envelopes[1:-1])
+        input_messages = _langchain_from_items(view, req.prompt, req.images, req.system_prompt)
         offline_prompt = ("你是小元AI助手（Claude Code 桥接当前离线，已切换云端模式）。"
                           "可以直接使用工具完成任务。简洁回复，任务完成时用表格总结本次完成了什么。")
         input_messages[0]["content"] = offline_prompt

@@ -299,7 +299,7 @@ class ClaudeBridgeHandler:
                         if b.get("type") == "tool_use":
                             name = b.get("name", "unknown")
                             tool_id_map[b.get("id", "")] = name
-                            yield ev_tool_start(name, rid)
+                            yield ev_tool_start(name, rid, sender="claude")
                         elif b.get("type") == "text" and not saw_delta:
                             # 无流式增量时降级补发完整文本
                             if b.get("text"):
@@ -317,7 +317,7 @@ class ClaudeBridgeHandler:
                                 output = f"[执行出错] {output}"
                             if len(output) > MAX_TOOL_OUTPUT:
                                 output = output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
-                            yield ev_tool_end(name, output, rid)
+                            yield ev_tool_end(name, output, rid, sender="claude")
 
                 elif msg_type == "result":
                     result_obj = obj

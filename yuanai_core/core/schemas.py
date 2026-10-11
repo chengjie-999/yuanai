@@ -23,6 +23,9 @@ class ChatRequest:
     reasoning_effort: str = "low"  # 推理强度（聊天框开关）：low / high
     target_agent: str = ""  # @指定智能体：analysis/collection/automation/claude/orchestrator
     decision: Optional[Dict[str, Any]] = None  # 审批决议（Claude 桥接）：{"decision_id", "approve"} | None
+    # 消息信封（与 messages 等长对齐，i 位置 = 第 i 条消息的身份元数据）：
+    # {"sender","recipient","turn","type"}；空 list = 旧前端无信封（视图滤波退化直通）
+    envelopes: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.request_id:
@@ -55,12 +58,19 @@ def reasoning(text: str, request_id: str = "") -> AgentEvent:
     return AgentEvent(type="reasoning", data=text, request_id=request_id)
 
 
-def tool_start(name: str, request_id: str = "") -> AgentEvent:
-    return AgentEvent(type="tool_start", data={"name": name}, request_id=request_id)
+def tool_start(name: str, request_id: str = "", sender: str = "") -> AgentEvent:
+    """工具开始事件；sender = 工具归属 Agent（信封协议，空串=旧行为前端兜底推断）"""
+    data = {"name": name}
+    if sender:
+        data["sender"] = sender
+    return AgentEvent(type="tool_start", data=data, request_id=request_id)
 
 
-def tool_end(name: str, output: str, request_id: str = "") -> AgentEvent:
-    return AgentEvent(type="tool_end", data={"name": name, "output": output}, request_id=request_id)
+def tool_end(name: str, output: str, request_id: str = "", sender: str = "") -> AgentEvent:
+    data = {"name": name, "output": output}
+    if sender:
+        data["sender"] = sender
+    return AgentEvent(type="tool_end", data=data, request_id=request_id)
 
 
 def image_event(data_url: str, request_id: str = "") -> AgentEvent:

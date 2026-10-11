@@ -32,11 +32,13 @@ def generate_title(session_id: str, messages: list) -> bool:
     """同步执行体（可测试）：从对话生成标题并落库。返回是否更新。"""
     if len(messages) < 2:
         return False
-    first_msg = (messages[0].get("content") or "").strip()
+    # 剥 META 信封前缀（防 \x00META\x00 乱码进标题提示词）
+    from yuanai_core.core.message import strip as _strip
+    first_msg = _strip(messages[0].get("content") or "").strip()
     last_user = ""
     for m in reversed(messages):
-        if m.get("role") == "user" and (m.get("content") or "").strip():
-            last_user = m["content"].strip()
+        if m.get("role") == "user" and _strip(m.get("content") or "").strip():
+            last_user = _strip(m["content"]).strip()
             break
 
     from db.session import get_db, ChatSession

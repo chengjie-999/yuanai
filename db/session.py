@@ -33,13 +33,17 @@ class ChatSession(Base):
 
 
 class AIChat(Base):
-    """AI 聊天记录表模型"""
+    """AI 聊天记录表模型（信封四列：多智能体群聊身份协议，迁移 0014）"""
     __tablename__ = 'ai_chat'
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String(36), nullable=False, index=True)
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
     images = Column(Text, nullable=True)
+    sender = Column(String(32), default='')          # 说话人：user/orchestrator/analysis/...
+    recipient = Column(String(32), default='')       # '' = 广播；否则定向
+    turn = Column(Integer, default=0)                # 1-based 轮次
+    type = Column(String(16), default='chat')        # chat/tool_call/tool_result/summary/note
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -393,16 +397,28 @@ class AgentDatabase:
     # --------------------------------------------------------------------------
     # 聊天记录操作
     # --------------------------------------------------------------------------
-    def add_chat(self, session_id: str, role: str, content: str):
-        """添加一条聊天记录"""
+    def add_chat(self, session_id: str, role: str, content: str, images: list = None,
+                 sender: str = None):
+        """添加一条聊天记录（信封：sender 缺省按 role 推导；turn 会话内 user 计数+1）"""
         session = self.Session()
         try:
-            chat = AIChat(session_id=session_id, role=role, content=content)
+            if not sender:
+                sender = "user" if role == "user" else "orchestrator"
+            # turn 推导：当前会话 user 消息数 + 1（user 与后续 assistant 同轮）
+            turn = session.query(AIChat).filter_by(session_id=session_id, role="user").count()
+            if role == "user":
+                turn += 1
+            chat = AIChat(session_id=session_id, role=role, content=content,
+                          sender=sender, turn=turn)
+            if images:
+                chat.images = json.dumps(images, ensure_ascii=False)
             session.add(chat)
             session.flush()
             count = session.query(AIChat).filter_by(session_id=session_id).count()
             if role == "user" and count == 1:
-                title = content[:80] + ("..." if len(content) > 80 else "")
+                from yuanai_core.core.message import strip as _strip_meta
+                plain = _strip_meta(content)
+                title = plain[:80] + ("..." if len(plain) > 80 else "")
                 session.query(ChatSession).filter_by(session_id=session_id).update(
                     {"title": title, "update_time": func.now()}
                 )
@@ -415,11 +431,14 @@ class AgentDatabase:
             session.close()
 
     def get_chats(self, session_id: str) -> list:
-        """获取指定会话的消息"""
+        """获取指定会话的消息（含信封四列；Redis 旧缓存缺键时前端按缺省处理）"""
         session = self.Session()
         try:
             chats = session.query(AIChat).filter_by(session_id=session_id).order_by(AIChat.id).all()
-            result = [{"role": c.role, "content": c.content, "create_time": str(c.create_time)} for c in chats]
+            result = [{"role": c.role, "content": c.content,
+                       "sender": c.sender or "", "recipient": c.recipient or "",
+                       "turn": c.turn or 0, "type": c.type or "chat",
+                       "create_time": str(c.create_time)} for c in chats]
             for i, c in enumerate(chats):
                 if c.images:
                     try:

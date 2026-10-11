@@ -528,9 +528,18 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
                 AIChatFeedback.session_id == req.session_id,
                 AIChatFeedback.message_index >= len(req.messages),
             ).delete(synchronize_session=False)
+            # 信封落列：turn 兜底补齐（旧客户端无信封时按 user 计数推导）
+            from yuanai_core.core.message import assign_turns
+            assign_turns(req.messages)
             count = 0
             for msg in req.messages:
-                record = AIChat(session_id=req.session_id, role=msg["role"], content=msg["content"])
+                record = AIChat(
+                    session_id=req.session_id, role=msg["role"], content=msg["content"],
+                    sender=msg.get("sender") or ("user" if msg["role"] == "user" else "orchestrator"),
+                    recipient=msg.get("recipient") or "",
+                    turn=msg.get("turn") or 0,
+                    type=msg.get("type") or "chat",
+                )
                 if msg.get("images"):
                     # data: URL 是新的需要保存；/api/v1/chat/image/ 是已保存的跳过
                     saved = []

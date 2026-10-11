@@ -18,8 +18,10 @@ FROM nginx:1.27-alpine
 # 创建 SSL 目录（备案后挂载证书）
 RUN mkdir -p /etc/nginx/ssl
 
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
-# S2.1：安全头片段（nginx.conf 内 include 引用）
+# 自包含主配置（覆盖 /etc/nginx/nginx.conf，不依赖基础镜像 conf.d/http.d 布局——
+# 1.27-alpine 新版镜像配置目录改 http.d 曾导致片段式配置被忽略、"点击下载 .htm" 故障）
+COPY deploy/frontend-nginx.conf /etc/nginx/nginx.conf
+# S2.1：安全头片段（主配置内 include 引用）
 COPY deploy/snippets/ /etc/nginx/snippets/
 COPY --from=builder /app/dist /usr/share/nginx/html
 

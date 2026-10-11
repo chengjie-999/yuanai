@@ -428,7 +428,7 @@ docker-compose up -d --build    # 启动 MySQL + Redis + Milvus + 后端 + 前�
 
 > 首次部署必须跑一次 `bash deploy/setup-docker.sh`：国内服务器直连 docker.io 不稳定，脚本安装 `deploy/docker-daemon.json`（xuanyuan/1ms/daocloud 三源容错）并重启 Docker、测试拉取 node:18-alpine。后续更新部署只需 `git pull` + `docker compose up -d --build`。
 
-Nginx 配置（`deploy/nginx.conf`）已包含：WebSocket 升级支持、SSL 443 模板（备案后启用）、安全响应头、分级限流。备案完成后取消注释 SSL 块即可。
+Nginx 配置（`deploy/frontend-nginx.conf`，**自包含主配置**，COPY 到镜像内 `/etc/nginx/nginx.conf`）已包含：WebSocket 升级支持、SSL 443、安全响应头、分级限流、SPA 回退与 mime.types。`deploy/nginx.conf` 为历史片段式版本，勿再引用。
 
 > 安全响应头收口在 `deploy/snippets/security-headers.conf`（CSP 先 Report-Only 观察）/`sandbox-headers.conf`（iframe 端点）。nginx 继承规则：location 内出现任何 `add_header` 会使父级头全部失效，静态资源 location 必须 include 补回。
 

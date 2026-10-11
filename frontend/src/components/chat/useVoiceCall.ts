@@ -41,6 +41,7 @@ export function useVoiceCall(ctx: {
   }
 
   // 语音转录：持久化锚定通话会话；UI 仅追加到通话所属会话视图；loading 期间进队列
+  // 信封协议：assistant 转录补 sender=orchestrator（模型回复身份），user 无 sender
   const handleVoiceTranscript = (role: 'user' | 'assistant', content: string) => {
     const sid = voiceSessionRef.current
     if (ctx.loadingRef.current) {
@@ -49,7 +50,7 @@ export function useVoiceCall(ctx: {
     }
     if (sid) voiceMessage(sid, role, content)
     if (sid && sid !== ctx.sidRef.current) return  // 用户切走了：只落库，展示等切回后 loadMessages 出现
-    ctx.setMessages((prev) => [...prev, { role, content }])
+    ctx.setMessages((prev) => [...prev, { role, content, ...(role === 'assistant' ? { sender: 'orchestrator' as const } : {}) }])
   }
 
   // 文字流结束：把暂存的语音转录并入保存快照（进入 /chat/save 全量替换，避免被抹掉）
@@ -58,7 +59,7 @@ export function useVoiceCall(ctx: {
     if (!queued.length) return msgs
     const sid = voiceSessionRef.current
     if (sid === ctx.sidRef.current) {
-      const withFlush = [...msgs, ...queued.map((q) => ({ role: q.role, content: q.content }))]
+      const withFlush = [...msgs, ...queued.map((q) => ({ role: q.role, content: q.content, ...(q.role === 'assistant' ? { sender: 'orchestrator' as const } : {}) }))]
       ctx.setMessages(withFlush)
       return withFlush
     }

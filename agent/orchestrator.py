@@ -70,19 +70,15 @@ def _make_delegate_tool(skill_config, orch):
     skill_desc = skill_config.description
 
     def delegate_fn(prompt: str) -> str:
-        from yuanai_core.core.schemas import progress, sender_event
+        from yuanai_core.core.schemas import progress
         from yuanai_core.rag import current_request_id
         orch._emit_activity(f"委派{skill_display}", prompt[:80])
         agent = orch._get_or_create_agent(skill_config)
-        # 信封协议：声明后续 progress 气泡归属子 Agent，完成后复位统筹
+        # 身份由 tool_start/tool_end 事件自带 sender 承担（信封协议），无需 sender_event
         rid = current_request_id.get() or ""
-        orch._emit_event(sender_event(skill_name, rid))
         # 脚本执行进度回调 → 云端 SSE progress 事件（10s 心跳，重置 300s 超时）
         progress_cb = lambda cur, total, msg: orch._emit_event(progress(cur, total, msg, rid))  # noqa: E731
-        try:
-            result = agent.run(prompt, progress_cb=progress_cb)
-        finally:
-            orch._emit_event(sender_event("orchestrator", rid))
+        result = agent.run(prompt, progress_cb=progress_cb)
         orch._emit_activity(f"{skill_display}已完成", "")
         return result
 
@@ -335,24 +331,22 @@ class Orchestrator:
             yield error_event(f"{cfg.display_name}未启用（请在托盘菜单开启对应 Agent 开关）", rid)
             return
         agent = self._get_or_create_agent(cfg)
-        # 视图滤波：子 Agent 只看到定向上下文（别人的话给摘要，自己的身份清楚）
+        # 视图滤波：子 Agent 只看到定向上下文（别人的话给摘要，自己的身份清楚）；
+        # 整条流的身份由前端占位气泡 sender=target 承担，无需 sender_event
         from yuanai_core.core.views import view_for, compose_target_prompt
         view = view_for(skill_name, req.messages, envelopes=getattr(req, "envelopes", []) or [])
         prompt = compose_target_prompt(view) or self._extract_latest_message(req.messages)
         self._emit_activity(f"委派{cfg.display_name}", prompt[:80])
-        from yuanai_core.core.schemas import progress, sender_event
+        from yuanai_core.core.schemas import progress
         from yuanai_core.rag import current_request_id
         rid_ctx = current_request_id.get() or ""
         progress_cb = lambda cur, total, msg: self._emit_event(progress(cur, total, msg, rid_ctx))  # noqa: E731
-        self._emit_event(sender_event(skill_name, rid_ctx))
         try:
             result = await asyncio.to_thread(agent.run, prompt, progress_cb=progress_cb)
         except Exception as e:
-            self._emit_event(sender_event("orchestrator", rid_ctx))
             logger.error("定向分派 %s 异常: %s", skill_name, e, exc_info=True)
             yield error_event(str(e), rid)
             return
-        self._emit_event(sender_event("orchestrator", rid_ctx))
         self._emit_activity(f"{cfg.display_name}已完成", "")
         events, clean = self._extract_tool_output(result, req.session_id, rid)
         for ev in events:

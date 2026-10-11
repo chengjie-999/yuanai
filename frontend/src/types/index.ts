@@ -1,3 +1,6 @@
+/** 消息类型（信封协议；META 短键 ty，落库列 type） */
+export type MsgType = 'chat' | 'tool_call' | 'tool_result' | 'summary' | 'note'
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -6,7 +9,11 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   reasoning?: string
   reasoningTime?: number
-  sender?: 'orchestrator' | 'local' | 'analysis' | 'collection' | 'automation' | 'claude' | 'planet'
+  sender?: 'orchestrator' | 'local' | 'analysis' | 'collection' | 'automation' | 'claude' | 'planet' | 'user'
+  // 信封字段（多智能体群聊身份协议；META 短键 rp/tn/ty，与后端 message.py 对偶）
+  recipient?: string        // "" = 广播；否则定向（@agent）
+  turn?: number             // 1-based 轮次
+  msgType?: MsgType         // 避免与 DOM/TS 的 type 概念冲突，字段名用 msgType
   pageLink?: string
   progress?: { current: number; total: number; message?: string }
 }

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { ChatMessage } from '../../types'
 import { API_BASE, getToken } from '../../api'
-import { AGENT_CONFIG } from '../../config/agents'
 
 export type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean }
 
@@ -88,54 +87,66 @@ export function encodeMsg(m: any) {
   if (m.toolCalls?.length) meta.t = m.toolCalls
   if (m.reasoning) meta.r = m.reasoning
   if (m.pageLink) meta.p = m.pageLink
+  // 信封新增短键（与后端 message.py 对偶）：recipient→rp / turn→tn / msgType→ty
+  if (m.recipient) meta.rp = m.recipient
+  if (m.turn) meta.tn = m.turn
+  if (m.msgType && m.msgType !== 'chat') meta.ty = m.msgType
   const content = Object.keys(meta).length > 0
     ? `\x00META\x00${JSON.stringify(meta)}\x00${m.content || ''}`
     : (m.content || '')
-  return { role: m.role, content, ...(m.images?.length ? { images: m.images } : {}) }
+  // 顶层信封字段一并返回（/chat/save 落列用；META 内容保持向后兼容）
+  return {
+    role: m.role, content,
+    ...(m.images?.length ? { images: m.images } : {}),
+    ...(m.sender ? { sender: m.sender } : {}),
+    ...(m.recipient ? { recipient: m.recipient } : {}),
+    ...(m.turn ? { turn: m.turn } : {}),
+    ...(m.msgType && m.msgType !== 'chat' ? { type: m.msgType } : {}),
+  }
 }
 
 /** 将会话消息转为包含工具调用上下文的历史记录（传给模型用）
  * 注意：tool 消息必须紧跟带 tool_calls 的 assistant 消息，否则云端 API 400 拒绝
  *
- * 说话人协议（多智能体身份错位修复）：selfSenders 之外的消息加【xx Agent】
- * 身份前缀——模型由此分清哪些是自己说过的（无前缀）、哪些是其他智能体说的
- * （有前缀），不再把子 Agent 的话当成自己的话复述/冒充。系统提示词已声明该协议。
+ * 信封协议（多智能体身份）：正文不再注入【xx】前缀——说话人身份走信封字段
+ * （sender/recipient/turn/type），模型上下文的视图滤波由后端 views.py 完成。
  */
-export function buildHistoryWithToolContext(messages: ChatMessage[], selfSenders: string[] = []): { role: string; content: string; tool_calls?: any[]; tool_call_id?: string }[] {
-  const result: { role: string; content: string; tool_calls?: any[]; tool_call_id?: string }[] = []
-  const labelOf = (sender?: string) => {
-    if (!sender || selfSenders.includes(sender)) return ''
-    const cfg = AGENT_CONFIG[sender]
-    return cfg ? `【${cfg.label}】` : ''
-  }
+export function buildHistoryWithToolContext(messages: ChatMessage[]): { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; sender?: string; recipient?: string; turn?: number; type?: string }[] {
+  const result: { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; sender?: string; recipient?: string; turn?: number; type?: string }[] = []
 
   for (const m of messages) {
+    const env = {
+      ...(m.sender ? { sender: m.sender } : {}),
+      ...(m.recipient ? { recipient: m.recipient } : {}),
+      ...(m.turn ? { turn: m.turn } : {}),
+      ...(m.msgType && m.msgType !== 'chat' ? { type: m.msgType } : {}),
+    }
     if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
       // assistant 决策消息 + 对应的 tool_calls 列表（保证 tool 消息有合法归属）
-      const label = labelOf(m.sender)
       const toolNames = m.toolCalls.map(tc => tc.name).join(', ')
       const calls = m.toolCalls.map((tc, i) => ({
         id: `hist_${i}`, type: 'function', function: { name: tc.name, arguments: '{}' },
       }))
-      result.push({ role: 'assistant', content: `${label}[决定调用工具: ${toolNames}]`, tool_calls: calls })
+      result.push({ role: 'assistant', content: `[决定调用工具: ${toolNames}]`, tool_calls: calls, ...env })
 
-      // 每个 tool_call 都必须有一条 tool 结果消息（未完成/出错也占位）
+      // 每个 tool_call 都必须有一条 tool 结果消息（未完成/出错也占位）；
+      // 工具结果信封：sender 继承所属 assistant，type=tool_result
+      const toolEnv = { sender: m.sender, type: 'tool_result' }
       m.toolCalls.forEach((tc, i) => {
         if (tc.status === 'done') {
           const summary = (tc.result || '完成').slice(0, 800)
-          result.push({ role: 'tool', content: `工具 ${tc.name} 执行结果:\n${summary}`, tool_call_id: `hist_${i}` })
+          result.push({ role: 'tool', content: `工具 ${tc.name} 执行结果:\n${summary}`, tool_call_id: `hist_${i}`, ...toolEnv })
         } else if (tc.status === 'error') {
-          result.push({ role: 'tool', content: `工具 ${tc.name} 执行出错: ${tc.result || '未知错误'}`, tool_call_id: `hist_${i}` })
+          result.push({ role: 'tool', content: `工具 ${tc.name} 执行出错: ${tc.result || '未知错误'}`, tool_call_id: `hist_${i}`, ...toolEnv })
         } else {
-          result.push({ role: 'tool', content: `工具 ${tc.name} 未完成`, tool_call_id: `hist_${i}` })
+          result.push({ role: 'tool', content: `工具 ${tc.name} 未完成`, tool_call_id: `hist_${i}`, ...toolEnv })
         }
       })
 
       // 最后是助手的实际回复
-      result.push({ role: 'assistant', content: `${label}${m.content || ''}` })
+      result.push({ role: 'assistant', content: m.content || '', ...env })
     } else {
-      const label = m.role === 'assistant' ? labelOf(m.sender) : ''
-      result.push({ role: m.role, content: `${label}${m.content || ''}` })
+      result.push({ role: m.role, content: m.content || '', ...env })
     }
   }
 

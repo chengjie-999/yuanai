@@ -20,22 +20,36 @@ function normalizePageLink(p: any): string | undefined {
   return p
 }
 
-/* 历史消息解析：\x00META\x00 前缀解出 sender/toolCalls/reasoning/pageLink（挂载落主对话与切换会话共用） */
+/* 历史消息解析：信封读取优先级 服务端列 > \x00META\x00 短键 > 缺省（新旧数据兼容） */
 function parseHistory(history: any[]): ChatMessage[] {
   return history.map((m: any) => {
     let sender: any = undefined
     let toolCalls: any = undefined
     let reasoning: string | undefined
     let pageLink: string | undefined
+    let recipient: string | undefined = undefined
+    let turn: number | undefined = undefined
+    let msgType: any = undefined
     let content = m.content || ''
     if (typeof content === 'string' && content.startsWith('\x00META\x00')) {
       const end = content.indexOf('\x00', 6)
       if (end > 6) {
-        try { const meta = JSON.parse(content.substring(6, end)); sender = meta.s; toolCalls = meta.t; reasoning = meta.r; pageLink = normalizePageLink(meta.p) } catch {}
+        try {
+          const meta = JSON.parse(content.substring(6, end))
+          sender = meta.s; toolCalls = meta.t; reasoning = meta.r
+          pageLink = normalizePageLink(meta.p)
+          recipient = meta.rp; turn = meta.tn; msgType = meta.ty
+        } catch {}
         content = content.substring(end + 1)
       }
     }
-    return { role: m.role, content, images: m.images, sender, toolCalls, reasoning, pageLink }
+    // 服务端列（迁移 0014 后）优先于 META 短键
+    if (m.sender) sender = m.sender
+    if (m.recipient) recipient = m.recipient
+    if (m.turn) turn = m.turn
+    if (m.type) msgType = m.type
+    return { role: m.role, content, images: m.images, sender, toolCalls,
+             reasoning, pageLink, recipient, turn, msgType }
   })
 }
 
@@ -222,7 +236,11 @@ export default function ChatPage({ user }: { user?: any }) {
       } else if (event.type === 'reasoning') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
       } else if (event.type === 'tool_start') {
+        // 信封协议：工具名推断（planet/委托）优先，后端事件 sender 兜底；
+        // 统筹自身的工具不开新气泡（toolCalls 挂当前气泡）
+        const evSender = event.data.sender || ''
         const ns = senderFromTool(event.data.name)
+          || ((evSender && evSender !== 'orchestrator' && evSender !== 'local') ? evSender : '')
         if (ns) { currentSender = ns; const link = ns === 'automation' ? '/chat/agent/' + ns : ns === 'planet' ? '/chat/planet' : undefined; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
         else { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
       } else if (event.type === 'dashboard') {
@@ -237,7 +255,10 @@ export default function ChatPage({ user }: { user?: any }) {
         })
       } else if (event.type === 'tool_end') {
         const del_name =event.data.name || ''
-        const isDel =!!senderFromTool(del_name)
+        // 子 Agent/知识星球工具结束 → 复位统筹并另起气泡；统筹自身工具不另起
+        const evSender = event.data.sender || ''
+        const isDel = !!senderFromTool(del_name)
+          || (evSender !== '' && evSender !== 'orchestrator' && evSender !== 'local')
         setMessages(function (prev) {
           const last =prev.slice()
           const i =last.length - 1
@@ -293,11 +314,14 @@ export default function ChatPage({ user }: { user?: any }) {
     const target = targetAgentRef.current
     if (target) setTargetAgent('')
     const isClaude = target === 'claude' || chatMode === 'claude'
-    // 说话人协议：自己（统筹/本地/桥接对象）说的话不加前缀，
-    // 其他智能体的话加【xx Agent】前缀——模型由此分清群聊里谁说过什么
-    const selfSenders = target ? [target]
-      : chatMode === 'cloud' ? ['orchestrator'] : ['local', 'orchestrator']
-    const history = buildHistoryWithToolContext(msgs, selfSenders)
+    // 信封协议：最后一条 user 消息打 recipient（定向 @target）；说话人身份
+    // 走信封字段，【xx】前缀渲染由后端 views.py 视图滤波负责
+    const taggedMsgs = msgs.map((m, i) => (
+      i === msgs.length - 1 && m.role === 'user'
+        ? { ...m, recipient: target || undefined, turn: undefined }
+        : m
+    ))
+    const history = buildHistoryWithToolContext(taggedMsgs)
     const placeholderSender = target && AGENT_CONFIG[target]
       ? target
       : chatMode === 'cloud' ? 'orchestrator' : 'local'

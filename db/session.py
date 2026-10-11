@@ -567,26 +567,36 @@ class AgentDatabase:
             sess.close()
 
     def get_user_memory(self, user_id: int) -> str:
-        """获取用户记忆"""
+        """获取用户记忆（data/.yuan/ 文件存储；首次读时把旧字段懒迁移为文件）"""
+        from yuanai_core import memory_store
+
+        facts = memory_store.load_facts(user_id)
+        if facts:
+            return "\n".join(facts)
+        # 懒迁移：目录为空且旧 users.memory 字段有值 → 导出为文件并清空旧字段
         sess = self.Session()
         try:
             user = sess.query(User).filter_by(id=user_id).first()
-            return user.memory if user and user.memory else ""
+            legacy = user.memory if user and user.memory else ""
+            if legacy.strip():
+                lines = [ln.strip() for ln in legacy.split("\n") if ln.strip()]
+                memory_store.add_facts(user_id, lines, source="legacy")
+                user.memory = ""
+                sess.commit()
+                return "\n".join(lines)
+            return ""
         finally:
             sess.close()
 
     def update_user_memory(self, user_id: int, memory: str) -> bool:
-        """替换用户记忆（全量覆盖，防止重复记录）"""
-        sess = self.Session()
-        try:
-            user = sess.query(User).filter_by(id=user_id).first()
-            if not user:
-                return False
-            user.memory = memory.strip()
-            sess.commit()
-            return True
-        finally:
-            sess.close()
+        """替换用户记忆（全量覆盖为文件；旧字段已废弃不写）"""
+        from yuanai_core import memory_store
+
+        if not self.get_user_by_id(user_id):
+            return False
+        lines = [ln.strip() for ln in str(memory or "").split("\n") if ln.strip()]
+        memory_store.rewrite(user_id, lines, source="edit")
+        return True
 
     # --------------------------------------------------------------------------
     # 记忆机制（会话折叠游标 / 反馈三态 / 记忆合并）
@@ -632,26 +642,29 @@ class AgentDatabase:
             sess.close()
 
     def merge_user_memory(self, user_id: int, new_lines: list, max_items: int, max_chars: int) -> dict:
-        """把折叠出的新事实合并进长期记忆（事务内 FOR UPDATE 锁行，防与设置页手改互相覆盖）
+        """把折叠出的新事实合并进长期记忆（data/.yuan/ 文件存储，per-user 锁）
 
-        只追加 + 行级去重，绝不整表重写——保护用户手改内容。
+        只追加 + 双向去重（升级语义）+ 超限丢最旧，逻辑在 yuanai_core.memory.merge_facts。
         返回 {"added": int, "total": int}。
         """
-        from yuanai_core.memory import merge_facts  # 惰性 import，保持模块级依赖不变
+        from yuanai_core import memory_store
 
-        sess = self.Session()
-        try:
-            user = sess.query(User).filter_by(id=user_id).with_for_update().first()
-            if not user:
-                return {"added": 0, "total": 0}
-            existing = [ln.strip() for ln in (user.memory or "").split("\n") if ln.strip()]
-            merged, added = merge_facts(existing, [ln.strip() for ln in new_lines if ln.strip()],
-                                        max_items, max_chars)
-            user.memory = "\n".join(merged)
-            sess.commit()
-            return {"added": added, "total": len(merged)}
-        finally:
-            sess.close()
+        if not self.get_user_by_id(user_id):
+            return {"added": 0, "total": 0}
+        return memory_store.add_facts(user_id, new_lines,
+                                      max_items=max_items, max_chars=max_chars,
+                                      source="fold")
+
+    def delete_user_memory_line(self, user_id: int, line: str) -> dict:
+        """按行文本删除一条记忆（精确匹配 → 唯一子串匹配；多条命中不误删）
+
+        返回 {"deleted": n, "total": m, "memory": str, "asked_more": bool}
+        """
+        from yuanai_core import memory_store
+
+        if not self.get_user_by_id(user_id):
+            return {"deleted": 0, "total": 0, "memory": "", "asked_more": False}
+        return memory_store.delete_fact(user_id, line)
 
     def get_session_stats(self, session_id: str) -> dict:
         """会话消息条数 + 总字数（一次聚合查询，不加载正文）"""

@@ -109,6 +109,8 @@ skills/
 
 **置顶主对话（豆包式）**：每用户一条 `is_main` 置顶会话（侧栏图钉标识），`POST /api/v1/chat/main-session` 幂等取/建——「一个对话用到底」。**登录直接落主对话**（欢迎页已退场，推荐问题卡移到对话空状态，数据集上传并入输入区回形针）；主对话历史只保留最近 **60 条**，更早的对话由记忆机制折叠进长期记忆（system prompt 注入），避免上下文无限增长。
 
+**长期记忆（data/.yuan/ 文件化，Claude Code 式）**：对话折叠出的用户事实存 `data/.yuan/{用户}/`（每条一个 .md + MEMORY.md 索引，只接受云端 Agent 写入；本地 Agent 工具经 `/agent/memory` HTTP 读写）；设置页「我的记忆」卡每行可删、全文可编辑，占位词（「无」等）自动拦截。
+
 当统筹委派子 Agent 时，消息中会出现 **打开面板 →** 按钮，点击在新标签页打开该 Agent 的**独立全屏操作页面**（`/chat/agent/analysis`、`/chat/agent/automation`、`/chat/agent/knowledge`），提供完整的数据分析、浏览器自动化、知识库检索功能。
 
 ### 前端路由

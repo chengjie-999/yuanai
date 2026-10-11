@@ -3,7 +3,7 @@ import logging
 import os as _os
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from db.session import get_db
 from api.v1.auth.utils import create_token, verify_token, create_sse_token
 from api.v1.ratelimit import auth_limiter, get_client_ip
@@ -233,6 +233,28 @@ def update_memory(req: MemoryUpdate, request: Request):
     if not ok:
         raise HTTPException(status_code=404, detail="用户不存在")
     return {"ok": True, "memory": normalized, "count": count}
+
+
+class MemoryDelete(BaseModel):
+    line: str = Field(..., min_length=1, max_length=200, description="要删除的记忆行（文本定位，防行号漂移）")
+
+
+@router.delete("/memory")
+def delete_memory_line(req: MemoryDelete, request: Request):
+    """删除一条记忆（精确匹配 → 唯一子串匹配；多条命中返回 400 不误删）"""
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    r = get_db().delete_user_memory_line(uid, req.line)
+    if r["total"] == 0 and r["deleted"] == 0:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if r["asked_more"]:
+        raise HTTPException(status_code=400,
+                            detail="这条内容匹配到多条记忆，请提供更完整的行内容")
+    if r["deleted"] == 0:
+        raise HTTPException(status_code=404, detail="记忆中没有这一条")
+    count = len([ln for ln in r["memory"].split("\n") if ln.strip()]) if r["memory"] else 0
+    return {"ok": True, "deleted": r["deleted"], "memory": r["memory"], "count": count}
 
 
 class AgentModelUpdate(BaseModel):

@@ -109,6 +109,47 @@ def test_memory_over_limit_rejected(client, mem_headers):
     client.put("/api/v1/auth/memory", headers=mem_headers, json={"memory": ""})
 
 
+def test_memory_delete_roundtrip(client, mem_headers):
+    import json as _json
+
+    def _del(line, headers=None):
+        # 本版本 TestClient.delete 不支持 json/content 便捷参数 → 走底层 request
+        h = {"Content-Type": "application/json", **(headers or {})}
+        return client.request("DELETE", "/api/v1/auth/memory", headers=h,
+                              content=_json.dumps({"line": line}, ensure_ascii=False))
+
+    # 写 3 条 → 删 1 条 → 剩 2 条
+    r = client.put("/api/v1/auth/memory", headers=mem_headers,
+                   json={"memory": "用户是数据分析师\n用户怕辣\n用户在杭州"})
+    assert r.status_code == 200
+
+    r = _del("用户怕辣", mem_headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted"] == 1 and r.json()["count"] == 2
+    assert "用户怕辣" not in r.json()["memory"]
+
+    # 未登录 401
+    assert _del("x").status_code == 401
+
+    # 无命中 404
+    r = _del("不存在的内容", mem_headers)
+    assert r.status_code == 404
+
+    # 唯一子串命中可删
+    r = _del("杭州", mem_headers)
+    assert r.status_code == 200 and r.json()["deleted"] == 1
+
+    # 多条命中 400（不误删）
+    client.put("/api/v1/auth/memory", headers=mem_headers,
+               json={"memory": "用户喜欢猫\n用户喜欢猫科动物"})
+    r = _del("用户喜欢", mem_headers)
+    assert r.status_code == 400
+    assert "多条" in r.json()["detail"]
+
+    # 还原
+    client.put("/api/v1/auth/memory", headers=mem_headers, json={"memory": ""})
+
+
 if __name__ == "__main__":
     print("测试入口：pytest test/test_memory_api.py -v")
 

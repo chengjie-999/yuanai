@@ -77,6 +77,15 @@ def test_parse_facts_empty_and_limits():
     assert facts[0] == "事实0"
 
 
+def test_parse_facts_placeholder_filtered():
+    """占位词黑名单：豆包 lite 对「无可提取」输出「无」不再进记忆（垃圾记录根治）"""
+    assert parse_facts("无") == []
+    assert parse_facts("没有\n暂无\n用户怕辣") == ["用户怕辣"]
+    assert parse_facts("（无）\n(无)\n暂无信息") == []
+    assert parse_facts("---") == []
+    assert parse_facts("用户住在杭州。") == ["用户住在杭州。"]
+
+
 # ---------------- merge_facts ----------------
 
 def test_merge_facts_dedup_and_limits():
@@ -91,6 +100,22 @@ def test_merge_facts_dedup_and_limits():
     # 超字数继续丢（至少留 1 条）
     merged, _ = merge_facts(["短"], ["超" * 3000], 100, 2000)
     assert len(merged) == 1
+
+
+def test_merge_facts_upgrade_semantics():
+    """双向去重：新行 ⊃ 旧行 → 原地升级替换（不丢细节、added 不增）"""
+    merged, added = merge_facts(["用户是数据分析师"], ["用户是数据分析师，常用 pandas"], 100, 2000)
+    assert merged == ["用户是数据分析师，常用 pandas"]
+    assert added == 0
+    # 等键跳过
+    merged, added = merge_facts(["用户怕辣"], ["用户怕辣"], 100, 2000)
+    assert merged == ["用户怕辣"] and added == 0
+    # 旧 ⊃ 新 仍跳过（现状行为）
+    merged, added = merge_facts(["在做跨境电商项目"], ["在做跨境电商"], 100, 2000)
+    assert merged == ["在做跨境电商项目"] and added == 0
+    # 互不包含的近似行 → 各自保留（不误吞）
+    merged, added = merge_facts(["在做跨境电商项目"], ["在做一个跨境电商项目"], 100, 2000)
+    assert merged == ["在做跨境电商项目", "在做一个跨境电商项目"] and added == 1
 
 
 # ---------------- should_fold ----------------

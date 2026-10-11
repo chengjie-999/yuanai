@@ -244,13 +244,15 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 
 ## 记忆机制（短期工作记忆 + 长期条目化记忆）
 
-「一个对话用到底」：最近 20 条原样保留（工作记忆）；超阈值（>20 条或 >8000 字）由豆包 lite 后台异步折叠成条目化事实存 `users.memory`（寒暄遗忘、点踩内容剔除）；设置页「我的记忆」卡透明可编辑；记忆注入 system prompt（`chat/router.py` 注入点，桥接与云端直连均生效）。
+「一个对话用到底」：最近 20 条原样保留（工作记忆）；超阈值（>20 条或 >8000 字）由豆包 lite 后台异步折叠成条目化事实（寒暄遗忘、点踩内容剔除）；设置页「我的记忆」卡透明可编辑；记忆注入 system prompt（`chat/router.py` 注入点，桥接与云端直连均生效）。
+
+**记忆文件化（data/.yuan/，Claude Code 式，2026-10-11）**：记忆不再写 MySQL 字段，改为云端工作目录 `data/.yuan/{user_id}/` 文件存储——每条记忆一个 .md（自实现扁平 frontmatter：name/description/type/created_at/source + 正文一行）+ `MEMORY.md` 索引；**写入口只有云端进程**（折叠 worker + API 端点），本地 Agent 工具（remember/get/forget）经 `/api/v1/agent/memory`（agent 凭据）走 HTTP；`users.memory` 字段废弃，首次读时**懒迁移**导出为文件并清空旧字段（`yuanai_core/memory_store.py`：per-user 锁 + 整目录原子替换 + 微秒单调 created_at 保序 + 超限丢最旧）
 
 - **触发**：`/chat/save` 落库后 fire-and-forget（`api/v1/chat/memory_fold.py`；请求内零成本预筛 + in-flight 防重 + 异常全吞）；工作线程重读 DB 消息数组 → 游标 clamp → 烧钱护栏（≥5 条或 800 字才调 LLM）→ 每日 50 次限额 → 折叠 → 合并 → 游标前进（失败不动自然重试；LLM 空输出=遗忘也前进）
 - **游标**：`session_memory_state` 表（session_id PK / folded_count，max 语义只增不减；ai_chat 每次 save 全量重建 id 会变，游标必须是独立前缀计数；编辑重发自动回夹）
-- **合并**：`yuanai_core/memory.py` merge_facts 只追加 + 行级去重（FOR UPDATE 锁行防与手改互相覆盖）；上限 100 条/2000 字丢最旧
+- **合并**：`yuanai_core/memory.py` merge_facts 只追加 + **双向去重升级语义**（新行 ⊃ 旧行 → 原地替换不丢细节）+ 上限 100 条/2000 字丢最旧；`parse_facts` 占位词黑名单（无/没有/暂无/（无）等，根治「无」垃圾记忆）
 - **点踩**：ai_chat_feedback 三态互斥（liked/disliked，迁移 0009）；点踩消息在折叠 transcript 中被剔除并标注
-- **编辑入口**：`GET/PUT /api/v1/auth/memory`（超限 400 拒绝而非截断）；前端 `MemoryCard.tsx`
+- **编辑入口**：`GET/PUT/DELETE /api/v1/auth/memory`（PUT 超限 400 拒绝而非截断；DELETE 按行文本定位，多条命中 400 不误删）；前端 `MemoryCard.tsx`（每行删除按钮 + 全量编辑抽屉）
 - **配置**：config/settings.py MEMORY_* 12 项（模型/窗口/阈值/护栏/上限/超时/日限额，.env 可覆盖）
 - 已知限制（二期）：历史仍全量发送模型（不截断省 token）；claude-stream 无记忆注入；/voice/message 不触发折叠
 

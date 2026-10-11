@@ -94,6 +94,9 @@ def parse_facts(text: str, max_items: int = 20) -> list:
             continue
         if len(line) <= 20 and line.endswith(("：", ":")):
             continue
+        # 丢占位行（豆包 lite 常对「无可提取」输出「无」——曾产生垃圾记忆）
+        if _is_placeholder(line):
+            continue
         line = _clip(line, 200)
         if line not in out:
             out.append(line)
@@ -102,14 +105,35 @@ def parse_facts(text: str, max_items: int = 20) -> list:
     return out
 
 
-def _dedup_key(line: str) -> str:
+# 占位词黑名单：LLM 表示「没有可提取内容」时的常见输出，一律不入记忆
+_PLACEHOLDER_LINES = {"无", "没有", "暂无", "无。", "没有。", "暂无。", "（无）", "(无)",
+                      "无信息", "暂无信息", "未知", "none", "n/a", "n/a.", "-", "—", "空"}
+_PLACEHOLDER_RE = re.compile(r"^[（(]?\s*(无|没有|暂无|未知|空|none|n/a|nothing)\s*[)）]?[。.]?$", re.I)
+
+
+def _is_placeholder(line: str) -> bool:
+    """判定是否为无信息占位行（纯标点/纯空白也算）"""
+    t = line.strip().strip("。.")
+    return (t in _PLACEHOLDER_LINES
+            or bool(_PLACEHOLDER_RE.match(line.strip()))
+            or not re.search(r"[一-鿿A-Za-z0-9]", line))
+
+
+def dedup_key(line: str) -> str:
+    """行级去重键（公开别名，API/存储层复用）"""
     return re.sub(r"\s+", "", line.strip()).casefold()
+
+
+_dedup_key = dedup_key  # 内部旧名兼容
 
 
 def merge_facts(existing: list, new: list, max_items: int = 100, max_chars: int = 2000) -> tuple:
     """既有记忆 + 新事实 → (merged, added)。只追加、行级去重、超限从头部丢最旧。
 
-    去重：key 完全相等 或 旧行包含新行（旧「在做跨境电商项目」吞新「在做一个跨境电商项目」）。
+    去重（双向 + 升级语义）：
+    - key 相等 或 旧行包含新行 → 跳过（现状行为）
+    - 新行包含旧行 → 用新行原地替换旧行（信息更具体，added 不增）
+      例：旧「用户是数据分析师」+ 新「用户是数据分析师，常用 pandas」→ 替换保留细节
     """
     merged = [ln for ln in existing if ln.strip()]
     old_keys = [_dedup_key(ln) for ln in merged]
@@ -119,7 +143,17 @@ def merge_facts(existing: list, new: list, max_items: int = 100, max_chars: int 
         if not ln:
             continue
         key = _dedup_key(ln)
-        if any(key == ok or key in ok for ok in old_keys):
+        replaced = False
+        for i, ok in enumerate(old_keys):
+            if key == ok or key in ok:
+                replaced = True  # 旧行吞新行：跳过
+                break
+            if ok in key:
+                merged[i] = ln  # 新行更具体：原地升级替换
+                old_keys[i] = key
+                replaced = True
+                break
+        if replaced:
             continue
         merged.append(ln)
         old_keys.append(key)

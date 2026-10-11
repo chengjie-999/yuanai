@@ -126,6 +126,16 @@ export default function ChatPage({ user }: { user?: any }) {
     setSessions(list)
   }, [])
 
+  // 会话切换/挂载后滚到最新消息：历史是异步加载的（loadMessages await 后 setMessages），
+  // 只靠 ChatView 的 currentSid 变化判定会在历史到达前滚旧内容——这里在历史渲染后
+  // 用 rAF 补一次强制滚底（时序缺口修复，配合 ChatView 的 sessionChanged 滚动）
+  const scrollToLatest = () => {
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.chat-main')
+      if (el) el.scrollTop = el.scrollHeight
+    })
+  }
+
   // 挂载时确保置顶主对话存在（豆包式：每用户一条，取/建幂等）并直接落主对话——
   // 登录即进主对话，欢迎页仅在接口异常时作兜底
   useEffect(() => {
@@ -138,6 +148,7 @@ export default function ChatPage({ user }: { user?: any }) {
         setMessages(history.length === 0
           ? [{ role: 'assistant', content: '你好！有什么可以帮你的？' }]
           : parseHistory(history))
+        scrollToLatest()
       }
     }
     init()
@@ -190,6 +201,7 @@ export default function ChatPage({ user }: { user?: any }) {
     setMessages(history.length === 0
       ? [{ role: 'assistant', content: '你好！有什么可以帮你的？' }]
       : parseHistory(history))
+    scrollToLatest()  // 历史异步加载完成后补滚（时序缺口）
   }
 
   const handleDeleteSession = async (e: React.MouseEvent, sid: string) => {

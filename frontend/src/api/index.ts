@@ -113,6 +113,19 @@ export async function saveMemory(memory: string): Promise<{ ok: boolean; detail?
   } catch { return { ok: false, detail: '网络错误，请稍后重试' } }
 }
 
+export async function deleteMemoryLine(line: string): Promise<{ ok: boolean; detail?: string; memory?: string; count?: number }> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/memory`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ line }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return { ok: false, detail: (data as any).detail || '删除失败' }
+    return { ok: true, memory: data.memory, count: data.count }
+  } catch { return { ok: false, detail: '网络错误，请稍后重试' } }
+}
+
 // ---- Profile ----
 export async function updateProfile(display_name: string) {
   const res = await fetch(`${API_BASE}/auth/profile`, {

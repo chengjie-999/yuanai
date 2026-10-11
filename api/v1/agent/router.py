@@ -399,3 +399,59 @@ def bridge_memory(request: Request, body: BridgeMemoryBody):
     from db.session import get_db
     r = get_db().merge_user_memory(body.user_id, facts, MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS)
     return {"ok": True, "added": r["added"]}
+
+
+class AgentMemoryBody(BaseModel):
+    user_id: int = 0
+    line: str = ""
+    facts: list = []
+
+
+def _agent_memory_auth(request: Request) -> int:
+    """Agent 凭据校验（与 bridge-memory 同款：X-Agent-Id/X-Agent-Secret）"""
+    agent_id = request.headers.get("X-Agent-Id", "")
+    secret = request.headers.get("X-Agent-Secret", "")
+    if not _verify_agent_secret(agent_id, secret):
+        raise HTTPException(status_code=401, detail="Agent 凭据无效")
+    return agent_id
+
+
+@router.get("/memory")
+def agent_get_memory(request: Request, user_id: int = 0):
+    """本地 Agent 记忆读取（get_user_memory 工具走 HTTP；data/.yuan/ 文件存储）"""
+    _agent_memory_auth(request)
+    if not user_id:
+        raise HTTPException(status_code=400, detail="缺少 user_id")
+    from db.session import get_db
+    memory = get_db().get_user_memory(user_id)
+    return {"ok": True, "memory": memory}
+
+
+@router.post("/memory")
+def agent_add_memory(request: Request, body: AgentMemoryBody):
+    """本地 Agent 记忆写入（remember_user_info 工具走 HTTP；合并语义同折叠）"""
+    _agent_memory_auth(request)
+    if not body.user_id or not body.facts:
+        return {"ok": True, "added": 0}
+    facts = [str(f)[:200] for f in body.facts[:20] if str(f).strip()]
+    if not facts:
+        return {"ok": True, "added": 0}
+    from config.settings import MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS
+    from db.session import get_db
+    r = get_db().merge_user_memory(body.user_id, facts, MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS)
+    return {"ok": True, "added": r["added"]}
+
+
+@router.delete("/memory")
+def agent_delete_memory(request: Request, body: AgentMemoryBody):
+    """本地 Agent 记忆删除（forget_user_info 工具走 HTTP；多条命中不误删）"""
+    _agent_memory_auth(request)
+    if not body.user_id or not body.line.strip():
+        raise HTTPException(status_code=400, detail="缺少 user_id 或 line")
+    from db.session import get_db
+    r = get_db().delete_user_memory_line(body.user_id, body.line.strip())
+    if r["asked_more"]:
+        raise HTTPException(status_code=400, detail="匹配到多条记忆，请说得更具体")
+    if r["deleted"] == 0:
+        return {"ok": True, "deleted": 0}
+    return {"ok": True, "deleted": r["deleted"], "memory": r["memory"]}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { fetchMemory, saveMemory } from '../api'
+import { fetchMemory, saveMemory, deleteMemoryLine } from '../api'
 import { XIcon, EditIcon, TrashIcon } from './icons'
 
 /* 设置页「我的记忆」卡 — 透明可编辑的长期记忆（每行一条事实，随时可改可删） */
@@ -67,6 +67,20 @@ export default function MemoryCard() {
     }
   }
 
+  // 单条删除：文本定位（后端精确匹配 → 唯一子串匹配，多条命中不误删）
+  const doDeleteLine = async (line: string) => {
+    if (!window.confirm(`删除这条记忆？\n「${line}」`)) return
+    setMsg('')
+    setMsgErr(false)
+    const r = await deleteMemoryLine(line)
+    if (!r.ok) {
+      alert(r.detail || '删除失败，请稍后重试')
+      return
+    }
+    setMemory(r.memory ?? '')
+    setCount(r.count ?? 0)
+  }
+
   const lines = memory ? memory.split('\n').filter(l => l.trim()) : []
 
   const editPanel = editing && (
@@ -116,9 +130,18 @@ export default function MemoryCard() {
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
             共 {count} 条 · {memory.length}/{maxChars} 字
           </div>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.9 }}>
+          <ul style={{ margin: 0, padding: 0, fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.9, listStyle: 'none' }}>
             {lines.map((l, i) => (
-              <li key={i} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l}>{l}</li>
+              <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', borderBottom: '1px solid var(--border-light)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover-bg)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l}>{l}</span>
+                <button onClick={() => doDeleteLine(l)} className="yuan-tip" data-tip="删除这条记忆" aria-label="删除这条记忆"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '3px 5px', lineHeight: 1, opacity: 0.6, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--danger)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.color = 'var(--text-muted)' }}
+                ><TrashIcon size={12} /></button>
+              </li>
             ))}
           </ul>
         </div>

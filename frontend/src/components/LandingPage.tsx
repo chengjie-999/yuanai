@@ -262,8 +262,7 @@ export default function LandingPage() {
         <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>小元AI</span>
         <span style={{ color: 'var(--text-secondary)' }}>云边协同 · 多智能体协作平台</span>
         <Link to="/about" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>关于我们</Link>
-        <a href="/docs" target="_blank" rel="noreferrer"
-          style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>API 文档</a>
+        <Link to="/api-docs" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>API 文档</Link>
         <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>© 2026 小元AI</span>
         {isAdmin && (
           <Link to="/chat/admin" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>

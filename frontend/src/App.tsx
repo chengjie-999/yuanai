@@ -13,6 +13,7 @@ const ChatPage = lazy(() => import('./components/ChatPage'))
 const LoginPage = lazy(() => import('./components/LoginPage'))
 const LandingPage = lazy(() => import('./components/LandingPage'))
 const AboutPage = lazy(() => import('./components/AboutPage'))
+const ApiDocsPage = lazy(() => import('./pages/ApiDocsPage'))
 const AdminPage = lazy(() => import('./components/AdminPage'))
 const UserPage = lazy(() => import('./components/UserPage'))
 const SettingsPage = lazy(() => import('./components/SettingsPage'))
@@ -226,6 +227,7 @@ function AppInner() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/about" element={<AboutPage />} />
+        <Route path="/api-docs" element={<ApiDocsPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/chat/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />

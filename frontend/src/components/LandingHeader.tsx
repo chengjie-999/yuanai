@@ -32,9 +32,9 @@ export default function LandingHeader() {
         {/* 窄屏隐藏「首页」导航 — 品牌点击已可回首页，节省空间防溢出 */}
         <Link to="/" className="landing-nav-home" style={navStyle('/')}>首页</Link>
         <Link to="/about" style={navStyle('/about')}>关于我们</Link>
-        {/* API 文档入口（FastAPI Swagger，公开）；后续自建中文文档页时替换 href */}
-        <a href="/docs" target="_blank" rel="noreferrer"
-          className="landing-nav-docs" style={navStyle('/docs') as any}>API 文档</a>
+        {/* API 文档（自建示例页，同标签打开；页内有 Swagger 入口） */}
+        <Link to="/api-docs" className="landing-nav-docs"
+          style={navStyle('/api-docs')}>API 文档</Link>
       </nav>
       <div style={{ flex: 1 }} />
       <button onClick={toggleTheme} aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}

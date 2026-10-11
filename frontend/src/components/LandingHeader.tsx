@@ -32,6 +32,9 @@ export default function LandingHeader() {
         {/* 窄屏隐藏「首页」导航 — 品牌点击已可回首页，节省空间防溢出 */}
         <Link to="/" className="landing-nav-home" style={navStyle('/')}>首页</Link>
         <Link to="/about" style={navStyle('/about')}>关于我们</Link>
+        {/* API 文档入口（FastAPI Swagger，公开）；后续自建中文文档页时替换 href */}
+        <a href="/docs" target="_blank" rel="noreferrer"
+          className="landing-nav-docs" style={navStyle('/docs') as any}>API 文档</a>
       </nav>
       <div style={{ flex: 1 }} />
       <button onClick={toggleTheme} aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}
@@ -156,6 +159,7 @@ export default function LandingHeader() {
           }
           .landing-header nav { margin-left: 6px; }
           .landing-nav-home { display: none; }
+          .landing-nav-docs { display: none; }  /* 小屏藏 API 文档链接（登录后工作台/页脚可找到） */
           .landing-brand span { font-size: 16px; }
           .landing-auth-btn {
             height: 30px;

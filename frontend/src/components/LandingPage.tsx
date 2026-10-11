@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { trackVisit } from '../api'
 import DataRunGame from './DataRunGame'
@@ -106,8 +106,20 @@ const ENTRIES: { icon: string; title: string; desc: string; to?: string; href?: 
 ]
 
 export default function LandingPage() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, token, loading } = useAuth()
+  const navigate = useNavigate()
   const [visible, setVisible] = useState(false)
+
+  // 手机端直达聊天（产品决策）：移动 UA/窄屏不看首页——已登录落 /chat（主对话），
+  // 未登录去 /login；桌面端保留官网首页。auth 加载完成前不判定。
+  useEffect(() => {
+    const isMobile = window.innerWidth <= 768
+      || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+    if (isMobile && !loading) {
+      navigate(token ? '/chat' : '/login', { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading])
 
   // 入场淡入动画（同 LoginPage 惯例）
   useEffect(() => {
@@ -250,6 +262,8 @@ export default function LandingPage() {
         <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>小元AI</span>
         <span style={{ color: 'var(--text-secondary)' }}>云边协同 · 多智能体协作平台</span>
         <Link to="/about" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>关于我们</Link>
+        <a href="/docs" target="_blank" rel="noreferrer"
+          style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>API 文档</a>
         <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>© 2026 小元AI</span>
         {isAdmin && (
           <Link to="/chat/admin" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>
@@ -584,6 +598,7 @@ export default function LandingPage() {
           .landing-hero-desc { font-size: 14px; letter-spacing: 2px; }
           .landing-hero-actions { flex-direction: column; align-items: center; }
           .landing-cta { width: min(100%, 280px); }  /* 全宽按钮，方便拇指点按 */
+          .landing-hero-main { text-align: center; }   /* 手机端 Hero 文案居中 */
           /* 光晕降模糊半径与透明度，减轻移动端 GPU 负担 */
           .landing-orb { filter: blur(60px); opacity: 0.22; }
           .landing-section { padding: 48px 16px 0; }
@@ -601,6 +616,7 @@ export default function LandingPage() {
           .landing-hero { padding: 40px 12px 48px; }
           .landing-hero-title { font-size: 26px; }
           .landing-hero-sub { margin-bottom: 28px; }
+          .landing-hero-mascot svg { width: 72px; height: 72px; }  /* 吉祥物缩小，游戏区不挤压文案 */
           .landing-orb { filter: blur(50px); }
           .orb-3 { display: none; }  /* 隐藏第三个光晕，减渲染量 */
           .landing-section { padding: 40px 12px 0; }

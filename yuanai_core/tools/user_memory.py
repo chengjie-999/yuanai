@@ -1,8 +1,12 @@
 TOOL_CATEGORY = "memory"
 
-"""用户记忆工具 — 读写云端 data/.yuan/ 文件（经 /api/v1/agent/memory，agent 凭据）
+"""用户记忆工具 — 双路径读写 data/.yuan/（云端进程直连 / 本地 Agent 走 HTTP）
 
-记忆文件只接受云端进程写入：本地 Agent 工具一律走 HTTP，不直连 DB。
+- 云端进程（统筹/子 Agent/折叠/云端直连 LLM）：本机就有 MySQL + 文件
+  存储，直连 DB 层（db 方法已委托 memory_store 文件存储），无凭据问题
+- 本地 Agent 进程（用户电脑，无云端 DB）：经 /api/v1/agent/memory
+  HTTP（agent 凭据）由云端进程落盘
+判定：优先尝试直连，DB 不可达（连接异常）时回退 HTTP。
 """
 import json
 import logging
@@ -44,11 +48,48 @@ def _agent_http(path: str, method: str = "GET", payload: dict = None) -> dict:
             detail = json.loads(e.read().decode("utf-8", errors="replace")).get("detail", "")
         except Exception:
             pass
-        logger.warning("agent memory HTTP %s 失败(%s): %s", method, e.code, detail)
-        return {"ok": False, "detail": detail or f"HTTP {e.code}"}
+        logger.warning("agent memory HTTP %s %s 失败(%s): %s", method, url, e.code, detail)
+        return {"ok": False, "detail": detail or f"HTTP {e.code}（{server}）"}
     except Exception as e:
         logger.warning("agent memory HTTP %s 异常: %s", method, e)
-        return {"ok": False, "detail": str(e)}
+        return {"ok": False, "detail": f"{e}（{server}）"}
+
+
+def _memory_ops():
+    """记忆读写入口：云端进程直连（DB 层 → data/.yuan/ 文件），DB 不可达返回 None"""
+    from db.session import get_db
+
+    db = get_db()  # 本地 Agent 无云端 DB 时此处抛异常，调用方回退 HTTP
+    return db
+
+
+def _call_memory(path: str, method: str = "GET", payload: dict = None,
+                 uid: int = 0) -> dict:
+    """双路径：直连优先（云端），失败回退 HTTP（本地 Agent）"""
+    try:
+        db = _memory_ops()
+    except Exception as e:
+        logger.info("记忆直连不可用（本地 Agent），回退 HTTP: %s", type(e).__name__)
+        return _agent_http(path, method, payload)
+
+    from yuanai_core.memory import _is_placeholder
+
+    if method == "GET":
+        return {"ok": True, "memory": db.get_user_memory(uid)}
+    if method == "POST":
+        from config.settings import MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS
+        facts = [str(f)[:200] for f in (payload or {}).get("facts", [])
+                 if str(f).strip() and not _is_placeholder(str(f))]
+        if not facts:
+            return {"ok": True, "added": 0}
+        r = db.merge_user_memory(uid, facts, MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS)
+        return {"ok": True, "added": r["added"]}
+    if method == "DELETE":
+        r = db.delete_user_memory_line(uid, (payload or {}).get("line", "").strip())
+        if r["asked_more"]:
+            return {"ok": False, "detail": "匹配到多条记忆，请说得更具体"}
+        return {"ok": True, "deleted": r["deleted"], "memory": r["memory"]}
+    return {"ok": False, "detail": f"不支持的方法 {method}"}
 
 
 @tool
@@ -56,7 +97,7 @@ def get_user_memory(query: str = "") -> str:
     """Retrieve stored user info. query: optional filter keyword."""
     from yuanai_core.memory import _is_placeholder
     uid = current_user_id.get()
-    r = _agent_http(f"/memory?user_id={uid}", "GET")
+    r = _call_memory("/memory", "GET", uid=uid)
     if not r.get("ok"):
         return f"读取用户记忆失败：{r.get('detail', '未知错误')}"
     memory = r.get("memory") or ""
@@ -76,7 +117,7 @@ def remember_user_info(info: str) -> str:
     if not fact or _is_placeholder(fact):
         return "这句话没有可保存的信息"
     uid = current_user_id.get()
-    r = _agent_http("/memory", "POST", {"user_id": uid, "facts": [fact]})
+    r = _call_memory("/memory", "POST", {"user_id": uid, "facts": [fact]}, uid=uid)
     if not r.get("ok"):
         return f"保存记忆失败：{r.get('detail', '未知错误')}"
     if r.get("added", 0) == 0:
@@ -91,7 +132,7 @@ def forget_user_info(info: str) -> str:
     if not kw:
         return "请说明要忘记什么"
     uid = current_user_id.get()
-    r = _agent_http("/memory", "DELETE", {"user_id": uid, "line": kw})
+    r = _call_memory("/memory", "DELETE", {"user_id": uid, "line": kw}, uid=uid)
     if not r.get("ok"):
         detail = r.get("detail") or ""
         if "多条" in str(detail):

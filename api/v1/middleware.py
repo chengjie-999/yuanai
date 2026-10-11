@@ -47,7 +47,8 @@ async def auth_middleware(request: Request, call_next):
     # Agent WebSocket 连接与 vault 同步 REST 由端点自行鉴权
     #（JWT 或 agent_secret / X-Agent-Id+Secret），中间件直接放行
     if (path.startswith("/api/v1/agent/ws") or path.startswith("/api/v1/agent/planet")
-            or path.startswith("/api/v1/agent/bridge-memory")):
+            or path.startswith("/api/v1/agent/bridge-memory")
+            or path.startswith("/api/v1/agent/memory")):
         return await call_next(request)
 
     if is_public(path):

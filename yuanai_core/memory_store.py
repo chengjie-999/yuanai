@@ -192,6 +192,15 @@ def rewrite(user_id, lines: List[str], source: str = "edit") -> dict:
         return {"memory": "\n".join(e["text"] for e in entries), "total": len(entries)}
 
 
+def apply_entries(user_id, entries: List[dict]) -> int:
+    """按给定条目全量重写（自整理用；条目形状同 load_entries 输出，
+    created_at 空则记当前时间）。返回条目总数。"""
+    with _lock_for(user_id):
+        clean = [e for e in entries if str(e.get("text", "")).strip()]
+        _atomic_rewrite(user_id, clean)
+        return len(clean)
+
+
 def add_facts(user_id, new_lines: List[str], max_items: int = 100,
               max_chars: int = 2000, source: str = "fold") -> dict:
     """合并新事实（只追加 + 双向去重 + 超限丢最旧，逻辑复用 yuanai_core.memory.merge_facts）

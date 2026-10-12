@@ -9,7 +9,7 @@ import websockets
 from websockets import connect
 from websockets.exceptions import ConnectionClosed
 
-from yuanai_core.rag import current_user_id, current_request_id
+from yuanai_core.rag import current_user_id, current_request_id, current_session_id
 from yuanai_core.core.schemas import (
     ChatRequest, AgentEvent,
     token, reasoning, tool_start, tool_end, image_event, done, error_event,
@@ -146,6 +146,7 @@ class AgentWSClient:
         if req.user_id:
             current_user_id.set(req.user_id)
         current_request_id.set(request_id)
+        current_session_id.set(req.session_id or "")
         # 推理强度开关（聊天框 low/high）：本请求内 get_llm 自动生效
         from yuanai_core.core.lc import current_reasoning_effort
         if req.reasoning_effort in ("low", "medium", "high"):

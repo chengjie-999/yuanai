@@ -685,6 +685,85 @@ class AgentDatabase:
             return {"deleted": 0, "total": 0, "memory": "", "asked_more": False}
         return memory_store.delete_fact(user_id, line)
 
+    def get_session_start_time(self, session_id: str):
+        """会话首条消息时间（datetime；无消息返回 None）——记忆自整理删除边界判定"""
+        from sqlalchemy import func as _func
+        sess = self.Session()
+        try:
+            return sess.query(_func.min(AIChat.create_time)).filter(
+                AIChat.session_id == session_id).scalar()
+        finally:
+            sess.close()
+
+    def organize_user_memory(self, user_id: int, items: list, session_id: str = "") -> dict:
+        """智能体自整理记忆（organize_user_memory 工具）：合并/改写即时生效；
+        删除只允许本会话内新增的行（created_at ≥ 会话首条消息时间），每用户每日删
+        ≤ MEMORY_ORGANIZE_DELETE_DAILY_MAX 条，每次删除写审计日志
+        data/logs/memory_audit.log。fail-closed：任何护栏不过 → 整单拒绝。
+
+        返回 {"ok": True, "deleted": n, "total": m} 或 {"ok": False, "detail": ...}
+        """
+        from yuanai_core import memory_store
+        from yuanai_core.memory import plan_organize, _is_placeholder
+
+        if not self.get_user_by_id(user_id):
+            return {"ok": False, "detail": "用户不存在"}
+        lines = []
+        for it in (items or []):
+            for ln in str(it).splitlines():
+                ln = ln.strip()
+                if ln and not _is_placeholder(ln):
+                    lines.append(ln)
+
+        old = memory_store.load_entries(user_id)
+        plan = plan_organize(old, lines)
+        deletions = plan["deletions"]
+
+        if deletions:
+            # 护栏 1：只删本会话内新增（会话起始时间查不到 → 禁止删除，fail-closed）
+            session_start = self.get_session_start_time(session_id) if session_id else None
+            if not session_start:
+                return {"ok": False, "detail": "无法确定会话起始时间，本次不执行删除"
+                                               "（可只做合并改写：清单保留全部旧行）"}
+            too_old = [d for d in deletions
+                       if _parse_created_at(d.get("created_at")) < session_start]
+            if too_old:
+                names = "；".join(d["text"][:30] for d in too_old[:3])
+                return {"ok": False, "detail": f"以下记忆在本会话之前创建，智能体不能删除，"
+                                               f"请在设置页手动操作：{names}"}
+            # 护栏 2：每日删除额度（Redis 计数；删除条数一次扣足）
+            from config.settings import MEMORY_ORGANIZE_DELETE_DAILY_MAX
+            from api.v1.db_helpers import consume_daily_quota
+            if not consume_daily_quota(f"mem_org:{user_id}",
+                                       MEMORY_ORGANIZE_DELETE_DAILY_MAX, len(deletions)):
+                return {"ok": False, "detail": f"今日删除额度已用完（智能体自整理每天最多删"
+                                               f" {MEMORY_ORGANIZE_DELETE_DAILY_MAX} 条）"}
+            self._audit_organize(user_id, session_id, [d["text"] for d in deletions])
+
+        # 上限兜底（不算删除额度，语义同合并「超限丢最旧」）
+        from config.settings import MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS
+        kept = plan["kept"]
+        while len(kept) > MEMORY_MAX_ITEMS:
+            kept.pop(0)
+        while len(kept) > 1 and sum(len(e["text"]) for e in kept) + len(kept) > MEMORY_MAX_CHARS:
+            kept.pop(0)
+
+        total = memory_store.apply_entries(user_id, kept)
+        return {"ok": True, "deleted": len(deletions), "total": total,
+                "memory": "\n".join(e["text"] for e in kept)}
+
+    def _audit_organize(self, user_id: int, session_id: str, texts: list) -> None:
+        """自整理删除审计（data/logs/memory_audit.log，云端进程落盘）"""
+        import os
+        from datetime import datetime
+        from utils.data_path import root_path
+        path = os.path.join(root_path(), "data", "logs", "memory_audit.log")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        line = (f"{datetime.now().strftime('%Y-%m-%dT%H:%M:%S')} uid={user_id} "
+                f"sid={session_id} deleted={json.dumps(texts, ensure_ascii=False)}\n")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line)
+
     def get_session_stats(self, session_id: str) -> dict:
         """会话消息条数 + 总字数（一次聚合查询，不加载正文）"""
         from sqlalchemy import func as _func
@@ -1845,6 +1924,17 @@ class AgentDatabase:
                      "calls": int(r.calls or 0)} for r in rows]
         finally:
             sess.close()
+
+def _parse_created_at(s) -> "datetime":
+    """记忆条目 created_at → datetime；解析失败返回 datetime.min（视为最旧，禁止智能体删）"""
+    from datetime import datetime
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(str(s or ""), fmt)
+        except ValueError:
+            continue
+    return datetime.min
+
 
 _db_instance = None
 

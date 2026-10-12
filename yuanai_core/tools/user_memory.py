@@ -18,7 +18,7 @@ import logging
 import urllib.request
 
 from langchain_core.tools import tool
-from yuanai_core.rag import current_user_id
+from yuanai_core.rag import current_user_id, current_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,8 @@ def _call_memory(path: str, method: str = "GET", payload: dict = None,
             return _agent_http(f"{path}?user_id={uid}", "GET")
         payload = dict(payload or {})
         payload.setdefault("user_id", uid)
-        return _agent_http(path, method, payload)
+        http_method = "POST" if method == "ORGANIZE" else method  # ORGANIZE 落 HTTP POST
+        return _agent_http(path, http_method, payload)
 
     try:
         db = _memory_ops()
@@ -111,6 +112,9 @@ def _call_memory(path: str, method: str = "GET", payload: dict = None,
 
     if method == "GET":
         return {"ok": True, "memory": db.get_user_memory(uid)}
+    if method == "ORGANIZE":
+        return db.organize_user_memory(uid, (payload or {}).get("items", []),
+                                       (payload or {}).get("session_id", ""))
     if method == "POST":
         from config.settings import MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS
         facts = [str(f)[:200] for f in (payload or {}).get("facts", [])
@@ -158,6 +162,25 @@ def remember_user_info(info: str) -> str:
     if r.get("added", 0) == 0:
         return "已存在相同记忆，无需重复保存"
     return "记忆已保存"
+
+
+@tool
+def organize_user_memory(items: str) -> str:
+    """整理用户长期记忆：把当前记忆合并去重、改写得更准确、补充新事实，
+    输出整理后的完整清单，一行一条。清单里没有的旧记忆会被删除——
+    硬限制：每天最多删 3 条，且只能删本会话内新增的记忆；删除更早的
+    记忆无法执行（会报错），请告诉用户到设置页「我的记忆」手动操作。"""
+    from yuanai_core.memory import _is_placeholder
+    text = (items or "").strip()
+    if not text or _is_placeholder(text):
+        return "没有可整理的内容"
+    uid = current_user_id.get()
+    sid = current_session_id.get()
+    r = _call_memory("/memory/organize", "ORGANIZE",
+                     {"user_id": uid, "session_id": sid, "items": [text]}, uid=uid)
+    if not r.get("ok"):
+        return f"整理失败：{r.get('detail', '未知错误')}"
+    return f"记忆已整理：删除 {r.get('deleted', 0)} 条，现存 {r.get('total', 0)} 条"
 
 
 # ⚠ 安全事故教训（2026-10-11）：曾定义 forget_user_info 工具供 LLM 调用，

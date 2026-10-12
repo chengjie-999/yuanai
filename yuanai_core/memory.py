@@ -124,6 +124,63 @@ def dedup_key(line: str) -> str:
 _dedup_key = dedup_key  # 内部旧名兼容
 
 
+def plan_organize(existing_entries: list, organized_lines: list) -> dict:
+    """自整理计划（纯函数）：模型输出理想清单 → 保留/升级/新增/删除候选。
+
+    existing_entries: memory_store.load_entries 形状 [{text, created_at, ...}]
+    organized_lines: 模型输出的整理后清单（每行一条）
+    语义（与 merge_facts 对齐）：
+    - 新行与旧行等键 → 保留旧行原文
+    - 新行 ⊃ 旧行 → 原地升级为新行（复用旧 created_at——改写不洗白创建时间）
+    - 旧行 ⊃ 新行 → 保留旧行（更完整的不被缩水）
+    - 旧行无对应新行 → 删除候选（deletions，是否真删由调用方限额/时间校验）
+    - 新行无对应旧行 → 新增（created_at 记当前时间）
+    返回 {"kept": [entry...], "deletions": [entry...]}（kept 已含升级/新增）
+    """
+    seen = set()
+    new_lines = []
+    for ln in (organized_lines or []):
+        ln = _clip(str(ln).strip(), 200)
+        if not ln or _is_placeholder(ln):
+            continue
+        k = _dedup_key(ln)
+        if k not in seen:
+            seen.add(k)
+            new_lines.append((ln, k))
+
+    old = [e for e in (existing_entries or []) if str(e.get("text", "")).strip()]
+    old_keys = [_dedup_key(e["text"]) for e in old]
+    used = set()
+    kept = []
+    kept_idx = set()
+    for i in range(len(old)):
+        okey = old_keys[i]
+        best = None  # (new_idx, mode) mode: 'upgrade'（新行吞旧行）/ 'keep_old'（旧行吞新行）
+        for j, (_, nkey) in enumerate(new_lines):
+            if okey == nkey or okey in nkey:
+                best = (j, "upgrade")  # 等键或新行 ⊃ 旧行 → 用新行文本（升级语义）
+                break
+            if nkey in okey:
+                best = (j, "keep_old")  # 旧行吞新行 → 保留旧行（更完整的不被缩水）
+        if best is None:
+            continue  # 无对应新行 → 删除候选（按下标收集）
+        j, mode = best
+        kept_idx.add(i)
+        used.add(j)
+        entry = dict(old[i])
+        if mode == "upgrade":
+            entry["text"] = new_lines[j][0]
+        kept.append(entry)
+
+    deletions = [old[i] for i in range(len(old)) if i not in kept_idx]
+
+    for j, (ntext, _) in enumerate(new_lines):
+        if j not in used:
+            kept.append({"text": ntext, "created_at": "", "type": "chat",
+                         "source": "organize", "file": ""})
+    return {"kept": kept, "deletions": deletions}
+
+
 def merge_facts(existing: list, new: list, max_items: int = 100, max_chars: int = 2000) -> tuple:
     """既有记忆 + 新事实 → (merged, added)。只追加、行级去重、超限从头部丢最旧。
 

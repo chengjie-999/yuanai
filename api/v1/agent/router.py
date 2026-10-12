@@ -442,6 +442,25 @@ def agent_add_memory(request: Request, body: AgentMemoryBody):
     return {"ok": True, "added": r["added"]}
 
 
+class AgentOrganizeBody(BaseModel):
+    user_id: int = 0
+    session_id: str = ""
+    items: list = []
+
+
+@router.post("/memory/organize")
+def agent_organize_memory(request: Request, body: AgentOrganizeBody):
+    """本地 Agent 记忆自整理（organize_user_memory 工具走 HTTP；删除护栏在 db 层）"""
+    _agent_memory_auth(request)
+    if not body.user_id:
+        raise HTTPException(status_code=400, detail="缺少 user_id")
+    from db.session import get_db
+    r = get_db().organize_user_memory(body.user_id, body.items, body.session_id)
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("detail", "整理失败"))
+    return {"ok": True, "deleted": r["deleted"], "total": r["total"]}
+
+
 @router.delete("/memory")
 def agent_delete_memory(request: Request, body: AgentMemoryBody):
     """本地 Agent 记忆删除（forget_user_info 工具走 HTTP；多条命中不误删）"""

@@ -15,7 +15,7 @@ from utils.data_path import root_path
 from api.v1.models import ChatRequest, SaveMessagesRequest
 from yuanai_core.core.lc import get_llm
 from yuanai_core.core.chat import build_input_messages, stream_agent_events
-from yuanai_core.rag import current_user_id
+from yuanai_core.rag import current_user_id, current_session_id
 from yuanai_core.tools import all_tools
 
 logger = logging.getLogger(__name__)
@@ -234,6 +234,7 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         # 设置当前用户上下文，知识库检索时自动过滤私有/共享
         current_user_id.set(user_id if user_id else 0)
+        current_session_id.set(getattr(req, "session_id", "") or "")
 
         # --- 尝试走本地 Agent WebSocket 桥接（云端模式 force_cloud 时跳过） ---
         if user_id and not req.force_cloud:
@@ -349,6 +350,7 @@ async def claude_stream(req: ChatRequest, request: Request):
             system_message=SystemMessage(content=req.system_prompt),
         )
         current_user_id.set(user_id if user_id else 0)
+        current_session_id.set(getattr(req, "session_id", "") or "")
 
         # 目标 agent：共享桥接（固定 id）或该用户自己的本机 Agent
         target_agent_id = CLAUDE_BRIDGE_AGENT_ID if CLAUDE_BRIDGE_AGENT_ID > 0 else user_id

@@ -30,13 +30,19 @@ def verify_session_owner(db, session_id: str, user_id: int):
 def check_daily_quota(key: str, limit: int) -> bool:
     """每日配额计数（Redis INCR + 24h 过期，键含日期）。未超限返回 True；
     Redis 不可用时降级宽松放行（限流失败不阻断服务）。"""
+    return consume_daily_quota(key, limit, amount=1)
+
+
+def consume_daily_quota(key: str, limit: int, amount: int = 1) -> bool:
+    """每日配额消耗（Redis INCRBY amount + 24h 过期，键含日期）。未超限返回 True；
+    Redis 不可用时降级宽松放行（限流失败不阻断服务）。"""
     try:
         from datetime import datetime
         from db.redis_client import get_redis
         rds = get_redis()
         day_key = f"quota:{key}:{datetime.now().strftime('%Y%m%d')}"
-        count = rds.incr(day_key)
-        if count == 1:
+        count = rds.incr(day_key, amount)
+        if count <= amount:
             rds.expire(day_key, 24 * 3600)
         return count <= limit
     except Exception:

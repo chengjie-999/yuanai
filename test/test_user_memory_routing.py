@@ -120,6 +120,20 @@ def test_http_delete_carries_user_id(monkeypatch):
     assert method == "DELETE" and data["user_id"] == 3 and data["line"] == "用户怕辣"
 
 
+def test_http_organize_maps_to_post_with_uid_and_session(monkeypatch):
+    """ORGANIZE 落 HTTP POST，带 user_id/session_id/items（自整理工具走本地 Agent 的通道）"""
+    monkeypatch.setattr(um, "_read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
+    calls = _fake_http(monkeypatch)
+    r = um._call_memory("/memory/organize", "ORGANIZE",
+                        {"session_id": "s1", "items": ["a\nb"]}, uid=3)
+    assert r["ok"] is True
+    assert len(calls) == 1
+    url, method, body = calls[0]
+    data = json.loads(body.decode("utf-8"))
+    assert "/memory/organize" in url and method == "POST"
+    assert data["user_id"] == 3 and data["session_id"] == "s1" and data["items"] == ["a\nb"]
+
+
 # ---------------- file 工具 None 防御（LLM 兜底尝试曾崩 len(None)） ----------------
 
 def test_read_data_file_missing_returns_friendly(monkeypatch):

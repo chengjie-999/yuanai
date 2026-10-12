@@ -111,6 +111,7 @@ MEMORY_MAX_ITEMS = int(os.getenv("MEMORY_MAX_ITEMS", "100"))               # 长
 MEMORY_MAX_CHARS = int(os.getenv("MEMORY_MAX_CHARS", "2000"))              # 长期记忆字数上限（每轮注入，别开大）
 MEMORY_FOLD_TIMEOUT_S = int(os.getenv("MEMORY_FOLD_TIMEOUT_S", "120"))
 MEMORY_FOLD_DAILY_MAX = int(os.getenv("MEMORY_FOLD_DAILY_MAX", "50"))      # 每用户每日折叠次数上限
+MEMORY_ORGANIZE_DELETE_DAILY_MAX = int(os.getenv("MEMORY_ORGANIZE_DELETE_DAILY_MAX", "3"))  # 自整理删除：每用户每日删条数上限（安全事故教训后设的硬护栏）
 
 # Agent 音色分配 — 气泡朗读按消息归属 Agent 选音色（均实测有效；须为 2.0 系列配 seed-tts-2.0）
 _DEFAULT_AGENT_VOICE_MAP = {

@@ -14,6 +14,7 @@ import signal
 import socket
 import sys
 import os
+import threading
 import urllib.request
 
 # 确保项目根目录在 sys.path 中
@@ -38,6 +39,8 @@ def parse_args():
     p.add_argument("--tray", action="store_true", help="以托盘模式运行（默认命令行模式）")
     p.add_argument("--vault-sync", action="store_true",
                    help="命令行模式启动 vault 同步循环（托盘模式自动随配置启用）")
+    p.add_argument("--no-plan-executor", action="store_true",
+                   help="关闭计划执行器（默认开启：手机定计划、本机拉取执行）")
     return p.parse_args()
 
 
@@ -226,11 +229,25 @@ async def main():
 
     connect_task = asyncio.create_task(client.connect())
 
+    # 计划执行器（手机定计划、电脑执行）：后台线程轮询云端队列，认领分步
+    # 执行分析/采集任务；云端是唯一真相源，本机崩溃后看门狗自动续跑
+    plan_loop = None
+    if not args.no_plan_executor and agent_token and not str(agent_token).startswith("eyJ"):
+        # 仅机器模式（agent_secret）可用：REST 端点校验设备凭据，JWT 旧模式会 401
+        from agent.plan_executor import PlanExecutor
+        http_base = server_url.replace("wss://", "https://").replace("ws://", "http://")
+        plan_loop = PlanExecutor(agent_id=str(agent_id), agent_secret=agent_token,
+                                 server_base=http_base)
+        threading.Thread(target=plan_loop.run_loop, name="plan-executor", daemon=True).start()
+        logger.info("计划执行器已启动（轮询 %s）", http_base)
+
     try:
         await stop
     except asyncio.CancelledError:
         pass
     finally:
+        if plan_loop:
+            plan_loop.stop()
         await client.disconnect()
         connect_task.cancel()
         try:

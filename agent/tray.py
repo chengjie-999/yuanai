@@ -234,6 +234,22 @@ class AgentTray:
         except Exception as e:
             logger.warning("vault 同步启动失败: %s", e)
 
+        # 计划执行器线程（手机定计划、电脑执行）：轮询云端队列认领执行；
+        # 技能开关用 callable 实时读托盘 toggles，切换即生效
+        self._plan_loop = None
+        try:
+            from agent.plan_executor import PlanExecutor
+            http_base = self.server_url.replace("wss://", "https://").replace("ws://", "http://")
+            self._plan_loop = PlanExecutor(
+                str(self.agent_id), self.agent_token or "", http_base,
+                enabled_skills=lambda: [o["cap"] for o in AGENT_OPTIONS
+                                        if o["cap"] and self.toggles.get(o["key"], True)])
+            threading.Thread(target=self._plan_loop.run_loop, name="plan-executor",
+                             daemon=True).start()
+            logger.info("计划执行器已启动")
+        except Exception as e:
+            logger.warning("计划执行器启动失败: %s", e)
+
         # 托盘在主线程运行（阻塞）
         self._icon.run()
 

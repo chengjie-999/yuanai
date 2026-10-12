@@ -1,13 +1,14 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
 import type { ReasoningEffort } from './ReasoningSelector'
 import { SUGGESTIONS } from '../../config/agents'
+import { ArrowDownIcon } from '../icons'
 import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest, sendTick }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
@@ -28,28 +29,59 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   targetAgent: string
   setTargetAgent: (v: string) => void
   onSuggest: (text: string) => void
+  sendTick: number
 }) {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const lastSidRef = useRef(currentSid)
+  const lastSendTickRef = useRef(sendTick)
+  // 是否贴底（滚动监听实时维护）：贴底才跟随最新消息；上滑阅读时暂停跟随
+  const nearBottomRef = useRef(true)
+  const [showJump, setShowJump] = useState(false)
+
+  const jumpToBottom = () => {
+    const container = chatEndRef.current?.closest('.chat-main') as HTMLElement | null
+    if (!container) return
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+    nearBottomRef.current = true
+    setShowJump(false)
+  }
 
   useEffect(() => {
-    // 进入/切换会话（含登录落主对话）：无条件直达最新消息——用户习惯，
-    // 不看当前位置判定（刚进入时 scrollTop=0 会被误判为「不在底部」）
+    const container = chatEndRef.current?.closest('.chat-main') as HTMLElement | null
+    if (!container) return
+    const onScroll = () => {
+      const near = container.scrollHeight - container.scrollTop - container.clientHeight < 120
+      nearBottomRef.current = near
+      setShowJump(!near)
+    }
+    container.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => container.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    // 进入/切换会话（含登录落主对话）、发送/修改重发：无条件直达最新消息并
+    // 恢复跟随——用户习惯，不看当前位置判定（刚进入时 scrollTop=0 会被误判）
     const sessionChanged = lastSidRef.current !== currentSid
     lastSidRef.current = currentSid
+    const justSent = lastSendTickRef.current !== sendTick
+    lastSendTickRef.current = sendTick
     const el = chatEndRef.current
     if (!el) return
-    const container = el.closest('.chat-main')
+    const container = el.closest('.chat-main') as HTMLElement | null
     if (!container) { el.scrollIntoView({ behavior: 'auto' }); return }
-    if (sessionChanged) {
+    if (sessionChanged || justSent) {
       container.scrollTop = container.scrollHeight
+      nearBottomRef.current = true
+      setShowJump(false)
       return
     }
-    // 流式输出时用 auto（无动画）且只在用户贴近底部时跟随——
-    // 防止逐 token 平滑滚动造成「一上一下闪」的抖动
-    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120
-    if (nearBottom) el.scrollIntoView({ behavior: loading ? 'auto' : 'smooth' })
-  }, [messages, pendingApproval, loading, currentSid])
+    // 流式输出：贴底才跟随，直接设 scrollTop（无平滑动画）防逐 token 抖动；
+    // 上滑阅读历史时暂停跟随，点「回到底部」按钮恢复
+    if (nearBottomRef.current) {
+      container.scrollTop = container.scrollHeight
+    }
+  }, [messages, pendingApproval, loading, currentSid, sendTick])
 
   return (
     <>
@@ -100,6 +132,30 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
             </div>
           )}
         </div>
+
+        {/* 回到底部：上滑阅读时浮出（sticky 钉在可视区底部），点击滚回最新并恢复跟随 */}
+        <button
+          className="yuan-jump-bottom yuan-tip"
+          onClick={jumpToBottom}
+          aria-label="回到底部"
+          data-tip="回到底部"
+          style={{
+            position: 'sticky', bottom: 16, alignSelf: 'center', marginTop: -44,
+            width: 36, height: 36, borderRadius: '50%', zIndex: 5,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'var(--bg-input)', border: '1px solid var(--border)',
+            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.14)', cursor: 'pointer',
+            color: 'var(--text-secondary)',
+            opacity: showJump ? 1 : 0,
+            transform: showJump ? 'translateY(0)' : 'translateY(8px)',
+            pointerEvents: showJump ? 'auto' : 'none',
+            transition: 'opacity 0.2s, transform 0.2s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+        >
+          <ArrowDownIcon size={18} />
+        </button>
       </div>
 
       <InputArea input={input} setInput={setInput} loading={loading}

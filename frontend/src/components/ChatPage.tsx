@@ -87,6 +87,8 @@ export default function ChatPage({ user }: { user?: any }) {
   const [autoReadTick, setAutoReadTick] = useState(0)
   const feedbackPendingRef = useRef<Set<number>>(new Set())
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  // 发送计数：每次发送/修改重发 +1，ChatView 据此无条件滚底并恢复跟随
+  const [sendTick, setSendTick] = useState(0)
   const messagesRef = useRef(messages)
   messagesRef.current = messages
   const sidRef = useRef(currentSid)
@@ -350,6 +352,7 @@ export default function ChatPage({ user }: { user?: any }) {
     const sentImages = images.length > 0 ? [...images] : undefined
     const prevMsgs = [...messages, { role: 'user' as const, content: text, images: sentImages }]
     setMessages(prevMsgs)
+    setSendTick((t) => t + 1)
     setImages([]); setInput('')
     sendMessages(prevMsgs, text, sentImages)
   }
@@ -361,6 +364,7 @@ export default function ChatPage({ user }: { user?: any }) {
     base[index] = { ...base[index], content: newContent.trim() }
     const truncated = base.slice(0, index + 1)
     setMessages(truncated)
+    setSendTick((t) => t + 1)
     setEditingIndex(null)
     sendMessages(truncated, newContent.trim(), base[index].images)
   }
@@ -409,6 +413,7 @@ export default function ChatPage({ user }: { user?: any }) {
     const isClaude = target === 'claude' || chatMode === 'claude'
     const sentImages = [...images]; setImages([])
     setMessages([{ role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }])
+    setSendTick((t) => t + 1)
     const placeholderSender = target && AGENT_CONFIG[target]
       ? target
       : chatMode === 'cloud' ? 'orchestrator' : 'local'
@@ -436,6 +441,8 @@ export default function ChatPage({ user }: { user?: any }) {
     <style>{`
       @media (max-width: 768px) {
         .chat-main { padding: 12px 4px !important; }
+        /* 回到底部按钮：手机放大触控目标（36 → 44px，接近触控标准） */
+        .yuan-jump-bottom { width: 44px !important; height: 44px !important; bottom: 12px !important; }
         .chat-welcome { padding: 3vh 8px 24px !important; }
         .chat-welcome h1 { font-size: 20px !important; }
         .chat-msg-bubble { max-width: 90% !important; }
@@ -511,6 +518,7 @@ export default function ChatPage({ user }: { user?: any }) {
             onStartVoiceCall={startVoiceCallWithPermission}
             targetAgent={targetAgent} setTargetAgent={setTargetAgent}
             onSuggest={handleSend}
+            sendTick={sendTick}
           />
         )}
       </div>

@@ -30,12 +30,13 @@ INTENT_TOOL_GROUPS: Dict[str, List[str]] = {
     "data_task":              ["data", "file", "stats", "general"],
     "crawl_task":             ["crawl", "file", "general"],
     "memory_task":            ["memory", "knowledge", "general"],
+    "plan_task":              ["plan", "general"],
     "knowledge_q":            ["knowledge", "general"],
     "delegate_analysis":      ["general", "delegate_analysis"],
     "delegate_collection":    ["general", "delegate_collection"],
     "delegate_automation":    ["general", "delegate_automation"],
     "delegate_claude":        ["general", "delegate_claude"],
-    "general_chat":           ["general", "memory", "knowledge", "delegate_all"],
+    "general_chat":           ["general", "memory", "plan", "knowledge", "delegate_all"],
 }
 
 # 每个意图的中英文关键词
@@ -57,6 +58,8 @@ _KEYWORDS: Dict[str, set] = {
                                "打开链接", "获取内容", "解析"},
     "memory_task":           {"记住", "记忆", "我叫", "我的", "memory", "remember",
                                "别忘了", "保存下来"},
+    "plan_task":             {"计划", "规划", "定计划", "制定计划", "制定", "执行计划",
+                               "我的计划", "计划进度", "任务清单", "安排一下", "plan"},
     "knowledge_q":           {"知识库", "检索", "搜索", "retrieve", "查找",
                                "相关知识", "知识星球", "星球", "导图", "思维导图",
                                "笔记", "mindmap"},
@@ -117,6 +120,11 @@ class IntentClassifier:
 
         # Step 3: 取最高分意图
         best = max(scores, key=scores.get)
+        # 计划意图平局优先：「制定/执行/查看计划」常与数据/记忆关键词同分
+        # （如「执行我的计划」命中记忆的「我的」；「制定计划抓数据」命中数据的「数据」）
+        if (scores.get("plan_task", 0) == scores.get(best, 0)
+                and best != "plan_task" and "计划" in msg):
+            best = "plan_task"
         best_score = scores[best]
         total = sum(scores.values())
         confidence = best_score / max(total, 1)
@@ -158,6 +166,7 @@ simple_query - calculation, weather, datetime, unit conversion
 data_task - dataset, statistics, analysis, preview
 crawl_task - web scraping, URL fetching, HTML parsing
 memory_task - remember/recall user personal info
+plan_task - creating a plan, checking plan progress, executing a plan
 knowledge_q - knowledge base search
 delegate_analysis - complex data analysis needing sub-agent
 delegate_collection - massive crawling needing sub-agent

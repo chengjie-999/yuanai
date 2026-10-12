@@ -53,7 +53,9 @@ def get_orchestrator_prompt() -> str:
 
 
 def _tool_sender(name: str) -> str:
-    """工具归属推断（信封协议）：delegate_to_xxx_agent → xxx；其余 → orchestrator"""
+    """工具归属推断（信封协议）：delegate_to_xxx_agent → xxx；计划工具 → plan；其余 → orchestrator"""
+    if name in ("create_plan", "execute_plan", "get_plan_status"):
+        return "plan"
     if name.startswith("delegate_to_") and name.endswith("_agent"):
         skill = name[len("delegate_to_"):-len("_agent")]
         if skill in ("analysis", "collection", "automation", "claude"):

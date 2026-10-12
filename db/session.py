@@ -906,20 +906,19 @@ class AgentDatabase:
             if user_id is not None:
                 q = q.filter(PlanStep.user_id == user_id)
             rows = q.order_by(PlanStep.step_no).all()
-            out = []
-            for r in rows:
-                out.append({
-                    "id": r.id, "plan_id": r.plan_id, "user_id": r.user_id,
-                    "step_no": r.step_no or 0, "skill": r.skill or "analysis",
-                    "desc": r.desc or "", "params_json": r.params_json or "{}",
-                    "status": r.status or "pending", "attempt": r.attempt or 0,
-                    "progress": r.progress or 0, "last_message": r.last_message or "",
-                    "result_json": r.result_json or "", "error": r.error or "",
-                    "claimed_at": str(r.claimed_at)[:19] if r.claimed_at else "",
-                    "started_at": str(r.started_at)[:19] if r.started_at else "",
-                    "finished_at": str(r.finished_at)[:19] if r.finished_at else "",
-                })
-            return out
+            return [_plan_step_dict(r) for r in rows]
+        finally:
+            sess.close()
+
+    def get_plan_step(self, step_id: int, user_id: int = None) -> dict:
+        """按 step_id 取步骤（user_id 冗余校验防伪造他人 step_id）"""
+        sess = self.Session()
+        try:
+            q = sess.query(PlanStep).filter(PlanStep.id == step_id)
+            if user_id is not None:
+                q = q.filter(PlanStep.user_id == user_id)
+            r = q.first()
+            return _plan_step_dict(r) if r else None
         finally:
             sess.close()
 
@@ -2282,6 +2281,21 @@ class AgentDatabase:
                      "calls": int(r.calls or 0)} for r in rows]
         finally:
             sess.close()
+
+def _plan_step_dict(r) -> dict:
+    """PlanStep ORM 行 → dict（get_plan_steps / get_plan_step 共用）"""
+    return {
+        "id": r.id, "plan_id": r.plan_id, "user_id": r.user_id,
+        "step_no": r.step_no or 0, "skill": r.skill or "analysis",
+        "desc": r.desc or "", "params_json": r.params_json or "{}",
+        "status": r.status or "pending", "attempt": r.attempt or 0,
+        "progress": r.progress or 0, "last_message": r.last_message or "",
+        "result_json": r.result_json or "", "error": r.error or "",
+        "claimed_at": str(r.claimed_at)[:19] if r.claimed_at else "",
+        "started_at": str(r.started_at)[:19] if r.started_at else "",
+        "finished_at": str(r.finished_at)[:19] if r.finished_at else "",
+    }
+
 
 def _parse_created_at(s) -> "datetime":
     """记忆条目 created_at → datetime；解析失败返回 datetime.min（视为最旧，禁止智能体删）"""

@@ -93,10 +93,21 @@ def agent_create_plan(request: Request, body: CreateBody):
 
 @router.post("/execute")
 def agent_execute_plan(request: Request, body: ExecuteBody):
+    """execute_plan 工具 HTTP 通道；plan_id=0 → 最近一个草稿（云端解析）"""
     uid = _agent_uid(request)
-    if not body.plan_id:
-        raise HTTPException(status_code=400, detail="缺少 plan_id")
-    return store.execute_plan(body.plan_id, uid)
+    pid = store.resolve_plan_id(body.plan_id, uid)
+    return store.execute_plan(pid, uid)
+
+
+class StatusBody(BaseModel):
+    plan_id: int = 0
+
+
+@router.post("/status")
+def agent_plan_status(request: Request, body: StatusBody):
+    """get_plan_status 工具 HTTP 通道"""
+    uid = _agent_uid(request)
+    return {"ok": True, "plan": store.format_plan_status(uid, int(body.plan_id or 0))}
 
 
 @router.post("/pull")

@@ -104,6 +104,48 @@ def truncate_result(result_json: dict) -> dict:
     return out
 
 
+def resolve_plan_id(plan_id: int, user_id: int) -> int:
+    """plan_id=0 → 该用户最近一个草稿计划；无草稿 404"""
+    if plan_id:
+        return int(plan_id)
+    plans = _db().list_plans(user_id, status="draft", limit=1)
+    if not plans:
+        raise HTTPException(status_code=404, detail="没有待执行的草稿计划（先让模型 create_plan 制定计划）")
+    return plans[0]["id"]
+
+
+_STATUS_CN = {"draft": "草稿（未执行）", "queued": "排队中（等电脑执行）",
+              "running": "执行中", "done": "已完成", "failed": "失败"}
+_SKILL_CN = {"analysis": "数据分析", "collection": "数据采集"}
+
+
+def format_plan_status(user_id: int, plan_id: int = 0) -> str:
+    """计划状态人读文本（get_plan_status 工具 / 手机问「计划怎么样了」）"""
+    db = _db()
+    if plan_id:
+        p = db.get_plan(int(plan_id), user_id)
+        if not p:
+            return "计划不存在"
+        plans = [p]
+    else:
+        plans = db.list_plans(user_id, limit=3)
+        if not plans:
+            return "你还没有计划。可以说「帮我制定一个计划：…」来创建。"
+    lines = []
+    for p in plans[:1] if not plan_id else plans:
+        st = _STATUS_CN.get(p["status"], p["status"])
+        lines.append(f"计划 #{p['id']}「{p['title']}」：{st}（进度 {p['progress']}%，"
+                     f"完成 {p['done_steps']}/{p['total_steps']} 步）")
+        for s in db.get_plan_steps(p["id"], user_id):
+            st_name = {"pending": "待执行", "running": "运行中", "done": "已完成",
+                       "failed": "失败"}.get(s["status"], s["status"])
+            extra = f" {s['progress']}%" if s["status"] == "running" else ""
+            err = f" 错误：{s['error'][:80]}" if s["status"] == "failed" and s.get("error") else ""
+            lines.append(f"  [{st_name}] 第{s['step_no']}步[{_SKILL_CN.get(s['skill'], s['skill'])}] "
+                         f"{s['desc'][:40]}{extra}{err}")
+    return "\n".join(lines)
+
+
 def step_dict(step: dict) -> dict:
     """步骤输出归一（params 解析成对象；result 解析成对象并截断）"""
     out = dict(step)

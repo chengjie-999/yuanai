@@ -111,12 +111,13 @@ def org_env(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _make_session(db, uid, sid="mem_org_sid"):
-    """直接插一条会话首条消息（create_time 由 DB 生成 = 会话开始边界）"""
+def _make_session(db, uid, sid=""):
+    """直接插一条会话首条消息（create_time 由 DB 生成 = 会话开始边界）；每次独立 sid 防串扰"""
     from db.session import AIChat
+    sid = sid or f"mem_org_{os.urandom(4).hex()}"
     sess = db.Session()
     try:
-        sess.add(AIChat(session_id=sid, user_id=uid, role="user", content="你好"))
+        sess.add(AIChat(session_id=sid, role="user", content="你好"))
         sess.commit()
     finally:
         sess.close()

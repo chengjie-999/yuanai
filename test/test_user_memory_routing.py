@@ -139,7 +139,7 @@ def test_http_organize_maps_to_post_with_uid_and_session(monkeypatch):
 def test_read_data_file_missing_returns_friendly(monkeypatch):
     from yuanai_core.tools import file_tools
     monkeypatch.setattr(file_tools, "_read", lambda path: None)
-    out = file_tools.read_data_file("data/.yuan/nope.md")
+    out = file_tools.read_data_file.invoke({"path": "data/.yuan/nope.md"})
     assert "不存在" in out
 
 

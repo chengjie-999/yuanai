@@ -24,6 +24,26 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 _SAFE_ERROR = "请求处理失败，请稍后重试"
 _CHAT_IMG_DIR = os.path.join(root_path(), "data", "chat_images")
 
+# 云端直连（本地 Agent 离线）专用系统提示——整段重写、去委派化。
+# 教训（2026-10-12）：若沿用前端原提示（含「你可以委派的Agent：delegate_to_xxx」），
+# 那些工具只存在于本地 Agent 进程，云端回退里不存在——模型会反复发起不存在的
+# 工具调用（同一工具名连续多次），且简单任务也先计划委派。
+_OFFLINE_SYSTEM_PROMPT = (
+    "你是小元AI助手，当前用户的本地智能体离线，由你在云端直接服务。"
+    "重要：数据分析/数据采集/自动化等子智能体全部运行在用户本地电脑上，"
+    "此时不可用——不要提及「委派」，不要调用任何 delegate 工具，"
+    "所有请求都由你自己直接处理，简单任务直接完成，不要计划委派。\n"
+    "可直接使用的工具：list_datasets(列出数据集)、preview_dataset(预览数据集)、"
+    "analyze_dataset(分析数据)、fetch_url(抓取网页)、parse_html(解析HTML)、"
+    "get_today_temperature(天气)、calculate_sum(计算)、get_user_memory(读取用户记忆)、"
+    "remember_user_info(记住用户信息)、organize_user_memory(整理记忆)、"
+    "retrieve_planet_knowledge(检索知识星球) 等。\n"
+    "群聊说话人协议：历史消息中带【xx Agent】前缀或其他智能体身份的内容不是你说的，"
+    "不要复述、冒充或替其他智能体总结。\n"
+    "工作原则：直接用工具处理用户请求，简洁回复；工具不可用时直接说明原因；"
+    "任务完成或对话结束时，用表格总结本次完成了什么。"
+)
+
 
 def _save_chat_image(session_id: str, data_url: str) -> str:
     """将 base64 data URL 保存为文件，返回访问 URL。非 base64 原样返回。"""
@@ -274,23 +294,36 @@ async def chat_stream(req: ChatRequest, request: Request):
         view = view_for(viewer, fixed_items, envelopes=fixed_envs)
         input_messages = _langchain_from_items(view, req.prompt, req.images, system_prompt)
 
-        # Agent 离线时没有 delegate 工具，修正系统提示。
-        # 记忆机制修复：原来整段覆盖会丢掉已注入的用户记忆——改为前置拼接
-        offline_prompt = "你是小元AI助手，可以直接使用工具完成任务。可用的工具包括：list_datasets(列出数据集)、preview_dataset(预览)、analyze_dataset(分析)、fetch_url(抓取网页)、parse_html(解析HTML)、get_today_temperature(天气)、calculate_sum(计算)、get_user_memory(用户记忆)、retrieve_planet_knowledge(知识星球检索) 等。直接用工具处理用户请求，简洁回复。任务完成或对话结束时，用表格总结本次完成了什么。"
+        # 离线系统提示（2026-10-12 根治「重复工具调用 + 简单任务也打算委派」）：
+        # 前端原提示含「你可以委派的Agent：delegate_to_xxx」段——那些工具只存在于
+        # 本地 Agent 进程，云端回退里不存在，模型反复发起不存在的工具调用（同一个
+        # 工具名连续多次）。云端直连必须整段重写去委派化，不再拼接原提示。
+        # 记忆注入：用户记忆已注入 system_prompt，这里重写会丢——重新注入。
+        from yuanai_core.core.chat import limited_tools
+        offline_prompt = _OFFLINE_SYSTEM_PROMPT
+        if user_id:
+            from db.session import get_db as _db
+            try:
+                mem = _db().get_user_memory(user_id)
+                if mem:
+                    offline_prompt = f"关于当前用户的已知信息（请用它来个性化回复）：\n{mem}\n\n{offline_prompt}"
+            except Exception:
+                pass
         if target and target in ("analysis", "collection", "automation", "claude"):
             role_hint = {"analysis": "数据分析", "collection": "数据采集",
                          "automation": "自动化", "claude": "Claude Code"}[target]
             offline_prompt += (f"\n本轮用户 @{role_hint} 指定由「{role_hint}智能体」回答："
                                f"从此刻起你就是{role_hint}智能体本人，直接以该身份与口吻回答，"
                                f"不要自称小元AI或统筹助手，不要提及委派过程或身份切换。")
-        input_messages[0]["content"] = offline_prompt + "\n\n" + str(input_messages[0]["content"])
+        input_messages[0]["content"] = offline_prompt
         effort = req.reasoning_effort if req.reasoning_effort in ("low", "medium", "high") else "low"
         llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True,
                       reasoning_effort=effort)
 
         async def event_stream():
             try:
-                async for event in stream_agent_events(llm, input_messages, all_tools):
+                # 同名工具单轮最多调 3 次（防重复调用死循环）+ LangGraph 轮数上限
+                async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             except Exception as e:
                 logger.error("SSE 流式聊天异常: %s", e)
@@ -385,13 +418,16 @@ async def claude_stream(req: ChatRequest, request: Request):
         view = view_for("claude", fixed_items, envelopes=envelopes[1:-1])
         input_messages = _langchain_from_items(view, req.prompt, req.images, req.system_prompt)
         offline_prompt = ("你是小元AI助手（Claude Code 桥接当前离线，已切换云端模式）。"
+                          "不要提及「委派」、不要调用任何 delegate 工具——子智能体在本机"
+                          "Agent 上且当前离线，所有请求由你自己直接处理。"
                           "可以直接使用工具完成任务。简洁回复，任务完成时用表格总结本次完成了什么。")
         input_messages[0]["content"] = offline_prompt
         llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True)
 
         async def event_stream():
             try:
-                async for event in stream_agent_events(llm, input_messages, all_tools):
+                from yuanai_core.core.chat import limited_tools
+                async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             except Exception as e:
                 logger.error("claude-stream 云端回退异常: %s", e)

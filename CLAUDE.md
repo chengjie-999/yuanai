@@ -193,7 +193,7 @@ data/                   数据目录
 
 - 本地 Agent 主动连接云端 `ws://<server>/api/v1/agent/ws/agent/{agent_id}`
 - 云端收到 HTTP 对话请求 → 检查 Agent 在线 → WebSocket 转发 → Agent 处理后回传 → SSE 推送前端
-- Agent 离线时自动回退到云端直接调用 LLM
+- Agent 离线时自动回退到云端直接调用 LLM（**2026-10-12 加固**：云端回退系统提示整段重写去委派化 `_OFFLINE_SYSTEM_PROMPT`——前端原提示含 delegate 工具清单，那些工具只存在于本地 Agent 进程，云端回退里模型会反复发起不存在的工具调用；同名工具单轮调用 ≤3 次 `limited_tools`（yuanai_core/core/chat.py，包一层计数超限返回引导语）+ LangGraph `recursion_limit` 轮数上限，双层防重复调用死循环）
 
 ### 机器识别（每用户一台 PC）
 

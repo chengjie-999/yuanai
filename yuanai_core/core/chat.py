@@ -245,12 +245,43 @@ async def _deepseek_agent_stream(
         yield {"type": "error", "data": str(e)}
 
 
+def limited_tools(tools: List[BaseTool], max_calls_per_tool: int = 3) -> List[BaseTool]:
+    """同名工具单轮调用上限：超限不执行、返回引导语（防模型对失败/不存在的工具
+    死循环重试——曾出现同一工具被连续调用 20+ 次）。包一层计数，工具本身不改。"""
+    from langchain_core.tools import StructuredTool
+
+    counts: Dict[str, int] = {}
+    wrapped = []
+    for t in tools:
+        name = t.name
+        counts[name] = 0
+
+        def make_run(inner, tname):
+            def _run_tool(**kwargs):
+                if counts[tname] >= max_calls_per_tool:
+                    return (f"工具「{tname}」本轮已调用 {max_calls_per_tool} 次，"
+                            "请停止重复调用，基于已有结果继续回答，或直接告诉用户结果。")
+                counts[tname] += 1
+                return inner.invoke(kwargs)
+            return _run_tool
+
+        wrapped.append(StructuredTool(
+            name=t.name,
+            description=t.description,
+            args_schema=t.args_schema,
+            func=make_run(t, name),
+        ))
+    return wrapped
+
+
 async def stream_agent_events(
         llm,
         input_messages: List[Dict[str, Any]],
         tools: List[Any],
+        max_tool_rounds: int = 8,
 ) -> AsyncGenerator[Dict[str, Any], None]:
-    """流式 Agent 入口，DeepSeek V4 走专用通道"""
+    """流式 Agent 入口，DeepSeek V4 走专用通道。
+    max_tool_rounds：LangGraph 路径的模型↔工具最大轮数（防工具循环跑满 25 步）"""
     model_name = llm.model_name if hasattr(llm, 'model_name') else ""
 
     if _is_deepseek_v4(model_name):
@@ -258,12 +289,13 @@ async def stream_agent_events(
             yield event
         return
 
-    # Doubao 等模型：走原来的 LangGraph agent
+    # Doubao 等模型：走原来的 LangGraph agent（recursion_limit 约束工具循环轮数）
     agent = get_langgraph_agent(llm, tools)
+    config = {"recursion_limit": max_tool_rounds * 2 + 4}
     full_response = ""
     full_reasoning = ""
     try:
-        async for event in agent.astream_events({"messages": input_messages}, version="v2"):
+        async for event in agent.astream_events({"messages": input_messages}, version="v2", config=config):
             if event["event"] == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
                 if hasattr(chunk, "content") and chunk.content:

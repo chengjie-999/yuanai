@@ -259,6 +259,18 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **配置**：config/settings.py MEMORY_* 12 项（模型/窗口/阈值/护栏/上限/超时/日限额，.env 可覆盖）
 - 已知限制（二期）：历史仍全量发送模型（不截断省 token）；claude-stream 无记忆注入；/voice/message 不触发折叠
 
+## 计划闭环（2026-10-12，产品定位头号缺口）
+
+「手机定计划、电脑执行」：① 对话制定计划（统筹 `create_plan` 工具拆步骤，只建草稿不自动执行）→ ② 云端持久化队列（**用户说「执行」** `execute_plan` 或计划页按钮才 queued；**v1 无定时调度**）→ ③ 本地 Agent `agent/plan_executor.py` 轮询拉取执行（10s 空转；`ScriptDispatchAgent` 每步现场 LLM 选脚本——**步骤只存 skill+意图描述+参数，不绑定脚本名**，因为 `.dockerignore` 排除 agent//skills/，云端物理没有脚本清单）→ ④ 手机看进度+结果（`/chat/plan` 计划页 3s/15s 轮询 + 结构化渲染）。
+
+- **三表**（迁移 0015）：`plans`（draft/queued/running/done/failed + 冗余计数）/ `plan_steps`（skill 白名单 analysis|collection，automation 挂账；unique(plan_id,step_no)）/ `plan_runs`（**事件溯源 append-only**，只 INSERT——抄 dsh 设计）
+- **断点续跑**：认领 = 条件 `UPDATE ... WHERE status='pending'` + rowcount==1 判定（CAS）；同计划严格串行（排除有 running 步骤的计划）；看门狗：认领超时 900s 由 pull 端点惰性重置回 pending、计划级 3600s 无进展判 failed；本地不落状态文件，云端是唯一真相源
+- **失败重试**：retryable 且 attempt<2 → 回 pending 自动重试 1 次；确定性失败（无法处理/参数校验失败/未知脚本）不重试；failed 步骤用户可在计划页「重新执行失败步骤」
+- **API**：用户侧 JWT `/api/v1/plan/*`（list/detail 带 runs+看门狗/execute 幂等带 agent_online/delete 运行中 409）；Agent 侧设备凭据 `/api/v1/agent/plan/*`（body 不带 user_id 由设备绑定推导，伪造 step_id 被 user_id 冗余校验 404；进度节流 HTTP ≥3s、事件表 ≥10s 或 Δ5%）
+- **工具**：`yuanai_core/tools/plan_tools.py`（TOOL_CATEGORY=plan 自动发现）双路径复用 user_memory 的 `_memory_path/_agent_http`；intent_classifier 的 plan_task 平局优先；说话人 sender=plan（AGENT_CONFIG 色 #0b7285）
+- **执行器安全**：skill 白名单 + 托盘开关 callable 实时读 toggles + ScriptRegistry 参数校验；结果三层截断（文本 20K/blocks 200KB/事件 5KB）
+- **验证**：`python -m agent.verify_plan [--online]`；pytest test_plan_*.py 五件套；P0 教训：`ScriptRegistry.run` 曾不接受 progress_cb 致委派路径 TypeError（061381a 修复 + test_plan_pure 回归断言锁死）
+
 ## 语音对话
 
 火山引擎「AI 音视频互动方案」实时语音（豆包 App 同款：RTC + 豆包 ASR/TTS + 方舟 LLM）：

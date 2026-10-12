@@ -367,8 +367,13 @@ class ScriptRegistry:
 
         return "\n".join(lines)
 
-    def run(self, name: str, params: dict = None) -> str:
+    def run(self, name: str, params: dict = None, progress_cb=None) -> str:
+        """执行脚本。progress_cb(current, total, message)：进度回调透传 handle。
+
+        修复（2026-10-12）：base.py 一直传 progress_cb 进来但本方法不接受 →
+        委派路径抛 TypeError。回归断言在 test/test_plan_pure.py::test_registry_run_accepts_progress_cb。
+        """
         script = self._scripts.get(name)
         if not script:
             return f"未知脚本: {name}"
-        return script.run(**(params or {}))
+        return script.run(progress_cb=progress_cb, **(params or {}))

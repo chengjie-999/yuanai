@@ -46,6 +46,8 @@ class ScriptDispatchAgent(AgentBase):
             self.system_prompt = skill_config.system_prompt
             self.builtins = skill_config.builtins or {}
         self.registry = ScriptRegistry(self.script_dir)
+        # 最近一次实际派发（计划执行器审计用：把 LLM 选中的脚本写入 plan_runs）
+        self.last_dispatch: Dict = {}
 
     # —— 子类可选覆盖 ——
     def run(self, prompt: str, progress_cb=None) -> str:
@@ -70,11 +72,12 @@ class ScriptDispatchAgent(AgentBase):
 
         script_name = choice["script"]
         params = choice.get("params", {})
+        self.last_dispatch = {"script": script_name, "params": dict(params or {})}
 
         if script_name.startswith("builtin_"):
             return self._dispatch_builtin(script_name, params)
 
-        return self.registry.run(script_name, progress_cb=progress_cb, **params)
+        return self.registry.run(script_name, params, progress_cb=progress_cb)
 
     # —— 内部方法 ——
     def _build_script_list(self, script_list: str) -> str:

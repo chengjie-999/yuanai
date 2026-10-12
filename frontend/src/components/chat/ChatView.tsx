@@ -8,7 +8,7 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest, sendTick }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onRegenerate, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest, sendTick }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
@@ -25,6 +25,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   setEditingIndex: (v: number | null) => void
   onEditMessage: (index: number, content: string) => void
   onFeedback: (index: number, kind: 'like' | 'dislike') => void
+  onRegenerate: (index: number) => void
   onStartVoiceCall: () => void
   targetAgent: string
   setTargetAgent: (v: string) => void
@@ -100,7 +101,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
               onEditStart={setEditingIndex}
               onEditConfirm={onEditMessage}
               onEditCancel={() => setEditingIndex(null)}
-              onFeedback={onFeedback} />
+              onFeedback={onFeedback}
+              onRegenerate={onRegenerate} />
           ))}
           {/* 空对话推荐问题（豆包式：欢迎页已退场，登录直接落主对话，此处承接快捷入口） */}
           {messages.length <= 1 && !loading && (

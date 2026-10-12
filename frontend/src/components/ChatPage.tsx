@@ -369,6 +369,32 @@ export default function ChatPage({ user }: { user?: any }) {
     sendMessages(truncated, newContent.trim(), base[index].images)
   }
 
+  // 重新生成（AI 气泡，点踩后）：截断本条及其后所有消息 → 重发它前面的
+  // 最后一条用户消息（复用修改重发的 SSE 链路；Claude 桥接模式同修改重发
+  // 一样是续接语义，无法真正回退）
+  const handleRegenerate = (index: number) => {
+    if (loading || !currentSid) return
+    const ai = messages[index]
+    if (!ai || ai.role !== 'assistant') return
+    let ui = -1
+    for (let i = index - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') { ui = i; break }
+    }
+    if (ui < 0) return  // 前面没有用户消息 → 无从重发
+    const userMsg = messages[ui]
+    const truncated = messages.slice(0, index)
+    setMessages(truncated)
+    // 被截断消息的点赞/点踩态一并清理（下标越界孤儿行）
+    setFeedbackState((p) => {
+      const next = { ...p }
+      Object.keys(next).forEach((k) => { if (Number(k) >= index) delete next[Number(k)] })
+      return next
+    })
+    setEditingIndex(null)
+    setSendTick((t) => t + 1)
+    sendMessages(truncated, String(userMsg.content || ''), (userMsg as any).images)
+  }
+
   // 点赞/点踩 三态互斥：乐观更新 + 失败回滚 + pending 防并发（流式期间禁止索引操作）
   const handleFeedback = async (index: number, kind: 'like' | 'dislike') => {
     if (loading || feedbackPendingRef.current.has(index) || !currentSid) return
@@ -515,6 +541,7 @@ export default function ChatPage({ user }: { user?: any }) {
             pendingApproval={pendingApproval} handleDecision={handleDecision}
             likes={feedback} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
             onEditMessage={handleEditMessage} onFeedback={handleFeedback}
+            onRegenerate={handleRegenerate}
             onStartVoiceCall={startVoiceCallWithPermission}
             targetAgent={targetAgent} setTargetAgent={setTargetAgent}
             onSuggest={handleSend}

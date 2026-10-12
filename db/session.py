@@ -277,6 +277,68 @@ class PlanetJob(Base):
     update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 
+class Plan(Base):
+    """计划（2026-10-12 计划闭环 v1）：手机对话制定 → 用户说「执行」→ 本机 Agent 拉取分步执行"""
+    __tablename__ = 'plans'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    session_id = Column(String(36), nullable=False, server_default='', index=True)
+    title = Column(String(200), nullable=False, server_default='')
+    goal = Column(Text, nullable=True)
+    status = Column(String(12), nullable=False, server_default='draft')  # draft/queued/running/done/failed
+    device_id = Column(String(32), nullable=False, server_default='')   # '' = 该用户任意绑定设备
+    total_steps = Column(Integer, nullable=False, server_default='0')
+    done_steps = Column(Integer, nullable=False, server_default='0')
+    failed_steps = Column(Integer, nullable=False, server_default='0')
+    progress = Column(Integer, nullable=False, server_default='0')
+    message = Column(String(500), nullable=False, server_default='')
+    result_json = Column(Text, nullable=True)
+    error = Column(String(1000), nullable=False, server_default='')
+    create_time = Column(TIMESTAMP, server_default=func.now())
+    update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+class PlanStep(Base):
+    """计划步骤：只存 skill + 意图描述 + 参数（云端无脚本清单，执行机现场 LLM 选脚本）"""
+    __tablename__ = 'plan_steps'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    plan_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)  # 冗余防伪造 step_id
+    step_no = Column(Integer, nullable=False)
+    skill = Column(String(16), nullable=False, server_default='analysis')  # 白名单 analysis/collection
+    desc = Column(String(500), nullable=False, server_default='')
+    params_json = Column(Text, nullable=True)
+    status = Column(String(12), nullable=False, server_default='pending')  # pending/running/done/failed/skipped
+    attempt = Column(Integer, nullable=False, server_default='0')
+    progress = Column(Integer, nullable=False, server_default='0')
+    claimed_at = Column(TIMESTAMP, nullable=True)      # 看门狗基准
+    claimed_by = Column(String(32), nullable=False, server_default='')
+    started_at = Column(TIMESTAMP, nullable=True)
+    finished_at = Column(TIMESTAMP, nullable=True)
+    last_message = Column(String(500), nullable=False, server_default='')
+    result_json = Column(Text, nullable=True)          # {"text","blocks","truncated","script"}
+    error = Column(String(1000), nullable=False, server_default='')
+    create_time = Column(TIMESTAMP, server_default=func.now())
+    update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    __table_args__ = (UniqueConstraint('plan_id', 'step_no', name='uq_plan_step_no'),)
+
+
+class PlanRun(Base):
+    """计划执行记录（事件溯源，append-only：只 INSERT，绝不 UPDATE/DELETE）"""
+    __tablename__ = 'plan_runs'
+    id = Column(Integer, primary_key=True, autoincrement=True)  # 自增即单调序
+    plan_id = Column(Integer, nullable=False, index=True)
+    step_id = Column(Integer, nullable=True, index=True)        # 计划级事件为空
+    user_id = Column(Integer, nullable=False, index=True)
+    event = Column(String(24), nullable=False)  # created/queued/claimed/progress/step_done/step_failed/step_retry/plan_done/plan_failed/watchdog_reset/step_reset
+    status_from = Column(String(12), nullable=False, server_default='')
+    status_to = Column(String(12), nullable=False, server_default='')
+    message = Column(String(500), nullable=False, server_default='')
+    payload_json = Column(Text, nullable=True)
+    device_id = Column(String(32), nullable=False, server_default='')
+    create_time = Column(TIMESTAMP, server_default=func.now())
+
+
 # ---------------------- 数据库操作类（功能完全对齐原代码） ----------------------
 class AgentDatabase:
     def __init__(self, mysql_config: dict = None):
@@ -763,6 +825,302 @@ class AgentDatabase:
                 f"sid={session_id} deleted={json.dumps(texts, ensure_ascii=False)}\n")
         with open(path, "a", encoding="utf-8") as f:
             f.write(line)
+
+    # --------------------------------------------------------------------------
+    # 计划闭环（plans / plan_steps / plan_runs 事件溯源；2026-10-12）
+    # --------------------------------------------------------------------------
+    def create_plan(self, user_id: int, title: str, goal: str, steps: list,
+                    session_id: str = "", device_id: str = "") -> dict:
+        """建计划 + 步骤（事务一次提交，失败不留脏数据）。
+        返回 {"ok": True, "plan_id": id} 或 {"ok": False, "detail": ...}"""
+        if not user_id or not self.get_user_by_id(user_id):
+            return {"ok": False, "detail": "用户不存在"}
+        if not isinstance(steps, list) or not (1 <= len(steps) <= 8):
+            return {"ok": False, "detail": "步骤数须为 1-8"}
+        sess = self.Session()
+        try:
+            plan = Plan(user_id=user_id, session_id=session_id or "",
+                        title=(title or "")[:200], goal=(goal or "")[:2000],
+                        status="draft", device_id=device_id or "",
+                        total_steps=len(steps))
+            sess.add(plan)
+            sess.flush()
+            for i, s in enumerate(steps, 1):
+                sess.add(PlanStep(
+                    plan_id=plan.id, user_id=user_id, step_no=i,
+                    skill=s.get("skill", "analysis"),
+                    desc=str(s.get("desc", ""))[:500],
+                    params_json=json.dumps(s.get("params", {}) or {}, ensure_ascii=False)))
+            sess.commit()
+            plan_id = plan.id
+        except Exception:
+            sess.rollback()
+            raise
+        finally:
+            sess.close()
+        self.append_plan_run(plan_id, None, user_id, "created", "", "draft",
+                             f"计划创建：{(title or '')[:60]}")
+        return {"ok": True, "plan_id": plan_id}
+
+    def list_plans(self, user_id: int, status: str = None, limit: int = 50) -> list:
+        """计划卡列表（不含大字段）"""
+        sess = self.Session()
+        try:
+            q = sess.query(Plan).filter(Plan.user_id == user_id)
+            if status:
+                q = q.filter(Plan.status == status)
+            rows = q.order_by(Plan.id.desc()).limit(limit).all()
+            return [{"id": r.id, "title": r.title or "", "status": r.status or "draft",
+                     "progress": r.progress or 0, "total_steps": r.total_steps or 0,
+                     "done_steps": r.done_steps or 0, "failed_steps": r.failed_steps or 0,
+                     "message": r.message or "",
+                     "create_time": str(r.create_time)[:19],
+                     "update_time": str(r.update_time)[:19]} for r in rows]
+        finally:
+            sess.close()
+
+    def get_plan(self, plan_id: int, user_id: int = None) -> dict:
+        sess = self.Session()
+        try:
+            q = sess.query(Plan).filter(Plan.id == plan_id)
+            if user_id is not None:
+                q = q.filter(Plan.user_id == user_id)
+            r = q.first()
+            if not r:
+                return None
+            return {"id": r.id, "user_id": r.user_id, "session_id": r.session_id or "",
+                    "title": r.title or "", "goal": r.goal or "", "status": r.status or "draft",
+                    "device_id": r.device_id or "", "total_steps": r.total_steps or 0,
+                    "done_steps": r.done_steps or 0, "failed_steps": r.failed_steps or 0,
+                    "progress": r.progress or 0, "message": r.message or "",
+                    "result_json": r.result_json or "", "error": r.error or "",
+                    "create_time": str(r.create_time)[:19],
+                    "update_time": str(r.update_time)[:19]}
+        finally:
+            sess.close()
+
+    def get_plan_steps(self, plan_id: int, user_id: int = None) -> list:
+        sess = self.Session()
+        try:
+            q = sess.query(PlanStep).filter(PlanStep.plan_id == plan_id)
+            if user_id is not None:
+                q = q.filter(PlanStep.user_id == user_id)
+            rows = q.order_by(PlanStep.step_no).all()
+            out = []
+            for r in rows:
+                out.append({
+                    "id": r.id, "plan_id": r.plan_id, "user_id": r.user_id,
+                    "step_no": r.step_no or 0, "skill": r.skill or "analysis",
+                    "desc": r.desc or "", "params_json": r.params_json or "{}",
+                    "status": r.status or "pending", "attempt": r.attempt or 0,
+                    "progress": r.progress or 0, "last_message": r.last_message or "",
+                    "result_json": r.result_json or "", "error": r.error or "",
+                    "claimed_at": str(r.claimed_at)[:19] if r.claimed_at else "",
+                    "started_at": str(r.started_at)[:19] if r.started_at else "",
+                    "finished_at": str(r.finished_at)[:19] if r.finished_at else "",
+                })
+            return out
+        finally:
+            sess.close()
+
+    def update_plan(self, plan_id: int, user_id: int, **fields) -> bool:
+        """白名单 setattr 更新；越权返回 False"""
+        sess = self.Session()
+        try:
+            p = sess.query(Plan).filter(Plan.id == plan_id, Plan.user_id == user_id).first()
+            if not p:
+                return False
+            for k, v in fields.items():
+                if hasattr(p, k):
+                    setattr(p, k, v)
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def update_plan_step(self, step_id: int, user_id: int, **fields) -> bool:
+        sess = self.Session()
+        try:
+            s = sess.query(PlanStep).filter(PlanStep.id == step_id,
+                                            PlanStep.user_id == user_id).first()
+            if not s:
+                return False
+            for k, v in fields.items():
+                if hasattr(s, k):
+                    setattr(s, k, v)
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def delete_plan_cascade(self, plan_id: int, user_id: int) -> bool:
+        """删计划 + 步骤 + 事件（三段 DELETE）；仅非运行中可删（调用方判定）"""
+        sess = self.Session()
+        try:
+            p = sess.query(Plan).filter(Plan.id == plan_id, Plan.user_id == user_id).first()
+            if not p:
+                return False
+            if p.status in ("queued", "running"):
+                return False
+            sess.query(PlanRun).filter(PlanRun.plan_id == plan_id,
+                                       PlanRun.user_id == user_id).delete()
+            sess.query(PlanStep).filter(PlanStep.plan_id == plan_id,
+                                        PlanStep.user_id == user_id).delete()
+            sess.delete(p)
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def has_running_plan(self, user_id: int) -> bool:
+        sess = self.Session()
+        try:
+            return sess.query(Plan).filter(Plan.user_id == user_id,
+                                           Plan.status.in_(("queued", "running"))).first() is not None
+        finally:
+            sess.close()
+
+    def claim_next_plan_step(self, user_id: int, device_id: str) -> dict:
+        """CAS 原子认领该用户下一个 pending 步骤（只认领 queued/running 计划）。
+        返回 {"plan":..., "step":..., "prev":[...]} 或 None（无事可做）。
+        排他点：UPDATE ... WHERE status='pending'，rowcount==1 才算抢到。"""
+        sess = self.Session()
+        try:
+            for _ in range(3):
+                # 候选 = 该用户 queued/running 计划中最早的 pending 步骤。
+                # 排除「已有步骤在跑」的计划：同计划严格串行（多设备同用户时
+                # 不会出现第 2 步被别的设备抢跑）；ORDER BY plan_id, step_no
+                # 保证同计划内按步序、计划间按创建先后。
+                from sqlalchemy import select as _select
+                running_plans = _select(PlanStep.plan_id).where(
+                    PlanStep.user_id == user_id,
+                    PlanStep.status == 'running').subquery()
+                cand = sess.query(PlanStep).join(Plan, Plan.id == PlanStep.plan_id).filter(
+                    PlanStep.user_id == user_id,
+                    PlanStep.status == 'pending',
+                    Plan.status.in_(('queued', 'running')),
+                    ~PlanStep.plan_id.in_(running_plans),
+                ).order_by(PlanStep.plan_id, PlanStep.step_no).first()
+                if not cand:
+                    return None
+                # CAS：条件 UPDATE 保证并发下只有一个认领成功
+                n = sess.query(PlanStep).filter(
+                    PlanStep.id == cand.id, PlanStep.status == 'pending'
+                ).update({
+                    "status": "running", "claimed_at": func.now(),
+                    "claimed_by": device_id or "",
+                    "attempt": PlanStep.attempt + 1,
+                    "started_at": func.coalesce(PlanStep.started_at, func.now()),
+                    "progress": 0, "update_time": func.now(),
+                }, synchronize_session=False)
+                sess.commit()
+                if n != 1:
+                    continue  # 被别的设备抢走 → 找下一个候选
+                # 首次认领推进计划状态（幂等：仅 queued 可迁移）
+                sess.query(Plan).filter(Plan.id == cand.plan_id,
+                                        Plan.status == 'queued').update(
+                    {"status": "running", "update_time": func.now()},
+                    synchronize_session=False)
+                sess.commit()
+                self.append_plan_run(cand.plan_id, cand.id, user_id, "claimed",
+                                     "pending", "running", "步骤认领（本机开始执行）",
+                                     {"step_no": cand.step_no, "skill": cand.skill},
+                                     device_id or "")
+                return {"plan": self.get_plan(cand.plan_id, user_id),
+                        "step": self.get_plan_steps(cand.plan_id, user_id)[cand.step_no - 1],
+                        "prev": self._prev_step_summaries(cand.plan_id, cand.step_no, user_id)}
+        finally:
+            sess.close()
+        return None
+
+    def _prev_step_summaries(self, plan_id: int, before_step_no: int, user_id: int) -> list:
+        """前序已完成步骤的结果摘要（执行器 prompt 用，最多 3 条）"""
+        sess = self.Session()
+        try:
+            rows = sess.query(PlanStep).filter(
+                PlanStep.plan_id == plan_id, PlanStep.user_id == user_id,
+                PlanStep.step_no < before_step_no, PlanStep.status == 'done'
+            ).order_by(PlanStep.step_no).all()
+            out = []
+            for r in rows:
+                summary = ""
+                if r.result_json:
+                    try:
+                        summary = json.loads(r.result_json).get("text", "")[:200]
+                    except Exception:
+                        summary = str(r.result_json)[:200]
+                out.append({"step_no": r.step_no, "desc": r.desc or "", "summary": summary})
+            return out[-3:]
+        finally:
+            sess.close()
+
+    def reset_stale_plan_claims(self, user_id: int, device_id: str = None,
+                                timeout_s: int = 900) -> int:
+        """看门狗：认领超时的 running 步骤重置回 pending（断点续跑）；返回重置数"""
+        sess = self.Session()
+        try:
+            from datetime import datetime, timedelta
+            cutoff = datetime.now() - timedelta(seconds=timeout_s)
+            q = sess.query(PlanStep).filter(
+                PlanStep.user_id == user_id, PlanStep.status == 'running',
+                PlanStep.claimed_at.isnot(None), PlanStep.claimed_at < cutoff)
+            if device_id:
+                q = q.filter(PlanStep.claimed_by == device_id)
+            rows = q.all()
+            for r in rows:
+                self.append_plan_run(r.plan_id, r.id, user_id, "watchdog_reset",
+                                     "running", "pending",
+                                     "执行超时，重置待重跑", {"attempt": r.attempt or 0},
+                                     r.claimed_by or "")
+                r.status = "pending"
+                r.claimed_at = None
+                r.claimed_by = ""
+            sess.commit()
+            return len(rows)
+        finally:
+            sess.close()
+
+    def append_plan_run(self, plan_id: int, step_id, user_id: int, event: str,
+                        status_from: str = "", status_to: str = "",
+                        message: str = "", payload: dict = None,
+                        device_id: str = "") -> int:
+        """追加一条执行记录（append-only，绝不 UPDATE/DELETE）；返回 run id"""
+        sess = self.Session()
+        try:
+            run = PlanRun(plan_id=plan_id, step_id=step_id, user_id=user_id,
+                          event=event, status_from=status_from or "",
+                          status_to=status_to or "", message=(message or "")[:500],
+                          payload_json=json.dumps(payload, ensure_ascii=False)[:5000] if payload else None,
+                          device_id=device_id or "")
+            sess.add(run)
+            sess.commit()
+            return run.id
+        finally:
+            sess.close()
+
+    def list_plan_runs(self, plan_id: int, user_id: int = None, limit: int = 100) -> list:
+        sess = self.Session()
+        try:
+            q = sess.query(PlanRun).filter(PlanRun.plan_id == plan_id)
+            if user_id is not None:
+                q = q.filter(PlanRun.user_id == user_id)
+            rows = q.order_by(PlanRun.id.desc()).limit(limit).all()
+            out = []
+            for r in rows:
+                payload = {}
+                if r.payload_json:
+                    try:
+                        payload = json.loads(r.payload_json)
+                    except Exception:
+                        pass
+                out.append({"id": r.id, "step_id": r.step_id, "event": r.event,
+                            "status_from": r.status_from or "", "status_to": r.status_to or "",
+                            "message": r.message or "", "payload": payload,
+                            "device_id": r.device_id or "",
+                            "create_time": str(r.create_time)[:19]})
+            return out
+        finally:
+            sess.close()
 
     def get_session_stats(self, session_id: str) -> dict:
         """会话消息条数 + 总字数（一次聚合查询，不加载正文）"""

@@ -46,4 +46,6 @@ def list_data_files(subdir: str = "") -> str:
 def read_data_file(path: str) -> str:
     """Read a file's content. path: relative or absolute file path."""
     content = _read(path)
+    if content is None:
+        return "文件不存在或不可读（仅可读 data/ 目录下的文本文件；.yuan 记忆请用 get_user_memory 工具）"
     return content[:5000] if len(content) > 5000 else content

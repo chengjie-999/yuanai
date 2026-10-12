@@ -6,7 +6,12 @@ TOOL_CATEGORY = "memory"
   存储，直连 DB 层（db 方法已委托 memory_store 文件存储），无凭据问题
 - 本地 Agent 进程（用户电脑，无云端 DB）：经 /api/v1/agent/memory
   HTTP（agent 凭据）由云端进程落盘
-判定：优先尝试直连，DB 不可达（连接异常）时回退 HTTP。
+判定（2026-10-12 修复「部署后记忆失效」）：按进程身份，不再「试连」——
+「试连」在用户电脑上会连到本机开发 MySQL，记忆写进本地库云端永远读不到：
+- 云端容器（APP_HOME / APP_ENV=production）→ 直连
+- 本地 Agent：identity.server_url 指向远程云端 → 强制 HTTP（GET/DELETE
+  必须带 user_id）；指向 localhost（本地开发联调）→ 直连本机库（与本地
+  API 同库，一致）
 """
 import json
 import logging
@@ -17,19 +22,38 @@ from yuanai_core.rag import current_user_id
 
 logger = logging.getLogger(__name__)
 
+_LOCALHOST = ("ws://localhost", "ws://127.0.0.1",
+              "http://localhost", "http://127.0.0.1")
 
-def _agent_http(path: str, method: str = "GET", payload: dict = None) -> dict:
-    """本地 Agent → 云端 /agent/memory 调用（凭据来自 data/agent_identity.json）"""
+
+def _read_identity() -> dict:
+    """读本机 Agent 身份（data/agent_identity.json）；无文件/解析失败返回 {}"""
     import os
 
     from utils.data_path import root_path
 
-    identity = {}
     try:
         with open(os.path.join(root_path(), "data", "agent_identity.json"), encoding="utf-8") as f:
-            identity = json.load(f)
-    except OSError:
-        pass
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _memory_path() -> str:
+    """记忆读写路径判定：'direct'（云端进程直连）或 'http'（本地 Agent 经云端）"""
+    import os
+
+    if os.getenv("APP_HOME") or os.getenv("APP_ENV") == "production":
+        return "direct"
+    server = str(_read_identity().get("server_url") or "").lower()
+    if server and not server.startswith(_LOCALHOST):
+        return "http"
+    return "direct"
+
+
+def _agent_http(path: str, method: str = "GET", payload: dict = None) -> dict:
+    """本地 Agent → 云端 /agent/memory 调用（凭据来自 data/agent_identity.json）"""
+    identity = _read_identity()
     server = (identity.get("server_url") or "http://localhost:8000").replace("ws://", "http://").replace("wss://", "https://")
     url = server.rstrip("/") + "/api/v1/agent" + path
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
@@ -56,21 +80,32 @@ def _agent_http(path: str, method: str = "GET", payload: dict = None) -> dict:
 
 
 def _memory_ops():
-    """记忆读写入口：云端进程直连（DB 层 → data/.yuan/ 文件），DB 不可达返回 None"""
+    """记忆读写入口：云端进程直连（DB 层 → data/.yuan/ 文件）；DB 不可达抛异常"""
     from db.session import get_db
 
-    db = get_db()  # 本地 Agent 无云端 DB 时此处抛异常，调用方回退 HTTP
+    db = get_db()  # 仅在直连判定（云端容器/本地联调）下到达；异常由 _call_memory 捕获
     return db
 
 
 def _call_memory(path: str, method: str = "GET", payload: dict = None,
                  uid: int = 0) -> dict:
-    """双路径：直连优先（云端），失败回退 HTTP（本地 Agent）"""
+    """双路径：云端进程直连；本地 Agent（远程云端）走 HTTP 且必须带 user_id"""
+    if _memory_path() == "http":
+        # 本地 Agent：uid 随请求走（GET 拼 query，POST/DELETE 进 body，
+        # 云端端点按 user_id 定位目录——丢 uid 曾致 400「缺少 user_id」）
+        if method == "GET":
+            return _agent_http(f"{path}?user_id={uid}", "GET")
+        payload = dict(payload or {})
+        payload.setdefault("user_id", uid)
+        return _agent_http(path, method, payload)
+
     try:
         db = _memory_ops()
     except Exception as e:
-        logger.info("记忆直连不可用（本地 Agent），回退 HTTP: %s", type(e).__name__)
-        return _agent_http(path, method, payload)
+        # 直连判定下 DB 不可达（云端容器 MySQL 故障 / 本地联调 MySQL 未启动）：
+        # 不回退 HTTP（容器里残留凭据无效），报错可见
+        logger.warning("记忆直连不可用: %s", type(e).__name__)
+        return {"ok": False, "detail": f"记忆直连不可用（{type(e).__name__}）"}
 
     from yuanai_core.memory import _is_placeholder
 

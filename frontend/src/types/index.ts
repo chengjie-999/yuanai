@@ -9,7 +9,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   reasoning?: string
   reasoningTime?: number
-  sender?: 'orchestrator' | 'local' | 'analysis' | 'collection' | 'automation' | 'claude' | 'planet' | 'user'
+  sender?: 'orchestrator' | 'local' | 'analysis' | 'collection' | 'automation' | 'claude' | 'planet' | 'plan' | 'user'
   // 信封字段（多智能体群聊身份协议；META 短键 rp/tn/ty，与后端 message.py 对偶）
   recipient?: string        // "" = 广播；否则定向（@agent）
   turn?: number             // 1-based 轮次

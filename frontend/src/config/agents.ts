@@ -6,6 +6,7 @@ export const AGENT_CONFIG: Record<string, { label: string; color: string; bg: st
   automation: { label: '自动化 Agent', color: '#e65100', bg: '#fff8f0' },
   claude: { label: 'Claude Code', color: '#d97757', bg: '#fdf6f0' },
   planet: { label: '知识星球', color: '#6a9955', bg: '#f2f8f0' },
+  plan: { label: '计划', color: '#0b7285', bg: '#eef7fa' },
 }
 
 export const SUB_AGENTS = [
@@ -23,6 +24,7 @@ export function senderFromTool(name: string): string | null {
   if (name.startsWith('delegate_to_automation')) return 'automation'
   if (name.startsWith('delegate_to_claude')) return 'claude'
   if (name === 'retrieve_planet_knowledge') return 'planet'
+  if (name === 'create_plan' || name === 'execute_plan' || name === 'get_plan_status') return 'plan'
   return null
 }
 

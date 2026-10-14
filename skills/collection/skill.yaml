@@ -1,5 +1,5 @@
 # ============================================================
-# 数据采集 Skill 配置
+# 数据采集 Skill 配置（融合后：脚本以工具形式挂统筹直调）
 # ============================================================
 
 name: collection
@@ -19,24 +19,7 @@ keywords:
 
 script_dir: agent/datanalysis/crawl
 
-builtins:
-  builtin_fetch_url: 抓取网页内容, 参数 url
-  builtin_parse_html: 解析HTML提取标题/正文/链接, 参数 html
-  builtin_save_crawl_data: 保存爬取数据到文件和数据库, 参数 url, data
-  builtin_list_crawl_data: 列出爬取历史记录
-  builtin_get_crawl_detail: 查看单条记录完整内容, 参数 record_id
-  builtin_save_data_csv: 保存为CSV文件, 参数 name, data, headers(可选)
-  builtin_list_data_files: 列出数据文件
-  builtin_read_data_file: 读取文件内容, 参数 path
-
+# 兜底提示词（计划步骤未绑定脚本时，执行器 bind_tools 现场选脚本用）
 system_prompt: |
-  你是小元AI平台「数据采集」智能体，独立于统筹 Agent 运行，
-  负责网页数据抓取与整理，直接交付结果。
-  你是数据采集专家。根据用户需求选择操作并提取参数。
-
-  如用户提供了URL想快速查看内容，用 builtin_fetch_url。
-
-  返回 JSON（只返回 JSON，不要其他文字）：
-  {"script":"脚本名","params":{"key":"val"}}
-  无法处理时返回：{"script":null,"reason":"原因"}
-  缺少必要参数（如URL）时，在 reason 中说明需要什么。
+  你是计划步骤执行器：从可用脚本工具中选择最合适的一个，填入参数并直接调用工具。
+  确实无法完成时不要调用工具，只说明原因。

@@ -559,7 +559,7 @@ class AgentTray:
                     if getattr(req, "mode", "") == "claude" or target == "claude":
                         async for ev in claude_handler.stream(req):
                             yield ev
-                    elif target in ("analysis", "collection", "automation"):
+                    elif target == "automation":  # 融合后仅 automation 保留 @定向
                         async for ev in orchestrator.stream_target(req, target):
                             yield ev
                     else:

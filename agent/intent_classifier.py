@@ -24,16 +24,15 @@ class IntentMatch:
         return f"IntentMatch({self.group}, conf={self.confidence:.2f}, direct={self.is_direct})"
 
 
-# 意图 → 工具类别映射
+# 意图 → 工具类别映射（融合后：脚本工具 scripts_* 直调；仅 automation/claude 保留 delegate）
 INTENT_TOOL_GROUPS: Dict[str, List[str]] = {
     "simple_query":           ["general"],
-    "data_task":              ["data", "file", "stats", "general"],
-    "crawl_task":             ["crawl", "file", "general"],
+    "data_task":              ["data", "file", "stats", "general", "scripts_analysis"],
+    "crawl_task":             ["crawl", "file", "general", "scripts_collection"],
     "memory_task":            ["memory", "knowledge", "general"],
-    "plan_task":              ["plan", "general"],
+    "medical_q":              ["medical", "knowledge", "general"],
+    "plan_task":              ["plan", "general", "scripts_all"],
     "knowledge_q":            ["knowledge", "general"],
-    "delegate_analysis":      ["general", "delegate_analysis"],
-    "delegate_collection":    ["general", "delegate_collection"],
     "delegate_automation":    ["general", "delegate_automation"],
     "delegate_claude":        ["general", "delegate_claude"],
     "general_chat":           ["general", "memory", "plan", "knowledge", "delegate_all"],
@@ -52,10 +51,19 @@ _KEYWORDS: Dict[str, set] = {
                                "convert", "公里", "英里", "平方", "华氏", "摄氏"},
     "data_task":             {"数据", "数据集", "分析", "统计", "图表", "dataset",
                                "csv", "列", "表格", "预览", "describe", "文件",
-                               "有几行", "有几列", "什么类型", "查看数据"},
+                               "有几行", "有几列", "什么类型", "查看数据",
+                               # 原 delegate_analysis 关键词并入（复杂分析走脚本工具）
+                               "复杂分析", "回归", "rfm", "基因", "客户分群",
+                               "流失预测", "分类数据", "生物信息", "相关性",
+                               "热力图", "3d散点", "火山图", "roc", "聚类"},
     "crawl_task":            {"爬虫", "爬取", "抓取", "网页", "url", "html",
                                "网址", "crawl", "fetch", "采集", "网站",
-                               "打开链接", "获取内容", "解析"},
+                               "打开链接", "获取内容", "解析",
+                               # 原 delegate_collection 关键词并入
+                               "大量采集", "批量", "自动采集", "数据采集"},
+    "medical_q":             {"pubmed", "文献", "医学", "基因表达", "物种",
+                               "临床试验", "药物", "临床", "生物医学",
+                               "meSH", "mesh"},
     "memory_task":           {"记住", "记忆", "我叫", "我的", "memory", "remember",
                                "别忘了", "保存下来"},
     "plan_task":             {"计划", "规划", "定计划", "制定计划", "制定", "执行计划",
@@ -63,10 +71,6 @@ _KEYWORDS: Dict[str, set] = {
     "knowledge_q":           {"知识库", "检索", "搜索", "retrieve", "查找",
                                "相关知识", "知识星球", "星球", "导图", "思维导图",
                                "笔记", "mindmap"},
-    "delegate_analysis":     {"复杂分析", "回归", "rfm", "基因", "客户分群",
-                               "流失预测", "分类数据", "生物信息", "相关性",
-                               "热力图", "3d散点", "火山图", "roc", "聚类"},
-    "delegate_collection":   {"大量采集", "批量", "自动采集", "数据采集"},
     "delegate_automation":   {"浏览器", "审核", "自动化", "截图", "xiaoyuan",
                                "启动浏览器", "打开网页", "操控", "题目审核",
                                "打开chrome", "start browser"},
@@ -169,10 +173,9 @@ simple_query - calculation, weather, datetime, unit conversion
 data_task - dataset, statistics, analysis, preview
 crawl_task - web scraping, URL fetching, HTML parsing
 memory_task - remember/recall user personal info
+medical_q - PubMed literature, clinical trials, species, drug feasibility
 plan_task - creating a plan, checking plan progress, executing a plan
 knowledge_q - knowledge base search
-delegate_analysis - complex data analysis needing sub-agent
-delegate_collection - massive crawling needing sub-agent
 delegate_automation - browser control, auditing, automation
 delegate_claude - coding, writing/modifying code, terminal commands, git, local file creation
 

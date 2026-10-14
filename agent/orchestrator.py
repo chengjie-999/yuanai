@@ -17,39 +17,24 @@ from skills import skill_registry
 
 logger = logging.getLogger(__name__)
 
-ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的统筹 Agent，正运行在用户的本地电脑上（本地模式）。\n你可以独立处理简单任务，也可以委派复杂任务给专业子Agent。
+ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的统筹 Agent，正运行在用户的本地电脑上（本地模式）。数据分析、数据采集、生命科学等能力以「脚本工具」形式直接挂在你名下（script_ 前缀），你一次函数调用即可选定脚本并执行，不需要委派。
 
 你可以直接使用的工具：
-- 计算器：calculate_sum / calculate_multiply
-- 天气：get_today_temperature / get_tomorrow_forecast
-- 用户记忆：get_user_memory / remember_user_info
-- 知识库：retrieve_knowledge
-- 知识星球：retrieve_planet_knowledge（用户个人的思维导图与线性笔记，只读检索）
-- 文件操作：list_data_files / read_data_file / save_data_csv
-- 系统统计：get_system_stats
-- 数据集管理：list_datasets / preview_dataset / analyze_dataset / transform_dataset
-- 网页爬取：fetch_url / parse_html / save_crawl_data / list_crawl_data / get_crawl_detail
+- 数据分析脚本工具：script_descriptive_stats（描述性统计）/ script_correlation（相关性）/ script_regression（回归）/ script_categorical（分类数据分析）/ script_timeseries（时间序列）/ script_preprocess（数据预处理）/ script_rfm_cluster（RFM 客户分群）/ script_churn_predict（客户流失预测）/ script_gene_expression（基因表达）
+- 数据采集脚本工具：script_generic_crawl（通用网页采集）等
+- 计算器 / 天气 / 用户记忆 / 知识库 / 知识星球 / 文件操作 / 数据集管理 / 网页爬取等共享工具
 - 本地代码执行：delegate_to_claude_agent（编写/修改代码、终端命令、Git 操作，交给本机 Claude Code）
 
-仅在以下情况委派给子Agent（复杂任务）：
-{SKILL_LIST}
+仅以下情况委派子 Agent：
+- delegate_to_automation_agent：浏览器控制、审核、截图等需要多步自主操作的任务（自动化 Agent）
 
 工作原则：
-1. 简单操作直接用工具（查数据集、爬网页、读文件等），不要委派
-2. 复杂分析/采集才委派子Agent
-3. 委派时简短说明意图，不要长篇解释
-4. 子Agent结果直接呈现用户，不再复述
-5. 数据分析优先用 list_datasets + preview_dataset 确认数据，简单统计直接用 analyze_dataset，复杂分析才委派
-6. 对话结束时主动总结：用表格列出本次完成了什么、关键结论是什么；重要信息通过 remember_user_info 存入记忆
+1. 分析/采集任务直接用对应脚本工具（一次调用出结果），不要提「委派」
+2. 数据分析优先用 list_datasets + preview_dataset 确认数据，简单统计用 analyze_dataset，复杂分析选脚本工具
+3. 计划流（多步组合任务）：先用 create_plan 拆草稿计划，每步尽量填 script（用你可见的脚本工具名）与 params，用户说「执行」才 execute_plan
+4. 对话结束时主动总结：用表格列出本次完成了什么、关键结论是什么；重要信息通过 remember_user_info 存入记忆
 
 群聊说话人协议（重要）：这是多智能体群聊。历史消息中带【xx Agent】前缀的是其他智能体说过的话，不是你说的；无前缀的 assistant 消息才是你自己说过的。不要复述、冒充或接续别人的话，不要替其他智能体总结其发言。"""
-
-
-def get_orchestrator_prompt() -> str:
-    """获取动态生成的统筹提示词（自动注入当前可用的 Skill 列表）"""
-    return ORCHESTRATOR_SYSTEM_PROMPT.replace(
-        "{SKILL_LIST}", skill_registry.list_for_llm()
-    )
 
 
 def _tool_sender(name: str) -> str:
@@ -64,45 +49,41 @@ def _tool_sender(name: str) -> str:
     return "orchestrator"
 
 
-def _make_delegate_tool(skill_config, orch):
-    """为每个 Skill 动态创建一个 delegate 工具（闭包安全：skill_config 通过参数绑定）"""
+def _make_automation_delegate_tool(orch):
+    """自动化是唯一保留的独立子 Agent（react 多步自主）；脚本类能力已工具化进统筹"""
     from langchain_core.tools import StructuredTool
 
-    skill_name = skill_config.name
-    skill_display = skill_config.display_name
-    skill_desc = skill_config.description
+    skill_config = skill_registry.get("automation")
+    if not skill_config:
+        return None
 
     def delegate_fn(prompt: str) -> str:
         from yuanai_core.core.schemas import progress
         from yuanai_core.rag import current_request_id
-        orch._emit_activity(f"委派{skill_display}", prompt[:80])
+        orch._emit_activity(f"委派{skill_config.display_name}", prompt[:80])
         agent = orch._get_or_create_agent(skill_config)
-        # 身份由 tool_start/tool_end 事件自带 sender 承担（信封协议），无需 sender_event
         rid = current_request_id.get() or ""
-        # 脚本执行进度回调 → 云端 SSE progress 事件（10s 心跳，重置 300s 超时）
         progress_cb = lambda cur, total, msg: orch._emit_event(progress(cur, total, msg, rid))  # noqa: E731
         result = agent.run(prompt, progress_cb=progress_cb)
-        orch._emit_activity(f"{skill_display}已完成", "")
+        orch._emit_activity(f"{skill_config.display_name}已完成", "")
         return result
 
     return StructuredTool.from_function(
         func=delegate_fn,
-        name=f"delegate_to_{skill_name}_agent",
-        description=f"将复杂的{skill_desc}任务委托给{skill_display}子Agent。参数 prompt: 详细的任务需求。",
+        name="delegate_to_automation_agent",
+        description=f"将需要浏览器控制/多步自主操作的复杂任务委托给{skill_config.display_name}子Agent。参数 prompt: 详细的任务需求。",
     )
 
 
 class Orchestrator:
-    """统筹 Agent：管理三个子 Agent，根据意图路由任务"""
+    """统筹 Agent：脚本工具直调 + automation 唯一子 Agent + Claude Code 桥接"""
 
     def __init__(self, enabled_skills: Optional[List[str]] = None, enable_claude: bool = True):
-        """enabled_skills=None 表示全部启用；否则只委派列表内的 skill。enable_claude 控制本机 Claude Code 委派。"""
-        self._analysis = None
-        self._collection = None
-        self._automation = None
+        """enabled_skills=None 表示全部启用；否则只启用列表内的 skill（脚本工具按此过滤）。
+        enable_claude 控制本机 Claude Code 委派。"""
         self._on_activity = None  # callback(activity_event) for live status updates
         self._on_event = None  # callback(event) 任意事件上报（如工具内 progress 心跳）
-        self._agents = {}  # skill_name -> Agent 实例（动态创建）
+        self._agents = {}  # skill_name -> Agent 实例（动态创建，现在只剩 automation）
         self._enabled_skills = enabled_skills
         self._enable_claude = enable_claude
 
@@ -110,68 +91,21 @@ class Orchestrator:
         return self._enabled_skills is None or name in self._enabled_skills
 
     @property
-    def analysis_agent(self):
-        if "analysis" not in self._agents:
-            from agent.agents.analysis import AnalysisAgent
-            self._agents["analysis"] = AnalysisAgent()
-        return self._agents["analysis"]
-
-    @property
-    def collection_agent(self):
-        if "collection" not in self._agents:
-            from agent.agents.collection import CollectionAgent
-            self._agents["collection"] = CollectionAgent()
-        return self._agents["collection"]
-
-    @property
     def automation_agent(self):
         if "automation" not in self._agents:
             from agent.agents.automation import AutomationAgent
-            self._agents["automation"] = AutomationAgent()
+            self._agents["automation"] = AutomationAgent(skill_registry.get("automation"))
         return self._agents["automation"]
 
-    def _build_all_tools(self):
-        """构建完整工具列表：全部共享工具 + 动态生成的 delegate 工具"""
-        from yuanai_core.tools import all_tools
-
-        tools = list(all_tools)
-
-        # 动态生成 delegate_* 工具（遍历 skills/ 目录自动发现，按用户开关过滤）
-        orch = self
-        for skill in skill_registry.get_all():
-            if self._skill_enabled(skill.name):
-                tools.append(_make_delegate_tool(skill, orch))
-
-        # 本地 Claude Code 委派工具（异步，支持心跳；开关关闭时不注册）
-        if self._enable_claude:
-            tools.append(self._make_claude_tool())
-
-        return tools
-
     def _get_or_create_agent(self, skill_config):
-        """从 Skill 配置动态创建 Agent 实例（带缓存）"""
+        """从 Skill 配置创建 Agent 实例（带缓存）；融合后仅 automation（react）"""
         name = skill_config.name
         if name in self._agents:
             return self._agents[name]
-
-        if skill_config.type == "script_dispatch":
-            # 用子类（带真实 builtin 派发）：基类的 _dispatch_builtin 是「未知内置操作」
-            # stub——曾导致 LLM 选中 builtin_xxx 后步骤空转（2026-10-14 计划执行暴露）
-            if name == "collection":
-                from agent.agents.collection import CollectionAgent
-                agent = CollectionAgent()
-            elif name == "analysis":
-                from agent.agents.analysis import AnalysisAgent
-                agent = AnalysisAgent()
-            else:
-                from agent.agents.base import ScriptDispatchAgent
-                agent = ScriptDispatchAgent(skill_config)
-        elif skill_config.type == "react":
-            from agent.agents.automation import AutomationAgent
-            agent = AutomationAgent(skill_config)
-        else:
-            raise ValueError(f"未知 Skill 类型: {skill_config.type} (name={name})")
-
+        if skill_config.type != "react":
+            raise ValueError(f"未知 Skill 类型: {skill_config.type} (name={name})（脚本类已工具化）")
+        from agent.agents.automation import AutomationAgent
+        agent = AutomationAgent(skill_config)
         self._agents[name] = agent
         return agent
 
@@ -197,8 +131,14 @@ class Orchestrator:
         return make_claude_tool(lambda ev: self._emit_event(ev))
 
     def _build_tools_for_intent(self, intent) -> list:
-        """按意图分类动态加载工具子集（大幅节省 token）"""
+        """按意图分类动态加载工具子集（大幅节省 token）。
+
+        融合后类别 token：scripts_analysis/scripts_collection/scripts_all =
+        脚本工具（registry 生成）；delegate_automation = automation 子 Agent；
+        delegate_all = scripts_all + automation + claude（语义重定义）。
+        """
         from agent.intent_classifier import IntentClassifier, INTENT_TOOL_GROUPS
+        from agent.scripts.tools import build_script_tools, get_registry
         from yuanai_core.tools import load_tools_for
 
         categories = IntentClassifier.get_tool_categories(intent)
@@ -206,45 +146,63 @@ class Orchestrator:
         has_general = False
         has_delegate_all = False
 
+        def ensure_general():
+            nonlocal has_general
+            if not has_general:
+                tools.extend(load_tools_for("general", "memory", "knowledge"))
+                has_general = True
+
+        def add_script_tools(skill_name: str):
+            registry = get_registry(skill_name)
+            if registry and self._skill_enabled(skill_name):
+                tools.extend(build_script_tools(
+                    registry, skill=skill_name,
+                    progress_cb=self._script_progress_cb()))
+
+        def _add_claude():
+            if self._enable_claude:
+                tools.append(self._make_claude_tool())
+
         for cat in categories:
             if cat == "delegate_all":
                 has_delegate_all = True
             elif cat == "delegate_claude":
-                if not has_general:
-                    tools.extend(load_tools_for("general", "memory", "knowledge"))
-                    has_general = True
-                if self._enable_claude:
-                    tools.append(self._make_claude_tool())
-            elif cat.startswith("delegate_"):
-                if not has_general:
-                    tools.extend(load_tools_for("general", "memory", "knowledge"))
-                    has_general = True
-                skill_name = cat.replace("delegate_", "")
-                skill = skill_registry.get(skill_name)
-                if skill and self._skill_enabled(skill_name):
-                    tools.append(_make_delegate_tool(skill, self))
+                ensure_general()
+                _add_claude()
+            elif cat == "delegate_automation":
+                ensure_general()
+                if self._skill_enabled("automation"):
+                    tools.append(_make_automation_delegate_tool(self))
+            elif cat == "scripts_analysis":
+                add_script_tools("analysis")
+            elif cat == "scripts_collection":
+                add_script_tools("collection")
+            elif cat == "scripts_all":
+                add_script_tools("analysis")
+                add_script_tools("collection")
             elif cat == "general":
-                if not has_general:
-                    tools.extend(load_tools_for("general"))
-                    has_general = True
+                ensure_general()
             else:
                 tools.extend(load_tools_for(cat))
 
         if has_delegate_all:
-            if not has_general:
-                tools.extend(load_tools_for("general", "memory", "knowledge"))
-                has_general = True
-            orch = self
-            for skill in skill_registry.get_all():
-                if not self._skill_enabled(skill.name):
-                    continue
-                found = any(t.name == f"delegate_to_{skill.name}_agent" for t in tools)
-                if not found:
-                    tools.append(_make_delegate_tool(skill, orch))
-            if self._enable_claude and not any(t.name == "delegate_to_claude_agent" for t in tools):
-                tools.append(self._make_claude_tool())
+            ensure_general()
+            add_script_tools("analysis")
+            add_script_tools("collection")
+            if self._skill_enabled("automation"):
+                tools.append(_make_automation_delegate_tool(self))
+            _add_claude()
 
         return tools
+
+    def _script_progress_cb(self):
+        """脚本工具进度回调 → 云端 SSE progress 事件（10s 心跳重置 300s 超时）"""
+        from yuanai_core.core.schemas import progress
+        from yuanai_core.rag import current_request_id
+
+        def cb(cur, total, msg):
+            self._emit_event(progress(cur, total, msg, current_request_id.get() or ""))
+        return cb
 
     def _handle_direct_command(self, intent, message: str) -> str:
         """直接执行命令，完全跳过 LLM（100% token 节省）"""
@@ -329,12 +287,15 @@ class Orchestrator:
         return events, clean_output
 
     async def stream_target(self, req: ChatRequest, skill_name: str) -> AsyncGenerator[AgentEvent, None]:
-        """确定性分派：@指定智能体时跳过统筹 LLM，直接调对应 skill Agent
+        """确定性分派：@指定子 Agent 时跳过统筹 LLM，直接调对应 skill Agent。
 
-        与 mode=claude 桥接分支同构（agent/main.py route 调用）；云端离线回退时
-        无本地子 Agent，才由 chat/router.py 用提示词扮演角色（合理降级）。
+        融合后仅 automation 保留（脚本类能力已工具化进统筹，@面板不再有
+        分析/采集）；与 mode=claude 桥接分支同构（agent/main.py route 调用）。
         """
         rid = req.request_id
+        if skill_name != "automation":
+            yield error_event(f"未找到技能: {skill_name}", rid)
+            return
         cfg = skill_registry.get(skill_name)
         if not cfg:
             yield error_event(f"未找到技能: {skill_name}", rid)

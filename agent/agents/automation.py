@@ -42,7 +42,9 @@ class AutomationAgent(AgentBase):
             self._tools = automation_tools
         return self._tools
 
-    def run(self, prompt: str) -> str:
+    def run(self, prompt: str, progress_cb=None) -> str:
+        # progress_cb 接受但不透传（react 循环无脚本级进度）；delegate/stream_target
+        # 统一传 progress_cb，缺形参曾必炸 TypeError
         # 意图分类 → 按组加载工具子集（减少 LLM token 消耗）
         groups = classify_automation_intent(prompt)
         filtered_tools = load_automation_tools_for_intent(groups)

@@ -178,7 +178,7 @@ async def main():
     # 对应 skill Agent（确定性路由，跳过统筹 LLM）；其余 → 统筹 Agent 意图路由
     from agent.claude_bridge import ClaudeBridgeHandler
     claude_handler = ClaudeBridgeHandler()
-    TARGET_SKILLS = ("analysis", "collection", "automation")
+    TARGET_SKILLS = ("automation",)  # 融合后仅 automation 保留 @定向（脚本类已工具化）
 
     async def route(req):
         target = getattr(req, "target_agent", "") or ""

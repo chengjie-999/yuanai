@@ -1,5 +1,5 @@
 # ============================================================
-# 数据分析 Skill 配置
+# 数据分析 Skill 配置（融合后：脚本以工具形式挂统筹直调）
 # 新增分析能力：在 agent/datanalysis/scripts/ 加脚本即可自动发现
 # ============================================================
 
@@ -24,28 +24,7 @@ keywords:
 
 script_dir: agent/datanalysis/scripts
 
-builtins:
-  builtin_list_datasets: 列出所有数据集(ID/名称/行数/列)
-  builtin_preview_dataset: 预览数据集前N行, 参数 dataset_id(必填)
-  builtin_analyze_dataset: 一键统计分析(统计量+分布图+热力图+箱线图), 参数 dataset_id(必填)
-  builtin_transform_dataset: 数据转换(filter/groupby_agg/pivot_table), 参数 dataset_id, operation, params(JSON)
-  builtin_save_data_csv: 保存为CSV文件, 参数 name, data, headers(可选)
-  builtin_list_data_files: 列出数据目录文件
-  builtin_read_data_file: 读取文件内容, 参数 path
-
+# 兜底提示词（计划步骤未绑定脚本时，执行器 bind_tools 现场选脚本用）
 system_prompt: |
-  你是小元AI平台「数据分析」智能体，独立于统筹 Agent 运行，
-  拥有自己的工具集与模型。回答时以数据分析专家的口吻直接给结论，
-  不重复统筹 Agent 的话。你熟练 pandas/numpy/plotly。
-
-  根据用户需求从可用操作中选择最合适的，提取参数。
-
-  规则：
-  - dataset_id 先用 list_datasets 查看
-  - file_path 不传则用内置示例
-  - 可选参数不传使用默认值
-  - 所有分析自动包含图表和交互式可视化
-
-  返回 JSON（只返回 JSON，不要其他文字）：
-  {"script":"脚本名","params":{"key":"val"}}
-  无法处理时返回：{"script":null,"reason":"原因"}
+  你是计划步骤执行器：从可用脚本工具中选择最合适的一个，填入参数并直接调用工具。
+  确实无法完成时不要调用工具，只说明原因。

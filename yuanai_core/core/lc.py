@@ -47,6 +47,14 @@ def call_llm(
 
 def get_llm(model='deepseek-chat', reasoning=True, reasoning_effort: Optional[str] = None, **kwargs):
     """LLM 工厂。reasoning_effort 优先级：显式参数 > 请求上下文（聊天框开关）> settings。"""
+    # 短名解析（2026-10-14）：skills/*.yaml 用短名（doubao-seed-2-0-lite），
+    # 注册表是完整 ID（doubao-seed-2-0-lite-260215）。前缀匹配替换——
+    # 委派/@定向/计划执行器共用本工厂，此前短名落 custom 分支报「未找到 API Key」。
+    if model not in dsllm and model not in seed:
+        for m in seed + dsllm:
+            if m.startswith(model) or model.startswith(m):
+                model = m
+                break
     if model in dsllm:
         ds_api_key = _get_stored_key("DeepSeek") or get_api_key('dsllm')
         extra_params = {}

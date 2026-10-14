@@ -89,3 +89,18 @@ def test_chat_request_schema_has_effort():
 
 if __name__ == "__main__":
     print("测试入口：pytest test/test_lc_reasoning.py -v")
+
+
+def test_get_llm_short_name_alias(monkeypatch):
+    """回归：skills/*.yaml 短名（doubao-seed-2-0-lite）曾落 custom 分支报「未找到 API Key」，
+    委派/@定向/计划执行器共用 get_llm 工厂——前缀匹配到已注册完整 ID 后替换。"""
+    import os
+    monkeypatch.setenv("DOUBAO_API_KEY", "test-key")
+    from yuanai_core.core.lc import get_llm
+    llm = get_llm("doubao-seed-2-0-lite", reasoning=False)
+    assert llm.model_name == "doubao-seed-2-0-lite-260215"
+    llm2 = get_llm("doubao-seed-2-0-pro", reasoning=False)
+    assert llm2.model_name == "doubao-seed-2-0-pro-260215"
+    # 完整 ID 原样通过
+    llm3 = get_llm("doubao-seed-2-0-lite-260215", reasoning=False)
+    assert llm3.model_name == "doubao-seed-2-0-lite-260215"

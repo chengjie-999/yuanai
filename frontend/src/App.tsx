@@ -118,7 +118,6 @@ function AppLayout() {
         </span>
         <nav style={{ display: 'flex', gap: 0 }}>
           <Link to="/chat" style={navLinkStyle('/chat')}>对话</Link>
-          <Link to="/chat/plan" style={navLinkStyle('/chat/plan')}>计划</Link>
           <Link to="/chat/planet" style={navLinkStyle('/chat/planet')}>知识星球</Link>
           {isAdmin && (
             <Link to="/chat/admin" style={navLinkStyle('/chat/admin')}>管理</Link>

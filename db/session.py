@@ -832,13 +832,29 @@ class AgentDatabase:
     def create_plan(self, user_id: int, title: str, goal: str, steps: list,
                     session_id: str = "", device_id: str = "") -> dict:
         """建计划 + 步骤（事务一次提交，失败不留脏数据）。
-        返回 {"ok": True, "plan_id": id} 或 {"ok": False, "detail": ...}"""
+        防重复：模型对同一次工具调用可能发两轮（LangGraph 双发事件），
+        同用户 10 分钟内同标题同步骤视为重复 → 返回既有 id 不重复建。
+        返回 {"ok": True, "plan_id": id, "duplicate": bool} 或 {"ok": False, "detail": ...}"""
         if not user_id or not self.get_user_by_id(user_id):
             return {"ok": False, "detail": "用户不存在"}
         if not isinstance(steps, list) or not (1 <= len(steps) <= 8):
             return {"ok": False, "detail": "步骤数须为 1-8"}
         sess = self.Session()
         try:
+            from datetime import datetime, timedelta
+            dup = sess.query(Plan).filter(
+                Plan.user_id == user_id, Plan.title == (title or "")[:200],
+                Plan.create_time >= datetime.now() - timedelta(minutes=10)
+            ).order_by(Plan.id.desc()).first()
+            if dup:
+                old_steps = sess.query(PlanStep).filter(
+                    PlanStep.plan_id == dup.id).order_by(PlanStep.step_no).all()
+                same = (len(old_steps) == len(steps) and all(
+                    old_steps[i].skill == str(steps[i].get("skill") or "analysis")
+                    and old_steps[i].desc == str(steps[i].get("desc") or "")[:500]
+                    for i in range(len(steps))))
+                if same:
+                    return {"ok": True, "plan_id": dup.id, "duplicate": True}
             plan = Plan(user_id=user_id, session_id=session_id or "",
                         title=(title or "")[:200], goal=(goal or "")[:2000],
                         status="draft", device_id=device_id or "",

@@ -77,6 +77,9 @@ def create_plan(title: str, goal: str, steps: str) -> str:
                                "session_id": current_session_id.get()})
     if not r.get("ok"):
         return f"创建计划失败：{r.get('detail', '未知错误')}"
+    if r.get("duplicate"):
+        return (f"计划 #{r['plan_id']} 刚刚已经创建过了（内容相同），无需重复创建。"
+                "向用户复述该计划步骤即可；等用户说「执行」时调用 execute_plan。")
     lines = [f"计划 #{r['plan_id']}「{title}」已创建（{len(steps_list)} 步，草稿状态，尚未执行）"]
     for i, s in enumerate(steps_list, 1):
         lines.append(f"{i}. [{s['skill']}] {s['desc'][:60]}")

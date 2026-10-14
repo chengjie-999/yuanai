@@ -242,6 +242,8 @@ async def _deepseek_agent_stream(
         yield {"type": "error", "data": "工具调用超过最大轮次"}
 
     except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("DeepSeek agent 流异常: %s", e, exc_info=True)
         yield {"type": "error", "data": str(e)}
 
 
@@ -321,6 +323,8 @@ async def stream_agent_events(
             "data": {"display_content": full_response, "reasoning_content": full_reasoning},
         }
     except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("LangGraph agent 流异常: %s", e, exc_info=True)
         yield {"type": "error", "data": str(e)}
 
 

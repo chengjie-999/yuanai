@@ -326,7 +326,9 @@ async def chat_stream(req: ChatRequest, request: Request):
                 async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             except Exception as e:
-                logger.error("SSE 流式聊天异常: %s", e)
+                # exc_info：异常来自哪一行一眼可见（曾出现「string indices must be integers」
+                # 无法定位——只打 str(e) 丢了堆栈）
+                logger.error("SSE 流式聊天异常: %s", e, exc_info=True)
                 yield f"data: {json.dumps({'type': 'error', 'data': _SAFE_ERROR}, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")

@@ -530,7 +530,7 @@ export default function ChatPage({ user }: { user?: any }) {
 
       {sidebarOpen && <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 
-      <div onClick={() => setSidebarOpen(!sidebarOpen)} className="yuan-tip" data-tip={sidebarOpen ? '收起侧栏' : '展开侧栏'} aria-label={sidebarOpen ? '收起侧栏' : '展开侧栏'}
+      <div onClick={() => setSidebarOpen(!sidebarOpen)} className="yuan-tip yuan-tip-down" data-tip={sidebarOpen ? '收起侧栏' : '展开侧栏'} aria-label={sidebarOpen ? '收起侧栏' : '展开侧栏'}
         style={{
           position: 'absolute', left: isMobile ? 0 : (sidebarOpen ? 258 : 0), top: 64, zIndex: 10,
           padding: '12px 4px', borderRadius: '0 8px 8px 0',

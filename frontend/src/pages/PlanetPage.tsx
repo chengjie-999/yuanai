@@ -156,7 +156,7 @@ export default function PlanetPage() {
         </div>
         <div style={{ flex: 1 }} />
         {vaultStatus && (
-          <span className="yuan-tip" data-tip={vaultStatus.tip} aria-label={vaultStatus.tip}
+          <span className="yuan-tip yuan-tip-down" data-tip={vaultStatus.tip} aria-label={vaultStatus.tip}
             style={{
               fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 12,
               color: vaultStatus.tone, border: `1px solid ${vaultStatus.tone}`,

@@ -38,7 +38,7 @@ export default function LandingHeader() {
       </nav>
       <div style={{ flex: 1 }} />
       <button onClick={toggleTheme} aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}
-        className="theme-toggle yuan-tip" data-tip={isDark ? '切换亮色模式' : '切换暗色模式'}
+        className="theme-toggle yuan-tip yuan-tip-down" data-tip={isDark ? '切换亮色模式' : '切换暗色模式'}
         style={{
           width: 44, height: 24, borderRadius: 12, border: 'none',
           background: isDark ? '#45494a' : '#d0d7de',

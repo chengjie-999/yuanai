@@ -147,17 +147,27 @@ export default function PlanPage() {
 
   return (
     <div className="plan-page" style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', boxSizing: 'border-box' }}>
-      <header style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg-primary)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-        <Link to="/chat" style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1 }}><ArrowLeftIcon size={13} /> 返回</Link>
-        <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>计划</span>
-        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>手机定计划，电脑执行</span>
+      <header style={{
+        padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+      }}>
+        <Link to="/chat" style={{
+          fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
+          padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+        }}><ArrowLeftIcon size={12} /> 返回</Link>
+        <span style={{ lineHeight: 1, color: 'var(--text-primary)', display: 'flex' }}><ClipboardIcon size={18} /></span>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>计划</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>手机定计划，电脑执行</div>
+        </div>
       </header>
 
       {actionErr && (
         <div style={{ margin: '10px 20px 0', padding: '8px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: 12 }}>{actionErr}</div>
       )}
 
-      <div className="plan-body" style={{ flex: 1, overflow: 'auto', padding: '16px 20px 40px', maxWidth: 1080, width: '100%', margin: '0 auto', boxSizing: 'border-box', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div className="plan-body agent-page-body" style={{ flex: 1, overflow: 'auto', maxWidth: 1080, width: '100%', margin: '0 auto', boxSizing: 'border-box', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         {/* 计划列表 */}
         <div className="plan-list" style={{ flex: '0 0 320px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {loading ? (
@@ -211,7 +221,8 @@ export default function PlanPage() {
       <style>{`
         @keyframes plan-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @media (max-width: 800px) {
-          .plan-body { flex-direction: column !important; padding: 12px 10px 30px !important; }
+          /* 内边距由全局 .agent-page-body 响应式规则统一（与项目其他页面一致） */
+          .plan-body { flex-direction: column !important; }
           .plan-list { flex: none !important; width: 100% !important; }
         }
       `}</style>

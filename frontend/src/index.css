@@ -167,6 +167,16 @@ input, textarea, select {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+/* 顶栏等贴近视口上缘的元素：气泡改在下方显示（上方会出界看不到） */
+.yuan-tip-down::after {
+  bottom: auto;
+  top: calc(100% + 7px);
+  transform: translateX(-50%) translateY(-2px);
+}
+.yuan-tip-down:hover::after,
+.yuan-tip-down:focus-visible::after {
+  transform: translateX(-50%) translateY(0);
+}
 
 /* ---- Button system ---- */
 .btn {

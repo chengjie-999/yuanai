@@ -50,7 +50,7 @@ function AutoReadToggle() {
   const autoRead = useAutoRead()
   return (
     <button onClick={() => toggleAutoRead()} role="switch" aria-checked={autoRead}
-      className="yuan-tip" data-tip={autoRead ? '自动朗读已开：AI 回复自动出声' : '自动朗读已关：点击开启'}
+      className="yuan-tip yuan-tip-down" data-tip={autoRead ? '自动朗读已开：AI 回复自动出声' : '自动朗读已关：点击开启'}
       aria-label={autoRead ? '关闭自动朗读' : '开启自动朗读'}
       style={{
         background: 'none', border: 'none', cursor: 'pointer', padding: 6, lineHeight: 1,
@@ -127,7 +127,7 @@ function AppLayout() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <AutoReadToggle />
           <button onClick={toggleTheme} aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}
-            className="theme-toggle yuan-tip" data-tip={isDark ? '切换亮色模式' : '切换暗色模式'}
+            className="theme-toggle yuan-tip yuan-tip-down" data-tip={isDark ? '切换亮色模式' : '切换暗色模式'}
             style={{
               width: 44, height: 24, borderRadius: 12, border: 'none',
               background: isDark ? '#45494a' : '#d0d7de',

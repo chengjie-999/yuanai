@@ -54,7 +54,7 @@ export default function AgentStatus({ userId }: { userId?: number }) {
         : '')
 
   return (
-    <span className="yuan-tip" data-tip={tip} aria-label={tip}
+    <span className="yuan-tip yuan-tip-down" data-tip={tip} aria-label={tip}
       style={{
         display: 'inline-flex', alignItems: 'center', padding: 4,
         color: online ? 'var(--success)' : 'var(--text-muted)', cursor: 'default',

@@ -9,7 +9,7 @@ import shutil
 import base64
 import subprocess
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,30 @@ ALLOWED_ROOTS = [
 _ENUM_FORBIDDEN = ("/", "\\", "..")
 _INT_RE = re.compile(r"^\d{1,10}$")
 _FLOAT_RE = re.compile(r"^\d{1,4}(\.\d{1,6})?$")
+
+# 脚本规范名 → ASCII 工具 key（provider 函数名限制 ^[a-zA-Z0-9_-]{1,64}$，
+# 中文名不能直接当工具名）。未登记的脚本 fallback script_+md5[:8]（确定性，
+# 跨机一致）。
+SCRIPT_KEYS = {
+    "描述性统计分析": "descriptive_stats",
+    "相关性分析": "correlation",
+    "回归分析": "regression",
+    "分类数据分析": "categorical",
+    "时间序列分析": "timeseries",
+    "数据预处理": "preprocess",
+    "RFM客户分群": "rfm_cluster",
+    "客户流失预测": "churn_predict",
+    "基因表达分布分析": "gene_expression",
+    "通用网页采集": "generic_crawl",
+}
+
+
+def _script_key(name: str) -> str:
+    """规范名 → ASCII key（无登记则确定性 fallback）"""
+    if name in SCRIPT_KEYS:
+        return SCRIPT_KEYS[name]
+    import hashlib
+    return "script_" + hashlib.md5(name.encode("utf-8")).hexdigest()[:8]
 
 # 旧格式字符串参数名的类型启发式（含 path|file|dir → path；含 id|num|count|top|size|limit|pages|period → int）
 _PATH_HINT = ("path", "file", "dir")
@@ -127,6 +151,8 @@ class _ScriptHandle:
         self.description = description
         self._filepath = filepath
         self.tags = tags or []
+        self.key = _script_key(name)          # ASCII 工具名（统筹 function calling 用）
+        self.skill = ""                       # 归属 skill（registry 构造时注入）
         self._param_order: List[str] = []
         self._param_schemas: Dict[str, Dict] = {}  # S1.6：name → {"type":..., "choices":[...]}
 
@@ -272,10 +298,28 @@ class _ScriptHandle:
 
 
 class ScriptRegistry:
-    def __init__(self, script_dir: str):
+    def __init__(self, script_dir: str, skill: str = ""):
         self._scripts: Dict[str, _ScriptHandle] = {}
+        self.skill = skill
         full_dir = os.path.join(PROJECT_ROOT, script_dir)
         self._discover(full_dir, script_dir.replace("/", ".").replace("\\", "."))
+        if skill:
+            for h in self._scripts.values():
+                h.skill = skill
+
+    def iter_handles(self) -> List["_ScriptHandle"]:
+        """公开枚举（注册序）；测试与工具工厂用，不翻 _scripts 私有"""
+        return list(self._scripts.values())
+
+    def resolve(self, name: str) -> Optional[str]:
+        """规范中文名 / ASCII key（带不带 script_ 前缀）→ 规范名；未知返回 None"""
+        s = str(name or "").strip()
+        if s in self._scripts:
+            return s
+        for h in self._scripts.values():
+            if s == h.key or s == f"script_{h.key}":
+                return h.name
+        return None
 
     def _discover(self, script_dir: str, package_hint: str):
         if not os.path.isdir(script_dir):
@@ -369,11 +413,13 @@ class ScriptRegistry:
 
     def run(self, name: str, params: dict = None, progress_cb=None) -> str:
         """执行脚本。progress_cb(current, total, message)：进度回调透传 handle。
+        名字先经 resolve（中文名/key 双通道，工具化后 model 传 key）。
 
         修复（2026-10-12）：base.py 一直传 progress_cb 进来但本方法不接受 →
         委派路径抛 TypeError。回归断言在 test/test_plan_pure.py::test_registry_run_accepts_progress_cb。
         """
-        script = self._scripts.get(name)
+        resolved = self.resolve(name)
+        script = self._scripts.get(resolved or "") if resolved else None
         if not script:
             return f"未知脚本: {name}"
         return script.run(progress_cb=progress_cb, **(params or {}))

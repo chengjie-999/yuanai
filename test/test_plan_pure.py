@@ -112,3 +112,20 @@ def test_registry_run_accepts_progress_cb():
 
 if __name__ == "__main__":
     print("测试入口：pytest test/test_plan_pure.py -v")
+
+
+# ---------------- script 字段校验（融合 R4） ----------------
+
+def test_validate_script_field_matrix():
+    base = {"skill": "analysis", "desc": "做统计"}
+    ok, err = validate_steps(json.dumps([{**base, "script": "descriptive_stats"}]))
+    assert not err and ok[0]["script"] == "descriptive_stats"
+    ok2, _ = validate_steps(json.dumps([{**base, "script": "描述性统计分析"}]))
+    assert ok2[0]["script"] == "描述性统计分析"
+    # 缺省空串放行
+    ok3, _ = validate_steps(json.dumps([base]))
+    assert ok3[0]["script"] == ""
+    # 超长 / 路径语义 / 协议标记 拒绝
+    assert validate_steps(json.dumps([{**base, "script": "x" * 65}]))[1]
+    assert validate_steps(json.dumps([{**base, "script": "../evil"}]))[1]
+    assert validate_steps(json.dumps([{**base, "script": "__DASHBOARD__:x"}]))[1]

@@ -1,10 +1,11 @@
 """计划执行器 — 本地 Agent 拉取云端计划队列、分步执行、回传进度与结果
 
 产品闭环第③段「电脑执行」：云端建计划（draft）→ 用户说「执行」→
-queued → 本机 PlanExecutor 轮询 /agent/plan/pull 认领步骤 → 用 skill 的
-ScriptDispatchAgent 执行（每步 LLM 现场选脚本，步骤只声明意图与参数）→
-progress/done/failed 上报。断点续跑：认领超时由云端看门狗重置，本机
-崩溃后重启自动续跑（云端是唯一真相源，本地不落状态文件）。
+queued → 本机 PlanExecutor 轮询 /agent/plan/pull 认领步骤 → 执行 →
+progress/done/failed 上报。融合后（2026-10-14）：步骤绑定脚本名时
+registry.run 零 LLM 直跑；未绑定（云端 fallback 建的步骤）bind_tools
+一次 LLM 现场选脚本。断点续跑：认领超时由云端看门狗重置，本机崩溃后
+重启自动续跑（云端是唯一真相源，本地不落状态文件）。
 
 安全边界：
 - skill 白名单 PLAN_SKILLS（analysis/collection，automation 挂账）
@@ -79,34 +80,74 @@ class PlanExecutor:
 
     # ---------------- 执行 ----------------
 
-    def _get_agent(self, skill: str):
+    def _get_registry(self, skill: str):
+        """按 skill 取脚本注册表（融合后无子 Agent；脚本工具/直跑都走 registry）"""
+        from agent.scripts.tools import get_registry
+        return get_registry(skill)
+
+    def _step_params(self, step: dict) -> dict:
+        """步骤参数统一取值：pull 返回的是 params_json（字符串），直接透传脚本"""
+        p = step.get("params")
+        if isinstance(p, dict):
+            return p
+        try:
+            p = json.loads(step.get("params_json") or "{}")
+        except Exception:
+            p = {}
+        return p if isinstance(p, dict) else {}
+
+    def _run_fallback_llm(self, skill: str, plan: dict, step: dict, prev: list,
+                          progress_cb) -> tuple:
+        """无绑定脚本的步骤：bind_tools 一次 LLM 调用现场选脚本（兜底路径）"""
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from yuanai_core.core.lc import get_llm
         from skills import skill_registry
-        if not skill_registry.get(skill):
-            return None
-        # 用子类（带真实 builtin 派发）：基类 _dispatch_builtin 是「未知内置操作」
-        # stub——LLM 选中 builtin_xxx 时步骤会空转（2026-10-14 计划执行暴露）
-        if skill == "collection":
-            from agent.agents.collection import CollectionAgent
-            return CollectionAgent()
-        if skill == "analysis":
-            from agent.agents.analysis import AnalysisAgent
-            return AnalysisAgent()
-        from agent.agents.base import ScriptDispatchAgent
-        return ScriptDispatchAgent(skill_registry.get(skill))
+        from agent.scripts.tools import build_script_tools
+
+        registry = self._get_registry(skill)
+        if not registry:
+            return "failed_noretry", f"技能未注册: {skill}"
+        cfg = skill_registry.get(skill)
+        tools = build_script_tools(registry, skill=skill, progress_cb=progress_cb)
+        if not tools:
+            return "failed_noretry", f"技能 {skill} 无可用脚本"
+        llm = get_llm(cfg.model if cfg else "doubao-seed-2-0-lite", temperature=0)
+        try:
+            msg = llm.bind_tools(tools).invoke([
+                SystemMessage(content=(cfg.system_prompt if cfg else "") or
+                              "你是计划步骤执行器：从可用脚本工具中选最合适的一个并直接调用；确实无法完成时不要调用工具，只说明原因。"),
+                HumanMessage(content=build_step_prompt(plan, step, prev)),
+            ])
+        except Exception as e:
+            return "failed", f"脚本选择失败 {type(e).__name__}: {str(e)[:200]}"
+        tool_calls = getattr(msg, "tool_calls", None) or []
+        if not tool_calls:
+            return "failed_noretry", f"无法处理：未能从可用脚本中选出（{str(getattr(msg, 'content', ''))[:200]}）"
+        tc = tool_calls[0]
+        by_name = {t.name: t for t in tools}
+        tool = by_name.get(tc.get("name", ""))
+        if not tool:
+            return "failed_noretry", f"无法处理：选中的工具不存在（{tc.get('name')}）"
+        raw = str(tool.invoke(tc.get("args") or {}))
+        return "done_script", raw
 
     def _execute_step(self, plan: dict, step: dict, prev: list) -> tuple:
-        """执行单步 → ("done", payload) / ("failed", err) / ("failed_noretry", err)"""
+        """执行单步 → ("done", payload) / ("failed", err) / ("failed_noretry", err)
+
+        融合后（2026-10-14）：step.script 存在 → registry.run 零 LLM 直跑；
+        无 script（云端 fallback 建的步骤）→ bind_tools 一次 LLM 现场选脚本。
+        """
         skill = step.get("skill") or "analysis"
         if skill not in PLAN_SKILLS:
             return "failed_noretry", f"skill 不在执行白名单: {skill}"
         enabled = self.enabled_skills() if callable(self.enabled_skills) else self.enabled_skills
         if enabled is not None and skill not in enabled:
             return "failed_noretry", f"该技能（{skill}）在本机托盘被关闭，开启后重跑失败步骤即可"
-        agent = self._get_agent(skill)
-        if not agent:
+        registry = self._get_registry(skill)
+        if not registry:
             return "failed_noretry", f"技能未注册: {skill}"
 
-        prompt = build_step_prompt(plan, step, prev)
+        params = self._step_params(step)
         step_id = step["id"]
 
         def progress_cb(current, total, message):
@@ -118,10 +159,26 @@ class PlanExecutor:
             self._report("/progress", {"step_id": step_id, "current": int(current),
                                        "total": int(total), "message": str(message)[:500]})
 
-        try:
-            raw = agent.run(prompt, progress_cb=progress_cb)
-        except Exception as e:
-            return "failed", f"执行异常 {type(e).__name__}: {str(e)[:300]}"
+        bound = str(step.get("script") or "").strip()
+        script_used = ""
+        if bound:
+            resolved = registry.resolve(bound)
+            if not resolved:
+                # 绑定脚本在本机不存在（跨机漂移/脚本被删）→ 降级现场选（plan_runs 标 fallback）
+                logger.warning("步骤 %s 绑定脚本不存在（%s），降级现场选", step_id, bound)
+                state, raw = self._run_fallback_llm(skill, plan, step, prev, progress_cb)
+                if state != "done_script":
+                    return state, raw
+            else:
+                try:
+                    raw = registry.run(resolved, params, progress_cb=progress_cb)
+                except Exception as e:
+                    return "failed", f"执行异常 {type(e).__name__}: {str(e)[:300]}"
+                script_used = resolved
+        else:
+            state, raw = self._run_fallback_llm(skill, plan, step, prev, progress_cb)
+            if state != "done_script":
+                return state, raw
 
         err = str(raw or "").strip()
         for prefix in _NON_RETRYABLE_PREFIXES:
@@ -130,10 +187,10 @@ class PlanExecutor:
         parsed = parse_step_output(raw)
         if not parsed["text"].strip() and not parsed["blocks"]:
             return "failed", "执行无有效输出"
-        script = (agent.last_dispatch or {}).get("script", "")
         return "done", {"result_json": {"text": parsed["text"], "blocks": parsed["blocks"],
                                         "truncated": parsed["truncated"]},
-                        "summary": parsed["text"][:120], "script": script}
+                        "summary": parsed["text"][:120],
+                        "script": script_used or bound}
 
     # ---------------- 循环 ----------------
 

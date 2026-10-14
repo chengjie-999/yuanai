@@ -17,6 +17,10 @@ MAX_TITLE_LEN = 100
 MAX_GOAL_LEN = 500
 MAX_PARAMS_KEYS = 8
 MAX_PARAM_VAL_LEN = 200
+MAX_SCRIPT_LEN = 64
+# script 字段字符集（中文名/ASCII key/点横线空格；不做存在性校验——云端无
+# 脚本清单，存在性由执行器对 ScriptRegistry 判定）
+_SCRIPT_RE = re.compile(r"^[\w\-. ]{1,64}$", re.UNICODE)
 
 # 结果文本截断（与 api/v1/plan/store.py RESULT_TEXT_MAX 一致）
 RESULT_TEXT_MAX = 20000
@@ -61,6 +65,15 @@ def validate_steps(steps_raw) -> tuple:
             return [], f"步骤描述超过 {MAX_DESC_LEN} 字"
         if any(m in desc for m in FORBIDDEN_MARKERS):
             return [], "步骤描述含非法协议标记"
+        # 可选 script（本地统筹建计划时绑定脚本名/key；空 = 执行器现场选）
+        script = str(s.get("script", "") or "").strip()
+        if script:
+            if len(script) > MAX_SCRIPT_LEN:
+                return [], f"script 超过 {MAX_SCRIPT_LEN} 字符"
+            if any(m in script for m in FORBIDDEN_MARKERS) or ".." in script:
+                return [], "script 含非法标记"
+            if not _SCRIPT_RE.match(script):
+                return [], "script 仅允许中英文/数字/点/横线/空格"
         params = s.get("params") or {}
         if not isinstance(params, dict):
             return [], "params 必须是对象"
@@ -74,7 +87,8 @@ def validate_steps(steps_raw) -> tuple:
             if len(sv) > MAX_PARAM_VAL_LEN or any(m in sv for m in FORBIDDEN_MARKERS):
                 return [], f"参数 {k} 非法"
             clean[str(k)[:50]] = v
-        steps.append({"skill": skill, "desc": desc[:MAX_DESC_LEN], "params": clean})
+        steps.append({"skill": skill, "script": script, "desc": desc[:MAX_DESC_LEN],
+                      "params": clean})
     return steps, ""
 
 

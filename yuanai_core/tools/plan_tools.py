@@ -78,8 +78,8 @@ def create_plan(title: str, goal: str, steps: str) -> str:
     """为用户创建可执行计划（手机定计划、电脑执行，只建草稿不自动执行）。
     title: 计划标题（≤100 字）
     goal: 用户的原始目标，原样记录
-    steps: JSON 数组字符串，1-8 步。每项 {"skill":"analysis|collection","desc":"这一步做什么（自包含描述：执行时看不到对话历史，缺 URL/数据集 id 要写明或先问用户）","params":{...可选参数}}
-    规则：只写意图与参数、不要写脚本名（本机执行时自动选脚本）；数据采集在前、分析在后；信息不足（缺 URL/数据集 id/列名）先在对话里问用户，不要猜。
+    steps: JSON 数组字符串，1-8 步。每项 {"skill":"analysis|collection","script":"脚本工具名(可选，能确定就填：如 script_descriptive_stats/script_generic_crawl，不确定就省略)","desc":"这一步做什么（自包含描述：执行时看不到对话历史，缺 URL/数据集 id 要写明或先问用户）","params":{...可选参数}}
+    规则：能确定脚本时填 script 名与 params（用你可见的 script_ 开头工具名）；数据采集在前、分析在后；信息不足（缺 URL/数据集 id/列名）先在对话里问用户，不要猜。
     创建成功后向用户复述步骤清单，并说明：说「执行」才会开始，电脑开机且小元 Agent 在线时自动执行。"""
     from yuanai_core.pure.plan import validate_steps, validate_title_goal
     uid = current_user_id.get()

@@ -306,6 +306,7 @@ class PlanStep(Base):
     user_id = Column(Integer, nullable=False, index=True)  # 冗余防伪造 step_id
     step_no = Column(Integer, nullable=False)
     skill = Column(String(16), nullable=False, server_default='analysis')  # 白名单 analysis/collection
+    script = Column(String(64), nullable=False, server_default='')  # 绑定脚本名/key（本地统筹建时填；空=执行器现场选）
     desc = Column(String(500), nullable=False, server_default='')
     params_json = Column(Text, nullable=True)
     status = Column(String(12), nullable=False, server_default='pending')  # pending/running/done/failed/skipped
@@ -852,6 +853,7 @@ class AgentDatabase:
                 same = (len(old_steps) == len(steps) and all(
                     old_steps[i].skill == str(steps[i].get("skill") or "analysis")
                     and old_steps[i].desc == str(steps[i].get("desc") or "")[:500]
+                    and old_steps[i].script == str(steps[i].get("script") or "")[:64]
                     for i in range(len(steps))))
                 if same:
                     return {"ok": True, "plan_id": dup.id, "duplicate": True}
@@ -865,6 +867,7 @@ class AgentDatabase:
                 sess.add(PlanStep(
                     plan_id=plan.id, user_id=user_id, step_no=i,
                     skill=s.get("skill", "analysis"),
+                    script=str(s.get("script", ""))[:64],
                     desc=str(s.get("desc", ""))[:500],
                     params_json=json.dumps(s.get("params", {}) or {}, ensure_ascii=False)))
             sess.commit()
@@ -2317,6 +2320,7 @@ def _plan_step_dict(r) -> dict:
     return {
         "id": r.id, "plan_id": r.plan_id, "user_id": r.user_id,
         "step_no": r.step_no or 0, "skill": r.skill or "analysis",
+        "script": r.script or "",
         "desc": r.desc or "", "params_json": r.params_json or "{}",
         "status": r.status or "pending", "attempt": r.attempt or 0,
         "progress": r.progress or 0, "last_message": r.last_message or "",

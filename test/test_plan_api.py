@@ -218,3 +218,19 @@ def test_claim_cas_and_serial(client, env, db):
 
 if __name__ == "__main__":
     print("测试入口：pytest test/test_plan_api.py -v")
+
+
+def test_plan_step_script_roundtrip(client, env, db):
+    """R4：steps 带 script 落库并从详情/pull 读回"""
+    r = client.post("/api/v1/plan", headers=env["h_owner"], json={
+        "title": "脚本绑定计划", "goal": "x",
+        "steps": [{"skill": "analysis", "script": "descriptive_stats",
+                   "desc": "做统计", "params": {"dataset_id": 8}}],
+    })
+    assert r.status_code == 200, r.text
+    pid = r.json()["plan_id"]
+    d = client.get(f"/api/v1/plan/{pid}", headers=env["h_owner"]).json()
+    assert d["steps"][0]["script"] == "descriptive_stats"
+    steps = db.get_plan_steps(pid, env["owner"])
+    assert steps[0]["script"] == "descriptive_stats"
+    client.delete(f"/api/v1/plan/{pid}", headers=env["h_owner"])

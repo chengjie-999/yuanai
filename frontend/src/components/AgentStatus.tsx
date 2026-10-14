@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { API_BASE, getToken } from '../api'
+import { MonitorIcon, MonitorOffIcon } from './icons'
 
 interface AgentInfo {
   agent_id: string
@@ -40,36 +41,25 @@ export default function AgentStatus({ userId }: { userId?: number }) {
   const matched = agents.find((a) => String(a.agent_id) === String(userId))
   const myAgents = userId ? (matched ? [matched] : agents.slice(0, 1)) : agents.slice(0, 1)
   const online = myAgents.length > 0 && myAgents[0].online
-
-  if (error || !online) {
-    return (
-      <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{
-          width: 8, height: 8, borderRadius: '50%', background: 'var(--text-muted)',
-          display: 'inline-block',
-        }} />
-        本地Agent 离线
-      </span>
-    )
-  }
-
   const agent = myAgents[0]
   const capLabels: Record<string, string> = {
     analysis: '分析', collection: '采集', automation: '自动化', claude: 'Claude Code',
   }
 
+  // 纯图标指示灯：悬浮提示显示状态详情（文字移到 yuan-tip 气泡）
+  const tip = error || !online
+    ? '本地 Agent 离线'
+    : '本地 Agent 在线' + (agent?.capabilities?.length
+        ? ' · ' + agent.capabilities.map((c: string) => capLabels[c] || c).join(' / ')
+        : '')
+
   return (
-    <span style={{ fontSize: 12, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{
-        width: 8, height: 8, borderRadius: '50%',
-        background: 'var(--success)',
-        display: 'inline-block',
-        boxShadow: '0 0 6px rgba(76,175,80,0.5)',
-      }} />
-      {agent.agent_name}
-      <span className="hide-mobile" style={{ color: 'var(--text-muted)' }}>
-        {agent.capabilities.map((c: string) => capLabels[c] || c).join('·')}
-      </span>
+    <span className="yuan-tip" data-tip={tip} aria-label={tip}
+      style={{
+        display: 'inline-flex', alignItems: 'center', padding: 4,
+        color: online ? 'var(--success)' : 'var(--text-muted)', cursor: 'default',
+      }}>
+      {online ? <MonitorIcon size={18} /> : <MonitorOffIcon size={18} />}
     </span>
   )
 }

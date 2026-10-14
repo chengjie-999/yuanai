@@ -29,7 +29,8 @@ MAX_STEPS_PER_ROUND = 5      # 单轮最多执行步数（防一轮霸占）
 PROGRESS_MIN_INTERVAL_S = 3  # 进度上报节流
 
 # 确定性失败前缀 → 不重试（重试同结果只烧 token）
-_NON_RETRYABLE_PREFIXES = ("无法处理", "参数校验失败", "未知脚本", "无法解析意图")
+_NON_RETRYABLE_PREFIXES = ("无法处理", "参数校验失败", "未知脚本", "无法解析意图",
+                           "未知内置操作")
 
 
 class PlanExecutor:
@@ -76,12 +77,19 @@ class PlanExecutor:
     # ---------------- 执行 ----------------
 
     def _get_agent(self, skill: str):
-        from agent.agents.base import ScriptDispatchAgent
         from skills import skill_registry
-        cfg = skill_registry.get(skill)
-        if not cfg:
+        if not skill_registry.get(skill):
             return None
-        return ScriptDispatchAgent(cfg)
+        # 用子类（带真实 builtin 派发）：基类 _dispatch_builtin 是「未知内置操作」
+        # stub——LLM 选中 builtin_xxx 时步骤会空转（2026-10-14 计划执行暴露）
+        if skill == "collection":
+            from agent.agents.collection import CollectionAgent
+            return CollectionAgent()
+        if skill == "analysis":
+            from agent.agents.analysis import AnalysisAgent
+            return AnalysisAgent()
+        from agent.agents.base import ScriptDispatchAgent
+        return ScriptDispatchAgent(skill_registry.get(skill))
 
     def _execute_step(self, plan: dict, step: dict, prev: list) -> tuple:
         """执行单步 → ("done", payload) / ("failed", err) / ("failed_noretry", err)"""

@@ -155,8 +155,17 @@ class Orchestrator:
             return self._agents[name]
 
         if skill_config.type == "script_dispatch":
-            from agent.agents.base import ScriptDispatchAgent
-            agent = ScriptDispatchAgent(skill_config)
+            # 用子类（带真实 builtin 派发）：基类的 _dispatch_builtin 是「未知内置操作」
+            # stub——曾导致 LLM 选中 builtin_xxx 后步骤空转（2026-10-14 计划执行暴露）
+            if name == "collection":
+                from agent.agents.collection import CollectionAgent
+                agent = CollectionAgent()
+            elif name == "analysis":
+                from agent.agents.analysis import AnalysisAgent
+                agent = AnalysisAgent()
+            else:
+                from agent.agents.base import ScriptDispatchAgent
+                agent = ScriptDispatchAgent(skill_config)
         elif skill_config.type == "react":
             from agent.agents.automation import AutomationAgent
             agent = AutomationAgent(skill_config)

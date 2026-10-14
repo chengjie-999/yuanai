@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { ChatMessage } from '../../types'
 import ToolCallCard from '../ToolCallCard'
 import MarkdownContent from '../MarkdownContent'
@@ -397,7 +398,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             ) : null}
             <MarkdownContent content={msg.content} />
             {msg.pageLink && (
-              <a href={msg.pageLink} target="_blank" rel="noopener noreferrer"
+              <Link to={msg.pageLink}
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
@@ -407,7 +408,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-              >{msg.sender === 'analysis' ? <BarChartIcon size={13} /> : msg.sender === 'automation' ? <BotIcon size={13} /> : msg.sender === 'planet' ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</a>
+              >{msg.sender === 'analysis' ? <BarChartIcon size={13} /> : msg.sender === 'automation' ? <BotIcon size={13} /> : msg.sender === 'planet' ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</Link>
             )}
             {msg.images && msg.images.length > 0 && (
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>

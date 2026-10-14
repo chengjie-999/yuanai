@@ -120,11 +120,14 @@ class IntentClassifier:
 
         # Step 3: 取最高分意图
         best = max(scores, key=scores.get)
-        # 计划意图平局优先：「制定/执行/查看计划」常与数据/记忆关键词同分
-        # （如「执行我的计划」命中记忆的「我的」；「制定计划抓数据」命中数据的「数据」）
-        if (scores.get("plan_task", 0) == scores.get(best, 0)
-                and best != "plan_task" and "计划" in msg):
-            best = "plan_task"
+        # 计划意图优先：含「计划」且带制定/执行语义时，压过 data/crawl 的关键词高分
+        # （实测「制定计划先抓取再统计分析」→ data_task 3 分 > plan_task 2 分，
+        #   计划工具未加载，模型把计划写在文字里说 create_plan 未注册）。
+        # 直接返回并保底置信度——覆盖后按原 best_score 算会低于 0.4 掉回 general_chat。
+        if (best != "plan_task" and "计划" in msg and any(
+                k in msg for k in ("制定", "规划", "计划一下", "安排", "拆成",
+                                   "执行", "我的计划", "计划进度"))):
+            return IntentMatch("plan_task", max(scores.get("plan_task", 0) / max(sum(scores.values()), 1), 0.5))
         best_score = scores[best]
         total = sum(scores.values())
         confidence = best_score / max(total, 1)

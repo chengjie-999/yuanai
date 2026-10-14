@@ -130,6 +130,20 @@ def test_execute_plan_offline_hint(monkeypatch):
     assert "未连接" in out or "Agent" in out
 
 
+def test_intent_classifier_plan_priority():
+    """回归：「制定计划先抓取再分析」曾被 data_task 高分抢走 → 计划工具未加载"""
+    from agent.intent_classifier import classifier
+    for msg in [
+        '帮我制定一个计划：先抓取 https://example.com 的页面内容，再做描述性统计分析和图表',
+        '执行我的计划', '看看计划进度',
+    ]:
+        assert classifier.classify(msg).group == 'plan_task', msg
+    # 不带计划语义的请求不受影响
+    assert classifier.classify('帮我分析这个数据集').group == 'data_task'
+    assert classifier.classify('抓取这个网页的数据').group == 'crawl_task'
+    assert classifier.classify('你好').group == 'general_chat'
+
+
 def test_plan_call_direct_path(monkeypatch):
     """云端进程直连：校验失败返回可读错误（先过身份、再被步骤校验拦截）"""
     monkeypatch.setattr(pt, "current_user_id", _Ctx(0))

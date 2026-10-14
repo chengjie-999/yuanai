@@ -1447,9 +1447,8 @@ class AgentDatabase:
             rows = q.order_by(Dataset.create_time.desc()).all()
             datasets = []
             for r in rows:
-                try:
-                    columns_info = json.loads(r.columns_info) if r.columns_info else []
-                except Exception:
+                columns_info = _json_loads_lenient(r.columns_info) if r.columns_info else []
+                if not isinstance(columns_info, list):
                     columns_info = []
                 datasets.append({
                     "id": r.id, "name": r.name, "file_type": r.file_type,
@@ -1470,13 +1469,11 @@ class AgentDatabase:
             r = sess.query(Dataset).filter_by(id=ds_id).first()
             if not r:
                 return None
-            try:
-                columns_info = json.loads(r.columns_info) if r.columns_info else []
-            except Exception:
+            columns_info = _json_loads_lenient(r.columns_info) if r.columns_info else []
+            if not isinstance(columns_info, list):
                 columns_info = []
-            try:
-                preview_rows = json.loads(r.preview_rows) if r.preview_rows else []
-            except Exception:
+            preview_rows = _json_loads_lenient(r.preview_rows) if r.preview_rows else []
+            if not isinstance(preview_rows, list):
                 preview_rows = []
             return {
                 "id": r.id, "name": r.name, "file_type": r.file_type,
@@ -2281,6 +2278,23 @@ class AgentDatabase:
                      "calls": int(r.calls or 0)} for r in rows]
         finally:
             sess.close()
+
+def _json_loads_lenient(raw):
+    """JSON 解析（最多两层）：曾出现 columns_info/preview_rows 被双重编码
+    （JSON 里再塞 JSON 字符串），单次 loads 得到字符串，下游按 list[dict]
+    取下标抛 TypeError「string indices must be integers」——工具一次调用整个流断掉。"""
+    import json
+    v = raw
+    for _ in range(2):
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except Exception:
+                break
+        else:
+            break
+    return v
+
 
 def _plan_step_dict(r) -> dict:
     """PlanStep ORM 行 → dict（get_plan_steps / get_plan_step 共用）"""

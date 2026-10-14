@@ -17,6 +17,22 @@ def _fig_to_base64(fig) -> str:
     return f"data:image/png;base64,{b64}"
 
 
+def _col_names(columns) -> list:
+    """列清单归一：兼容 [{'name':...}] 与 ['colA', ...] 两种存储形态。
+
+    修复（2026-10-14）：部分数据集 columns 存的是字符串列表（无表头 JSON
+    上传），原 c['name'] 对字符串取下标抛 TypeError「string indices must
+    be integers」，模型一调 list_datasets 整个流就断。
+    """
+    out = []
+    for c in (columns or []):
+        if isinstance(c, dict):
+            out.append(str(c.get("name") or c.get("列名") or ""))
+        else:
+            out.append(str(c))
+    return [x for x in out if x]
+
+
 @tool
 def list_datasets() -> str:
     """List all available datasets with ID, name, size, columns."""
@@ -27,8 +43,9 @@ def list_datasets() -> str:
         return "暂无数据集。请在数据工作台上传 CSV/Excel/JSON 文件。"
     lines = [f"共 {len(datasets)} 个数据集:", ""]
     for ds in datasets:
-        cols = ", ".join(c["name"] for c in ds.get("columns", [])[:8])
-        more = "..." if len(ds.get("columns", [])) > 8 else ""
+        names = _col_names(ds.get("columns", []))
+        cols = ", ".join(names[:8])
+        more = "..." if len(names) > 8 else ""
         lines.append(
             f"  #{ds['id']} {ds['name']} | {ds['file_type']} | "
             f"{ds['row_count']}行 | {ds['file_size']//1024}KB"
@@ -46,16 +63,17 @@ def preview_dataset(dataset_id: int) -> str:
     ds = db.get_dataset(dataset_id)
     if not ds:
         return f"数据集 #{dataset_id} 不存在"
+    names = _col_names(ds.get("columns", []))
     lines = [
         f"## {ds['name']}",
-        f"类型: {ds['file_type']} | 行数: {ds['row_count']} | 列数: {len(ds.get('columns', []))}",
+        f"类型: {ds['file_type']} | 行数: {ds['row_count']} | 列数: {len(names)}",
         "",
     ]
-    if ds.get("columns"):
-        lines.append("| " + " | ".join(c["name"] for c in ds["columns"]) + " |")
-        lines.append("|" + "|".join("---" for _ in ds["columns"]) + "|")
+    if names:
+        lines.append("| " + " | ".join(names) + " |")
+        lines.append("|" + "|".join("---" for _ in names) + "|")
         for row in ds.get("preview_rows", [])[:10]:
-            vals = [str(row.get(c["name"], ""))[:40] for c in ds["columns"]]
+            vals = [str(row.get(name, ""))[:40] for name in names]
             lines.append("| " + " | ".join(vals) + " |")
     return "\n".join(lines)
 

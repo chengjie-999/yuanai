@@ -8,12 +8,29 @@ TOOL_CATEGORY = "plan"
 身份判定——复制一份必埋第二处漂移，见 CLAUDE.md 教训）。
 """
 import logging
+import time
 
 from langchain_core.tools import tool
 from yuanai_core.rag import current_user_id, current_session_id
 from yuanai_core.tools.user_memory import _memory_path, _agent_http
 
 logger = logging.getLogger(__name__)
+
+# 同参短时合并（LangGraph 对同一次工具调用可能双发、模型也可能重复调用）：
+# (tool, uid, args_key) → (ts, 上次输出)。30s 内同参再次调用直接返回上次输出，
+# 不重复执行（create_plan 有 db 层防重复兜底，这里是执行前的第一道）。
+_MERGE_TTL_S = 30
+_last_calls: dict = {}
+
+
+def _merged(tool_name: str, uid: int, args_key: str, out: str) -> str:
+    key = (tool_name, uid, args_key)
+    now = time.time()
+    prev = _last_calls.get(key)
+    if prev and now - prev[0] < _MERGE_TTL_S:
+        return prev[1]
+    _last_calls[key] = (now, out)
+    return out
 
 
 def _plan_call(path: str, payload: dict) -> dict:
@@ -78,13 +95,14 @@ def create_plan(title: str, goal: str, steps: str) -> str:
     if not r.get("ok"):
         return f"创建计划失败：{r.get('detail', '未知错误')}"
     if r.get("duplicate"):
-        return (f"计划 #{r['plan_id']} 刚刚已经创建过了（内容相同），无需重复创建。"
-                "向用户复述该计划步骤即可；等用户说「执行」时调用 execute_plan。")
+        out = (f"计划 #{r['plan_id']} 刚刚已经创建过了（内容相同），无需重复创建。"
+               "向用户复述该计划步骤即可；等用户说「执行」时调用 execute_plan。")
+        return _merged("create_plan", uid, f"{title}|{steps}", out)
     lines = [f"计划 #{r['plan_id']}「{title}」已创建（{len(steps_list)} 步，草稿状态，尚未执行）"]
     for i, s in enumerate(steps_list, 1):
         lines.append(f"{i}. [{s['skill']}] {s['desc'][:60]}")
     lines.append("等用户说「执行」时调用 execute_plan 加入队列；不要自动执行。")
-    return "\n".join(lines)
+    return _merged("create_plan", uid, f"{title}|{steps}", "\n".join(lines))
 
 
 @tool
@@ -92,22 +110,26 @@ def execute_plan(plan_id: int = 0) -> str:
     """把计划加入执行队列，用户的电脑会自动拉取执行。plan_id: 0 = 最近一个草稿计划。
     只有用户明确说「执行/开始执行/跑这个计划」时才调用；计划创建后不要主动调用。"""
     uid = current_user_id.get()
-    r = _plan_call("/execute", {"user_id": uid, "plan_id": int(plan_id or 0)})
+    pid = int(plan_id or 0)
+    r = _plan_call("/execute", {"user_id": uid, "plan_id": pid})
     if not r.get("ok"):
         return f"执行失败：{r.get('detail', '未知错误')}"
     if r.get("already"):
-        return "该计划已在执行队列中，电脑上线后会自动开始。"
-    if not r.get("agent_online"):
-        return ("计划已加入队列。当前你的电脑（本地小元 Agent）未连接——"
-                "电脑开机且小元 Agent 在线后会自动开始执行，也可以到「计划」页查看进度。")
-    return "计划已加入队列，你的电脑正在准备执行，可到「计划」页查看进度。"
+        out = "该计划已在执行队列中，电脑上线后会自动开始。"
+    elif not r.get("agent_online"):
+        out = ("计划已加入队列。当前你的电脑（本地小元 Agent）未连接——"
+               "电脑开机且小元 Agent 在线后会自动开始执行，也可以到「计划」页查看进度。")
+    else:
+        out = "计划已加入队列，你的电脑正在准备执行，可到「计划」页查看进度。"
+    return _merged("execute_plan", uid, str(pid), out)
 
 
 @tool
 def get_plan_status(plan_id: int = 0) -> str:
     """查询计划状态与各步骤进度。plan_id: 0 = 最近一个计划（用户问「计划怎么样了」时用）"""
     uid = current_user_id.get()
-    r = _plan_call("/status", {"user_id": uid, "plan_id": int(plan_id or 0)})
+    pid = int(plan_id or 0)
+    r = _plan_call("/status", {"user_id": uid, "plan_id": pid})
     if not r.get("ok"):
         return f"查询失败：{r.get('detail', '未知错误')}"
-    return r["plan"]
+    return _merged("get_plan_status", uid, str(pid), r["plan"])

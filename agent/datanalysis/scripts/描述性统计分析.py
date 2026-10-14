@@ -310,6 +310,25 @@ if _HTML列表:
     print(f"__HTML__:{','.join(_HTML列表)}")
 
 import json as _json
+
+def _py(v):
+    """numpy 标量/数组转 Python 原生类型（scipy 检验返回 np.float64 等，
+    json.dumps 不兼容曾致脚本 exit 1）"""
+    import numpy as _np
+    if isinstance(v, dict):
+        return {str(k): _py(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_py(x) for x in v]
+    if isinstance(v, _np.integer):
+        return int(v)
+    if isinstance(v, _np.floating):
+        return float(v)
+    if isinstance(v, _np.bool_):
+        return bool(v)
+    if isinstance(v, _np.ndarray):
+        return v.tolist()
+    return v
+
 _result = {
     "name": ds["name"], "id": 数据集ID,
     "rows_original": total_rows, "rows_cleaned": len(df), "columns": len(df.columns),
@@ -318,4 +337,4 @@ _result = {
     "normality_tests": 正态检验结果,
     "cleaning_log": cleaning_log,
 }
-print(f"__RESULT__:{_json.dumps(_result, ensure_ascii=False)}")
+print(f"__RESULT__:{_json.dumps(_py(_result), ensure_ascii=False)}")

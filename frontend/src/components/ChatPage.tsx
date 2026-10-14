@@ -261,7 +261,13 @@ export default function ChatPage({ user }: { user?: any }) {
             return [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]
           })
         }
-        else { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
+        else {
+          // 统筹自身工具（含计划工具）：工具卡挂当前气泡；计划工具同时挂
+          // 「打开面板」链接（计划工具不独立成泡后，这是 /chat/plan 的入口）
+          const isPlanTool = event.data.name === 'create_plan'
+            || event.data.name === 'execute_plan' || event.data.name === 'get_plan_status'
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls], pageLink: isPlanTool ? '/chat/plan' : last[i].pageLink } }; return last })
+        }
       } else if (event.type === 'dashboard') {
         // 分析大屏数据就绪：给最近一条 analysis 气泡挂「打开面板」（数据没就绪不挂，避免死链）
         const dsid = event.data?.session_id || sidRef.current

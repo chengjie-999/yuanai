@@ -28,9 +28,12 @@ REPORT_RETRY_DELAY_S = 5
 MAX_STEPS_PER_ROUND = 5      # 单轮最多执行步数（防一轮霸占）
 PROGRESS_MIN_INTERVAL_S = 3  # 进度上报节流
 
-# 确定性失败前缀 → 不重试（重试同结果只烧 token）
+# 确定性失败前缀 → 不重试（重试同结果只烧 token）。
+# 实测补充：registry 的「脚本执行失败 (exit=1)」与 builtin 的「分析失败」曾被当成
+# 成功结果（步骤标 done 但内容是崩溃日志）——失败前缀必须覆盖这些输出。
 _NON_RETRYABLE_PREFIXES = ("无法处理", "参数校验失败", "未知脚本", "无法解析意图",
-                           "未知内置操作")
+                           "未知内置操作", "脚本执行失败", "分析失败", "读取失败",
+                           "转换失败", "执行失败")
 
 
 class PlanExecutor:

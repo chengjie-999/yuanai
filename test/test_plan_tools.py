@@ -21,6 +21,7 @@ from yuanai_core.tools import plan_tools as pt  # noqa: E402
 def _clean(monkeypatch):
     monkeypatch.setattr(pt, "current_user_id", _Ctx(3))
     monkeypatch.setattr(pt, "current_session_id", _Ctx("sess-1"))
+    pt._last_calls.clear()  # 同参 30s 合并缓存隔离测试间串扰
 
 
 class _Ctx:

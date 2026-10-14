@@ -83,9 +83,13 @@ def _make_chart(fig, name: str, chart_dir: str, ds_id: int, chart_data: list):
     """Save plotly figure as PNG and HTML, append to chart_data."""
     import plotly.io as pio
 
-    # PNG (base64 for chat embedding)
-    png_bytes = pio.to_image(fig, format="png", width=800, height=400, scale=1)
-    png_b64 = base64.b64encode(png_bytes).decode()
+    # PNG (base64 for chat embedding)；kaleido 未安装时降级仅 HTML（零新依赖，
+    # 图表经 iframe 展示）——曾因 to_image 抛异常整个分析失败
+    try:
+        png_bytes = pio.to_image(fig, format="png", width=800, height=400, scale=1)
+        png_b64 = base64.b64encode(png_bytes).decode()
+    except Exception:
+        png_b64 = ""
 
     # HTML (self-contained for iframe)
     html_path = os.path.join(chart_dir, f"{name}.html")

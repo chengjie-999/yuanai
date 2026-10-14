@@ -238,12 +238,29 @@ export default function ChatPage({ user }: { user?: any }) {
       } else if (event.type === 'reasoning') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
       } else if (event.type === 'tool_start') {
-        // 信封协议：工具名推断（planet/委托）优先，后端事件 sender 兜底；
-        // 统筹自身的工具不开新气泡（toolCalls 挂当前气泡）
+        // 信封协议：工具名推断（planet/委托/计划）优先，后端事件 sender 兜底；
+        // 统筹自身的工具不开新气泡（toolCalls 挂当前气泡）。
+        // 注意：LangGraph v2 事件流对同一次工具调用可能发两轮 start/end——
+        // 同一 Agent 连续工具调用必须复用气泡，否则一串空泡（曾出现 5 泡 2 空）
         const evSender = event.data.sender || ''
         const ns = senderFromTool(event.data.name)
           || ((evSender && evSender !== 'orchestrator' && evSender !== 'local') ? evSender : '')
-        if (ns) { currentSender = ns; const link = ns === 'automation' ? '/chat/agent/' + ns : ns === 'planet' ? '/chat/planet' : ns === 'plan' ? '/chat/plan' : undefined; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]) }
+        if (ns) {
+          currentSender = ns
+          const link = ns === 'automation' ? '/chat/agent/' + ns : ns === 'planet' ? '/chat/planet' : ns === 'plan' ? '/chat/plan' : undefined
+          setMessages((prev) => {
+            const last = prev[prev.length - 1]
+            if (last && last.role === 'assistant' && last.sender === ns && !last.content) {
+              // 同一 Agent 连续工具调用/重复事件 → 复用气泡
+              const calls = [...(last.toolCalls || [])]
+              if (!calls.some((c) => c.name === event.data.name && c.status === 'running')) {
+                calls.push({ name: event.data.name, status: 'running' as const })
+              }
+              return [...prev.slice(0, -1), { ...last, toolCalls: calls, pageLink: link || last.pageLink }]
+            }
+            return [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]
+          })
+        }
         else { setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls] } }; return last }) }
       } else if (event.type === 'dashboard') {
         // 分析大屏数据就绪：给最近一条 analysis 气泡挂「打开面板」（数据没就绪不挂，避免死链）
@@ -256,21 +273,32 @@ export default function ChatPage({ user }: { user?: any }) {
           return last
         })
       } else if (event.type === 'tool_end') {
-        const del_name =event.data.name || ''
-        // 子 Agent/知识星球工具结束 → 复位统筹并另起气泡；统筹自身工具不另起
+        const del_name = event.data.name || ''
+        // 子 Agent/知识星球工具结束 → 复位统筹并另起气泡；统筹自身工具不另起。
+        // 重复 tool_end 事件（LangGraph 双发）会叠空泡——已有空占位泡时不叠加
         const evSender = event.data.sender || ''
         const isDel = !!senderFromTool(del_name)
           || (evSender !== '' && evSender !== 'orchestrator' && evSender !== 'local')
         setMessages(function (prev) {
-          const last =prev.slice()
-          const i =last.length - 1
+          const last = prev.slice()
+          const i = last.length - 1
           if (i >= 0) {
-            const calls =(last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { name: c.name, status: 'done', result: event.data.output || '' } : c })
+            const calls = (last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { name: c.name, status: 'done', result: event.data.output || '' } : c })
             last[i] = { role: last[i].role, content: last[i].content, sender: last[i].sender, toolCalls: calls, pageLink: last[i].pageLink, images: last[i].images }
           }
           return last
         })
-        if (isDel) { currentSender = 'orchestrator'; setMessages((prev) => [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }]) }
+        if (isDel) {
+          currentSender = 'orchestrator'
+          setMessages((prev) => {
+            const last = prev[prev.length - 1]
+            if (last && last.role === 'assistant' && last.sender === 'orchestrator'
+                && !last.content && !(last.toolCalls?.length)) {
+              return prev  // 已有空的统筹占位泡（上一轮 tool_end 建过）→ 不叠加
+            }
+            return [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }]
+          })
+        }
       } else if (event.type === 'image') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last })
       } else if (event.type === 'html') {

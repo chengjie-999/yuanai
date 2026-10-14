@@ -1,7 +1,12 @@
 """
 PubMed 文献检索工具 — 使用 NCBI E-utilities API（免费，无需 API Key）
 文档: https://www.ncbi.nlm.nih.gov/books/NBK25501/
+
+融合后（2026-10-14）：从 agent/tools/ 移入共享工具目录，类别 medical——
+云端回退与本地统筹经 load_tools_for("medical") 自动可用。
 """
+TOOL_CATEGORY = "medical"
+
 import re
 import time
 import logging

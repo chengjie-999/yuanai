@@ -1,10 +1,10 @@
 """
 医学与生命科学 API — 物种导航 / PubMed 文献检索 / 药物可行性评估
 
-数据与 NCBI 调用逻辑复用自 agent/tools/pubmed_tools.py（LangChain 工具版），
+数据与 NCBI 调用逻辑复用自 yuanai_core/tools/pubmed_tools.py（LangChain 工具版），
 但不在 api 进程 import agent.tools：agent/tools/__init__.py 在模块级会扫描全部
 38 个专用工具（含 selenium 等重依赖），云端 API 进程不应加载。
-故此处按原样保留物种映射表与 eutils 调用实现，来源：agent/tools/pubmed_tools.py
+故此处按原样保留物种映射表与 eutils 调用实现，来源：yuanai_core/tools/pubmed_tools.py
 """
 import logging
 import time
@@ -25,7 +25,7 @@ REQUEST_DELAY = 0.34  # NCBI 限速：每秒最多 3 次请求
 EUTILS_TIMEOUT = 10  # 单次 NCBI 请求超时（秒）
 
 # ===================== 物种 → MeSH 术语映射 =====================
-# 来源: agent/tools/pubmed_tools.py SPECIES_MESH（原样保留）
+# 来源: yuanai_core/tools/pubmed_tools.py SPECIES_MESH（原样保留）
 SPECIES_MESH: Dict[str, str] = {
     "人类": "humans", "人": "humans", "human": "humans",
     "小鼠": "mice", "mouse": "mice", "mice": "mice",
@@ -70,7 +70,7 @@ def _canonical_species() -> List[Dict[str, str]]:
 
 
 # ===================== NCBI E-utilities =====================
-# 实现逻辑复用 agent/tools/pubmed_tools.py（_eutils_request / _parse_esearch / _parse_efetch）
+# 实现逻辑复用 yuanai_core/tools/pubmed_tools.py（_eutils_request / _parse_esearch / _parse_efetch）
 
 
 def _eutils_request(endpoint: str, params: dict) -> str:
@@ -191,7 +191,7 @@ class FeasibilityRequest(BaseModel):
 def assess_drug_feasibility(body: FeasibilityRequest) -> Dict:
     """药物可行性评估：LLM 综合判断 → {verdict: '高'|'中'|'低', reason, confidence}
 
-    思路参考 agent/tools/pubmed_tools.py 的 assess_drug_feasibility：
+    思路参考 yuanai_core/tools/pubmed_tools.py 的 assess_drug_feasibility：
     从证据充分度、安全性、机制合理性三个维度打分。
     """
     drug = body.drug.strip()

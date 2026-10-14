@@ -1,7 +1,7 @@
 """系统托盘程序：Windows 任务栏右下角图标，管理 Agent 生命周期（傻瓜化发布版）
 
 - 首次启动无身份 → 弹窗输入安装码自动注册（后台「Agent 管理」页签发）
-- 托盘菜单勾选各 Agent 开关（数据分析/采集/自动化/生命科学/Claude Code），持久化 data/agent_config.json
+- 托盘菜单勾选各 Agent 开关（数据分析/采集脚本工具 + 自动化 + Claude Code），持久化 data/agent_config.json
 - 二合一进程：mode=claude 请求走本机 Claude Code 桥接分支，其余走统筹 Agent
 """
 
@@ -62,7 +62,6 @@ AGENT_OPTIONS = [
     {"key": "analysis", "label": "数据分析", "cap": "analysis"},
     {"key": "collection", "label": "数据采集", "cap": "collection"},
     {"key": "automation", "label": "自动化", "cap": "automation"},
-    {"key": "medical", "label": "生命科学", "cap": "medical"},
     {"key": "claude", "label": "Claude Code", "cap": None},
 ]
 

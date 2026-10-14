@@ -28,7 +28,8 @@ SKILLS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @dataclass
 class SkillConfig:
-    """单个 Skill 的配置"""
+    """单个 Skill 的配置（融合后 builtins 已删——内置工具与共享工具重复且
+    曾因 stub 空转，见 2026-10-14 f7423c5 教训）"""
     name: str                           # 唯一标识（英文，如 "analysis"）
     display_name: str                   # 显示名称（中文，如 "数据分析"）
     description: str                    # 一句话描述，Orchestrator 用来匹配意图
@@ -38,7 +39,6 @@ class SkillConfig:
     keywords: list = field(default_factory=list)
     system_prompt: str = ""             # 系统提示词（从文件外置）
     script_dir: Optional[str] = None    # type=script_dispatch 时的脚本目录
-    builtins: dict = field(default_factory=dict)  # 内置工具 {name: description}
     tool_filter: Optional[list] = None  # type=react 时的工具白名单（None=全部）
 
 

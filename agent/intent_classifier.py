@@ -40,8 +40,9 @@ INTENT_TOOL_GROUPS: Dict[str, List[str]] = {
 
 # 每个意图的中英文关键词
 _KEYWORDS: Dict[str, set] = {
-    "calculate":             {"计算", "加", "减", "乘", "除", "求和", "平均数",
-                               "百分比", "sum", "average", "+", "-", "×", "÷",
+    # 注意：裸符号 + - × ÷ 不进关键词（任何文本里的连字符/加号都会误命中，
+    # 如「PD-1 的文献」被分去 calculate）；纯算式由 _DIRECT_PATTERNS 正则兜底
+    "calculate":             {"计算", "求和", "平均数", "百分比", "sum", "average",
                                "算一下", "等于多少", "多少加多少"},
     "weather":               {"天气", "气温", "温度", "下雨", "台风", "weather",
                                "多少度", "冷不冷", "热不热", "forecast"},

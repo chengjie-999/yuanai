@@ -24,7 +24,8 @@ export function senderFromTool(name: string): string | null {
   if (name.startsWith('delegate_to_automation')) return 'automation'
   if (name.startsWith('delegate_to_claude')) return 'claude'
   if (name === 'retrieve_planet_knowledge') return 'planet'
-  if (name === 'create_plan' || name === 'execute_plan' || name === 'get_plan_status') return 'plan'
+  // 计划工具（create_plan/execute_plan/get_plan_status）不独立成气泡：
+  // 工具卡挂统筹气泡（用户拍板）；计划入口走顶栏「计划」tab
   return null
 }
 

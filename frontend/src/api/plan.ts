@@ -4,7 +4,7 @@ import { API_BASE, getToken } from './index'
 const authHeaders = () => ({ Authorization: `Bearer ${getToken()}` })
 
 export interface PlanStep {
-  id: number; step_no: number; skill: string; desc: string
+  id: number; step_no: number; skill: string; script: string; desc: string
   params: Record<string, any>
   status: 'pending' | 'running' | 'done' | 'failed' | 'skipped'
   attempt: number; progress: number; last_message: string; error: string

@@ -309,6 +309,9 @@ function StepCard({ s }: { s: PlanStep }) {
           flexShrink: 0, animation: s.status === 'running' ? 'plan-spin 1.2s linear infinite' : 'none',
         }}><StepIcon status={s.status} /></span>
         <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 6, color: skillCfg?.color || '#6b7280', background: skillCfg?.bg || 'var(--bg-secondary)' }}>{s.skill === 'analysis' ? '数据分析' : s.skill === 'collection' ? '数据采集' : s.skill}</span>
+        {s.script && (
+          <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 6, color: 'var(--text-secondary)', background: 'var(--bg-secondary)', whiteSpace: 'nowrap' }}>{s.script}</span>
+        )}
         <span style={{ fontSize: 11, color: st.color, whiteSpace: 'nowrap' }}>{st.label}</span>
         <div style={{ flex: 1 }} />
         {s.attempt > 1 && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>第 {s.attempt} 次尝试</span>}

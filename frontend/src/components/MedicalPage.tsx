@@ -16,7 +16,7 @@ import { ArrowLeftIcon } from './icons'
    零外部依赖：内联样式 + CSS 变量 + 内联 SVG 图标（lucide 风格）
    ============================================================ */
 
-const MEDICAL_COLOR = '#00897b'  // 生命科学 Agent 主题色（frontend/src/config/agents.ts）
+const MEDICAL_COLOR = '#00897b'  // 生命科学主题色
 
 /* lucide 风格 stroke 图标路径 */
 const ICONS = {
@@ -93,7 +93,7 @@ export default function MedicalPage() {
       // 网络失败 / 后端 502 统一提示
       setArticles([])
       setSearchTotal(0)
-      setSearchError('服务器检索失败，可在对话中委派生命科学 Agent 检索')
+      setSearchError('服务器检索失败，可在对话中直接使用 PubMed 检索工具')
       console.error('PubMed 检索失败:', err)
     } finally {
       setSearching(false)
@@ -208,7 +208,7 @@ export default function MedicalPage() {
           })}
 
           {!searching && !searchError && articles.length === 0 && (
-            <div className="medical-empty">输入关键词开始检索，或到对话中让统筹委派生命科学 Agent 检索</div>
+            <div className="medical-empty">输入关键词开始检索，或在对话中直接用 PubMed 检索工具</div>
           )}
         </section>
 
@@ -298,9 +298,9 @@ export default function MedicalPage() {
 
         {/* ---------- 4. 基因表达分析引导卡 ---------- */}
         <section className="medical-section medical-guide">
-          <SectionTitle icon={ICONS.chart} title="基因表达分析" desc="生物信息学一站式分析，由生命科学 Agent 在对话中执行" />
+          <SectionTitle icon={ICONS.chart} title="基因表达分析" desc="生物信息学一站式分析，在对话中由脚本工具直接执行" />
           <p className="medical-guide-text">
-            在对话中直接对统筹 Agent 说「基因表达分析」，生命科学 Agent 将自动执行
+            在对话中直接说「基因表达分析」，统筹将自动调用脚本执行
             表达分布直方图、小提琴图、火山图、基因聚类热力图等分析，
             结果图表直接出现在聊天中。
           </p>

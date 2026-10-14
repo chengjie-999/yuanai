@@ -9,11 +9,9 @@ import { AGENT_CONFIG } from '../../config/agents'
 import { uploadDataset } from '../../api'
 import { PaperclipIcon, XIcon, AtSignIcon } from '../icons'
 
-// @指定智能体候选（群聊式定向委派；orchestrator=统筹亲自回答）
+// @指定智能体候选（融合后：分析/采集已是统筹内置工具，不再单独指定）
 const TARGET_AGENTS = [
-  { key: 'orchestrator', desc: '统筹亲自回答，不委派' },
-  { key: 'analysis', desc: '数据集管理、统计、图表' },
-  { key: 'collection', desc: '网页爬取、数据抓取' },
+  { key: 'orchestrator', desc: '统筹亲自回答（内置分析/采集脚本工具）' },
   { key: 'automation', desc: '浏览器控制、审核、截图' },
   { key: 'claude', desc: '本机代码、终端、Git 任务' },
 ]

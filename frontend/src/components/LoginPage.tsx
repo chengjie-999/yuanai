@@ -70,7 +70,7 @@ export default function LoginPage() {
         </div>
 
         <h2 className="login-brand-title">小元AI</h2>
-        <p className="login-brand-desc">云边协同 · 多智能体协作平台</p>
+        <p className="login-brand-desc">云边协同 · 对话即执行</p>
 
         <div className="login-features">
           {[

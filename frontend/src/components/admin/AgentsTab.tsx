@@ -58,7 +58,7 @@ export default function AgentsTab() {
       </Card>
 
       <Card>
-        <CardHeader title="子 Agent 团队" />
+        <CardHeader title="能力矩阵" />
         {SUB_AGENTS.map((sa) => (
           <div key={sa.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-light)' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: online.length > 0 ? sa.color : 'var(--text-muted)', flexShrink: 0 }} />

@@ -18,8 +18,13 @@ import { ArrowDownIcon } from './icons'
 const FEATURES = [
   {
     icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
-    title: '多模型智能对话',
-    desc: '对话为统一入口，自动识别意图并路由到最合适的模型与 Agent 处理。',
+    title: '对话即执行',
+    desc: '对话为统一入口：分析/采集/医学脚本工具一次调用直出结果，无需层层委派。',
+  },
+  {
+    icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
+    title: '计划闭环',
+    desc: '手机定计划、电脑执行：拆解成步骤队列，本机 Agent 自动跑完并回报结果。',
   },
   {
     icon: 'M18 20V10M12 20V4M6 20v-6',
@@ -55,6 +60,12 @@ const FEATURES = [
 
 /* 功能入口 — 指向已实现的独立功能页（登录后直达）或下载直链 */
 const ENTRIES: { icon: string; title: string; desc: string; to?: string; href?: string }[] = [
+  {
+    icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
+    title: '计划闭环',
+    desc: '手机定计划、电脑执行 · 进度与结果一页看全',
+    to: '/chat/plan',
+  },
   {
     icon: 'M18 20V10M12 20V4M6 20v-6',
     title: '数据分析工作台',
@@ -150,8 +161,8 @@ export default function LandingPage() {
             </div>
             <div className="landing-hero-main">
               <h1 className="landing-hero-title">小元AI</h1>
-              <p className="landing-hero-desc">云边协同 · 多智能体协作平台</p>
-              <p className="landing-hero-sub">数据分析 / 数据采集 / 自动化 / 生命科学 / 多智能体协作</p>
+              <p className="landing-hero-desc">云边协同 · 对话即执行</p>
+              <p className="landing-hero-sub">手机定计划 · 电脑执行 / 分析·采集·医学脚本一问直调 / 浏览器自动化</p>
               <div className="landing-hero-actions" style={{ marginTop: 18, justifyContent: 'center' }}>
                 <a href="#agents" className="landing-cta landing-cta-ghost" style={{ gap: 8 }}>了解能力 <ArrowDownIcon size={15} /></a>
               </div>
@@ -160,11 +171,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ============ 多智能体能力 ============ */}
+      {/* ============ 能力矩阵 ============ */}
       <section className="landing-section" id="agents">
-        <h2 className="landing-section-title">多智能体协同</h2>
+        <h2 className="landing-section-title">一支 Agent 团队，一个对话入口</h2>
         <p className="landing-section-desc">
-          统筹 Agent 自动识别意图，把任务委派给最擅长的专业 Agent —— 一个对话入口，一支 Agent 团队
+          统筹内置数据分析、数据采集、生命科学脚本工具，一问即调；复杂自动化任务才交给自主 Agent —— 少一层委派，少一层出错
         </p>
         <div className="landing-agent-grid">
           {SUB_AGENTS.map((agent, i) => (
@@ -248,10 +259,10 @@ export default function LandingPage() {
       <section className="landing-section landing-cta-band-wrap">
         <div className="landing-cta-band">
           <h2 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 10px', color: '#fff' }}>
-            让 AI Agent 团队为你工作
+            手机定计划，电脑执行
           </h2>
           <p style={{ fontSize: 14, opacity: 0.85, margin: '0 0 24px', color: '#fff' }}>
-            一个对话入口，驱动数据分析、数据采集与自动化任务
+            一个对话入口：分析、采集、医学脚本一问直调，复杂任务拆成计划自动跑完
           </p>
           <Link to="/chat" className="landing-cta landing-cta-light">立即开始</Link>
         </div>
@@ -260,7 +271,7 @@ export default function LandingPage() {
       {/* ============ Footer ============ */}
       <footer className="landing-footer">
         <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>小元AI</span>
-        <span style={{ color: 'var(--text-secondary)' }}>云边协同 · 多智能体协作平台</span>
+        <span style={{ color: 'var(--text-secondary)' }}>云边协同 · 对话即执行</span>
         <Link to="/about" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>关于我们</Link>
         <Link to="/api-docs" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>API 文档</Link>
         <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>© 2026 小元AI</span>

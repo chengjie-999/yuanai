@@ -36,7 +36,7 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: 560 }}>
         <Mascot size={80} />
         <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, letterSpacing: -0.5 }}>小元AI</h1>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 28, fontWeight: 400, letterSpacing: 0.3 }}>数据分析 / 数据采集 / 自动化 / 多智能体协作</p>
+        <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 28, fontWeight: 400, letterSpacing: 0.3 }}>手机定计划 · 电脑执行 / 分析·采集·医学一问直调 / 浏览器自动化</p>
 
         <div style={{ maxWidth: 560, width: '100%', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
           {uploading && (

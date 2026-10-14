@@ -44,7 +44,7 @@ const SECTIONS: { group: string; items: ApiExample[] }[] = [
     ],
   },
   {
-    group: '对话（多智能体群聊）',
+    group: '对话（群聊）',
     items: [
       {
         method: 'POST', path: '/api/v1/chat/stream', title: 'SSE 流式对话（主入口）',
@@ -188,7 +188,7 @@ export default function ApiDocsPage() {
 
         <div style={{ marginTop: 24, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.8 }}>
           更多端点（数据集、知识库、后台管理、Agent 设备等）陆续补充；也可以{' '}
-          <Link to="/chat" style={{ color: 'var(--accent)' }}>进入对话</Link> 直接体验多智能体协作。
+          <Link to="/chat" style={{ color: 'var(--accent)' }}>进入对话</Link> 直接体验对话即执行。
         </div>
       </main>
     </div>

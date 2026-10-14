@@ -408,7 +408,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-              >{msg.sender === 'analysis' ? <BarChartIcon size={13} /> : msg.sender === 'automation' ? <BotIcon size={13} /> : msg.sender === 'planet' ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</Link>
+              >{msg.pageLink.includes('/agent/dashboard') ? <BarChartIcon size={13} /> : msg.pageLink.includes('/agent/automation') ? <BotIcon size={13} /> : msg.pageLink.includes('/planet') ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</Link>
             )}
             {msg.images && msg.images.length > 0 && (
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>

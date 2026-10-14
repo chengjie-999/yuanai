@@ -139,7 +139,7 @@ export default function AboutPage() {
               width: 10, height: 10, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', flexShrink: 0,
             }} />
             <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-              小元AI — 云边协同多智能体协作平台
+              小元AI — 云边协同 · 对话即执行
             </h3>
           </div>
           <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: '0 0 14px', lineHeight: 1.7 }}>

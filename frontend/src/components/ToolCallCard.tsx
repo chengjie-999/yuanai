@@ -1,4 +1,5 @@
 import type { ToolCall } from '../types'
+import { SCRIPT_LABELS } from '../config/agents'
 
 function AnimatedDot() {
   return (
@@ -17,8 +18,6 @@ const statusConfig = {
 }
 
 const AGENT_LABELS: Record<string, { label: string; color: string }> = {
-  delegate_to_analysis_agent: { label: '数据分析 Agent', color: '#58a6ff' },
-  delegate_to_collection_agent: { label: '数据采集 Agent', color: '#3fb950' },
   delegate_to_automation_agent: { label: '自动化 Agent', color: '#d29922' },
   delegate_to_claude_agent: { label: 'Claude Code', color: '#d97757' },
   list_datasets: { label: '列出数据集', color: '#bc8cff' },
@@ -26,11 +25,27 @@ const AGENT_LABELS: Record<string, { label: string; color: string }> = {
   analyze_dataset: { label: '分析数据', color: '#bc8cff' },
   fetch_url: { label: '抓取网页', color: '#3fb950' },
   parse_html: { label: '解析 HTML', color: '#3fb950' },
+  create_plan: { label: '制定计划', color: '#0b7285' },
+  execute_plan: { label: '执行计划', color: '#0b7285' },
+  get_plan_status: { label: '查询计划', color: '#0b7285' },
+  search_pubmed: { label: 'PubMed 检索', color: '#00897b' },
+  get_species_info: { label: '物种导航', color: '#00897b' },
+  assess_drug_feasibility: { label: '药物可行性', color: '#00897b' },
+  search_clinical_trials: { label: '临床试验检索', color: '#00897b' },
+  get_article_detail: { label: '文献详情', color: '#00897b' },
+}
+
+function toolLabel(name: string): { label: string; color: string } | null {
+  const hit = AGENT_LABELS[name]
+  if (hit) return hit
+  const script = SCRIPT_LABELS[name]
+  if (script) return { label: script, color: '#bc8cff' }
+  return null
 }
 
 function ToolCallCard({ call }: { call: ToolCall }) {
   const cfg = statusConfig[call.status] || statusConfig.done
-  const agent = AGENT_LABELS[call.name]
+  const agent = toolLabel(call.name)
   const displayName = agent ? agent.label : call.name
 
   return (

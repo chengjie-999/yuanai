@@ -43,7 +43,7 @@ export default function AgentStatus({ userId }: { userId?: number }) {
   const online = myAgents.length > 0 && myAgents[0].online
   const agent = myAgents[0]
   const capLabels: Record<string, string> = {
-    analysis: '分析', collection: '采集', automation: '自动化', claude: 'Claude Code',
+    analysis: '分析工具', collection: '采集工具', automation: '自动化', claude: 'Claude Code',
   }
 
   // 纯图标指示灯：悬浮提示显示状态详情（文字移到 yuan-tip 气泡）

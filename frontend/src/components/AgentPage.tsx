@@ -65,10 +65,10 @@ export default function AgentPage({ userId }: { userId?: number }) {
           )}
         </div>
 
-        {/* 子 Agent 团队 */}
+        {/* 能力矩阵 */}
         <div style={{ background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
           <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border-light)', fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', background: 'var(--bg-secondary)' }}>
-            子 Agent 团队
+            能力矩阵
           </div>
           {SUB_AGENTS.map((sa) => (
             <div key={sa.key} style={{

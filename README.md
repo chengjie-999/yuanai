@@ -1,10 +1,10 @@
-# 小元AI — 云边协同多智能体平台
+# 小元AI — 云边协同 · 对话即执行
 
 [![Python](https://img.shields.io/badge/Python-3.10-blue)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688)](https://fastapi.tiangolo.com/)
 
-前后端分离的多智能体协作平台，以对话为统一入口，集成数据分析、数据采集、浏览器自动化。云服务器（火山引擎）运行 Web 服务，本地 Agent 负责实际任务执行。统筹 Agent 自动识别意图并委派专业子 Agent 处理。
+前后端分离的个人智能体平台，以对话为统一入口：数据分析、数据采集、生命科学等能力以**脚本工具**形式挂统筹直调（一次函数调用出结果），浏览器自动化走独立 Agent，手机定计划、电脑执行。云服务器（火山引擎）运行 Web 服务，本地 Agent 负责实际任务执行。
 
 ---
 
@@ -58,38 +58,39 @@ python -m agent.main --agent-id 1 --tray
 
 ---
 
-## 多智能体架构
+## 智能体架构（2026-10-14 融合重构：脚本工具直调）
 
 ```
 用户 → Web 对话界面 → SSE → FastAPI → WebSocket → 本地 Agent
                                                         │
-                                              统筹 Agent（意图路由）
-                                             ┌──────┼──────┐
-                                        数据分析  数据采集  自动化
-                                         Agent    Agent    Agent
+                                              统筹 Agent（意图路由 + function calling）
+                                              ┌──────┼──────────┐
+                                         脚本工具直调   自动化 Agent   Claude Code
+                                        （分析/采集/医学）
 ```
 
-| Agent | 模型 | 架构 | 工具数 | 职责 |
-|-------|------|------|:------:|------|
-| 统筹 | doubao-seed-2-0-lite | Two-tier ReAct + 意图分类器 | 8-42（动态） | 意图识别 → 直接工具 / 委派子 Agent |
-| 数据分析 | doubao-seed-2-0-pro | ScriptDispatch | 7 builtin + 9 脚本 | 数据集管理、统计分析、图表生成 |
-| 数据采集 | doubao-seed-2-0-lite | ScriptDispatch | 8 builtin + 1 脚本 | 网页爬取、数据抓取、内容解析 |
-| 自动化 | doubao-seed-2-0-pro | ReAct + 意图过滤 | 14-41（动态） | 浏览器控制、题目审核、截图监控 |
+| 执行体 | 模型 | 形态 | 职责 |
+|-------|------|------|------|
+| 统筹 | doubao-seed-2-0-lite | 意图分类器 + function calling | 意图识别 → 直接调脚本工具（`script_*`） |
+| 脚本工具 | （由统筹模型带 tools 调用） | ScriptRegistry 自动生成 schema | 9 个分析脚本 + 通用网页采集 + 医学工具（执行经 registry.run 统一校验） |
+| 自动化 | doubao-seed-2-0-pro | ReAct + 意图过滤（唯一独立子 Agent） | 浏览器控制、题目审核、截图监控 |
+| Claude Code | 本机 | 桥接进程 | 代码编写、终端命令、Git 操作 |
+
+**脚本工具 key 对照**：`script_descriptive_stats`=描述性统计分析、`script_correlation`=相关性分析、`script_regression`=回归分析、`script_categorical`=分类数据分析、`script_timeseries`=时间序列分析、`script_preprocess`=数据预处理、`script_rfm_cluster`=RFM客户分群、`script_churn_predict`=客户流失预测、`script_gene_expression`=基因表达分析、`script_generic_crawl`=通用网页采集（静态表 `agent/scripts/registry.py SCRIPT_KEYS`，未登记脚本 md5 兜底）。
 
 ### Skill 系统（配置驱动，可扩展）
 
-子 Agent 的能力定义从代码中解耦，统一在 `skills/` 目录下通过 YAML 配置：
+能力定义统一在 `skills/` 目录下通过 YAML 配置（脚本目录 + 兜底提示词）：
 
 ```
 skills/
 ├── __init__.py              SkillRegistry 注册中心（自动扫描子目录）
-├── analysis/skill.yaml      数据分析：提示词、模型、脚本目录、内置工具
-├── collection/skill.yaml    数据采集：提示词、模型、脚本目录、内置工具
-└── automation/skill.yaml    自动化：提示词、模型、工具列表
+├── analysis/skill.yaml      数据分析：模型、脚本目录
+├── collection/skill.yaml    数据采集：模型、脚本目录
+└── automation/skill.yaml    自动化：模型、工具列表（唯一 react 子 Agent）
 ```
 
-- Orchestrator 遍历 `skill_registry.get_all()` 动态生成 `delegate_to_*_agent` 工具
-- `agent/main.py` 的 capabilities 从 `skill_registry.names` 自动生成
+- `agent/scripts/tools.py` 按 skill 的 `script_dir` 为每个脚本生成 StructuredTool（schema 自动生成，执行走 `registry.run` 唯一校验咽喉）
 - **加新能力**：新建 `skills/xxx/skill.yaml` + 可选脚本 → 重启 Agent → 自动注册（零代码改动）
 
 ### 对话界面
@@ -98,14 +99,13 @@ skills/
 
 | 颜色 | 身份 |
 |------|------|
-| 蓝色 | 小元AI（统筹） |
-| 紫色 | 数据分析 Agent |
-| 青色 | 数据采集 Agent |
+| 蓝色 | 小元AI（统筹；脚本工具调用卡同挂此泡） |
 | 橙色 | 自动化 Agent |
+| 棕色 | Claude Code（本机桥接） |
 
-每个 Agent 气泡上方有彩色标签和身份标识，工具调用卡片显示 Agent 归属。
+工具调用卡片按工具名显示中文标签（脚本 key/计划工具/医学工具，`ToolCallCard.tsx`）。
 
-**@指定智能体（群聊式定向）**：输入区 @ 按钮（或直接输入 `@`）打开智能体选择面板，选定后本条消息**确定性分派**给目标 Agent——本地 Agent 进程直接调用对应 skill（跳过统筹 LLM 的意图路由，省 token 且不跑偏）；@Claude Code 走本机桥接分支；Agent 离线时云端回退为角色扮演。发送后自动复位，下一条恢复统筹自行路由。
+**@指定智能体（群聊式定向）**：输入区 @ 按钮（或直接输入 `@`）打开智能体选择面板——**统筹 / 自动化 / Claude Code**（分析、采集已并入统筹，不再单独指定）；选定后本条消息确定性分派：@自动化 直调 automation skill（跳过统筹 LLM），@Claude Code 走本机桥接分支。发送后自动复位，下一条恢复统筹自行路由。
 
 **消息信封（多智能体身份协议）**：每条消息带 sender/recipient/turn/type 信封元数据（编排代码填写，模型碰不到），**视图滤波**让每个 Agent 只看到自己该看的部分（别人的对话只给摘要）——身份不再靠模型自己写前缀，从根上杜绝复述/冒充/越界发言。展示层【xx】前缀仅用于渲染。
 

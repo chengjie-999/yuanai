@@ -29,25 +29,27 @@ python -m agent.main --tray
 #   发布顺序：先后端（含 hash）→ 再推新 exe）
 ```
 
-## 多智能体架构
+## 智能体架构（2026-10-14 融合重构：脚本工具直调，对齐业界）
 
 ```
 用户 → Web 对话界面 → SSE → FastAPI → WebSocket → 本地 Agent
                                                         │
-                                              统筹 Agent（意图路由）
-                                             ┌──────┼──────┐
-                                        数据分析  数据采集  自动化
-                                         Agent    Agent    Agent
+                                              统筹 Agent（意图路由 + function calling）
+                                              ┌──────┼──────────┐
+                                         脚本工具直调   自动化 Agent   Claude Code
+                                        （分析/采集/医学）
 ```
 
-**Agent 模型分配：**
+**执行体分配：**
 
-| Agent | 模型 | 职责 |
+| 执行体 | 模型 | 职责 |
 |-------|------|------|
-| 统筹 | doubao-seed-2-0-lite | 意图识别 + 任务路由 |
-| 数据分析 | doubao-seed-2-0-pro | 数据集管理、统计、图表 |
-| 数据采集 | doubao-seed-2-0-lite | 网页爬取、数据抓取 |
-| 自动化 | doubao-seed-2-0-pro | 浏览器控制、题目审核、截图监控 |
+| 统筹 | doubao-seed-2-0-lite | 意图识别 → 直接调脚本工具（`script_*`，一次调用出结果） |
+| 脚本工具 | 由统筹模型带 tools 调用 | 9 个分析脚本 + 通用网页采集 + 医学工具（registry 自动生成 schema，执行经 registry.run 统一校验咽喉） |
+| 自动化 | doubao-seed-2-0-pro | 唯一独立子 Agent（react 多步自主）：浏览器控制、题目审核、截图监控 |
+| Claude Code | 本机 | 桥接：代码、终端、Git |
+
+**脚本工具 key 对照**（`agent/scripts/registry.py SCRIPT_KEYS` 静态表，未登记 md5 兜底）：descriptive_stats/correlation/regression/categorical/timeseries/preprocess/rfm_cluster/churn_predict/gene_expression/generic_crawl。
 
 ## 目录结构
 
@@ -67,15 +69,16 @@ api/                    FastAPI 后端
     └── ...
 agent/                  本地 Agent 运行时 ★
 ├── main.py              入口（--tray 托盘 / 默认命令行）
-├── orchestrator.py      统筹 Agent（动态 delegate 工具，从 skills/ 自动发现）
+├── orchestrator.py      统筹 Agent（脚本工具直调 + automation 唯一 delegate）
 ├── ws_client.py         WebSocket 客户端（自动重连）
 ├── tray.py              系统托盘程序（pystray；首启安装码弹窗 + Agent 开关菜单 + 二合一 Claude 分支 + 冻结模式 --run-script 脚本执行入口）
 ├── verify.py            多智能体链路验证脚本
 ├── yuanai_agent.spec    PyInstaller 打包规格
-├── agents/              子 Agent
-│   ├── analysis.py      数据分析子 Agent
-│   ├── collection.py    数据采集子 Agent
-│   └── automation.py    自动化子 Agent
+├── agents/              子 Agent（融合后仅 automation）
+│   └── automation.py    自动化子 Agent（react）
+├── scripts/             脚本注册表 + 工具工厂
+│   ├── registry.py      ScriptRegistry（参数校验/执行咽喉/SCRIPT_KEYS）
+│   └── tools.py         脚本工具工厂（每脚本 → StructuredTool）
 ├── tools/               Agent 专用工具（38 个）
 │   ├── selenium_tools/  浏览器自动化
 │   ├── audit_tools.py   审核知识库 + 反馈
@@ -151,7 +154,7 @@ data/                   数据目录
 
 每个 Agent 气泡上方有彩色标签和身份标识，工具调用卡片显示 Agent 归属。
 
-**@指定智能体（群聊式定向）**：输入区 @ 按钮（或输入 `@`）弹出选择面板（统筹/分析/采集/自动化/Claude），选定后本条消息确定性分派。分派链路：`target_agent` 字段贯穿 ChatRequest（云端 models/schemas → chat/router → ws_client）→ Agent 端 `agent/main.py` + `agent/tray.py` 的 `route()` 三路分派（mode=claude 桥接 / target∈{analysis,collection,automation} → `Orchestrator.stream_target()` 直接调 skill Agent / 其余统筹）。`stream_target` 与 delegate 工具共用 `_extract_tool_output`（图片/大屏/HTML 协议提取）。**群聊规则（微信式群聊定位）**：本地 Agent 离线时子智能体在 @ 面板置灰不可选（不做云端角色冒充），@Claude Code 需桥接在线；离线降级 role_hint（仅 API 直调时）强制身份不自称小元AI。
+**@指定智能体（群聊式定向）**：输入区 @ 按钮（或输入 `@`）弹出选择面板（**统筹/自动化/Claude**，融合后分析/采集并入统筹不再单独指定），选定后本条消息确定性分派。分派链路：`target_agent` 字段贯穿 ChatRequest（云端 models/schemas → chat/router → ws_client）→ Agent 端 `agent/main.py` + `agent/tray.py` 的 `route()` 三路分派（mode=claude 桥接 / target=automation → `Orchestrator.stream_target()` 直接调 automation Agent / 其余统筹）。`stream_target` 与 delegate 工具共用 `_extract_tool_output`（图片/大屏/HTML 协议提取）。**群聊规则（微信式群聊定位）**：本地 Agent 离线时子智能体在 @ 面板置灰不可选（不做云端角色冒充），@Claude Code 需桥接在线；离线降级 role_hint（仅 API 直调时）强制身份不自称小元AI。
 
 **群聊说话人协议（信封化，2026-10-11 升级）**：身份从「正文【xx】前缀靠模型写」升级为**信封元数据**（sender/recipient/turn/type，编排代码填，模型碰不到）+ **视图滤波**（每个 Agent 只看自己该看的部分）。核心：`yuanai_core/core/message.py`（Envelope 编解码，短键 s/rp/tn/ty，与前端 encodeMsg/parseHistory 对偶）+ `yuanai_core/core/views.py`（`view_for(agent, messages, self_senders, envelopes)` 七规则滤波 + `compose_target_prompt`）。信封过云端的载体 = ChatRequest **并行数组 `envelopes`**（build_input_messages 会重建 dict 丢附加键）；落库 ai_chat 四列（迁移 0014 + 自包含 backfill：user→'user'、assistant→META.s 或 orchestrator）；读取优先级 列 > META > 缺省；全空信封退化直通（旧数据兼容）。裁剪点四处：云端 /stream 与 claude-stream 回退分支、本地 Orchestrator.stream、stream_target/delegate_fn。tool_start/tool_end 事件带 sender（前端 senderFromTool 降级为兜底）。
 
@@ -178,7 +181,7 @@ data/                   数据目录
 | 概览 | 仪表盘 | `/admin/dashboard` | 用户数/会话数/消息数/在线Agent + 30天消息量图 |
 | 用户维度 | 用户管理 | `/admin/users` | 创建/冻结/删除用户 |
 | 用户维度 | 会话记录 | `/admin/sessions` | 历史会话查询 |
-| Agent 维度 | Agent 状态 | `/admin/agents` | 在线状态 + 子 Agent 团队卡片 + 实时活动记录 |
+| Agent 维度 | Agent 状态 | `/admin/agents` | 在线状态 + 能力矩阵卡片 + 实时活动记录 |
 | Agent 维度 | Agent 管理 | `/admin/agent-devices` | 签发安装码、设备列表、一对一绑定、解绑/冻结 |
 | Agent 维度 | 工具 | `/admin/tools` | 已注册工具列表 |
 | 数据维度 | 数据集 | `/admin/datasets` | 上传/查看/删除数据集 |
@@ -261,7 +264,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 
 ## 计划闭环（2026-10-12，产品定位头号缺口）
 
-「手机定计划、电脑执行」：① 对话制定计划（统筹 `create_plan` 工具拆步骤，只建草稿不自动执行）→ ② 云端持久化队列（**用户说「执行」** `execute_plan` 或计划页按钮才 queued；**v1 无定时调度**）→ ③ 本地 Agent `agent/plan_executor.py` 轮询拉取执行（10s 空转；`ScriptDispatchAgent` 每步现场 LLM 选脚本——**步骤只存 skill+意图描述+参数，不绑定脚本名**，因为 `.dockerignore` 排除 agent//skills/，云端物理没有脚本清单）→ ④ 手机看进度+结果（`/chat/plan` 计划页 3s/15s 轮询 + 结构化渲染）。
+「手机定计划、电脑执行」：① 对话制定计划（统筹 `create_plan` 工具拆步骤，只建草稿不自动执行；**本地统筹建计划时尽量绑定 script 工具名+params**）→ ② 云端持久化队列（**用户说「执行」** `execute_plan` 或计划页按钮才 queued；**v1 无定时调度**）→ ③ 本地 Agent `agent/plan_executor.py` 轮询拉取执行（10s 空转；**步骤绑定脚本 → registry.run 零 LLM 直跑**；未绑定（云端 fallback 建的，`.dockerignore` 排除 agent//skills/ 云端无脚本清单）→ bind_tools 一次 LLM 现场选脚本）→ ④ 手机看进度+结果（`/chat/plan` 计划页 3s/15s 轮询 + 结构化渲染）。
 
 - **三表**（迁移 0015）：`plans`（draft/queued/running/done/failed + 冗余计数）/ `plan_steps`（skill 白名单 analysis|collection，automation 挂账；unique(plan_id,step_no)）/ `plan_runs`（**事件溯源 append-only**，只 INSERT——抄 dsh 设计）
 - **断点续跑**：认领 = 条件 `UPDATE ... WHERE status='pending'` + rowcount==1 判定（CAS）；同计划严格串行（排除有 running 步骤的计划）；看门狗：认领超时 900s 由 pull 端点惰性重置回 pending、计划级 3600s 无进展判 failed；本地不落状态文件，云端是唯一真相源
@@ -318,19 +321,19 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 
 `agent/intent_classifier.py` — 关键词匹配 + LLM 降级，直接命令（如 "200+300"）跳过 LLM 直接执行工具，节省 30-55% token。
 
-## Skill 系统
+## Skill 系统（融合后：脚本工具直调）
 
-Agent 能力通过 `skills/` 目录下的 YAML 配置定义，Orchestrator 自动发现并动态生成 delegate 工具。
+Agent 能力通过 `skills/` 目录下的 YAML 配置定义：脚本类 skill（analysis/collection）由 `agent/scripts/tools.py` 为每个脚本自动生成 `script_*` StructuredTool 挂统筹（function calling 直调）；automation 保持 react 子 Agent（唯一 delegate）。
 
 ```
 skills/
 ├── __init__.py              SkillRegistry 注册中心
-├── analysis/skill.yaml      数据分析 Skill（提示词、模型、脚本目录）
-├── collection/skill.yaml    数据采集 Skill
-└── automation/skill.yaml    自动化 Skill
+├── analysis/skill.yaml      数据分析（模型、脚本目录、兜底提示词）
+├── collection/skill.yaml    数据采集（模型、脚本目录、兜底提示词）
+└── automation/skill.yaml    自动化（模型、工具列表；唯一 react 子 Agent）
 ```
 
-每个 `skill.yaml` 包含：名称、描述、模型、运行模式（script_dispatch / react）、系统提示词、脚本目录、内置工具。
+每个 `skill.yaml` 包含：名称、描述、模型、运行模式（script_dispatch / react）、脚本目录、兜底系统提示词（计划步骤未绑定脚本时 bind_tools 现场选用）。
 
 **加新能力无需改代码**：新建 `skills/xxx/skill.yaml` + 可选脚本 → 重启 Agent → 自动注册。Orchestrator 遍历 `skill_registry.get_all()` 动态生成 `delegate_to_xxx_agent` 工具，capabilities 从 `skill_registry.names` 自动生成。
 
@@ -400,7 +403,7 @@ GitHub Actions（`.github/workflows/ci.yml`）：
 
 ## 数据分析大屏
 
-分析 Agent 采用 ScriptDispatchAgent 模式：LLM 根据用户意图从 `agent/datanalysis/scripts/` 自动选择脚本，通过 subprocess 执行。
+分析能力为「脚本工具直调」模式：ScriptRegistry 为 `agent/datanalysis/scripts/` 的每个脚本自动生成 `script_*` 工具（schema 自动生成），统筹 LLM function calling 一次调用选定脚本与参数，经 subprocess 执行（校验咽喉 registry.run）。
 
 **脚本输出协议：**
 - `__script_name__` / `__script_tags__` / `__script_params__` — 脚本元数据，ScriptRegistry 自动发现

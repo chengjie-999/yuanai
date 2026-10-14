@@ -19,21 +19,21 @@ TEST_CASES = [
     {
         "name": "数据分析 — 列出数据集",
         "messages": [
-            {"role": "system", "content": "你是小元AI统筹助手。调用子Agent帮用户完成任务。"},
+            {"role": "system", "content": "你是小元AI统筹助手。直接用脚本工具帮用户完成任务。"},
             {"role": "user", "content": "帮我列出现有的所有数据集"},
         ],
     },
     {
         "name": "数据采集 — 爬取网页",
         "messages": [
-            {"role": "system", "content": "你是小元AI统筹助手。调用子Agent帮用户完成任务。"},
+            {"role": "system", "content": "你是小元AI统筹助手。直接用脚本工具帮用户完成任务。"},
             {"role": "user", "content": "帮我抓取 https://httpbin.org/headers 的内容"},
         ],
     },
     {
         "name": "跨领域 — 先采集再分析",
         "messages": [
-            {"role": "system", "content": "你是小元AI统筹助手。调用子Agent帮用户完成任务。"},
+            {"role": "system", "content": "你是小元AI统筹助手。直接用脚本工具帮用户完成任务。"},
             {"role": "user", "content": "先看看有哪些数据集，然后帮我分析第一个数据集"},
         ],
     },

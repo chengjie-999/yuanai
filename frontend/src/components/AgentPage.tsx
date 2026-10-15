@@ -21,7 +21,11 @@ export default function AgentPage({ userId }: { userId?: number }) {
     return () => clearInterval(interval)
   }, [])
 
-  const myAgents = agents.filter((a: any) => !userId || String(a.agent_id) === String(userId))
+  // 后端已按用户过滤（旧模式 agent_id==user_id + 设备一对一绑定），前端不再
+  // 用 agent_id==userId 二次过滤——设备模式 agent_id 是设备号，曾把在线 Agent
+  // 滤成空导致页面显示离线/待连接。取法同 AgentStatus：优先匹配，否则取第一个。
+  const matched = agents.find((a: any) => String(a.agent_id) === String(userId))
+  const myAgents = userId ? (matched ? [matched] : agents.slice(0, 1)) : agents.slice(0, 1)
   const mainOnline = myAgents.length > 0 && myAgents[0].online
   const mainAgent = myAgents[0]
 

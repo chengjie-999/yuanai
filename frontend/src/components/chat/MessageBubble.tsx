@@ -6,6 +6,7 @@ import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { voiceTtsStream } from '../../api'
 import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl } from './helpers'
+import { isPlanLink } from './planWindow'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon } from '../icons'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
@@ -35,7 +36,7 @@ function HtmlFrame({ url, title }: { url: string; title: string }) {
   )
 }
 
-const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onRegenerate, autoRead, autoReadTick }: {
+const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onRegenerate, autoRead, autoReadTick, isMobile, onOpenPanel, pulse }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
@@ -45,6 +46,9 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   onFeedback: (i: number, kind: 'like' | 'dislike') => void
   onRegenerate?: (i: number) => void
   autoRead?: boolean; autoReadTick?: number
+  isMobile?: boolean
+  onOpenPanel?: (link: string) => void
+  pulse?: boolean
 }) {
   const isUser = msg.role === 'user'
   const sender = !isUser ? (msg.sender || 'orchestrator') : null
@@ -398,17 +402,39 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             ) : null}
             <MarkdownContent content={msg.content} />
             {msg.pageLink && (
-              <Link to={msg.pageLink}
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
-                  borderRadius: 6, background: agent?.color || 'var(--accent)',
-                  color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
-                  transition: 'opacity 0.15s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-              >{msg.pageLink.includes('/agent/dashboard') ? <BarChartIcon size={13} /> : msg.pageLink.includes('/agent/automation') ? <BotIcon size={13} /> : msg.pageLink.includes('/planet') ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</Link>
+              !isMobile && onOpenPanel && isPlanLink(msg.pageLink) ? (
+                // 计划面板：桌面端以独立窗口打开（同名复用 + AI 受控）；修饰键点击放行浏览器默认
+                <a href={msg.pageLink}
+                  className={pulse ? 'plan-link-pulse' : undefined}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onOpenPanel(msg.pageLink!)
+                  }}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
+                    borderRadius: 6, background: agent?.color || 'var(--accent)',
+                    color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
+                    transition: 'opacity 0.15s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                ><ClipboardIcon size={13} /> 打开面板</a>
+              ) : (
+                <Link to={msg.pageLink}
+                  onClick={(e) => e.stopPropagation()}
+                  className={pulse ? 'plan-link-pulse' : undefined}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
+                    borderRadius: 6, background: agent?.color || 'var(--accent)',
+                    color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
+                    transition: 'opacity 0.15s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                >{msg.pageLink.includes('/agent/dashboard') ? <BarChartIcon size={13} /> : msg.pageLink.includes('/agent/automation') ? <BotIcon size={13} /> : msg.pageLink.includes('/planet') ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</Link>
+              )
             )}
             {msg.images && msg.images.length > 0 && (
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>

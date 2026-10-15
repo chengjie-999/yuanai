@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { listPlans, getPlan, executePlan, deletePlan } from '../api/plan'
 import type { Plan, PlanStep } from '../api/plan'
-import { ArrowLeftIcon, ClipboardIcon, TrashIcon, AlertIcon, CheckIcon, LoaderIcon } from '../components/icons'
+import { ArrowLeftIcon, ClipboardIcon, TrashIcon, AlertIcon, CheckIcon, LoaderIcon, XIcon } from '../components/icons'
 import { renderBody } from '../components/analysis/ResultBlocks'
 import { AGENT_CONFIG } from '../config/agents'
 import { timeAgo } from '../components/chat/helpers'
+import { PLAN_MSG } from '../components/chat/planWindow'
 
 /* ============================================================
    计划中心 /chat/plan — 手机定计划、电脑执行的第二段（队列与进度）
@@ -70,6 +71,12 @@ export default function PlanPage() {
   const [err, setErr] = useState('')
   const [actionErr, setActionErr] = useState('')
   const [busy, setBusy] = useState(false)
+  // 弹窗模式（独立窗口宿主）：opener 存在且非自身；一次性判定（opener 事后关闭不影响本次形态）
+  const [isPopup] = useState(() => { try { return !!window.opener && window.opener !== window } catch { return false } })
+  const [autoCloseIn, setAutoCloseIn] = useState<number | null>(null)
+  const [closeHint, setCloseHint] = useState(false)
+  const prevStatusRef = useRef('')
+  const keepOpenRef = useRef(false)
 
   const refreshList = useCallback(async () => {
     try {
@@ -105,6 +112,55 @@ export default function PlanPage() {
     return () => { if (t) clearInterval(t) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, detail?.status])
+
+  // ---- 弹窗模式：父窗消息（refresh）与握手 ----
+  useEffect(() => {
+    if (!isPopup) return
+    const onMsg = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin || e.data?.type !== PLAN_MSG) return
+      if (e.data.action !== 'refresh') return
+      refreshList()
+      setSelectedId((cur) => (cur ? cur : -1))  // -1 = 待自动选中（列表加载后取第一条）
+    }
+    window.addEventListener('message', onMsg)
+    try { window.opener?.postMessage({ type: PLAN_MSG, action: 'hello' }, window.location.origin) } catch { /* 忽略 */ }
+    return () => window.removeEventListener('message', onMsg)
+  }, [isPopup, refreshList])
+
+  // -1 → 自动选中列表第一条（后端 id desc 排序 = 最新计划；AI 刚操作的就是它）
+  useEffect(() => {
+    if (selectedId === -1) setSelectedId(plans[0]?.id ?? 0)
+  }, [selectedId, plans])
+
+  // ---- 弹窗模式：终态跃迁（running/queued → done/failed）→ 3s 倒计时自关 ----
+  useEffect(() => {
+    if (!isPopup || !detail) return
+    const prev = prevStatusRef.current
+    prevStatusRef.current = detail.status
+    const terminal = detail.status === 'done' || detail.status === 'failed'
+    const wasActive = prev === 'running' || prev === 'queued'
+    if (terminal && wasActive && !keepOpenRef.current) {
+      setAutoCloseIn(3)
+    } else if (!terminal) {
+      setAutoCloseIn(null)
+      keepOpenRef.current = false  // 重跑撤销
+    }
+  }, [detail?.status, isPopup])
+
+  useEffect(() => {
+    if (autoCloseIn === null || autoCloseIn <= 0) return
+    const t = setTimeout(() => setAutoCloseIn((n) => (n === null ? null : n - 1)), 1000)
+    return () => clearTimeout(t)
+  }, [autoCloseIn])
+
+  useEffect(() => {
+    if (autoCloseIn !== 0) return
+    try { window.opener?.postMessage({ type: PLAN_MSG, action: 'autoclose' }, window.location.origin) } catch { /* 忽略 */ }
+    setTimeout(() => {
+      window.close()
+      setTimeout(() => setCloseHint(true), 600)  // 仍存活（浏览器拒关）→ 提示手动关闭
+    }, 100)
+  }, [autoCloseIn])
 
   const onExecute = async (p: Plan) => {
     setBusy(true); setActionErr('')
@@ -151,17 +207,43 @@ export default function PlanPage() {
         padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
       }}>
-        <Link to="/chat" style={{
-          fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
-          padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
-          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
-        }}><ArrowLeftIcon size={12} /> 返回</Link>
+        {isPopup ? (
+          <button onClick={() => window.close()}
+            className="yuan-tip yuan-tip-down" data-tip="关闭窗口" aria-label="关闭窗口"
+            style={{
+              fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
+              padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
+              flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+              background: 'transparent', cursor: 'pointer',
+            }}><XIcon size={12} /> 关闭</button>
+        ) : (
+          <Link to="/chat" style={{
+            fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
+            padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
+            flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+          }}><ArrowLeftIcon size={12} /> 返回</Link>
+        )}
         <span style={{ lineHeight: 1, color: 'var(--text-primary)', display: 'flex' }}><ClipboardIcon size={18} /></span>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>计划</div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>手机定计划，电脑执行</div>
         </div>
       </header>
+
+      {autoCloseIn !== null && autoCloseIn > 0 && (
+        <div style={{ margin: '10px 20px 0', padding: '8px 14px', borderRadius: 8, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ flex: 1 }}>计划已{detail?.status === 'done' ? '完成' : '失败'}，{autoCloseIn} 秒后自动关闭窗口</span>
+          <button onClick={() => { keepOpenRef.current = true; setAutoCloseIn(null) }}
+            style={{ fontSize: 12, padding: '3px 10px', borderRadius: 6, border: '1px solid #bfdbfe', background: 'transparent', color: '#2563eb', cursor: 'pointer' }}>
+            保留窗口
+          </button>
+        </div>
+      )}
+      {closeHint && (
+        <div style={{ margin: '10px 20px 0', padding: '8px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: 12 }}>
+          浏览器阻止了自动关闭，请手动关闭本窗口
+        </div>
+      )}
 
       {actionErr && (
         <div style={{ margin: '10px 20px 0', padding: '8px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: 12 }}>{actionErr}</div>

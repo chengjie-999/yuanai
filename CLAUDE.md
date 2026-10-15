@@ -270,7 +270,8 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **断点续跑**：认领 = 条件 `UPDATE ... WHERE status='pending'` + rowcount==1 判定（CAS）；同计划严格串行（排除有 running 步骤的计划）；看门狗：认领超时 900s 由 pull 端点惰性重置回 pending、计划级 3600s 无进展判 failed；本地不落状态文件，云端是唯一真相源
 - **失败重试**：retryable 且 attempt<2 → 回 pending 自动重试 1 次；确定性失败（无法处理/参数校验失败/未知脚本）不重试；failed 步骤用户可在计划页「重新执行失败步骤」
 - **API**：用户侧 JWT `/api/v1/plan/*`（list/detail 带 runs+看门狗/execute 幂等带 agent_online/delete 运行中 409）；Agent 侧设备凭据 `/api/v1/agent/plan/*`（body 不带 user_id 由设备绑定推导，伪造 step_id 被 user_id 冗余校验 404；进度节流 HTTP ≥3s、事件表 ≥10s 或 Δ5%）
-- **工具**：`yuanai_core/tools/plan_tools.py`（TOOL_CATEGORY=plan 自动发现）双路径复用 user_memory 的 `_memory_path/_agent_http`；intent_classifier 的 plan_task 平局优先；**计划工具不独立成气泡**（用户拍板，2026-10-14）：sender 归 orchestrator、工具卡挂统筹气泡，计划入口走顶栏「计划」tab
+- **工具**：`yuanai_core/tools/plan_tools.py`（TOOL_CATEGORY=plan 自动发现）双路径复用 user_memory 的 `_memory_path/_agent_http`；intent_classifier 的 plan_task 平局优先；**计划工具不独立成气泡**（用户拍板，2026-10-14）：sender 归 orchestrator、工具卡挂统筹气泡
+- **计划面板独立窗口化（2026-10-15）**：气泡「打开面板」以命名弹窗打开 /chat/plan（`chat/planWindow.ts` 协议 + `chat/usePlanWindow.ts` 模块级单例——同名复用不堆叠、手机端同标签回退、弹窗拦截 navigate 兜底）；**AI 受控开关**：计划工具事件 → 已开窗聚焦+postMessage 刷新 / 未开窗脉冲高亮按钮提示（弹窗拦截约束，AI 不开新窗）；用户手动关 → 60s 冷却不打扰；计划终态跃迁（running/queued→done/failed）→ 弹窗 3s 倒计时自关（autoclose 预告不冷却，可「保留窗口」）；Landing 入口卡已移除，路由保留作弹窗宿主；AppLayout 弹窗模式隐藏顶栏。分析/自动化面板后续照此推广
 - **执行器安全**：skill 白名单 + 托盘开关 callable 实时读 toggles + ScriptRegistry 参数校验；结果三层截断（文本 20K/blocks 200KB/事件 5KB）
 - **验证**：`python -m agent.verify_plan [--online]`；pytest test_plan_*.py 五件套；P0 教训：`ScriptRegistry.run` 曾不接受 progress_cb 致委派路径 TypeError（061381a 修复 + test_plan_pure 回归断言锁死）
 

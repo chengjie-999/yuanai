@@ -8,7 +8,7 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onRegenerate, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest, sendTick }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onRegenerate, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest, sendTick, isMobile, onOpenPanel, pulseIndex }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
@@ -31,6 +31,9 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   setTargetAgent: (v: string) => void
   onSuggest: (text: string) => void
   sendTick: number
+  isMobile: boolean
+  onOpenPanel: (link: string) => void
+  pulseIndex: number
 }) {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const lastSidRef = useRef(currentSid)
@@ -102,7 +105,10 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
               onEditConfirm={onEditMessage}
               onEditCancel={() => setEditingIndex(null)}
               onFeedback={onFeedback}
-              onRegenerate={onRegenerate} />
+              onRegenerate={onRegenerate}
+              isMobile={isMobile}
+              onOpenPanel={onOpenPanel}
+              pulse={i === pulseIndex} />
           ))}
           {/* 空对话推荐问题（豆包式：欢迎页已退场，登录直接落主对话，此处承接快捷入口） */}
           {messages.length <= 1 && !loading && (

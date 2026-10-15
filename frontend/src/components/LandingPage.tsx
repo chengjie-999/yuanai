@@ -61,12 +61,6 @@ const FEATURES = [
 /* 功能入口 — 指向已实现的独立功能页（登录后直达）或下载直链 */
 const ENTRIES: { icon: string; title: string; desc: string; to?: string; href?: string }[] = [
   {
-    icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
-    title: '计划闭环',
-    desc: '手机定计划、电脑执行 · 进度与结果一页看全',
-    to: '/chat/plan',
-  },
-  {
     icon: 'M18 20V10M12 20V4M6 20v-6',
     title: '数据分析工作台',
     desc: '数据集上传、一键统计分析、图表生成',

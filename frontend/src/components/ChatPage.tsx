@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
@@ -9,6 +10,8 @@ import ChatView from './chat/ChatView'
 import VoiceCall from './chat/VoiceCall'
 import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
+import { usePlanWindow } from './chat/usePlanWindow'
+import { isPlanLink } from './chat/planWindow'
 import { useAutoRead } from '../hooks/useAutoRead'
 import { ChevronLeftIcon, ChevronRightIcon } from './icons'
 
@@ -95,6 +98,19 @@ export default function ChatPage({ user }: { user?: any }) {
   sidRef.current = currentSid
   const loadingRef = useRef(loading)
   loadingRef.current = loading
+
+  // 计划面板窗口（独立窗口 + AI 受控开关；协议见 chat/planWindow.ts）
+  const navigate = useNavigate()
+  const planWin = usePlanWindow({ isMobile, navigate })
+  const handleOpenPanel = useCallback((_link: string) => { planWin.openPanel() }, [planWin.openPanel])
+  // 只脉冲最后一条带计划链接的气泡（AI 信号且窗口未开时）
+  const pulseIndex = useMemo(() => {
+    if (!planWin.pulse) return -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (isPlanLink(messages[i].pageLink)) return i
+    }
+    return -1
+  }, [messages, planWin.pulse])
 
   useEffect(() => {
     const onResize = () => {
@@ -267,6 +283,8 @@ export default function ChatPage({ user }: { user?: any }) {
           const isPlanTool = event.data.name === 'create_plan'
             || event.data.name === 'execute_plan' || event.data.name === 'get_plan_status'
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls], pageLink: isPlanTool ? '/chat/plan' : last[i].pageLink } }; return last })
+          // AI 信号：窗口已开 → 聚焦刷新；未开 → 「打开面板」脉冲提示（弹窗拦截约束）
+          if (isPlanTool) planWin.notifyPlanSignal()
         }
       } else if (event.type === 'dashboard') {
         // 分析大屏数据就绪：给最近的统筹气泡挂「打开面板」（融合后脚本工具
@@ -310,6 +328,8 @@ export default function ChatPage({ user }: { user?: any }) {
             return [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }]
           })
         }
+        // execute_plan 完成 = 计划入队信号：窗口已开 → 聚焦刷新看进度
+        if (del_name === 'execute_plan') planWin.notifyPlanSignal()
       } else if (event.type === 'image') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last })
       } else if (event.type === 'html') {
@@ -534,6 +554,16 @@ export default function ChatPage({ user }: { user?: any }) {
         0%, 100% { transform: scaleY(0.45); opacity: 0.55; }
         50% { transform: scaleY(1.15); opacity: 1; }
       }
+      /* 计划面板「打开面板」脉冲提示（AI 信号且窗口未开；避用全局 keyframes pulse 名） */
+      @keyframes planLinkPulse {
+        0% { box-shadow: 0 0 0 0 rgba(25, 118, 210, 0.55); }
+        70% { box-shadow: 0 0 0 9px rgba(25, 118, 210, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(25, 118, 210, 0); }
+      }
+      .plan-link-pulse { animation: planLinkPulse 1.6s ease-out infinite; }
+      @media (prefers-reduced-motion: reduce) {
+        .plan-link-pulse { animation: none; outline: 2px solid var(--accent); outline-offset: 2px; }
+      }
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}
@@ -585,6 +615,9 @@ export default function ChatPage({ user }: { user?: any }) {
             targetAgent={targetAgent} setTargetAgent={setTargetAgent}
             onSuggest={handleSend}
             sendTick={sendTick}
+            isMobile={isMobile}
+            onOpenPanel={handleOpenPanel}
+            pulseIndex={pulseIndex}
           />
         )}
       </div>

@@ -108,6 +108,8 @@ function AppLayout() {
 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
+      {/* 弹窗宿主（计划面板等独立窗口）：整个顶栏藏起——完全独立形态，无品牌行无导航 */}
+      {!window.opener && (
       <header className="app-header" style={{
         background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
         padding: '0 12px', display: 'flex', alignItems: 'center', height: 52, flexShrink: 0,
@@ -116,8 +118,6 @@ function AppLayout() {
         <span className="brand" onClick={goHome} style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: -0.3, cursor: 'pointer', flexShrink: 0, userSelect: 'none' }}>
           小元AI
         </span>
-        {/* 弹窗宿主（计划面板等独立窗口）：顶栏导航藏起，防点「对话」把面板窗口变成第二个聊天页 */}
-        {!window.opener && (
         <nav style={{ display: 'flex', gap: 0 }}>
           <Link to="/chat" style={navLinkStyle('/chat')}>对话</Link>
           <Link to="/chat/planet" style={navLinkStyle('/chat/planet')}>知识星球</Link>
@@ -125,7 +125,6 @@ function AppLayout() {
             <Link to="/chat/admin" style={navLinkStyle('/chat/admin')}>管理</Link>
           )}
         </nav>
-        )}
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <AutoReadToggle />
@@ -173,6 +172,7 @@ function AppLayout() {
           }}>设置</Link>
         </div>
       </header>
+      )}
       <main style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         <ErrorBoundary>
           <Suspense fallback={<PageLoading />}>

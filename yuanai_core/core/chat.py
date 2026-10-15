@@ -16,6 +16,25 @@ def _is_deepseek_v4(model_name: str) -> bool:
     return model_name in ('deepseek-v4-flash', 'deepseek-v4-pro')
 
 
+def _tool_output_str(output) -> str:
+    """on_tool_end 的 output 归一化：LangGraph v2 给的是 ToolMessage 对象，
+    str() 会带 content='...' 外壳（曾泄漏进工具卡并被模型复述）。"""
+    if hasattr(output, "content"):
+        c = output.content
+        if isinstance(c, str):
+            return c
+        if isinstance(c, list):
+            parts = []
+            for x in c:
+                if isinstance(x, dict):
+                    parts.append(str(x.get("text", "")))
+                else:
+                    parts.append(str(x))
+            return "\n".join(parts)
+        return str(c)
+    return str(output or "")
+
+
 def _convert_tools_to_openai(tools: List[BaseTool]) -> list:
     result = []
     for t in tools:
@@ -312,11 +331,11 @@ async def stream_agent_events(
             elif event["event"] == "on_tool_start":
                 yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator"}}
             elif event["event"] == "on_tool_end":
-                output = event["data"].get("output", "")
-                img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
+                output = _tool_output_str(event["data"].get("output", ""))
+                img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', output)
                 for img_url in img_urls:
                     yield {"type": "image", "data": img_url}
-                clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
+                clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', output)
                 yield {"type": "tool_end", "data": {"name": event.get("name", "未知工具"), "output": clean_output, "sender": "orchestrator"}}
         yield {
             "type": "done",
@@ -394,11 +413,11 @@ async def stream_agent_with_messages(
             elif event["event"] == "on_tool_start":
                 yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator"}}
             elif event["event"] == "on_tool_end":
-                output = event["data"].get("output", "")
-                img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
+                output = _tool_output_str(event["data"].get("output", ""))
+                img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', output)
                 for img_url in img_urls:
                     yield {"type": "image", "data": img_url}
-                clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', str(output))
+                clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', output)
                 yield {"type": "tool_end", "data": {"name": event.get("name", "未知工具"), "output": clean_output, "sender": "orchestrator"}}
         yield {
             "type": "done",

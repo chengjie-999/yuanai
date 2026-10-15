@@ -40,7 +40,7 @@ _OFFLINE_SYSTEM_PROMPT = (
     "可直接使用的工具：create_plan(制定计划)、execute_plan(执行计划)、"
     "get_plan_status(查计划进度)、list_datasets(列出数据集)、"
     "preview_dataset(预览数据集)、analyze_dataset(分析数据)、"
-    "search_web(联网搜索最新信息)、fetch_url(抓取网页)、parse_html(解析HTML)、get_today_temperature(天气)、"
+    "search_web(联网搜索，query 用核心短语分词)、fetch_url(抓取网页)、parse_html(解析HTML)、get_today_temperature(天气)、"
     "calculate_sum(计算)、get_user_memory(读取用户记忆)、"
     "remember_user_info(记住用户信息)、organize_user_memory(整理记忆)、"
     "retrieve_planet_knowledge(检索知识星球)、search_pubmed(PubMed 文献检索)、"

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
@@ -11,7 +11,6 @@ import VoiceCall from './chat/VoiceCall'
 import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
 import { usePlanWindow } from './chat/usePlanWindow'
-import { isPlanLink } from './chat/planWindow'
 import { useAutoRead } from '../hooks/useAutoRead'
 import { ChevronLeftIcon, ChevronRightIcon } from './icons'
 
@@ -99,18 +98,27 @@ export default function ChatPage({ user }: { user?: any }) {
   const loadingRef = useRef(loading)
   loadingRef.current = loading
 
-  // 计划面板窗口（独立窗口 + AI 受控开关；协议见 chat/planWindow.ts）
+  // 计划面板窗口：用户手动开/关（AI 不自动开关，用户拍板）；协议见 chat/planWindow.ts
   const navigate = useNavigate()
   const planWin = usePlanWindow({ isMobile, navigate })
   const handleOpenPanel = useCallback((_link: string) => { planWin.openPanel() }, [planWin.openPanel])
-  // 只脉冲最后一条带计划链接的气泡（AI 信号且窗口未开时）
-  const pulseIndex = useMemo(() => {
-    if (!planWin.pulse) return -1
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (isPlanLink(messages[i].pageLink)) return i
+
+  // 后台执行中的计划（指示条数据源；15s 轮询，有 queued/running 才显示）
+  const [activePlans, setActivePlans] = useState<{ id: number; title: string; status: string; progress: number; done_steps: number; total_steps: number }[]>([])
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const { listPlans } = await import('../api/plan')
+        const all = await listPlans()
+        setActivePlans(all.filter((p) => p.status === 'queued' || p.status === 'running')
+          .slice(0, 3).map((p) => ({ id: p.id, title: p.title, status: p.status,
+                                     progress: p.progress, done_steps: p.done_steps, total_steps: p.total_steps })))
+      } catch { /* 静默 */ }
     }
-    return -1
-  }, [messages, planWin.pulse])
+    poll()
+    const t = setInterval(poll, 15000)
+    return () => clearInterval(t)
+  }, [])
 
   useEffect(() => {
     const onResize = () => {
@@ -283,8 +291,6 @@ export default function ChatPage({ user }: { user?: any }) {
           const isPlanTool = event.data.name === 'create_plan'
             || event.data.name === 'execute_plan' || event.data.name === 'get_plan_status'
           setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls], pageLink: isPlanTool ? '/chat/plan' : last[i].pageLink } }; return last })
-          // AI 信号：窗口已开 → 聚焦刷新；未开 → 「打开面板」脉冲提示（弹窗拦截约束）
-          if (isPlanTool) planWin.notifyPlanSignal()
         }
       } else if (event.type === 'dashboard') {
         // 分析大屏数据就绪：给最近的统筹气泡挂「打开面板」（融合后脚本工具
@@ -328,8 +334,6 @@ export default function ChatPage({ user }: { user?: any }) {
             return [...prev, { role: 'assistant' as const, content: '', sender: 'orchestrator', toolCalls: [] }]
           })
         }
-        // execute_plan 完成 = 计划入队信号：窗口已开 → 聚焦刷新看进度
-        if (del_name === 'execute_plan') planWin.notifyPlanSignal()
       } else if (event.type === 'image') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { last[i].images = [...(last[i].images || []), event.data] }; return last })
       } else if (event.type === 'html') {
@@ -554,16 +558,6 @@ export default function ChatPage({ user }: { user?: any }) {
         0%, 100% { transform: scaleY(0.45); opacity: 0.55; }
         50% { transform: scaleY(1.15); opacity: 1; }
       }
-      /* 计划面板「打开面板」脉冲提示（AI 信号且窗口未开；避用全局 keyframes pulse 名） */
-      @keyframes planLinkPulse {
-        0% { box-shadow: 0 0 0 0 rgba(25, 118, 210, 0.55); }
-        70% { box-shadow: 0 0 0 9px rgba(25, 118, 210, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(25, 118, 210, 0); }
-      }
-      .plan-link-pulse { animation: planLinkPulse 1.6s ease-out infinite; }
-      @media (prefers-reduced-motion: reduce) {
-        .plan-link-pulse { animation: none; outline: 2px solid var(--accent); outline-offset: 2px; }
-      }
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}
@@ -584,6 +578,28 @@ export default function ChatPage({ user }: { user?: any }) {
       >{sidebarOpen ? <ChevronLeftIcon size={12} /> : <ChevronRightIcon size={12} />}</div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {/* 后台执行中的计划指示条（只显示不动手；点击由用户手动打开计划面板） */}
+        {activePlans.length > 0 && (
+          <div style={{
+            margin: '8px 16px 0', display: 'flex', alignItems: 'center', gap: 8,
+            padding: '6px 12px', borderRadius: 8,
+            background: 'var(--bg-primary)', border: '1px solid var(--border)',
+            cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)',
+            boxShadow: '0 1px 3px var(--shadow-sm)',
+          }} onClick={() => planWin.openPanel()}>
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%', background: '#d97706', flexShrink: 0,
+              animation: 'pulse 1.2s ease-in-out infinite',
+            }} />
+            <span style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+              后台执行中（{activePlans.length}）
+            </span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+              {activePlans.map((p) => `「${p.title}」${p.done_steps}/${p.total_steps}`).join(' · ')}
+            </span>
+            <span style={{ whiteSpace: 'nowrap', color: 'var(--accent)' }}>打开计划面板</span>
+          </div>
+        )}
         {!currentSid ? (
           <WelcomePage
             images={images} setImages={setImages}
@@ -617,7 +633,6 @@ export default function ChatPage({ user }: { user?: any }) {
             sendTick={sendTick}
             isMobile={isMobile}
             onOpenPanel={handleOpenPanel}
-            pulseIndex={pulseIndex}
           />
         )}
       </div>

@@ -36,7 +36,7 @@ function HtmlFrame({ url, title }: { url: string; title: string }) {
   )
 }
 
-const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onRegenerate, autoRead, autoReadTick, isMobile, onOpenPanel, pulse }: {
+const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onRegenerate, autoRead, autoReadTick, isMobile, onOpenPanel }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
@@ -48,7 +48,6 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   autoRead?: boolean; autoReadTick?: number
   isMobile?: boolean
   onOpenPanel?: (link: string) => void
-  pulse?: boolean
 }) {
   const isUser = msg.role === 'user'
   const sender = !isUser ? (msg.sender || 'orchestrator') : null
@@ -405,7 +404,6 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
               !isMobile && onOpenPanel && isPlanLink(msg.pageLink) ? (
                 // 计划面板：桌面端以独立窗口打开（同名复用 + AI 受控）；修饰键点击放行浏览器默认
                 <a href={msg.pageLink}
-                  className={pulse ? 'plan-link-pulse' : undefined}
                   onClick={(e) => {
                     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
                     e.preventDefault()
@@ -424,7 +422,6 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
               ) : (
                 <Link to={msg.pageLink}
                   onClick={(e) => e.stopPropagation()}
-                  className={pulse ? 'plan-link-pulse' : undefined}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
                     borderRadius: 6, background: agent?.color || 'var(--accent)',

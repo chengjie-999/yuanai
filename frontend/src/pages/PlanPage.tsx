@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { listPlans, getPlan, executePlan, deletePlan } from '../api/plan'
 import type { Plan, PlanStep } from '../api/plan'
@@ -73,10 +73,6 @@ export default function PlanPage() {
   const [busy, setBusy] = useState(false)
   // 弹窗模式（独立窗口宿主）：opener 存在且非自身；一次性判定（opener 事后关闭不影响本次形态）
   const [isPopup] = useState(() => { try { return !!window.opener && window.opener !== window } catch { return false } })
-  const [autoCloseIn, setAutoCloseIn] = useState<number | null>(null)
-  const [closeHint, setCloseHint] = useState(false)
-  const prevStatusRef = useRef('')
-  const keepOpenRef = useRef(false)
 
   const refreshList = useCallback(async () => {
     try {
@@ -113,14 +109,12 @@ export default function PlanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, detail?.status])
 
-  // ---- 弹窗模式：父窗消息（refresh）与握手 ----
-  const watchRef = useRef(false)
+  // ---- 弹窗模式：父窗消息（refresh）与握手；用户手动开/关（AI 不自动关） ----
   useEffect(() => {
     if (!isPopup) return
     const onMsg = (e: MessageEvent) => {
       if (e.origin !== window.location.origin || e.data?.type !== PLAN_MSG) return
       if (e.data.action !== 'refresh') return
-      if (e.data.watch) watchRef.current = true  // 本轮信号打开：对「已终态」计划也自关
       refreshList()
       setSelectedId((cur) => (cur ? cur : -1))  // -1 = 待自动选中（列表加载后取第一条）
     }
@@ -129,47 +123,10 @@ export default function PlanPage() {
     return () => window.removeEventListener('message', onMsg)
   }, [isPopup, refreshList])
 
-  // -1 → 自动选中列表第一条（后端 id desc 排序 = 最新计划；AI 刚操作的就是它）；
-  // watch 且该计划打开时已终态（计划跑得比窗口加载快）→ 3s 自关
+  // -1 → 自动选中列表第一条（后端 id desc 排序 = 最新计划）
   useEffect(() => {
-    if (selectedId !== -1) return
-    const p = plans[0]
-    setSelectedId(p?.id ?? 0)
-    if (p && (p.status === 'done' || p.status === 'failed') && watchRef.current) {
-      watchRef.current = false
-      setAutoCloseIn(3)
-    }
+    if (selectedId === -1) setSelectedId(plans[0]?.id ?? 0)
   }, [selectedId, plans])
-
-  // ---- 弹窗模式：终态跃迁（running/queued → done/failed）→ 3s 倒计时自关 ----
-  useEffect(() => {
-    if (!isPopup || !detail) return
-    const prev = prevStatusRef.current
-    prevStatusRef.current = detail.status
-    const terminal = detail.status === 'done' || detail.status === 'failed'
-    const wasActive = prev === 'running' || prev === 'queued'
-    if (terminal && wasActive && !keepOpenRef.current) {
-      setAutoCloseIn(3)
-    } else if (!terminal) {
-      setAutoCloseIn(null)
-      keepOpenRef.current = false  // 重跑撤销
-    }
-  }, [detail?.status, isPopup])
-
-  useEffect(() => {
-    if (autoCloseIn === null || autoCloseIn <= 0) return
-    const t = setTimeout(() => setAutoCloseIn((n) => (n === null ? null : n - 1)), 1000)
-    return () => clearTimeout(t)
-  }, [autoCloseIn])
-
-  useEffect(() => {
-    if (autoCloseIn !== 0) return
-    try { window.opener?.postMessage({ type: PLAN_MSG, action: 'autoclose' }, window.location.origin) } catch { /* 忽略 */ }
-    setTimeout(() => {
-      window.close()
-      setTimeout(() => setCloseHint(true), 600)  // 仍存活（浏览器拒关）→ 提示手动关闭
-    }, 100)
-  }, [autoCloseIn])
 
   const onExecute = async (p: Plan) => {
     setBusy(true); setActionErr('')
@@ -238,21 +195,6 @@ export default function PlanPage() {
           <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>手机定计划，电脑执行</div>
         </div>
       </header>
-
-      {autoCloseIn !== null && autoCloseIn > 0 && (
-        <div style={{ margin: '10px 20px 0', padding: '8px 14px', borderRadius: 8, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ flex: 1 }}>计划已{detail?.status === 'done' ? '完成' : '失败'}，{autoCloseIn} 秒后自动关闭窗口</span>
-          <button onClick={() => { keepOpenRef.current = true; setAutoCloseIn(null) }}
-            style={{ fontSize: 12, padding: '3px 10px', borderRadius: 6, border: '1px solid #bfdbfe', background: 'transparent', color: '#2563eb', cursor: 'pointer' }}>
-            保留窗口
-          </button>
-        </div>
-      )}
-      {closeHint && (
-        <div style={{ margin: '10px 20px 0', padding: '8px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: 12 }}>
-          浏览器阻止了自动关闭，请手动关闭本窗口
-        </div>
-      )}
 
       {actionErr && (
         <div style={{ margin: '10px 20px 0', padding: '8px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: 12 }}>{actionErr}</div>

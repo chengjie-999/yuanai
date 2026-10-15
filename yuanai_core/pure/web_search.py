@@ -98,10 +98,12 @@ def web_search(query: str, max_results: int = SEARCH_MAX_RESULTS) -> List[Dict]:
 
 
 def format_search_results(results: List[Dict]) -> str:
-    """结果 → 模型可读文本（供工具返回与上下文拼接）"""
+    """结果 → 模型可读文本（markdown 链接：前端气泡可点击直达）"""
     if not results:
         return "未找到相关结果（搜索服务暂不可用或结果为空）"
     lines = [f"共 {len(results)} 条结果:"]
     for i, r in enumerate(results, 1):
-        lines.append(f"{i}. {r['title']}\n   {r['url']}\n   {r['snippet']}")
+        lines.append(f"{i}. [{r['title']}]({r['url']})")
+        if r["snippet"]:
+            lines.append(f"   {r['snippet']}")
     return "\n".join(lines)

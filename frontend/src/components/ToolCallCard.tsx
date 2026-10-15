@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import type { ToolCall } from '../types'
 import { SCRIPT_LABELS } from '../config/agents'
+import MarkdownContent from './MarkdownContent'
+import { ChevronDownIcon, ChevronUpIcon } from './icons'
 
 function AnimatedDot() {
   return (
@@ -25,6 +28,7 @@ const AGENT_LABELS: Record<string, { label: string; color: string }> = {
   analyze_dataset: { label: '分析数据', color: '#bc8cff' },
   fetch_url: { label: '抓取网页', color: '#3fb950' },
   parse_html: { label: '解析 HTML', color: '#3fb950' },
+  search_web: { label: '联网搜索', color: '#58a6ff' },
   create_plan: { label: '制定计划', color: '#0b7285' },
   execute_plan: { label: '执行计划', color: '#0b7285' },
   get_plan_status: { label: '查询计划', color: '#0b7285' },
@@ -47,6 +51,11 @@ function ToolCallCard({ call }: { call: ToolCall }) {
   const cfg = statusConfig[call.status] || statusConfig.done
   const agent = toolLabel(call.name)
   const displayName = agent ? agent.label : call.name
+  const [expanded, setExpanded] = useState(false)
+  const raw = call.result || ''
+  const showBody = call.status === 'done' && !!raw
+  const expandable = showBody && raw.length > 160
+  const preview = expandable && !expanded ? raw.slice(0, 160).trim() + '…' : raw
 
   return (
     <div style={{
@@ -54,11 +63,13 @@ function ToolCallCard({ call }: { call: ToolCall }) {
       border: agent ? `1px solid ${agent.color}44` : '1px solid var(--border)',
       overflow: 'hidden', fontSize: 13, background: 'var(--bg-tertiary)',
     }}>
+      {/* 头部：状态点 + 中文标签 + 状态（长结果可点击展开/收起） */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
-        padding: '8px 12px',
+        padding: '7px 12px',
         background: call.status === 'running' ? 'var(--accent-light)' : 'transparent',
-      }}>
+        cursor: expandable ? 'pointer' : 'default',
+      }} onClick={expandable ? () => setExpanded((e) => !e) : undefined}>
         <span style={{
           width: 8, height: 8, borderRadius: '50%', background: cfg.dotColor,
           flexShrink: 0,
@@ -73,20 +84,27 @@ function ToolCallCard({ call }: { call: ToolCall }) {
             </span>
           ) : cfg.label}
         </span>
+        {expandable && (
+          <span style={{ display: 'flex', color: 'var(--text-muted)', flexShrink: 0 }}>
+            {expanded ? <ChevronUpIcon size={13} /> : <ChevronDownIcon size={13} />}
+          </span>
+        )}
       </div>
-      {call.status === 'done' && call.result && (
+      {/* 结果区：markdown 渲染（搜索结果链接可点击、表格/列表正常排版），
+          默认折叠预览，点击头部展开（内部滚动） */}
+      {showBody && (
         <div style={{
-          padding: '8px 12px', borderTop: '1px solid var(--border-light)',
-          color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.5,
-          maxHeight: 60, overflow: 'hidden', textOverflow: 'ellipsis',
+          padding: '6px 12px 10px', borderTop: '1px solid var(--border-light)',
+          color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.6,
+          maxHeight: expanded ? 240 : 64, overflow: expanded ? 'auto' : 'hidden',
         }}>
-          {call.result.length > 120 ? call.result.slice(0, 120) + '...' : call.result}
+          <MarkdownContent content={preview} />
         </div>
       )}
       {call.status === 'error' && (
         <div style={{
           padding: '8px 12px', borderTop: '1px solid var(--border-light)',
-          color: 'var(--danger)', fontSize: 12,
+          color: 'var(--danger)', fontSize: 12, lineHeight: 1.6,
         }}>
           {call.result}
         </div>

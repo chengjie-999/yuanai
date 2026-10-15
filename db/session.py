@@ -990,6 +990,17 @@ class AgentDatabase:
         finally:
             sess.close()
 
+    def get_bound_device_last_seen(self, user_id: int):
+        """该用户绑定设备的最新心跳时间（datetime；无绑定返回 None）。
+        计划工具在线判定用（本地 Agent 直连路径没有云端内存 WS 表）"""
+        sess = self.Session()
+        try:
+            from sqlalchemy import func as _func
+            return sess.query(_func.max(AgentDevice.last_seen)).filter(
+                AgentDevice.user_id == user_id).scalar()
+        finally:
+            sess.close()
+
     def has_running_plan(self, user_id: int) -> bool:
         sess = self.Session()
         try:

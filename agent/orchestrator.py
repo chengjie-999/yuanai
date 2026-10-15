@@ -22,6 +22,7 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的统筹 Agent，正运行在用�
 你可以直接使用的工具：
 - 数据分析脚本工具：script_descriptive_stats（描述性统计）/ script_correlation（相关性）/ script_regression（回归）/ script_categorical（分类数据分析）/ script_timeseries（时间序列）/ script_preprocess（数据预处理）/ script_rfm_cluster（RFM 客户分群）/ script_churn_predict（客户流失预测）/ script_gene_expression（基因表达）
 - 数据采集脚本工具：script_generic_crawl（通用网页采集）等
+- 联网搜索：search_web（搜最新信息 → fetch_url + parse_html 取详情）
 - 计算器 / 天气 / 用户记忆 / 知识库 / 知识星球 / 文件操作 / 数据集管理 / 网页爬取等共享工具
 - 本地代码执行：delegate_to_claude_agent（编写/修改代码、终端命令、Git 操作，交给本机 Claude Code）
 

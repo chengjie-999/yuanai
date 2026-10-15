@@ -1,6 +1,8 @@
 export const AGENT_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   orchestrator: { label: '小元AI', color: '#1976d2', bg: '#f0f5ff' },
-  local: { label: '小元AI · 本机', color: '#2e7d32', bg: '#f0faf0' },
+  // 统一身份：本地模式不再暴露「本机」后缀（用户体验拍板 2026-10-15，
+  // 豆包式——执行位置对用户透明，离线回退提示语承担差异化）
+  local: { label: '小元AI', color: '#1976d2', bg: '#f0f5ff' },
   // 融合后：analysis/collection 不再是独立 Agent，仅历史会话气泡复用键位
   analysis: { label: '数据分析', color: '#7b1fa2', bg: '#faf5ff' },
   collection: { label: '数据采集', color: '#00695c', bg: '#f0faf9' },
@@ -45,6 +47,7 @@ export const SCRIPT_LABELS: Record<string, string> = {
 }
 
 export const SUGGESTIONS: { text: string; desc: string }[] = [
+  { text: '帮我搜索一下最新的AI大模型动态', desc: '联网搜索 · 搜索+抓取+解析' },
   { text: '帮我制定：先抓取网页数据再做统计分析的执行计划', desc: '计划闭环 · 手机定 / 电脑执行' },
   { text: '帮我做RFM客户价值分群', desc: '脚本直调 · 客户分群 → 3D大屏' },
   { text: '对我的数据集做描述性统计分析', desc: '脚本直调 · 统计 + 图表 + 大屏' },

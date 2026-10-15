@@ -17,7 +17,7 @@ from yuanai_core.core.message import Envelope, split_meta, _S_KEY
 # 与 frontend/src/config/agents.ts AGENT_CONFIG 对偶
 AGENT_LABELS = {
     "orchestrator": "小元AI",
-    "local": "小元AI · 本机",
+    "local": "小元AI",
     "analysis": "数据分析 Agent",
     "collection": "数据采集 Agent",
     "automation": "自动化 Agent",

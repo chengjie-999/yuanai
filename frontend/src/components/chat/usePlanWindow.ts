@@ -18,6 +18,7 @@ let win: Window | null = null
 let dismissedUntil = 0      // 用户手动关窗后的冷却截止时间戳
 let expectedClose = false   // 子窗 autoclose 预告过的关闭（不触发冷却）
 let pulse = false
+let lastSignalAt = 0        // 最近一次计划信号时间（hello 回 watch 用）
 let snapshot = { pulse: false }
 let pollTimer: number | null = null
 let pulseTimer: number | null = null
@@ -85,6 +86,7 @@ export function usePlanWindow({ isMobile, navigate }: { isMobile: boolean; navig
 
   const notifyPlanSignal = useCallback(() => {
     // AI 信号：绝不 window.open（弹窗拦截）。已开 → 聚焦+刷新；冷却期 → 忽略；否则脉冲提示
+    lastSignalAt = Date.now()
     if (win && !win.closed) {
       win.focus()
       postToPlan(win, 'refresh')
@@ -99,13 +101,18 @@ export function usePlanWindow({ isMobile, navigate }: { isMobile: boolean; navig
     pulseTimer = window.setTimeout(clearPulse, PULSE_MS)
   }, [])
 
-  // 子窗 → 父窗消息：hello 握手 / autoclose 预告
+  // 子窗 → 父窗消息：hello 握手（回 refresh + 5 分钟内信号则带 watch，让子窗对
+  // 「打开时已终态」的计划也能自关）/ autoclose 预告
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       if (e.origin !== window.location.origin || e.data?.type !== PLAN_MSG) return
       if (e.data.action === 'hello') {
         acked = true
         if (ackTimer) { window.clearTimeout(ackTimer); ackTimer = null }
+        if (win && !win.closed) {
+          const watch = Date.now() - lastSignalAt < 300_000  // 5 分钟内有过计划信号
+          try { win.postMessage({ type: PLAN_MSG, action: 'refresh', watch }, window.location.origin) } catch { /* 忽略 */ }
+        }
       }
       if (e.data.action === 'autoclose') expectedClose = true
     }

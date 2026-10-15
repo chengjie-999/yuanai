@@ -24,12 +24,28 @@ def _require_plan(plan_id: int, user_id: int) -> dict:
 
 
 def plan_agent_online(user_id: int) -> bool:
-    """该用户绑定的本机 Agent 是否在线（execute 响应提示「排队中」用）"""
+    """该用户绑定的本机 Agent 是否在线（execute 响应提示「排队中」用）
+
+    双路径判定（2026-10-15 修复）：execute_plan 工具在本地 Agent 进程直连
+    路径执行时，import 进来的 api.v1.agent.router._agents 是本进程自己的空表
+    ——永远判离线（曾致「本机 Agent 未连接」误报）。回退查设备 last_seen
+    心跳（云端 _heartbeat 每 30s 刷新，UTC 存储，窗口 120s）。
+    """
     try:
         from api.v1.agent.router import get_agent
-        return get_agent(user_id) is not None
+        if get_agent(user_id) is not None:
+            return True
     except Exception:
-        return False
+        pass
+    try:
+        from datetime import datetime, timedelta
+        from db.session import get_db
+        last = get_db().get_bound_device_last_seen(user_id)
+        if last:
+            return datetime.utcnow() - last < timedelta(seconds=120)
+    except Exception:
+        pass
+    return False
 
 
 def apply_plan_watchdog(plan_id: int, user_id: int) -> None:

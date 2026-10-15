@@ -334,12 +334,26 @@ async def agent_ws(websocket: WebSocket, agent_id: str):
 
 
 async def _heartbeat(websocket: WebSocket, agent_id: str):
-    """定期发送 ping，检测 Agent 是否存活"""
+    """定期发送 ping，检测 Agent 是否存活；同时刷新设备 last_seen
+    （计划工具的在线判定用——此前只在连接时写一次，几十分钟后判离线）"""
     try:
         while True:
             await asyncio.sleep(HEARTBEAT_INTERVAL)
             try:
                 await websocket.send_json({"type": "ping"})
+                if agent_id.isdigit():
+                    try:
+                        from db.session import get_db, AgentDevice
+                        sess = get_db().Session()
+                        try:
+                            dev = sess.query(AgentDevice).filter_by(id=int(agent_id)).first()
+                            if dev:
+                                dev.last_seen = datetime.utcnow()
+                                sess.commit()
+                        finally:
+                            sess.close()
+                    except Exception:
+                        pass
             except Exception:
                 logger.warning("Agent %s 心跳失败，断开", agent_id)
                 await websocket.close()

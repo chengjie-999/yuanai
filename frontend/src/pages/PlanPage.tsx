@@ -114,11 +114,13 @@ export default function PlanPage() {
   }, [selectedId, detail?.status])
 
   // ---- 弹窗模式：父窗消息（refresh）与握手 ----
+  const watchRef = useRef(false)
   useEffect(() => {
     if (!isPopup) return
     const onMsg = (e: MessageEvent) => {
       if (e.origin !== window.location.origin || e.data?.type !== PLAN_MSG) return
       if (e.data.action !== 'refresh') return
+      if (e.data.watch) watchRef.current = true  // 本轮信号打开：对「已终态」计划也自关
       refreshList()
       setSelectedId((cur) => (cur ? cur : -1))  // -1 = 待自动选中（列表加载后取第一条）
     }
@@ -127,9 +129,16 @@ export default function PlanPage() {
     return () => window.removeEventListener('message', onMsg)
   }, [isPopup, refreshList])
 
-  // -1 → 自动选中列表第一条（后端 id desc 排序 = 最新计划；AI 刚操作的就是它）
+  // -1 → 自动选中列表第一条（后端 id desc 排序 = 最新计划；AI 刚操作的就是它）；
+  // watch 且该计划打开时已终态（计划跑得比窗口加载快）→ 3s 自关
   useEffect(() => {
-    if (selectedId === -1) setSelectedId(plans[0]?.id ?? 0)
+    if (selectedId !== -1) return
+    const p = plans[0]
+    setSelectedId(p?.id ?? 0)
+    if (p && (p.status === 'done' || p.status === 'failed') && watchRef.current) {
+      watchRef.current = false
+      setAutoCloseIn(3)
+    }
   }, [selectedId, plans])
 
   // ---- 弹窗模式：终态跃迁（running/queued → done/failed）→ 3s 倒计时自关 ----

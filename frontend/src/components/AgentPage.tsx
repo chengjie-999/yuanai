@@ -151,7 +151,7 @@ function ModelsCard() {
         body: JSON.stringify({ provider: newProvider.trim() || 'Custom', key: newKey.trim() }),
       })
     }
-    setShowModal(false); setNewId(''); setNewLabel(''); setNewProvider('Custom'); setNewKey('')
+    setShowModal(false); setNewId(''); setNewProvider('Custom'); setNewKey('')
     loadModels()
   }
 

@@ -33,6 +33,7 @@ def _extract_token(request: Request) -> str:
     # 知识星球笔记图片/导图原文件同理（<img>/<iframe> 带不上 header，走 ?token=）
     if path.startswith("/api/v1/agent/ws") or path.startswith("/api/v1/data/script-html") \
             or path.startswith("/api/v1/data/analysis-html") \
+            or path.startswith("/api/v1/data/dashboard-html") \
             or path.startswith("/api/v1/planet/asset") \
             or path.startswith("/api/v1/admin/file-html") \
             or path.startswith("/api/v1/admin/file-media") \

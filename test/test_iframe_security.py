@@ -55,6 +55,7 @@ def _make_html_script(tmp_path):
     script.write_text(
         f'__script_name__ = "test_html_owner"\n'
         f'__script_desc__ = "owner 测试脚本"\n'
+        f'__script_params__ = [{{"name": "v", "type": "int"}}]\n'
         f'print("__HTML__:{html.as_posix()}")\n',
         encoding="utf-8",
     )
@@ -62,13 +63,18 @@ def _make_html_script(tmp_path):
 
 
 def test_registry_writes_owner_file(tmp_path, monkeypatch):
-    """__HTML__ 缓存落盘时写 .owner（内容=current_user_id）"""
+    """__HTML__ 缓存落盘时写 .owner（内容=current_user_id）
+
+    两次 run 用不同参数：同脚本同参数第二次会命中 A 看板缓存短路
+    （设计内——看板是全局缓存，直接展示不重跑）。
+    """
     import agent.scripts.registry as reg
     monkeypatch.setattr(reg, "PROJECT_ROOT", str(tmp_path))
 
     script_path = _make_html_script(tmp_path)
     handle = reg._ScriptHandle("test_html_owner", "owner 测试脚本", script_path)
-    out = handle.run()
+    reg._parse_params_decl('[{"name": "v", "type": "int"}]', handle)
+    out = handle.run(v="1")
 
     assert "__HTML__URL:/api/v1/data/script-html/" in out
     cache_dir = os.path.join(str(tmp_path), "data", "analysis", "html_cache")
@@ -81,7 +87,7 @@ def test_registry_writes_owner_file(tmp_path, monkeypatch):
     from yuanai_core.rag import current_user_id
     token_ctx = current_user_id.set(42)
     try:
-        out2 = handle.run()
+        out2 = handle.run(v="2")
         assert "__HTML__URL:/api/v1/data/script-html/" in out2
         owner_files = [f for f in os.listdir(cache_dir) if f.endswith(".owner")]
         contents = {open(os.path.join(cache_dir, f), encoding="utf-8").read().strip()

@@ -6,6 +6,7 @@ import json
 import uuid
 import time
 import shutil
+import hashlib
 import base64
 import subprocess
 import logging
@@ -14,6 +15,14 @@ from typing import Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# A 看板缓存：完整看板 HTML 缓存目录（key = md5(脚本源文件+参数)，命中直接展示不重跑）
+_DASH_KEY_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _dashboards_dir() -> str:
+    """看板缓存目录（运行时计算：测试 monkeypatch PROJECT_ROOT 可重定向）"""
+    return os.path.join(PROJECT_ROOT, "data", "analysis", "dashboards")
 
 # S1.6：path 型参数允许落脚的根目录（realpath 包含校验）
 ALLOWED_ROOTS = [
@@ -145,16 +154,129 @@ def _purge_html_cache(max_age_seconds: int = 3600):
                 pass
 
 
+def _load_plotly_js() -> str:
+    """从本地 plotly 包取 plotly.min.js（package_data），内联后看板离线可看；取不到返回空串"""
+    try:
+        import plotly
+        pkg_dir = os.path.dirname(os.path.abspath(plotly.__file__))
+        js_path = os.path.join(pkg_dir, "package_data", "plotly.min.js")
+        if os.path.isfile(js_path):
+            with open(js_path, "r", encoding="utf-8") as f:
+                return f.read()
+    except Exception:
+        pass
+    logger.warning("plotly.min.js not found in package; dashboard charts fall back to CDN")
+    return ""
+
+
+def _flatten_kpis(obj, prefix: str = "", out: List = None, limit: int = 12) -> List:
+    """递归拍平 dict 取叶子标量作 KPI（嵌套键 k1_k2）；列表/空 dict 跳过"""
+    if out is None:
+        out = []
+    if not isinstance(obj, dict) or len(out) >= limit:
+        return out
+    for k, v in obj.items():
+        if len(out) >= limit:
+            break
+        name = f"{prefix}_{k}" if prefix else str(k)
+        if isinstance(v, dict):
+            _flatten_kpis(v, name, out, limit)
+        elif isinstance(v, bool):
+            continue
+        elif isinstance(v, (int, float)) or (isinstance(v, str) and v):
+            out.append((name, v))
+    return out
+
+
+def _inline_chart_html(chart_path: str) -> str:
+    """图表 HTML 全文去除 plotly CDN script 后嵌入看板（同文档共享内联 plotly）"""
+    try:
+        with open(chart_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except OSError:
+        return ""
+    return re.sub(r'<script[^>]*src=["\'][^"\']*plotly[^"\']*["\'][^>]*>\s*</script>', "",
+                  content, flags=re.IGNORECASE)
+
+
+def _build_dashboard_html(result_data, chart_paths: List[str]) -> str:
+    """A 看板：组装完整看板 HTML——__RESULT__ 拍平 KPI 卡 + 各 __HTML__ 图表内联 +
+    plotly.min.js 内联（单文件自包含，离线可看）。无内容可组装返回空串。"""
+    kpi_cards = []
+    for name, val in _flatten_kpis(result_data or {}):
+        text = str(val)
+        if len(text) > 40:
+            text = text[:40] + "…"
+        if isinstance(val, float):
+            text = f"{val:.4g}"
+        kpi_cards.append(f'<div class="kpi"><div class="k">{name}</div><div class="v">{text}</div></div>')
+
+    chart_blocks = []
+    for path in chart_paths:
+        inlined = _inline_chart_html(path)
+        if inlined:
+            chart_blocks.append(f'<div class="chart">{inlined}</div>')
+
+    if not kpi_cards and not chart_blocks:
+        return ""
+
+    plotly_js = _load_plotly_js() if chart_blocks else ""
+    plotly_script = f"<script>{plotly_js}</script>" if plotly_js else ""
+    kpi_html = f'<div class="kpis">{"".join(kpi_cards)}</div>' if kpi_cards else ""
+
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小元AI · 分析看板</title>
+<style>
+ body {{ font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; margin: 0; background: #f5f6f8; color: #1f2329 }}
+ .board {{ max-width: 1200px; margin: 0 auto; padding: 16px }}
+ h2 {{ margin: 8px 2px 14px; font-size: 18px }}
+ .kpis {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px }}
+ .kpi {{ background: #fff; border-radius: 8px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06) }}
+ .kpi .k {{ font-size: 12px; color: #8a9099; margin-bottom: 4px; word-break: break-all }}
+ .kpi .v {{ font-size: 18px; font-weight: 600; word-break: break-all }}
+ .chart {{ background: #fff; border-radius: 8px; padding: 8px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden }}
+ .chart .plotly-graph-div {{ width: 100% !important }}
+</style>
+</head>
+<body>
+<div class="board">
+<h2>小元AI · 分析看板</h2>
+{kpi_html}
+{''.join(chart_blocks)}
+</div>
+{plotly_script}
+</body>
+</html>"""
+
+
 class _ScriptHandle:
-    def __init__(self, name: str, description: str, filepath: str, tags: List[str] = None):
+    def __init__(self, name: str, description: str, filepath: str, tags: List[str] = None, source: str = ""):
         self.name = name
         self.description = description
         self._filepath = filepath
+        self._source = source                  # 脚本源文件内容（A 看板缓存键用；类式脚本为空则 run 时读盘）
         self.tags = tags or []
         self.key = _script_key(name)          # ASCII 工具名（统筹 function calling 用）
         self.skill = ""                       # 归属 skill（registry 构造时注入）
         self._param_order: List[str] = []
         self._param_schemas: Dict[str, Dict] = {}  # S1.6：name → {"type":..., "choices":[...]}
+
+    def _dashboard_cache_key(self, params: Dict) -> Optional[str]:
+        """A 看板缓存键：md5(脚本源文件内容 + 规范化参数) → 32hex；源文件不可读返回 None（不启用缓存）"""
+        source = self._source
+        if not source:
+            try:
+                with open(self._filepath, "r", encoding="utf-8") as f:
+                    source = f.read()
+            except OSError:
+                return None
+        canonical = json.dumps({k: str(v) for k, v in sorted(params.items()) if v is not None},
+                               ensure_ascii=False, sort_keys=True)
+        return hashlib.md5((source + canonical).encode("utf-8")).hexdigest()
 
     def run(self, progress_cb=None, **params) -> str:
         _purge_html_cache()
@@ -170,6 +292,11 @@ class _ScriptHandle:
                 if err:
                     return f"参数校验失败: {err}（收到 {val[:100]!r}）"
                 args.append(val)
+
+        # A 看板缓存：脚本源+参数未变 → 命中直接展示看板，不启动子进程
+        dash_key = self._dashboard_cache_key(params)
+        if dash_key and os.path.isfile(os.path.join(_dashboards_dir(), f"{dash_key}.html")):
+            return f"看板已缓存（脚本与参数未变，直接展示，无需重新计算）：\n__DASHBOARD__:{dash_key}"
 
         try:
             popen_kwargs = {
@@ -235,16 +362,19 @@ class _ScriptHandle:
 
             output = "".join(stdout_lines).strip() or "(脚本无输出)"
 
+            result_data = None   # A 看板：__RESULT__ 结构化数据（KPI 卡来源）
+            chart_paths = []     # A 看板：__HTML__ 图表文件列表（内联进看板）
+
             # extract __RESULT__:json line
             result_match = re.search(r'__RESULT__:(.+)$', output, re.MULTILINE)
             if result_match:
                 try:
-                    data = json.loads(result_match.group(1))
+                    result_data = json.loads(result_match.group(1))
                     result_dir = os.path.join(PROJECT_ROOT, "data", "analysis", "results")
                     os.makedirs(result_dir, exist_ok=True)
                     result_file = os.path.join(result_dir, f"{uuid.uuid4().hex[:8]}.json")
                     with open(result_file, "w", encoding="utf-8") as f:
-                        json.dump(data, f, ensure_ascii=False, indent=2)
+                        json.dump(result_data, f, ensure_ascii=False, indent=2)
                     output = output.replace(result_match.group(0), "")
                     output += f"\n__DASHBOARD__:{result_file}"
                 except Exception as e:
@@ -273,6 +403,7 @@ class _ScriptHandle:
                 for html_path in html_match.group(1).split(","):
                     html_path = html_path.strip()
                     if os.path.isfile(html_path):
+                        chart_paths.append(html_path)  # A 看板：原文件供组装内联
                         cache_dir = os.path.join(PROJECT_ROOT, "data", "analysis", "html_cache")
                         os.makedirs(cache_dir, exist_ok=True)
                         cache_id = uuid.uuid4().hex[:12]
@@ -289,6 +420,19 @@ class _ScriptHandle:
                         html_urls.append(f"/api/v1/data/script-html/{cache_id}")
                 if html_urls:
                     output += f"\n__HTML__URL:{','.join(html_urls)}"
+
+            # A 看板缓存：有结果或有图表才组装完整看板（KPI 卡 + 图表内联 + plotly 内联自包含）
+            if dash_key and (result_data is not None or chart_paths):
+                dash_html = _build_dashboard_html(result_data, chart_paths)
+                if dash_html:
+                    try:
+                        ddir = _dashboards_dir()
+                        os.makedirs(ddir, exist_ok=True)
+                        with open(os.path.join(ddir, f"{dash_key}.html"), "w", encoding="utf-8") as f:
+                            f.write(dash_html)
+                        output += f"\n__DASHBOARD__:{dash_key}"
+                    except OSError as e:
+                        logger.warning("write dashboard cache failed: %s", e)
 
             return output.strip()
         except subprocess.TimeoutExpired:
@@ -352,7 +496,7 @@ class ScriptRegistry:
             if tags_match:
                 tags = [t.strip().strip('"').strip("'") for t in tags_match.group(1).split(",") if t.strip()]
 
-            handle = _ScriptHandle(name, desc, filepath, tags)
+            handle = _ScriptHandle(name, desc, filepath, tags, source)
 
             params_match = re.search(r'__script_params__\s*=\s*(\[.*\])', source)
             if params_match:

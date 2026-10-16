@@ -85,8 +85,12 @@ def done(display_content: str, reasoning_content: str = "", request_id: str = ""
     )
 
 
-def dashboard_event(session_id: str, request_id: str = "") -> AgentEvent:
-    return AgentEvent(type="dashboard", data={"session_id": session_id}, request_id=request_id)
+def dashboard_event(session_id: str, request_id: str = "", dashboard_html: str = "") -> AgentEvent:
+    """分析大屏事件；dashboard_html 非空 = A 看板缓存链接（前端开轻量页 /chat/agent/board）"""
+    data = {"session_id": session_id}
+    if dashboard_html:
+        data["dashboard_html"] = dashboard_html
+    return AgentEvent(type="dashboard", data=data, request_id=request_id)
 
 
 def html_event(url: str, request_id: str = "") -> AgentEvent:

@@ -296,12 +296,15 @@ export default function ChatPage({ user }: { user?: any }) {
         // 分析大屏数据就绪：给最近的统筹气泡挂「打开面板」（融合后脚本工具
         // 在统筹气泡内执行，不再有 analysis 气泡；兼容历史 analysis 气泡兜底）
         const dsid = event.data?.session_id || sidRef.current
+        // A 看板缓存：dashboard_html 存在 → 打开自包含看板轻量页；否则通用大屏
+        const boardKey = event.data?.dashboard_html
+          ? String(event.data.dashboard_html).split('/').pop() : ''
         setMessages((prev) => {
           const last = [...prev]
           for (let i = last.length - 1; i >= 0; i--) {
             const s = last[i].sender
             if (s === 'orchestrator' || s === 'local' || s === 'analysis') {
-              last[i] = { ...last[i], pageLink: '/chat/agent/dashboard/' + dsid }
+              last[i] = { ...last[i], pageLink: boardKey ? '/chat/agent/board/' + boardKey : '/chat/agent/dashboard/' + dsid }
               break
             }
           }
@@ -402,7 +405,8 @@ export default function ChatPage({ user }: { user?: any }) {
         if (autoRead) setAutoReadTick((t) => t + 1)  // 触发最后一条 AI 气泡自动朗读
         const finalMsgs = flushVoiceTranscripts(messagesRef.current)
         const msgs = finalMsgs.map(encodeMsg)
-        saveMessages(sid, msgs, title || (prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt))
+        // C AI 会话标题：只透传显式 title（新会话首次发送），普通发送不再覆盖标题
+        saveMessages(sid, msgs, title)
         noteLastAssistant(finalMsgs)
         refreshSessions()
       },

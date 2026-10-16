@@ -430,7 +430,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
                   onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-                >{msg.pageLink.includes('/agent/dashboard') ? <BarChartIcon size={13} /> : msg.pageLink.includes('/agent/automation') ? <BotIcon size={13} /> : msg.pageLink.includes('/planet') ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</Link>
+                >{msg.pageLink.includes('/agent/dashboard') || msg.pageLink.includes('/agent/board') ? <BarChartIcon size={13} /> : msg.pageLink.includes('/agent/automation') ? <BotIcon size={13} /> : msg.pageLink.includes('/planet') ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</Link>
               )
             )}
             {msg.images && msg.images.length > 0 && (

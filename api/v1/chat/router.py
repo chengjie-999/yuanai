@@ -602,8 +602,18 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
             from db.session import ChatSession
             from sqlalchemy.sql import func
             chat_update = {"update_time": func.now()}
+            # C AI 会话标题：仅当现标题仍是自动标题（空/新对话/首条截断）才覆盖，
+            # AI 已生成的标题不被后续消息的自动标题压掉
             if req.title:
-                chat_update["title"] = req.title
+                from api.v1.chat.title_gen import _is_auto_title
+                cur = sess.query(ChatSession).filter_by(session_id=req.session_id).first()
+                first_user = ""
+                for m in req.messages or []:
+                    if m.get("role") == "user":
+                        first_user = (m.get("content") or "").strip()
+                        break
+                if cur and _is_auto_title(cur.title, first_user):
+                    chat_update["title"] = req.title
             sess.query(ChatSession).filter_by(session_id=req.session_id).update(chat_update)
             sess.commit()
         except Exception:

@@ -158,7 +158,7 @@ data/                   数据目录
 
 **群聊说话人协议（信封化，2026-10-11 升级）**：身份从「正文【xx】前缀靠模型写」升级为**信封元数据**（sender/recipient/turn/type，编排代码填，模型碰不到）+ **视图滤波**（每个 Agent 只看自己该看的部分）。核心：`yuanai_core/core/message.py`（Envelope 编解码，短键 s/rp/tn/ty，与前端 encodeMsg/parseHistory 对偶）+ `yuanai_core/core/views.py`（`view_for(agent, messages, self_senders, envelopes)` 七规则滤波 + `compose_target_prompt`）。信封过云端的载体 = ChatRequest **并行数组 `envelopes`**（build_input_messages 会重建 dict 丢附加键）；落库 ai_chat 四列（迁移 0014 + 自包含 backfill：user→'user'、assistant→META.s 或 orchestrator）；读取优先级 列 > META > 缺省；全空信封退化直通（旧数据兼容）。裁剪点四处：云端 /stream 与 claude-stream 回退分支、本地 Orchestrator.stream、stream_target/delegate_fn。tool_start/tool_end 事件带 sender（前端 senderFromTool 降级为兜底）。
 
-**置顶主对话（豆包式）**：`chat_session.is_main`（迁移 0013）每用户一条，`ensure_main_session()` 幂等取/建，`POST /api/v1/chat/main-session`；侧栏图钉置顶显示；**登录直接落主对话**（挂载时 ensure + setCurrentSid + parseHistory，欢迎页仅接口异常兜底）；「新对话」按钮=另开普通会话。主对话历史截断最近 **60 条**（chat/router.py `/stream` 主链路，前置「更早的对话已整理进长期记忆」HumanMessage）——与记忆机制配套（二期挂账的 history 截断在此落地）；claude-stream 不截断。欢迎页退场后：推荐问题卡移到对话空状态（ChatView SUGGESTIONS 前 5 条，手机横滑一行）、数据集上传并入输入区回形针（csv/xlsx/xls/json → uploadDataset → `[数据集 #id]` 注入输入框）。输入区布局：textarea 行只留输入框+发送，功能键全部下沉工具行（左动作群 @/图片/语音/朗读/下载，右设置群 模式/推理强度，小屏藏下载）。
+**置顶主对话（豆包式）**：`chat_session.is_main`（迁移 0013）每用户一条，`ensure_main_session()` 幂等取/建，`POST /api/v1/chat/main-session`；侧栏图钉置顶显示；**登录直接落主对话**（挂载时 ensure + setCurrentSid + parseHistory，欢迎页仅接口异常兜底）；「新对话」按钮=另开普通会话。主对话历史截断最近 **60 条**（chat/router.py `/stream` 主链路，前置「更早的对话已整理进长期记忆」HumanMessage）——与记忆机制配套（二期挂账的 history 截断在此落地）；claude-stream 不截断。欢迎页退场后：推荐问题卡移到对话空状态（ChatView SUGGESTIONS 前 5 条，手机横滑一行）、数据集上传并入输入区回形针（csv/xlsx/xls/json → uploadDataset → `[数据集 #id]` 注入输入框）。输入区布局：textarea 行只留输入框+发送，功能键全部下沉工具行（左动作群 @/图片/语音/朗读/下载，右设置群 模式/推理强度，小屏藏下载）。**AI 会话标题（2026-10-16 修复）**：前端仅新会话首次发送传 title（sendMessages 只透传显式 title）；后端 /chat/save 仅当现标题是自动标题才覆盖（`_is_auto_title` 兼容前端 50 字与后端 80 字两种截断口径）；AI 生成标题（title_gen 豆包 lite 异步）不再被下一条消息压掉。
 
 **滚动跟随（2026-10-12）**：聊天自动跟随最新消息——贴底才跟随（流式直接设 `scrollTop`，无平滑动画防逐 token 抖动）；发送/修改重发/切换会话**无条件滚底并恢复跟随**（`sendTick` 计数从 ChatPage 传入，不看当前位置判定）；上滑阅读历史时**暂停跟随**，同时浮出「回到底部」圆形按钮（`ChatView.tsx` sticky 钉可视区底部居中，yuan-tip 提示 + aria-label，点击平滑滚底恢复跟随）；贴底状态由 scroll 监听实时维护（`nearBottomRef` + `showJump`）。
 
@@ -222,6 +222,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - 会话映射：`data/claude_sessions.json`（cloud session_id → claude session uuid，`--resume` 续接；`--session-id` 仅用于新建）
 - 事件扩展：`sender_event`（type=agent，声明气泡归属）与 `approval_event`（type=approval，审批卡）
 - **审批流未启用**：依赖 claude-agent-sdk 的 `can_use_tool`，当前网络装不了该包（pypi.org 不通、清华源无包）。review 级命令目前靠提示词黑名单约束（同 Phase 1 delegate）
+- **全能力差距路线（2026-10-16 定稿，见 plans/goofy-inventing-turtle.md）**：P0 审批流自建——anthropic SDK 直连自建 agent loop 替换 `claude -p` 子进程（工具面照搬 bridge_policy 白名单；deny/review → approval_event → 前端 ApprovalCard/decision 审批，超时默认 deny fail-closed；只补 can_use_tool 缺口不复刻全功能）；P1 Bash 白名单→审核制；P2 MCP 客户端；P3 会话续接强化。联网被禁维持现状（search_web+fetch_url 替代）
 - 验证：`python -m agent.verify_claude_bridge`（离线断言 agent→token→tool→done + 会话续接）
 
 ## 知识星球（三级知识库）
@@ -412,6 +413,13 @@ GitHub Actions（`.github/workflows/ci.yml`）：
 - `__RESULT__:{json}` — 结构化结果（用于大屏展示），Registry 检测后缓存到文件，通过 `__DASHBOARD__:path` 回传
 - `__PROGRESS__:{json}` — 脚本进度（可选，`{"current","total","message"}`）；registry 同时有 10s 时间心跳（存量脚本零改动也有进度）
 - 协调器检测 `__DASHBOARD__` → 缓存 Redis（TTL 1h）**并落库 analysis_history** → yield dashboard_event
+
+**A 看板缓存（2026-10-16，脚本运行一次即保存完整看板，未更新直接展示不重跑）：**
+- registry 执行前算 `cache_key = md5(脚本源文件 + 规范化参数)`（`_dashboard_cache_key`），`data/analysis/dashboards/{key}.html` 命中 → 直接输出 `__DASHBOARD__:{key}` 不启动子进程；未命中执行成功后组装**完整看板 HTML**（__RESULT__ 拍平 KPI 卡前 12 + 各 __HTML__ 图表全文去 plotly CDN script 内联 + plotly.min.js 从本地包 package_data 内联**单文件自包含离线可看**）写缓存
+- `__DASHBOARD__` 两态：32hex = 看板缓存 key（orchestrator finditer 区分 → dashboard_event 带 `dashboard_html` 字段）；文件路径 = 原 __RESULT__ JSON（Redis + 历史落库）
+- 展示：`GET /api/v1/data/dashboard-html/{key}`（32hex 白名单 + sandbox CSP；全局缓存无 .owner——分析产物非个人数据；middleware `_extract_token` 白名单已加该路径）→ 前端 dashboard 事件有 dashboard_html 时「打开面板」指向轻量页 `/chat/agent/board/:key`（DashboardBoardPage，useSecuredUrl + sandbox iframe）；否则原通用大屏
+- 已知限制：本地形态成立；跨机/云端挂账（.dockerignore 排除 agent/、无 html 上行通道）；RFM 大屏端点未接（云端无 registry 组装函数）
+- 测试：test/test_script_dashboard_cache.py 9 项（hash 命中不重跑/参数与脚本变更重跑/组装断言/端点白名单）
 
 **大屏页面：**
 - `/agent/rfm` — RFM 3D 散点大屏（直连 API，不需要 Agent）

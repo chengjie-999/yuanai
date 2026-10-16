@@ -256,11 +256,16 @@ class Orchestrator:
         img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
         for img_url in img_urls:
             events.append(image_event(img_url, rid))
-        dash_match = re.search(r'__DASHBOARD__:(.+)', str(output))
-        if dash_match:
-            result_path = dash_match.group(1).strip()
+        # __DASHBOARD__ 两态：文件路径（__RESULT__ JSON，缓存 Redis + 落库）与
+        # 32hex 看板缓存 key（A 看板，前端开 /chat/agent/board 轻量页）
+        dash_html_url = ""
+        for dash_match in re.finditer(r'__DASHBOARD__:(.+)', str(output)):
+            value = dash_match.group(1).strip()
+            if re.fullmatch(r'[0-9a-f]{32}', value):
+                dash_html_url = f"/api/v1/data/dashboard-html/{value}"
+                continue
             try:
-                with open(result_path, "r", encoding="utf-8") as f:
+                with open(value, "r", encoding="utf-8") as f:
                     dash_data = json.load(f)
                 cache_key = f"dashboard:{session_id}"
                 try:
@@ -275,9 +280,12 @@ class Orchestrator:
                     _db().add_analysis_history(session_id, json.dumps(dash_data, ensure_ascii=False))
                 except Exception as e:
                     logger.warning("analysis history persist failed: %s", e)
-                events.append(dashboard_event(session_id, rid))
+                events.append(dashboard_event(session_id, rid, dashboard_html=dash_html_url))
             except Exception as e:
                 logger.warning("dashboard parse failed: %s", e)
+        if dash_html_url and not any(e.type == "dashboard" for e in events):
+            # 纯缓存命中（无 __RESULT__ JSON）：只挂看板链接，大屏数据留给历史
+            events.append(dashboard_event(session_id, rid, dashboard_html=dash_html_url))
         html_match = re.search(r'__HTML__URL:(.+)', str(output))
         if html_match:
             for url in html_match.group(1).split(","):

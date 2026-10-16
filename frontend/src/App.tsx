@@ -23,6 +23,7 @@ const AgentAutomationPage = lazy(() => import('./pages/AgentAutomationPage'))
 const AgentKnowledgePage = lazy(() => import('./pages/AgentKnowledgePage'))
 const RFMDashboard = lazy(() => import('./pages/RFMDashboard'))
 const AnalysisDashboard = lazy(() => import('./pages/AnalysisDashboard'))
+const DashboardBoardPage = lazy(() => import('./pages/DashboardBoardPage'))
 const MedicalPage = lazy(() => import('./components/MedicalPage'))
 const CollectionRecordsPage = lazy(() => import('./components/CollectionRecordsPage'))
 const PlanetPage = lazy(() => import('./pages/PlanetPage'))
@@ -186,6 +187,7 @@ function AppLayout() {
             <Route path="/agent/knowledge" element={<AgentKnowledgePage />} />
             <Route path="/agent/rfm" element={<RFMDashboard />} />
             <Route path="/agent/dashboard/:sessionId" element={<AnalysisDashboard />} />
+            <Route path="/agent/board/:key" element={<DashboardBoardPage />} />
             <Route path="/agent/medical" element={<MedicalPage />} />
             <Route path="/agent/records" element={<CollectionRecordsPage />} />
             <Route path="/planet" element={<PlanetPage />} />

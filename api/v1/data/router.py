@@ -42,6 +42,11 @@ def _safe_html_id(html_id: str) -> bool:
     return bool(re.fullmatch(r"[0-9a-f]{12}", html_id))
 
 
+def _safe_dashboard_key(cache_key: str) -> bool:
+    """A 看板缓存 key 白名单：registry 生成 md5 hex（小写十六进制 32 位）"""
+    return bool(re.fullmatch(r"[0-9a-f]{32}", cache_key))
+
+
 def _safe_single_name(name: str) -> bool:
     """URL 路径参数名白名单：拒绝任何路径成分/穿越（%2F 解码后会出现 / 与 ..）"""
     return bool(name) and "/" not in name and "\\" not in name and ".." not in name
@@ -351,6 +356,22 @@ async def serve_script_html(html_id: str, request: Request):
     uid = getattr(request.state, "user_id", 0)
     if owner_uid != uid and getattr(request.state, "role", "") != "admin":
         raise HTTPException(status_code=404, detail="HTML not found")
+    with open(fpath, "r", encoding="utf-8") as f:
+        return _sandbox_html_response(f.read())
+
+
+@router.get("/dashboard-html/{cache_key}")
+async def serve_dashboard_html(cache_key: str):
+    """A 看板缓存：整页分析看板（KPI 卡 + 图表内联 + plotly 内联自包含）。
+
+    32 位 hex 白名单 + 沙箱响应头（同 serve_script_html）。无 .owner 全局缓存：
+    看板内容来自分析脚本产物（KPI 数字 + 图表），不含个人原始数据，可看。
+    """
+    if not _safe_dashboard_key(cache_key):
+        raise HTTPException(status_code=404, detail="dashboard not found")
+    fpath = os.path.join(root_path(), "data", "analysis", "dashboards", f"{cache_key}.html")
+    if not os.path.isfile(fpath):
+        raise HTTPException(status_code=404, detail="dashboard not found")
     with open(fpath, "r", encoding="utf-8") as f:
         return _sandbox_html_response(f.read())
 

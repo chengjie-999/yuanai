@@ -21,11 +21,16 @@ TITLE_PROMPT = ("你是会话标题生成器。根据对话内容生成一个标
 
 
 def _is_auto_title(title: str, first_msg: str) -> bool:
-    """判断当前标题是否自动生成（默认值或首条消息截断式）"""
+    """判断当前标题是否自动生成（默认值或首条消息截断式）。
+    C 修复：兼容前端 50 字与后端 80 字两种截断口径（前端写 50、后端判 80
+    曾致首条 >50 字时 AI 标题永不生成）。"""
     t = (title or "").strip()
     if not t or t == "新对话":
         return True
-    return t == (first_msg[:80] + ("..." if len(first_msg) > 80 else ""))
+    for cut in (50, 80):
+        if t == first_msg[:cut] + ("..." if len(first_msg) > cut else ""):
+            return True
+    return False
 
 
 def generate_title(session_id: str, messages: list) -> bool:

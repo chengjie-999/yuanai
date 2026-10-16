@@ -333,6 +333,11 @@ def test_title_is_auto_heuristic():
     assert _is_auto_title(long[:80] + "...", long) is True
     assert _is_auto_title("帮我分析销售数据", "帮我分析销售数据") is True   # 首条消息截断式 = 自动标题
     assert _is_auto_title("销售复盘报告", "帮我分析销售数据") is False     # 用户手改/已生成
+    # C 修复：前端 50 字截断口径（含 ...）同样识别为自动标题
+    long50 = "y" * 60
+    assert _is_auto_title(long50[:50] + "...", long50) is True
+    assert _is_auto_title("z" * 50 + "...", "z" * 51) is True               # 51 字首条 → 50 字截断
+    assert _is_auto_title("x" * 80, "x" * 81) is False                      # 无省略号的 80 字非截断式
 
 
 def test_generate_title_updates_db(db, monkeypatch):

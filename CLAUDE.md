@@ -227,6 +227,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - 事件扩展：`sender_event`（type=agent，声明气泡归属）与 `approval_event`（type=approval，审批卡）
 - **审批流未启用**：依赖 claude-agent-sdk 的 `can_use_tool`，当前网络装不了该包（pypi.org 不通、清华源无包）。review 级命令目前靠提示词黑名单约束（同 Phase 1 delegate）
 - **全能力差距路线（2026-10-16 定稿，见 plans/goofy-inventing-turtle.md）**：P0 审批流自建——anthropic SDK 直连自建 agent loop 替换 `claude -p` 子进程（工具面照搬 bridge_policy 白名单；deny/review → approval_event → 前端 ApprovalCard/decision 审批，超时默认 deny fail-closed；只补 can_use_tool 缺口不复刻全功能）；P1 Bash 白名单→审核制；P2 MCP 客户端；P3 会话续接强化。联网被禁维持现状（search_web+fetch_url 替代）
+- **P0a 已完成（2026-10-16，`agent/claude_loop.py`）**：SDK 直连 loop 核心——anthropic 1.15 已可安装（此前装不上的是 claude-agent-sdk）；`run_sdk_loop` 流式循环（claude-opus-4-8 默认、adaptive thinking + display summarized、流式 64K 输出）、内置工具声明（bash_20250124 / text_editor_20250728 schema-less + 自定义 Read/Write/Glob/Grep）、执行器（classify allow/deny/review 安全分类 + 仓库内路径校验 + 120s 超时）、审批流（review → approval 事件 → on_approval 裁决，超时/无回调默认 deny fail-closed）、凭证 env → ~/.claude/.credentials.json；bridge_policy classify/explain 加 SDK 内置工具名别名。测试 test_claude_loop.py 11 项全过。**P0b 挂账：接入 claude_bridge 主流程（--sdk 开关 + approval decision 云端回传 + 前端联调）**
 - 验证：`python -m agent.verify_claude_bridge`（离线断言 agent→token→tool→done + 会话续接）
 
 ## 知识星球（三级知识库）

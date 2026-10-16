@@ -168,22 +168,33 @@ def _path_within_root(tool_input: dict) -> bool:
 
 
 def classify(tool_name: str, tool_input: dict) -> str:
-    """工具调用分类入口：返回 allow | deny | review"""
+    """工具调用分类入口：返回 allow | deny | review
+
+    名字兼容两套：CLI 白名单名（Write/Edit/Bash）与 anthropic SDK 内置工具名
+    （str_replace_based_edit_tool / bash——内置声明 schema-less，输入形状不同）。
+    """
+    # SDK 内置 text editor：所有 command（view/create/str_replace/insert）都动文件，
+    # 统一按写入语义做路径校验
+    if tool_name == "str_replace_based_edit_tool":
+        return "allow" if _path_within_root(tool_input) else "deny"
     if tool_name in ("Write", "Edit"):
         return "allow" if _path_within_root(tool_input) else "deny"
-    if tool_name == "Bash":
-        verdict, _ = classify_command(str(tool_input.get("command", "")))
+    if tool_name in ("Bash", "bash"):
+        command = str(tool_input.get("command", ""))
+        if str(tool_input.get("restart")) in ("true", "True", "1"):
+            return "deny"  # SDK 会话重启请求不执行（无状态执行器）
+        verdict, _ = classify_command(command)
         return verdict
     return "allow"  # Read/Glob/Grep 等只读工具放行
 
 
 def explain(tool_name: str, tool_input: dict) -> str:
     """拒绝/审批时的原因说明"""
-    if tool_name in ("Write", "Edit"):
+    if tool_name in ("Write", "Edit", "str_replace_based_edit_tool"):
         if not _path_within_root(tool_input):
             return "写入路径超出项目仓库目录，被安全策略拒绝"
         return ""
-    if tool_name == "Bash":
+    if tool_name in ("Bash", "bash"):
         _, reason = classify_command(str(tool_input.get("command", "")))
         return reason
     return ""

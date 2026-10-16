@@ -8,11 +8,20 @@ load_dotenv()
 import json as _json
 from pathlib import Path as _Path
 
+# 2026-10-16 模型升级（旧代退役，默认换新）：
+# - 豆包 Seed 2.0 → 2.1（火山方舟官方 ID；pro 260628 / lite 260915）
+# - DeepSeek V4 Flash 已退役（官方路由至 V4.1 Flash，新 ID = deepseek-flash）；
+#   V4 Pro 0813 仍在服务
+_DOUBAO_PRO = "doubao-seed-2-1-pro-260628"
+_DOUBAO_LITE = "doubao-seed-2-1-lite-260915"
+_DEEPSEEK_FLASH = "deepseek-flash"
+_DEEPSEEK_PRO = "deepseek-v4-pro"
+
 _DEFAULT_MODELS = {
-    "doubao-seed-2-0-pro-260215": {"label": "豆包 Pro", "provider": "Doubao"},
-    "doubao-seed-2-0-lite-260215": {"label": "豆包 Lite", "provider": "Doubao"},
-    "deepseek-v4-flash": {"label": "DeepSeek V4 Flash", "provider": "DeepSeek"},
-    "deepseek-v4-pro": {"label": "DeepSeek V4 Pro", "provider": "DeepSeek"},
+    _DOUBAO_PRO: {"label": "豆包 Pro", "provider": "Doubao"},
+    _DOUBAO_LITE: {"label": "豆包 Lite", "provider": "Doubao"},
+    _DEEPSEEK_FLASH: {"label": "DeepSeek V4.1 Flash", "provider": "DeepSeek"},
+    _DEEPSEEK_PRO: {"label": "DeepSeek V4 Pro", "provider": "DeepSeek"},
 }
 
 def _load_models() -> dict:
@@ -31,8 +40,8 @@ def _load_models() -> dict:
 MODELS = _load_models()
 
 MODEL_NAMES = list(MODELS.keys())
-DEFAULT_MODEL = "deepseek-v4-flash"
-VISION_MODEL = "doubao-seed-2-0-pro-260215"  # DeepSeek V4 不支持图片，识图自动切豆包
+DEFAULT_MODEL = _DEEPSEEK_FLASH
+VISION_MODEL = _DOUBAO_PRO  # DeepSeek 不支持图片，识图自动切豆包
 DEFAULT_TEMPERATURE = 0.7
 
 # 推理强度（DeepSeek 系列 reasoning_effort，.env 可覆盖）：
@@ -44,11 +53,10 @@ REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")
 # ⚠ 价格为占位默认值，以官方最新价为准；整体覆盖：.env 设 MODEL_PRICING_JSON
 #   形如 {"deepseek-v4-pro": {"in": 2.0, "out": 8.0}, ...}；未列出的模型记 0 成本（标记未定价）
 _MODEL_PRICING_DEFAULTS = {
-    "deepseek-v4-flash": {"in": 0.5, "out": 2.0},
-    "deepseek-v4-pro": {"in": 2.0, "out": 8.0},
-    "deepseek-reasoner": {"in": 4.0, "out": 16.0},
-    "doubao-seed-2-0-lite-260215": {"in": 0.3, "out": 0.6},
-    "doubao-seed-2-0-pro-260215": {"in": 0.8, "out": 2.0},
+    _DEEPSEEK_FLASH: {"in": 0.5, "out": 2.0},   # V4.1 Flash（占位，沿用 V4 Flash 价，以官方为准）
+    _DEEPSEEK_PRO: {"in": 2.0, "out": 8.0},
+    _DOUBAO_LITE: {"in": 0.3, "out": 0.6},      # Seed 2.1 占位价，以官方为准
+    _DOUBAO_PRO: {"in": 0.8, "out": 2.0},
 }
 MODEL_PRICING = _MODEL_PRICING_DEFAULTS
 try:
@@ -65,16 +73,16 @@ except Exception:
 # _agent_models，PUT /admin/agent-models 热更新 reload_agent_models）
 _DEFAULT_AGENT_MODEL_MAP = {
     # 通用快模型 — 意图识别 / 任务路由 / 简单爬取
-    "orchestrator": "deepseek-v4-flash",
-    "collection": "deepseek-v4-flash",
+    "orchestrator": _DEEPSEEK_FLASH,
+    "collection": _DEEPSEEK_FLASH,
     # 强推理 — 数据分析 / 复杂统计 / 图表生成
-    "analysis": "deepseek-v4-pro",
+    "analysis": _DEEPSEEK_PRO,
     # 多模态 — 浏览器截图 / 视觉审核 / 图片理解
-    "automation": "doubao-seed-2-0-pro-260215",
-    "audit": "doubao-seed-2-0-pro-260215",
+    "automation": _DOUBAO_PRO,
+    "audit": _DOUBAO_PRO,
     # 辅助任务 — 记忆折叠 / 星球文章化（后台可换，env 仍优先）
-    "memory_fold": "doubao-seed-2-0-lite-260215",
-    "planet_article": "doubao-seed-2-0-lite-260215",
+    "memory_fold": _DOUBAO_LITE,
+    "planet_article": _DOUBAO_LITE,
 }
 
 
@@ -111,7 +119,7 @@ def _model_with_override(env_key: str, map_key: str, default: str) -> str:
 # 默认豆包（火山引擎国内节点，本地直连快且稳）；DeepSeek 海外 API 本地直连实测
 # 一半请求卡超时（120s×2 后走大纲兜底），故不设为默认。后台可换（分配键 planet_article）。
 PLANET_ARTICLE_MODEL = _model_with_override(
-    "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-0-lite-260215")
+    "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-1-lite-260915")
 
 
 def reload_agent_models() -> None:
@@ -120,15 +128,15 @@ def reload_agent_models() -> None:
     global MEMORY_MODEL, PLANET_ARTICLE_MODEL
     AGENT_MODEL_MAP.clear()
     AGENT_MODEL_MAP.update(_load_agent_models())
-    MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-0-lite-260215")
+    MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-1-lite-260915")
     PLANET_ARTICLE_MODEL = _model_with_override(
-        "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-0-lite-260215")
+        "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-1-lite-260915")
 
 # ===================== 记忆机制（短期工作记忆 / 长期条目化记忆） =====================
 # 决策：最近 N 条原样保留；超出部分豆包 lite 后台异步折叠成条目化事实存 users.memory；
 # 设置页「我的记忆」透明可编辑；点踩内容不进记忆。全部可 .env 覆盖。
 MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "true").lower() == "true"     # 压缩总开关
-MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-0-lite-260215")  # 折叠用模型
+MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-1-lite-260915")  # 折叠用模型
 MEMORY_WORKING_WINDOW = int(os.getenv("MEMORY_WORKING_WINDOW", "20"))      # 工作记忆条数（最近 N 条永不折叠）
 MEMORY_TRIGGER_CHARS = int(os.getenv("MEMORY_TRIGGER_CHARS", "8000"))      # 触发阈值：会话总字数
 MEMORY_FOLD_MIN_MESSAGES = int(os.getenv("MEMORY_FOLD_MIN_MESSAGES", "5")) # 单次折叠最小条数（烧钱护栏，设 1 = 字面口径）
@@ -256,9 +264,57 @@ VOICE_ASR_APP_ID = os.getenv("VOICE_ASR_APP_ID", "")            # 豆包语音�
 VOICE_ASR_ACCESS_TOKEN = os.getenv("VOICE_ASR_ACCESS_TOKEN", "")  # 豆包语音控制台 ASR AccessToken
 VOICE_TTS_APP_ID = os.getenv("VOICE_TTS_APP_ID", "")            # 豆包语音控制台 TTS AppId
 VOICE_TTS_ACCESS_TOKEN = os.getenv("VOICE_TTS_ACCESS_TOKEN", "")  # 豆包语音控制台 TTS AccessToken
-VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "zh_female_xiaohe_uranus_bigtts")  # 气泡朗读音色（须为 2.0 系列，配 seed-tts-2.0 资源）
-VOICE_TTS_VOICE_BOT = os.getenv("VOICE_TTS_VOICE_BOT", "zh_male_shaonianzixin_uranus_bigtts")  # 通话机器人音色（主智能体小元：少年梓辛小男孩；uranus 音色在 bidirection 通道待通话实测，无声则回退 mars 系列）
-VOICE_ASR_RESOURCE_ID = os.getenv("VOICE_ASR_RESOURCE_ID", "volc.bigasr.sauc.concurrent")  # ASR 大模型资源（本地实测：并发版已授权、时长版 403）
+
+# 语音模型配置（易淘汰项，后台「模型配置」页可改：models.json _voice_config，
+# PUT /admin/voice-config 热更新 reload_voice_config；env 优先）
+_DEFAULT_VOICE_CONFIG = {
+    "tts_model": "seed-tts-2.0",                             # 语音合成大模型（2026-10 官方最新；X-Api-Resource-Id）
+    "tts_voice": "zh_female_xiaohe_uranus_bigtts",           # 气泡朗读默认音色（2.0 系列 uranus）
+    "tts_voice_bot": "zh_male_shaonianzixin_uranus_bigtts",  # 通话机器人音色（小元：少年梓辛）
+    "asr_resource": "volc.bigasr.sauc.concurrent",           # ASR 大模型资源（本地实测并发版已授权）
+    "tts_resource": "volc.service_type.10029",               # TTS 双向通道资源
+}
+
+
+def _load_voice_config() -> dict:
+    result = dict(_DEFAULT_VOICE_CONFIG)
+    try:
+        custom_path = _Path(__file__).parent.parent / "data" / "models.json"
+        if custom_path.exists():
+            with open(custom_path, "r", encoding="utf-8") as f:
+                data = _json.load(f)
+            if isinstance(data, dict):
+                custom = data.get("_voice_config", {})
+                if isinstance(custom, dict):
+                    result.update(custom)
+    except Exception:
+        pass
+    return result
+
+
+VOICE_CONFIG = _load_voice_config()
+
+
+def _voice_with_override(env_key: str, cfg_key: str, default: str) -> str:
+    return os.getenv(env_key) or VOICE_CONFIG.get(cfg_key) or default
+
+
+VOICE_TTS_MODEL = _voice_with_override("VOICE_TTS_MODEL", "tts_model", "seed-tts-2.0")
+VOICE_TTS_VOICE = _voice_with_override("VOICE_TTS_VOICE", "tts_voice", "zh_female_xiaohe_uranus_bigtts")  # 气泡朗读音色
+VOICE_TTS_VOICE_BOT = _voice_with_override("VOICE_TTS_VOICE_BOT", "tts_voice_bot", "zh_male_shaonianzixin_uranus_bigtts")  # 通话机器人音色
+VOICE_ASR_RESOURCE_ID = _voice_with_override("VOICE_ASR_RESOURCE_ID", "asr_resource", "volc.bigasr.sauc.concurrent")  # ASR 资源
+
+
+def reload_voice_config() -> None:
+    """后台语音配置改动后热更新（voice router 均为函数内惰性 import，即时生效）"""
+    global VOICE_TTS_MODEL, VOICE_TTS_VOICE, VOICE_TTS_VOICE_BOT, VOICE_ASR_RESOURCE_ID, VOICE_TTS_RESOURCE_ID
+    VOICE_CONFIG.clear()
+    VOICE_CONFIG.update(_load_voice_config())
+    VOICE_TTS_MODEL = _voice_with_override("VOICE_TTS_MODEL", "tts_model", "seed-tts-2.0")
+    VOICE_TTS_VOICE = _voice_with_override("VOICE_TTS_VOICE", "tts_voice", "zh_female_xiaohe_uranus_bigtts")
+    VOICE_TTS_VOICE_BOT = _voice_with_override("VOICE_TTS_VOICE_BOT", "tts_voice_bot", "zh_male_shaonianzixin_uranus_bigtts")
+    VOICE_ASR_RESOURCE_ID = _voice_with_override("VOICE_ASR_RESOURCE_ID", "asr_resource", "volc.bigasr.sauc.concurrent")
+    VOICE_TTS_RESOURCE_ID = _voice_with_override("VOICE_TTS_RESOURCE_ID", "tts_resource", "volc.service_type.10029")
 
 # ---- 语音调参（原散落在 voice/router.py 的字面量，统一下沉至此，.env 可覆盖） ----
 VOICE_ASR_VOLUME_GAIN = float(os.getenv("VOICE_ASR_VOLUME_GAIN", "1"))
@@ -274,7 +330,7 @@ VOICE_TTS_SPEECH_RATE_BUBBLE = int(os.getenv("VOICE_TTS_SPEECH_RATE_BUBBLE", "0"
 VOICE_TTS_MAX_CHARS = int(os.getenv("VOICE_TTS_MAX_CHARS", "3000"))
 # 流式帧聚合阈值：音频累计到该字节数才发一帧（≈1s @24kHz/64kbps；太小=碎帧断续）
 VOICE_TTS_CHUNK_BYTES = int(os.getenv("VOICE_TTS_CHUNK_BYTES", "8192"))
-VOICE_TTS_RESOURCE_ID = os.getenv("VOICE_TTS_RESOURCE_ID", "volc.service_type.10029")
+VOICE_TTS_RESOURCE_ID = _voice_with_override("VOICE_TTS_RESOURCE_ID", "tts_resource", "volc.service_type.10029")
 VOICE_LLM_MAX_TOKENS = int(os.getenv("VOICE_LLM_MAX_TOKENS", "1024"))
 VOICE_LLM_TEMPERATURE = float(os.getenv("VOICE_LLM_TEMPERATURE", "0.1"))
 VOICE_LLM_TOP_P = float(os.getenv("VOICE_LLM_TOP_P", "0.3"))

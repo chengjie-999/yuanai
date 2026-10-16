@@ -405,6 +405,117 @@ async def update_agent_models(req: AgentModelsUpdate, request: Request):
     return {"ok": True}
 
 
+# ===================== 模型自动检查更新（确认后自动添加和更换） =====================
+
+def _audit_upgrade(entries: list) -> None:
+    """升级变更审计日志（data/logs/model_upgrade.log，一行一条 JSON）"""
+    import json as _j
+    from datetime import datetime as _dt
+    try:
+        log_dir = os.path.join(root_path(), "data", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, "model_upgrade.log"), "a", encoding="utf-8") as f:
+            f.write(_j.dumps({"time": _dt.now().isoformat(timespec="seconds"),
+                              "upgrades": entries}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+@router.get("/models/upgrade-plan")
+async def model_upgrade_plan(request: Request):
+    """自动检查更新：在用模型/语音配置 vs 升级知识表 → 待升级清单 + 可添加新模型"""
+    require_admin(request)
+    from config.settings import AGENT_MODEL_MAP, VOICE_CONFIG
+    from yuanai_core.pure.model_upgrades import (
+        plan_model_upgrades, plan_new_models, plan_voice_upgrades)
+    data = _read_models_file()
+    effective = dict(AGENT_MODEL_MAP)
+    effective.update(data.get("_agent_models") or {})
+    return {
+        "model_upgrades": plan_model_upgrades(effective),
+        "voice_upgrades": plan_voice_upgrades(dict(VOICE_CONFIG)),
+        "available": plan_new_models(data),
+    }
+
+
+@router.post("/models/upgrade")
+async def model_upgrade_apply(request: Request):
+    """确认后自动更换：加新模型 + 切分配 + 移旧模型 + 语音配置切换，热更新 + 审计"""
+    require_admin(request)
+    from config.settings import AGENT_MODEL_MAP, reload_agent_models, reload_voice_config
+    from yuanai_core.pure.model_upgrades import (
+        plan_model_upgrades, plan_voice_upgrades, provider_of)
+    data = _read_models_file()
+    agent_models = dict(data.get("_agent_models") or {})
+    effective = dict(AGENT_MODEL_MAP)
+    effective.update(agent_models)
+
+    applied = []
+    for p in plan_model_upgrades(effective):
+        old, new, label = p["old"], p["new"], p["label"]
+        if new not in data:
+            data[new] = {"label": label, "provider": provider_of(new)}
+        for k in p["used_by"]:
+            agent_models[k] = new          # 显式固化新分配（防默认表回退）
+        if old in data:
+            del data[old]                  # 旧模型登记移除
+        applied.append(p)
+
+    voice_applied = []
+    for p in plan_voice_upgrades(dict(data.get("_voice_config") or {})):
+        vc = dict(data.get("_voice_config") or {})
+        vc[p["key"]] = p["new"]
+        data["_voice_config"] = vc
+        voice_applied.append(p)
+
+    if agent_models:
+        data["_agent_models"] = agent_models
+    _write_models_file(data)
+    reload_agent_models()
+    reload_voice_config()
+    from config.settings import _load_models, MODELS
+    MODELS.clear(); MODELS.update(_load_models())
+    _audit_upgrade(applied + voice_applied)
+    return {"ok": True, "model_upgrades": applied, "voice_upgrades": voice_applied}
+
+
+# ===================== 语音配置（合成模型/音色/资源，易淘汰项可换） =====================
+
+_VOICE_CONFIG_KEYS = ("tts_model", "tts_voice", "tts_voice_bot", "asr_resource", "tts_resource")
+
+
+class VoiceConfigUpdate(BaseModel):
+    voice_config: dict
+
+
+@router.get("/voice-config")
+async def get_voice_config(request: Request):
+    """语音配置表（当前生效值，含默认）"""
+    require_admin(request)
+    from config.settings import VOICE_CONFIG
+    return {"voice_config": dict(VOICE_CONFIG)}
+
+
+@router.put("/voice-config")
+async def update_voice_config(req: VoiceConfigUpdate, request: Request):
+    """更新语音配置：写 models.json _voice_config + 热更新（无需重启）"""
+    require_admin(request)
+    incoming = req.voice_config or {}
+    for k, v in incoming.items():
+        if k not in _VOICE_CONFIG_KEYS:
+            raise HTTPException(status_code=400, detail=f"未知语音配置项: {k}")
+        if not isinstance(v, str) or not v or len(v) > 200:
+            raise HTTPException(status_code=400, detail=f"配置值非法: {k}")
+    data = _read_models_file()
+    merged = dict(data.get("_voice_config") or {})
+    merged.update(incoming)
+    data["_voice_config"] = merged
+    _write_models_file(data)
+    from config.settings import reload_voice_config
+    reload_voice_config()
+    return {"ok": True}
+
+
 # ===================== API Key =====================
 
 class ApiKeyUpsert(BaseModel):

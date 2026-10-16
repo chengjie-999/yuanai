@@ -32,7 +32,7 @@ class AutomationAgent(AgentBase):
                 self._system_prompt = cfg.system_prompt
             else:
                 self.name = "automation"
-                self.model_name = "doubao-seed-2-0-pro"
+                self.model_name = "doubao-seed-2-1-pro"
                 self._system_prompt = ""
         self._tools = None
 

@@ -33,7 +33,7 @@ def _get_stored_key(provider: str) -> str | None:
 
 def call_llm(
         messages: List[Union[SystemMessage, HumanMessage]],
-        model_name: str = "deepseek-chat",
+        model_name: str = "deepseek-flash",
         temperature: float = 0.1
 ) -> Optional[str]:
     llm = get_llm(model_name, temperature=temperature, verbose=False)
@@ -45,10 +45,15 @@ def call_llm(
         return None
 
 
-def get_llm(model='deepseek-chat', reasoning=True, reasoning_effort: Optional[str] = None, **kwargs):
+def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[str] = None, **kwargs):
     """LLM 工厂。reasoning_effort 优先级：显式参数 > 请求上下文（聊天框开关）> settings。"""
-    # 短名解析（2026-10-14）：skills/*.yaml 用短名（doubao-seed-2-0-lite），
-    # 注册表是完整 ID（doubao-seed-2-0-lite-260215）。前缀匹配替换——
+    # 旧模型 ID 兼容（2026-10-16）：已退役 ID 自动路由到新 ID（升级知识表维护）——
+    # 存量配置/历史数据里的旧 ID 不报错，静默走新模型
+    from yuanai_core.pure.model_upgrades import MODEL_UPGRADES
+    if model in MODEL_UPGRADES:
+        model = MODEL_UPGRADES[model]["new"]
+    # 短名解析（2026-10-14）：skills/*.yaml 用短名（doubao-seed-2-1-lite），
+    # 注册表是完整 ID（doubao-seed-2-1-lite-260915）。前缀匹配替换——
     # 委派/@定向/计划执行器共用本工厂，此前短名落 custom 分支报「未找到 API Key」。
     if model not in dsllm and model not in seed:
         for m in seed + dsllm:
@@ -114,7 +119,7 @@ def get_langgraph_agent(llm, tools):
 
 
 def ai_with_tools(question: str):
-    llm = get_llm('deepseek-chat', temperature=1, verbose=False)
+    llm = get_llm('deepseek-flash', temperature=1, verbose=False)
     agent = get_langgraph_agent(llm, tools)
     try:
         result = agent.invoke({

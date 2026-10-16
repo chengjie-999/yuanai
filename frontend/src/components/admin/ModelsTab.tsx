@@ -23,6 +23,14 @@ export default function ModelsTab() {
   const [agentModels, setAgentModels] = useState<Record<string, string>>({})
   const [savingAssign, setSavingAssign] = useState(false)
   const [assignMsg, setAssignMsg] = useState('')
+  // 自动检查更新：升级清单 + 语音配置
+  const [upgradePlan, setUpgradePlan] = useState<{ model_upgrades: any[]; voice_upgrades: any[]; available: any[] } | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [upgrading, setUpgrading] = useState(false)
+  const [upgradeMsg, setUpgradeMsg] = useState('')
+  const [voiceConfig, setVoiceConfig] = useState<Record<string, string>>({})
+  const [savingVoice, setSavingVoice] = useState(false)
+  const [voiceMsg, setVoiceMsg] = useState('')
 
   const loadModels = () => {
     setError('')
@@ -47,6 +55,46 @@ export default function ModelsTab() {
     if (!res.ok) { setAssignMsg(d?.detail || '保存失败') } else { setAssignMsg('已保存，立即生效'); loadAgentModels() }
     setSavingAssign(false)
   }
+
+  const handleCheckUpdates = async () => {
+    setChecking(true); setUpgradeMsg(''); setUpgradePlan(null)
+    try {
+      const res = await fetch(`${API_BASE}/admin/models/upgrade-plan`, { headers: headers() })
+      const d = await safeJson(res)
+      if (!res.ok) { setUpgradeMsg(d?.detail || '检查失败') } else { setUpgradePlan(d) }
+    } catch { setUpgradeMsg('检查失败（网络异常）') }
+    setChecking(false)
+  }
+
+  const handleApplyUpgrades = async () => {
+    setUpgrading(true); setUpgradeMsg('')
+    try {
+      const res = await fetch(`${API_BASE}/admin/models/upgrade`, { method: 'POST', headers: headers() })
+      const d = await safeJson(res)
+      if (!res.ok) { setUpgradeMsg(d?.detail || '升级失败') } else {
+        const n = (d?.model_upgrades?.length || 0) + (d?.voice_upgrades?.length || 0)
+        setUpgradeMsg(n ? `已自动更换 ${n} 项，立即生效` : '没有需要更换的模型')
+        loadModels(); loadAgentModels(); handleCheckUpdates()
+      }
+    } catch { setUpgradeMsg('升级失败（网络异常）') }
+    setUpgrading(false)
+  }
+
+  const handleSaveVoice = async () => {
+    setSavingVoice(true); setVoiceMsg('')
+    const res = await fetch(`${API_BASE}/admin/voice-config`, { method: 'PUT', headers: headers(), body: JSON.stringify({ voice_config: voiceConfig }) })
+    const d = await safeJson(res)
+    if (!res.ok) { setVoiceMsg(d?.detail || '保存失败') } else { setVoiceMsg('已保存，立即生效') }
+    setSavingVoice(false)
+  }
+
+  const loadVoiceConfig = () => {
+    fetch(`${API_BASE}/admin/voice-config`, { headers: headers() })
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then((data) => { if (data?.voice_config && typeof data.voice_config === 'object') setVoiceConfig(data.voice_config) })
+      .catch(() => {})
+  }
+  useEffect(() => { loadVoiceConfig() }, [])
 
   const handleAdd = async () => {
     if (!newId.trim() || !newLabel.trim()) return
@@ -127,6 +175,69 @@ export default function ModelsTab() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
             <button onClick={handleSaveAssign} disabled={savingAssign} style={{ ...btnPrimary, opacity: savingAssign ? 0.6 : 1 }}>保存分配</button>
             {assignMsg && <span style={{ fontSize: 12, color: assignMsg.includes('已保存') ? 'var(--accent)' : 'var(--danger, #d93025)' }}>{assignMsg}</span>}
+          </div>
+        </Card>
+      )}
+      {!loading && (
+        <Card>
+          <CardHeader title="自动检查更新" action={<button onClick={handleCheckUpdates} disabled={checking} title="检查模型更新" aria-label="检查模型更新" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--accent)', fontWeight: 500, opacity: checking ? 0.6 : 1 }}>{checking ? '检查中…' : '检查更新'}</button>} />
+          <div style={{ padding: '0 14px 4px', fontSize: 12, color: 'var(--text-muted)' }}>对照升级知识表检查在用模型与语音模型，确认后自动添加新模型、切换分配、移除旧模型</div>
+          {upgradeMsg && <div style={{ padding: '0 14px 8px', fontSize: 12, color: upgradeMsg.includes('已自动') || upgradeMsg.includes('没有') ? 'var(--accent)' : 'var(--danger, #d93025)' }}>{upgradeMsg}</div>}
+          {upgradePlan && (upgradePlan.model_upgrades.length > 0 || upgradePlan.voice_upgrades.length > 0 || upgradePlan.available.length > 0) ? (
+            <div style={{ padding: '8px 14px 12px' }}>
+              {[...upgradePlan.model_upgrades, ...upgradePlan.voice_upgrades].map((u, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border-light)', fontSize: 13 }}>
+                  <span style={{ color: 'var(--danger, #d93025)', fontFamily: 'monospace', fontSize: 12 }}>{u.old}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>→</span>
+                  <span style={{ color: 'var(--accent)', fontFamily: 'monospace', fontSize: 12 }}>{u.new}</span>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{u.label}</span>
+                  {(u.used_by?.length > 0) && <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>使用处：{u.used_by.join('、')}</span>}
+                </div>
+              ))}
+              {upgradePlan.available.length > 0 && (
+                <div style={{ padding: '8px 0', fontSize: 12, color: 'var(--text-secondary)' }}>
+                  可添加的新模型（需先在火山/DeepSeek 控制台开通授权）：
+                  {upgradePlan.available.map((a) => <span key={a.model_id} style={{ fontFamily: 'monospace', fontSize: 11, marginLeft: 8, color: 'var(--text-muted)' }}>{a.model_id}</span>)}
+                </div>
+              )}
+              <div style={{ paddingTop: 10 }}>
+                <button onClick={handleApplyUpgrades} disabled={upgrading}
+                  style={{ ...btnPrimary, opacity: upgrading ? 0.6 : 1, background: 'var(--accent)' }}>
+                  {upgrading ? '更换中…' : '确认自动更换'}
+                </button>
+              </div>
+            </div>
+          ) : upgradePlan ? (
+            <div style={{ padding: '8px 14px 14px', fontSize: 12, color: 'var(--text-secondary)' }}>在用模型均为最新，无需更换。</div>
+          ) : null}
+        </Card>
+      )}
+      {!loading && (
+        <Card>
+          <CardHeader title="语音配置" />
+          <div style={{ padding: '0 14px 4px', fontSize: 12, color: 'var(--text-muted)' }}>语音合成模型/音色/资源（火山引擎控制台开通后填新值，保存立即生效；音色须与合成模型版本匹配）</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <tbody>
+              {([
+                ['tts_model', '合成模型（X-Api-Resource-Id）'],
+                ['tts_voice', '气泡朗读默认音色'],
+                ['tts_voice_bot', '通话机器人音色'],
+                ['asr_resource', 'ASR 资源 ID'],
+                ['tts_resource', 'TTS 双向通道资源'],
+              ] as const).map(([key, label]) => (
+                <tr key={key} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                  <td style={{ padding: '10px 14px', fontSize: 13, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{label}</td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <input value={voiceConfig[key] || ''} onChange={(e) => setVoiceConfig((p) => ({ ...p, [key]: e.target.value }))}
+                      style={{ ...inputStyle, width: '100%', maxWidth: 420, fontFamily: 'monospace', fontSize: 12 }} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
+            <button onClick={handleSaveVoice} disabled={savingVoice} style={{ ...btnPrimary, opacity: savingVoice ? 0.6 : 1 }}>保存语音配置</button>
+            {voiceMsg && <span style={{ fontSize: 12, color: voiceMsg.includes('已保存') ? 'var(--accent)' : 'var(--danger, #d93025)' }}>{voiceMsg}</span>}
           </div>
         </Card>
       )}

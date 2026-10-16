@@ -13,7 +13,8 @@ from yuanai_core.core.lc import get_langgraph_agent
 
 
 def _is_deepseek_v4(model_name: str) -> bool:
-    return model_name in ('deepseek-v4-flash', 'deepseek-v4-pro')
+    # V4.1 Flash 新 ID 为 deepseek-flash（v4-flash 已退役路由至它）；v4-flash 保留兼容旧配置
+    return model_name in ('deepseek-flash', 'deepseek-v4-flash', 'deepseek-v4-pro')
 
 
 def _tool_output_str(output) -> str:

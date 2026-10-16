@@ -44,9 +44,9 @@ python -m agent.main --tray
 
 | 执行体 | 模型 | 职责 |
 |-------|------|------|
-| 统筹 | doubao-seed-2-0-lite | 意图识别 → 直接调脚本工具（`script_*`，一次调用出结果） |
+| 统筹 | doubao-seed-2-1-lite | 意图识别 → 直接调脚本工具（`script_*`，一次调用出结果） |
 | 脚本工具 | 由统筹模型带 tools 调用 | 9 个分析脚本 + 通用网页采集 + 医学工具（registry 自动生成 schema，执行经 registry.run 统一校验咽喉） |
-| 自动化 | doubao-seed-2-0-pro | 唯一独立子 Agent（react 多步自主）：浏览器控制、题目审核、截图监控 |
+| 自动化 | doubao-seed-2-1-pro | 唯一独立子 Agent（react 多步自主）：浏览器控制、题目审核、截图监控 |
 | Claude Code | 本机 | 桥接：代码、终端、Git |
 
 **脚本工具 key 对照**（`agent/scripts/registry.py SCRIPT_KEYS` 静态表，未登记 md5 兜底）：descriptive_stats/correlation/regression/categorical/timeseries/preprocess/rfm_cluster/churn_predict/gene_expression/generic_crawl。
@@ -192,7 +192,9 @@ data/                   数据目录
 | 系统维度 | 代码监控 | `/admin/monitor` | Git 轮询 + 代码变更趋势图 + 文件类型分布 + 实时活动日志 |
 | 系统维度 | 设置 | `/admin/settings` | 系统设置 |
 
-**模型淘汰可更换（2026-10-16）**：后台「模型配置」页分两张卡——① 模型清单（添加新模型+API Key 加密存储 / 删除；`get_llm` 前缀匹配 deepseek-*/doubao-* 自动走对应通道，新代模型加进列表即生效）② **Agent 模型分配**（7 键：5 执行体 + memory_fold/planet_article 辅助任务，下拉切换存 models.json `_agent_models`，`PUT /admin/agent-models` 热更新 `settings.reload_agent_models()` 无需重启）。删除保护：被分配引用的模型 400 拒绝删除。选择链：**env（MEMORY_MODEL/PLANET_ARTICLE_MODEL）优先 → 分配表 → 代码默认**；用户侧设置页分配接口（/auth/agent-models）只暴露 5 个执行体（`AGENT_ROLE_KEYS`）。测试 test/test_agent_models_api.py 5 项。
+**模型淘汰可更换（2026-10-16）**：后台「模型配置」页分三张卡——① 模型清单（添加新模型+API Key 加密存储 / 删除；`get_llm` 前缀匹配 deepseek-*/doubao-* 自动走对应通道）② **Agent 模型分配**（7 键：5 执行体 + memory_fold/planet_article 辅助任务，下拉切换存 models.json `_agent_models`，`PUT /admin/agent-models` 热更新 `settings.reload_agent_models()` 无需重启）③ **语音配置**（tts_model/气泡音色/通话机器人音色/ASR 资源/TTS 资源，`PUT /admin/voice-config` 热更新 `reload_voice_config()`；voice router 的 X-Api-Resource-Id 用 `VOICE_TTS_MODEL`）。删除保护：被分配引用的模型 400 拒绝删除。选择链：**env 优先 → 分配表/语音配置 → 代码默认**；用户侧设置页分配接口（/auth/agent-models）只暴露 5 个执行体（`AGENT_ROLE_KEYS`）。测试 test/test_agent_models_api.py 10 项。
+
+**模型自动检查更新（2026-10-16，确认后自动添加和更换）**：升级知识表 `yuanai_core/pure/model_upgrades.py`（MODEL_UPGRADES 旧→新映射 / UPSTREAM_MODELS 上游清单 / VOICE_UPGRADES 语音模型）由 AI 维护——模型换代时改这一处登记。后台「自动检查更新」卡：`GET /admin/models/upgrade-plan` 对照知识表出升级清单（在用旧模型/语音升级/可添加新模型）→ 管理员点「确认自动更换」→ `POST /admin/models/upgrade` 自动执行（加新模型 + 切分配固化 `_agent_models` + 移旧登记 + 热更新 + 审计 `data/logs/model_upgrade.log`）。`get_llm` 对退役 ID 静默路由到新 ID（存量配置/历史数据不报错）。**2026-10-16 换代**：豆包 2.0→2.1（`doubao-seed-2-1-pro-260628`/`doubao-seed-2-1-lite-260915`）、DeepSeek V4 Flash→V4.1（新 ID `deepseek-flash`，v4-pro 保留）；语音合成 seed-tts-2.0 仍为官方最新（可配置待换）。
 
 ## WebSocket 桥接
 

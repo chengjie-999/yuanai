@@ -262,7 +262,7 @@ def voice_tts(req: VoiceTtsRequest, request: Request):
     已 proxy_buffering off，帧可实时透传；前端首字节嗅探兼容新旧两端。
     """
     from config.settings import (VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE,
-                                 AGENT_VOICE_MAP, VOICE_ENABLED, VOICE_TTS_MAX_CHARS,
+                                 VOICE_TTS_MODEL, AGENT_VOICE_MAP, VOICE_ENABLED, VOICE_TTS_MAX_CHARS,
                                  VOICE_TTS_CHUNK_BYTES, VOICE_TTS_SPEECH_RATE_BUBBLE)
     from fastapi.responses import StreamingResponse
     from api.v1.voice.tts_proto import (pack_frame, pack_error, pack_end, KIND_AUDIO,
@@ -293,8 +293,9 @@ def voice_tts(req: VoiceTtsRequest, request: Request):
     headers = {
         "X-Api-App-Key": VOICE_TTS_APP_ID,
         "X-Api-Access-Key": VOICE_TTS_ACCESS_TOKEN,
-        # 语音合成大模型 2.0（音色须为 2.0 系列，如 zh_female_xiaohe_uranus_bigtts）
-        "X-Api-Resource-Id": "seed-tts-2.0",
+        # 语音合成大模型（VOICE_TTS_MODEL 可配：env/后台语音配置；默认 seed-tts-2.0，
+        # 音色须匹配其版本系列，如 2.0 的 zh_female_xiaohe_uranus_bigtts）
+        "X-Api-Resource-Id": VOICE_TTS_MODEL,
         "X-Api-Request-Id": uuid.uuid4().hex,
         "X-Api-Connect-Id": uuid.uuid4().hex,
         "Content-Type": "application/json",

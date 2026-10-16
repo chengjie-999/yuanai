@@ -1,7 +1,15 @@
 import os
+import sys
 from dotenv import load_dotenv
 
-load_dotenv()
+# 安装包化（2026-10-16）：exe 模式 .env 从数据根读取
+# （%LOCALAPPDATA%\XiaoYuanAI\.env，与 data 同处统一管理，不散落 exe 旁）；
+# 源码/云端模式维持 cwd/.env（服务器工作目录）不变
+if getattr(sys, "frozen", False):
+    from utils.data_path import frozen_data_root
+    load_dotenv(os.path.join(frozen_data_root(), ".env"))
+else:
+    load_dotenv()
 
 # ===================== 模型配置 =====================
 

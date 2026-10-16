@@ -64,6 +64,22 @@ def _migrate_old_data(install_dir: str) -> bool:
         return False
 
 
+def _migrate_old_env(install_dir: str) -> bool:
+    """旧 .env 迁移：exe 旁 .env（API Key 等）存在且数据根 .env 不存在 → 复制。
+    （安装后配置统一读数据根 .env，重装 exe 不丢配置）"""
+    src = os.path.join(_exe_dir(), ".env")
+    if not os.path.isfile(src):
+        return False
+    dst = os.path.join(install_dir, ".env")
+    if os.path.isfile(dst):
+        return False
+    try:
+        shutil.copy2(src, dst)
+        return True
+    except Exception:
+        return False
+
+
 def run_install_bootstrap() -> None:
     """安装引导主流程：弹窗 → 安装 → 启动新副本。用户取消 → sys.exit(0)"""
     import tkinter as tk
@@ -102,6 +118,7 @@ def run_install_bootstrap() -> None:
 
     shortcut_ok = _create_shortcut(target_exe, bin_dir)
     migrated = _migrate_old_data(install_dir)
+    migrated_env = _migrate_old_env(install_dir)
 
     msg = "安装完成！\n\n已安装到：%s" % bin_dir
     if shortcut_ok:
@@ -110,6 +127,8 @@ def run_install_bootstrap() -> None:
         msg += "\n（桌面快捷方式创建失败，可手动创建）"
     if migrated:
         msg += "\n旧数据已自动迁移"
+    if migrated_env:
+        msg += "\n配置文件 .env 已迁移（API Key 等）"
     msg += "\n\n请从桌面快捷方式启动（本窗口将自动打开新程序）"
     messagebox.showinfo("安装完成", msg)
 

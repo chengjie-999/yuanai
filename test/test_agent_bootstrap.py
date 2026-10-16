@@ -54,6 +54,28 @@ def test_is_frozen_in_install_dir(monkeypatch, tmp_path):
     assert data_path.is_frozen_in_install_dir() is True
 
 
+def test_migrate_old_env(tmp_path, monkeypatch):
+    """exe 旁 .env 存在且数据根无 .env → 复制；已有则不覆盖"""
+    from agent import bootstrap
+    exe_dir = os.path.join(str(tmp_path), "old_place")
+    install_dir = os.path.join(str(tmp_path), "new_place")
+    os.makedirs(exe_dir, exist_ok=True)
+    os.makedirs(install_dir, exist_ok=True)
+    with open(os.path.join(exe_dir, ".env"), "w", encoding="utf-8") as f:
+        f.write("DEEPSEEK_API_KEY=old-key")
+
+    monkeypatch.setattr(bootstrap, "_exe_dir", lambda: exe_dir)
+    assert bootstrap._migrate_old_env(install_dir) is True
+    assert os.path.isfile(os.path.join(install_dir, ".env"))
+
+    # 已有 .env → 不覆盖
+    with open(os.path.join(install_dir, ".env"), "w", encoding="utf-8") as f:
+        f.write("DEEPSEEK_API_KEY=new-key")
+    assert bootstrap._migrate_old_env(install_dir) is False
+    with open(os.path.join(install_dir, ".env"), encoding="utf-8") as f:
+        assert "new-key" in f.read()
+
+
 def test_migrate_old_data(tmp_path, monkeypatch):
     """exe 旁 data/ 存在且新根无 data → 整体迁移；已有则不覆盖"""
     from agent import bootstrap

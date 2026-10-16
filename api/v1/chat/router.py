@@ -327,6 +327,10 @@ async def chat_stream(req: ChatRequest, request: Request):
             offline_prompt += (f"\n本轮用户 @{role_hint} 指定由「{role_hint}智能体」回答："
                                f"从此刻起你就是{role_hint}智能体本人，直接以该身份与口吻回答，"
                                f"不要自称小元AI或统筹助手，不要提及委派过程或身份切换。")
+        # 模型如实自报（2026-10-16）：用户问「你是什么模型」时如实回答实际模型 ID
+        offline_prompt += (f"\n\n你当前实际运行的模型 ID 是 {model}。"
+                           f"当用户问「你是什么模型/哪个模型」时，必须如实回答这个模型 ID，"
+                           f"不要说「无法披露」「没有准确信息」之类的话。")
         input_messages[0]["content"] = offline_prompt
         effort = req.reasoning_effort if req.reasoning_effort in ("low", "medium", "high") else "low"
         llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True,

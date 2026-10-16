@@ -350,12 +350,58 @@ async def add_model(req: ModelUpsert, request: Request):
 @router.delete("/models")
 async def delete_model(req: ModelDelete, request: Request):
     require_admin(request)
+    # 模型淘汰可更换（2026-10-16）：被 Agent 分配引用的模型先切换再删，防分配悬空
+    from config.settings import AGENT_MODEL_MAP
+    used_by = [k for k, v in AGENT_MODEL_MAP.items() if v == req.model_id]
+    if used_by:
+        raise HTTPException(status_code=400, detail=(
+            f"模型 {req.model_id} 正被使用（{'、'.join(used_by)}），"
+            f"请先在「Agent 模型分配」切换到其他模型再删除"))
     data = _read_models_file()
     if req.model_id in data:
         del data[req.model_id]
         _write_models_file(data)
     from config.settings import _load_models, MODELS
     MODELS.clear(); MODELS.update(_load_models())
+    return {"ok": True}
+
+
+# ===================== Agent 模型分配（模型淘汰可更换） =====================
+
+# 分配键白名单（settings._DEFAULT_AGENT_MODEL_MAP 的全部键）
+_AGENT_MODEL_KEYS = ("orchestrator", "collection", "analysis", "automation",
+                     "audit", "memory_fold", "planet_article")
+
+
+class AgentModelsUpdate(BaseModel):
+    agent_models: dict
+
+
+@router.get("/agent-models")
+async def get_agent_models(request: Request):
+    """Agent 模型分配表（当前生效值，含默认）"""
+    require_admin(request)
+    from config.settings import AGENT_MODEL_MAP
+    return {"agent_models": dict(AGENT_MODEL_MAP)}
+
+
+@router.put("/agent-models")
+async def update_agent_models(req: AgentModelsUpdate, request: Request):
+    """更新 Agent 模型分配：写 models.json _agent_models + 热更新（无需重启）"""
+    require_admin(request)
+    from config.settings import MODELS, reload_agent_models
+    incoming = req.agent_models or {}
+    for k, v in incoming.items():
+        if k not in _AGENT_MODEL_KEYS:
+            raise HTTPException(status_code=400, detail=f"未知分配项: {k}")
+        if not isinstance(v, str) or not v or v not in MODELS:
+            raise HTTPException(status_code=400, detail=f"模型不存在或未配置: {v}")
+    data = _read_models_file()
+    merged = dict(data.get("_agent_models") or {})
+    merged.update(incoming)
+    data["_agent_models"] = merged
+    _write_models_file(data)
+    reload_agent_models()
     return {"ok": True}
 
 

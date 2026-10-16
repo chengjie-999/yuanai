@@ -2,6 +2,17 @@ import { useState, useEffect } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, CardHeader, btnPrimary, inputStyle, headers, safeJson, API_BASE } from './shared'
 import { XIcon } from '../icons'
 
+// 分配键 → 中文名（后端 _AGENT_MODEL_KEYS 白名单一一对应）
+const AGENT_MODEL_LABELS: Record<string, string> = {
+  orchestrator: '统筹 Agent（意图识别/任务路由）',
+  collection: '数据采集',
+  analysis: '数据分析',
+  automation: '自动化 Agent（浏览器/审核）',
+  audit: '题目审核',
+  memory_fold: '记忆折叠（后台异步）',
+  planet_article: '星球导图文章化',
+}
+
 export default function ModelsTab() {
   const [models, setModels] = useState<Record<string, any>>({})
   const [loading, setLoading] = useState(true)
@@ -9,6 +20,9 @@ export default function ModelsTab() {
   const [showModal, setShowModal] = useState(false)
   const [newId, setNewId] = useState(''); const [newLabel, setNewLabel] = useState('')
   const [newProvider, setNewProvider] = useState('Custom'); const [newKey, setNewKey] = useState('')
+  const [agentModels, setAgentModels] = useState<Record<string, string>>({})
+  const [savingAssign, setSavingAssign] = useState(false)
+  const [assignMsg, setAssignMsg] = useState('')
 
   const loadModels = () => {
     setError('')
@@ -18,7 +32,21 @@ export default function ModelsTab() {
       .catch(() => setError('加载模型配置失败'))
       .finally(() => setLoading(false))
   }
-  useEffect(() => { loadModels() }, [])
+  const loadAgentModels = () => {
+    fetch(`${API_BASE}/admin/agent-models`, { headers: headers() })
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then((data) => { if (data?.agent_models && typeof data.agent_models === 'object') setAgentModels(data.agent_models) })
+      .catch(() => {})
+  }
+  useEffect(() => { loadModels(); loadAgentModels() }, [])
+
+  const handleSaveAssign = async () => {
+    setSavingAssign(true); setAssignMsg('')
+    const res = await fetch(`${API_BASE}/admin/agent-models`, { method: 'PUT', headers: headers(), body: JSON.stringify({ agent_models: agentModels }) })
+    const d = await safeJson(res)
+    if (!res.ok) { setAssignMsg(d?.detail || '保存失败') } else { setAssignMsg('已保存，立即生效'); loadAgentModels() }
+    setSavingAssign(false)
+  }
 
   const handleAdd = async () => {
     if (!newId.trim() || !newLabel.trim()) return
@@ -65,6 +93,41 @@ export default function ModelsTab() {
               </tbody>
             </table>
           )}
+        </Card>
+      )}
+      {!loading && (
+        <Card>
+          <CardHeader title="Agent 模型分配" />
+          <div style={{ padding: '0 14px 4px', fontSize: 12, color: 'var(--text-muted)' }}>模型淘汰后：先添加新模型，再在此切换分配，最后删除旧模型（立即生效，无需重启）</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
+              {['任务', '使用模型', ''].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)' }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {Object.entries(AGENT_MODEL_LABELS).map(([key, label]) => (
+                <tr key={key} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                  <td style={{ padding: '10px 14px', fontSize: 13, color: 'var(--text-primary)' }}>{label}</td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <select value={agentModels[key] || ''} onChange={(e) => setAgentModels((p) => ({ ...p, [key]: e.target.value }))}
+                      style={{ ...inputStyle, minWidth: 280, padding: '6px 10px' }}>
+                      {agentModels[key] && !models[agentModels[key]] && (
+                        <option value={agentModels[key]}>{agentModels[key]}</option>
+                      )}
+                      {Object.entries(models).map(([id, info]) => {
+                        if (!info || typeof info !== 'object' || !(info as any).label) return null
+                        return <option key={id} value={id}>{(info as any).label}（{id}）</option>
+                      })}
+                    </select>
+                  </td>
+                  <td style={{ padding: '10px 14px' }} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
+            <button onClick={handleSaveAssign} disabled={savingAssign} style={{ ...btnPrimary, opacity: savingAssign ? 0.6 : 1 }}>保存分配</button>
+            {assignMsg && <span style={{ fontSize: 12, color: assignMsg.includes('已保存') ? 'var(--accent)' : 'var(--danger, #d93025)' }}>{assignMsg}</span>}
+          </div>
         </Card>
       )}
       {showModal && (

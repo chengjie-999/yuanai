@@ -188,9 +188,11 @@ data/                   数据目录
 | 数据维度 | 知识库 | `/admin/knowledge` | 知识库文档管理 |
 | 数据维度 | 网站管理 | `/admin/websites` | 添加/删除采集网站 |
 | 数据维度 | 文件管理 | `/admin/files` | 服务器文件浏览 |
-| 系统维度 | 模型配置 | `/admin/models` | 已配置模型列表 |
+| 系统维度 | 模型配置 | `/admin/models` | 已配置模型列表 + **Agent 模型分配**（模型淘汰可更换：加新模型 → 切分配 → 删旧模型，全程页面操作热更新） |
 | 系统维度 | 代码监控 | `/admin/monitor` | Git 轮询 + 代码变更趋势图 + 文件类型分布 + 实时活动日志 |
 | 系统维度 | 设置 | `/admin/settings` | 系统设置 |
+
+**模型淘汰可更换（2026-10-16）**：后台「模型配置」页分两张卡——① 模型清单（添加新模型+API Key 加密存储 / 删除；`get_llm` 前缀匹配 deepseek-*/doubao-* 自动走对应通道，新代模型加进列表即生效）② **Agent 模型分配**（7 键：5 执行体 + memory_fold/planet_article 辅助任务，下拉切换存 models.json `_agent_models`，`PUT /admin/agent-models` 热更新 `settings.reload_agent_models()` 无需重启）。删除保护：被分配引用的模型 400 拒绝删除。选择链：**env（MEMORY_MODEL/PLANET_ARTICLE_MODEL）优先 → 分配表 → 代码默认**；用户侧设置页分配接口（/auth/agent-models）只暴露 5 个执行体（`AGENT_ROLE_KEYS`）。测试 test/test_agent_models_api.py 5 项。
 
 ## WebSocket 桥接
 

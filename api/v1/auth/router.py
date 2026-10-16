@@ -269,20 +269,20 @@ def _read_agent_models() -> dict:
 
 @router.get("/agent-models")
 def get_agent_models(request: Request):
-    """获取 Agent 角色 → 模型分配"""
-    from config.settings import AGENT_MODEL_MAP
-    # 优先读取 models.json 中的自定义分配
+    """获取 Agent 角色 → 模型分配（仅 5 个执行体；memory_fold/planet_article
+    辅助任务键在 admin 端点管理，不暴露给用户侧）"""
+    from config.settings import AGENT_MODEL_MAP, AGENT_ROLE_KEYS
     custom = _read_agent_models()
-    merged = dict(AGENT_MODEL_MAP)
-    merged.update(custom)
+    merged = {k: AGENT_MODEL_MAP.get(k, "") for k in AGENT_ROLE_KEYS}
+    merged.update({k: v for k, v in custom.items() if k in AGENT_ROLE_KEYS})
     return {"agent_models": merged}
 
 
 @router.put("/agent-models")
 def update_agent_models(req: AgentModelUpdate, request: Request):
     """更新 Agent 角色 → 模型分配"""
-    from config.settings import AGENT_MODEL_MAP
-    valid_roles = list(AGENT_MODEL_MAP.keys())
+    from config.settings import AGENT_ROLE_KEYS
+    valid_roles = list(AGENT_ROLE_KEYS)
     if req.role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"无效角色: {req.role}，可选: {valid_roles}")
     data = _read_models_file()

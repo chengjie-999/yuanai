@@ -60,12 +60,9 @@ try:
 except Exception:
     pass
 
-# 知识星球「导图 → 文章化笔记」转换模型（注意：必须显式传模型名，call_llm 默认名会炸）
-# 默认豆包（火山引擎国内节点，本地直连快且稳）；DeepSeek 海外 API 本地直连实测
-# 一半请求卡超时（120s×2 后走大纲兜底），故不设为默认，可 .env 覆盖
-PLANET_ARTICLE_MODEL = os.getenv("PLANET_ARTICLE_MODEL", "doubao-seed-2-0-lite-260215")
-
-# Agent 模型分配 — 统一入口，消除代码中 15+ 处硬编码
+# Agent 模型分配 — 统一入口，消除代码中 15+ 处硬编码。
+# 模型淘汰可更换（2026-10-16）：后台「模型配置」页可编辑分配（存 models.json
+# _agent_models，PUT /admin/agent-models 热更新 reload_agent_models）
 _DEFAULT_AGENT_MODEL_MAP = {
     # 通用快模型 — 意图识别 / 任务路由 / 简单爬取
     "orchestrator": "deepseek-v4-flash",
@@ -75,6 +72,9 @@ _DEFAULT_AGENT_MODEL_MAP = {
     # 多模态 — 浏览器截图 / 视觉审核 / 图片理解
     "automation": "doubao-seed-2-0-pro-260215",
     "audit": "doubao-seed-2-0-pro-260215",
+    # 辅助任务 — 记忆折叠 / 星球文章化（后台可换，env 仍优先）
+    "memory_fold": "doubao-seed-2-0-lite-260215",
+    "planet_article": "doubao-seed-2-0-lite-260215",
 }
 
 
@@ -97,11 +97,38 @@ def _load_agent_models() -> dict:
 
 AGENT_MODEL_MAP = _load_agent_models()
 
+# Agent 角色（用户可感知的执行体）；memory_fold/planet_article 是辅助任务，
+# 在分配表里可换但不作为「角色」对外（auth 端点 valid_roles 用本表）
+AGENT_ROLE_KEYS = ("orchestrator", "collection", "analysis", "automation", "audit")
+
+
+def _model_with_override(env_key: str, map_key: str, default: str) -> str:
+    """模型选择链：env 优先 → models.json 分配覆盖 → 代码默认"""
+    return os.getenv(env_key) or AGENT_MODEL_MAP.get(map_key) or default
+
+
+# 知识星球「导图 → 文章化笔记」转换模型（注意：必须显式传模型名，call_llm 默认名会炸）
+# 默认豆包（火山引擎国内节点，本地直连快且稳）；DeepSeek 海外 API 本地直连实测
+# 一半请求卡超时（120s×2 后走大纲兜底），故不设为默认。后台可换（分配键 planet_article）。
+PLANET_ARTICLE_MODEL = _model_with_override(
+    "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-0-lite-260215")
+
+
+def reload_agent_models() -> None:
+    """后台模型分配改动后热更新：AGENT_MODEL_MAP 原地替换（所有引用方生效），
+    派生字符串重算（使用处均为函数内惰性 import，取模块属性即时生效）"""
+    global MEMORY_MODEL, PLANET_ARTICLE_MODEL
+    AGENT_MODEL_MAP.clear()
+    AGENT_MODEL_MAP.update(_load_agent_models())
+    MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-0-lite-260215")
+    PLANET_ARTICLE_MODEL = _model_with_override(
+        "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-0-lite-260215")
+
 # ===================== 记忆机制（短期工作记忆 / 长期条目化记忆） =====================
 # 决策：最近 N 条原样保留；超出部分豆包 lite 后台异步折叠成条目化事实存 users.memory；
 # 设置页「我的记忆」透明可编辑；点踩内容不进记忆。全部可 .env 覆盖。
 MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "true").lower() == "true"     # 压缩总开关
-MEMORY_MODEL = os.getenv("MEMORY_MODEL", "doubao-seed-2-0-lite-260215")    # 折叠用模型（豆包 lite）
+MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-0-lite-260215")  # 折叠用模型
 MEMORY_WORKING_WINDOW = int(os.getenv("MEMORY_WORKING_WINDOW", "20"))      # 工作记忆条数（最近 N 条永不折叠）
 MEMORY_TRIGGER_CHARS = int(os.getenv("MEMORY_TRIGGER_CHARS", "8000"))      # 触发阈值：会话总字数
 MEMORY_FOLD_MIN_MESSAGES = int(os.getenv("MEMORY_FOLD_MIN_MESSAGES", "5")) # 单次折叠最小条数（烧钱护栏，设 1 = 字面口径）

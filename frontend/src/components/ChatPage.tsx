@@ -76,6 +76,19 @@ export default function ChatPage({ user }: { user?: any }) {
   const [targetAgent, setTargetAgent] = useState('')
   const targetAgentRef = useRef('')
   targetAgentRef.current = targetAgent
+  // 长任务小窗：sessionId → 固定定向智能体（该会话内消息持久定向，不占主对话）
+  const [dmTargets, setDmTargets] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('dmTargets') || '{}') } catch { return {} }
+  })
+  const dmTargetsRef = useRef(dmTargets)
+  dmTargetsRef.current = dmTargets
+  const saveDmTarget = (sid: string, target: string) => {
+    setDmTargets((prev) => {
+      const next = target ? { ...prev, [sid]: target } : { ...prev }
+      localStorage.setItem('dmTargets', JSON.stringify(next))
+      return next
+    })
+  }
   // 推理强度开关（快答/深思）：localStorage 持久化，仅对 DeepSeek 系列生效
   const [effort, setEffortState] = useState<'low' | 'medium' | 'high'>(getStoredEffort())
   const setEffort = (v: 'low' | 'medium' | 'high') => { setEffortState(v); setStoredEffort(v) }
@@ -234,8 +247,24 @@ export default function ChatPage({ user }: { user?: any }) {
     refreshSessions()
   }
 
+  // 长任务小窗：新建独立会话并固定定向该智能体（后续消息持久定向，
+  // 不进主对话 60 条截断——claude 走 claude-stream 天然不截断，automation 后端放宽）
+  const openDirectChat = async (target: string) => {
+    const cfg = AGENT_CONFIG[target]
+    if (!cfg) return
+    const sid = await createSession(`${cfg.label} 私聊`)
+    saveDmTarget(sid, target)
+    setTargetAgent(target)
+    setCurrentSid(sid)
+    setMessages([{ role: 'assistant', content: `已开「${cfg.label}」小窗：本会话内的消息都将直接交给${cfg.label}处理，长任务对话不占用主对话历史。`, sender: target as any, toolCalls: [] }])
+    refreshSessions()
+  }
+
   const handleSelectSession = async (sid: string) => {
     setCurrentSid(sid)
+    // 小窗会话：恢复持久定向；普通会话：不动（@ 定向单次生效机制不变）
+    const dm = dmTargetsRef.current[sid]
+    if (dm) setTargetAgent(dm)
     const history = await loadMessages(sid)
     const feedbackData = await loadFeedback(sid)
     setFeedbackState(feedbackData)
@@ -380,9 +409,10 @@ export default function ChatPage({ user }: { user?: any }) {
     // 普通消息自动撤销未决审批（桥接侧会 deny pending 后正常处理）
     setPendingApproval(null)
     // @指定智能体：发送时捕获并复位（单次生效，下一条恢复统筹自行路由）；
-    // @Claude Code = 原 ⌘ 桥接模式（走 claude-stream 端点 + 会话续接语义）
-    const target = targetAgentRef.current
-    if (target) setTargetAgent('')
+    // 小窗会话（dmTargets）持久定向不复位；@Claude Code = 原 ⌘ 桥接模式
+    const dmTarget = dmTargetsRef.current[sid] || ''
+    const target = targetAgentRef.current || dmTarget
+    if (target && !dmTarget) setTargetAgent('')
     const isClaude = target === 'claude' || chatMode === 'claude'
     // 信封协议：最后一条 user 消息打 recipient（定向 @target）；说话人身份
     // 走信封字段，【xx】前缀渲染由后端 views.py 视图滤波负责
@@ -636,6 +666,7 @@ export default function ChatPage({ user }: { user?: any }) {
             onRegenerate={handleRegenerate}
             onStartVoiceCall={startVoiceCallWithPermission}
             targetAgent={targetAgent} setTargetAgent={setTargetAgent}
+            onOpenDirectChat={openDirectChat}
             onSuggest={handleSend}
             sendTick={sendTick}
             isMobile={isMobile}

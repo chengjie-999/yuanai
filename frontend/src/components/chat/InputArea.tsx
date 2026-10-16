@@ -17,7 +17,7 @@ const TARGET_AGENTS = [
   { key: 'claude', desc: '本机代码、终端、Git 任务' },
 ]
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, targetAgent, setTargetAgent }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, targetAgent, setTargetAgent, onOpenDirectChat }: {
   input: string; setInput: (v: string | ((p: string) => string)) => void; loading: boolean; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
@@ -27,6 +27,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   localOnline: boolean; claudeOnline: boolean
   onStartVoiceCall: () => void
   targetAgent: string; setTargetAgent: (v: string) => void
+  onOpenDirectChat: (target: string) => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -150,6 +151,8 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                         const available = a.key === 'orchestrator'
                           ? true
                           : a.key === 'claude' ? claudeOnline : localOnline
+                        // 长任务小窗：claude/automation 可开独立会话（不占主对话 60 条截断）
+                        const canDirect = available && a.key !== 'orchestrator'
                         return (
                           <div key={a.key}
                             onClick={() => { if (!available) return; setTargetAgent(a.key); setPickerOpen(false) }}
@@ -166,6 +169,15 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                             <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {available ? a.desc : '离线'}
                             </span>
+                            {canDirect && (
+                              <span onClick={(e) => { e.stopPropagation(); setPickerOpen(false); onOpenDirectChat(a.key) }}
+                                className="yuan-tip" data-tip="开小窗：独立会话与该智能体长任务对话（不占主对话历史）"
+                                aria-label={`与 ${cfg.label} 开小窗`}
+                                style={{ fontSize: 11, color: 'var(--accent)', padding: '2px 8px', borderRadius: 999, border: '1px solid var(--accent)', cursor: 'pointer', flexShrink: 0 }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = '#fff' }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--accent)' }}
+                              >小窗</span>
+                            )}
                           </div>
                         )
                       })}

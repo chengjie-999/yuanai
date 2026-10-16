@@ -218,11 +218,25 @@ async def chat_stream(req: ChatRequest, request: Request):
         # 信封必须走并行数组——message.py 协议）
         envelopes = [{}]  # index 0 = system
         # 上下文护栏：历史只保留最近 60 条——更早的对话已由记忆机制折叠进
-        # 长期记忆（system prompt 已注入），避免主对话无限增长打爆上下文
-        raw_history = req.history[-60:] if len(req.history) > 60 else req.history
-        truncated = len(req.history) > 60
+        # 长期记忆（system prompt 已注入），避免主对话无限增长打爆上下文。
+        # 小窗会话（持久定向子智能体，如 @自动化）放宽到 200 条：长任务对话
+        # 不被主对话口径切断（@Claude 走 claude-stream 天然不截断）
+        hist_limit = 200 if target else 60
+        raw_history = req.history[-hist_limit:] if len(req.history) > hist_limit else req.history
+        truncated = len(req.history) > hist_limit
         if truncated:
-            history.append(HumanMessage(content="（更早的对话已整理进长期记忆，见上方用户信息）"))
+            # P4 归档提示：被整理的历史按说话人计数（群聊里各智能体的段落去向可见）
+            from collections import Counter
+            dropped = req.history[:-hist_limit]
+            cnt = Counter(str(m.get("sender") or m.get("role")) for m in dropped)
+            parts = []
+            for s, n in cnt.most_common(3):
+                label = {"claude": "Claude Code", "automation": "自动化",
+                         "orchestrator": "小元AI", "user": "你"}.get(s, s)
+                parts.append(f"{label} {n} 条")
+            note = (f"（更早的对话已整理进长期记忆"
+                    f"{'；被整理：' + '、'.join(parts) if parts else ''}，见上方用户信息）")
+            history.append(HumanMessage(content=note))
             envelopes.append({})
         turn = 0
         for m in _fix_history_for_api(raw_history):

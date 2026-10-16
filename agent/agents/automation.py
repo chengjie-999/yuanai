@@ -43,22 +43,41 @@ class AutomationAgent(AgentBase):
         return self._tools
 
     def run(self, prompt: str, progress_cb=None) -> str:
-        # progress_cb 接受但不透传（react 循环无脚本级进度）；delegate/stream_target
-        # 统一传 progress_cb，缺形参曾必炸 TypeError
-        # 意图分类 → 按组加载工具子集（减少 LLM token 消耗）
-        groups = classify_automation_intent(prompt)
-        filtered_tools = load_automation_tools_for_intent(groups)
-        logger.info("自动化 Agent 加载 %d 个工具 (组: %s)", len(filtered_tools), groups)
+        # P2 进度卡：react 循环无脚本级进度，用 10s 时间心跳（与 registry 同款
+        # 语义：存量零改动也有进度反馈）；浏览器长任务在聊天里显示「执行中」
+        import threading
 
-        llm = get_llm(self.model_name, temperature=0.3, verbose=False)
-        agent = create_react_agent(llm, filtered_tools)
-        messages = [
-            SystemMessage(content=self._system_prompt),
-            HumanMessage(content=prompt),
-        ]
+        heartbeat_done = threading.Event()
+
+        def _heartbeat():
+            elapsed = 0
+            while not heartbeat_done.wait(10):
+                elapsed += 10
+                if progress_cb:
+                    try:
+                        progress_cb(0, 0, f"自动化执行中（已运行 {elapsed} 秒）...")
+                    except Exception:
+                        pass
+
+        hb = threading.Thread(target=_heartbeat, daemon=True)
+        hb.start()
         try:
-            result = agent.invoke({"messages": messages})
-            return result["messages"][-1].content
-        except Exception as e:
-            logger.error("自动化 Agent 异常: %s", e)
-            return f"自动化操作失败: {e}"
+            # 意图分类 → 按组加载工具子集（减少 LLM token 消耗）
+            groups = classify_automation_intent(prompt)
+            filtered_tools = load_automation_tools_for_intent(groups)
+            logger.info("自动化 Agent 加载 %d 个工具 (组: %s)", len(filtered_tools), groups)
+
+            llm = get_llm(self.model_name, temperature=0.3, verbose=False)
+            agent = create_react_agent(llm, filtered_tools)
+            messages = [
+                SystemMessage(content=self._system_prompt),
+                HumanMessage(content=prompt),
+            ]
+            try:
+                result = agent.invoke({"messages": messages})
+                return result["messages"][-1].content
+            except Exception as e:
+                logger.error("自动化 Agent 异常: %s", e)
+                return f"自动化操作失败: {e}"
+        finally:
+            heartbeat_done.set()

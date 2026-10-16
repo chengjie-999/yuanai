@@ -38,6 +38,7 @@ from yuanai_core.core.schemas import (
     ChatRequest, AgentEvent,
     token as ev_token, reasoning as ev_reasoning, tool_start as ev_tool_start,
     tool_end as ev_tool_end, done as ev_done, error_event, progress, sender_event,
+    approval_event,
 )
 from utils.data_path import root_path
 from agent.bridge_policy import build_allowed_tools, guard_ready
@@ -168,13 +169,14 @@ class ClaudeBridgeHandler:
     """把 chat_request 交给 headless Claude Code 并流式映射为 WS 事件"""
 
     def __init__(self, ws_send=None, server_url: str = "", agent_id: str = "",
-                 agent_token: str = ""):
+                 agent_token: str = "", sdk_mode: bool = False):
         self._ws_send = ws_send  # callable(event) fire-and-forget（心跳等旁路事件）
         self._server_url = server_url  # 记忆上传用（【记住】标记 → 云端 REST）
         self._sessions = SessionStore(SESSIONS_FILE)
         self._sessions.load()
         self._locks = {}  # cloud session_id -> asyncio.Lock（防并发 query）
-        self._pending_approvals = {}  # decision_id -> asyncio.Future（SDK 审批流启用后使用）
+        self._pending_approvals = {}  # decision_id -> asyncio.Future（SDK 审批流）
+        self._sdk_mode = sdk_mode  # --sdk：anthropic SDK 直连（可选；默认 CLI 模式）
         # 全局并发上限：Claude Code 子进程重量级（内存 + 网关配额），默认 2
         max_conc = int(os.getenv("CLAUDE_BRIDGE_MAX_CONCURRENCY", "2"))
         self._sem = asyncio.Semaphore(max_conc)
@@ -182,7 +184,7 @@ class ClaudeBridgeHandler:
     async def stream(self, req: ChatRequest) -> "asyncio.AsyncGenerator[AgentEvent, None]":
         rid = req.request_id
 
-        # 审批决议（SDK 模式启用后走这里；当前恒空）
+        # 审批决议：只对 SDK 模式有意义（CLI 模式无审批流）
         if req.decision:
             decision_id = req.decision.get("decision_id", "")
             fut = self._pending_approvals.pop(decision_id, None)
@@ -206,8 +208,103 @@ class ClaudeBridgeHandler:
             return
         async with self._sem:
             async with lock:
-                async for ev in self._run_query(req, rid, prompt):
-                    yield ev
+                if self._sdk_mode:
+                    async for ev in self._run_sdk_query(req, rid):
+                        yield ev
+                else:
+                    async for ev in self._run_query(req, rid, prompt):
+                        yield ev
+
+    async def _wait_decision_future(self, decision_id: str, tool_name: str, command: str, rid: str):
+        """主事件循环内：注册审批 Future → 发 approval 事件 → 等云端 decision 回传。
+        超时返回 None（调用方 fail-closed 默认 deny）"""
+        from agent.claude_loop import APPROVAL_TIMEOUT
+        fut = asyncio.get_running_loop().create_future()
+        self._pending_approvals[decision_id] = fut
+        if self._ws_send:
+            self._ws_send(approval_event(decision_id, tool_name, command,
+                                         cwd=str(PROJECT_ROOT), request_id=rid))
+        try:
+            return await asyncio.wait_for(fut, timeout=APPROVAL_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.warning("审批超时（%ss），默认 deny: %s %s", APPROVAL_TIMEOUT,
+                           tool_name, command[:80])
+            return None
+        finally:
+            self._pending_approvals.pop(decision_id, None)
+
+    async def _run_sdk_query(self, req: ChatRequest, rid: str):
+        """SDK 直连模式：anthropic loop（P0 审批流自建）。凭证缺失/调用失败
+        时降级回 CLI 子进程路径，保证桥接可用性。"""
+        from agent.claude_loop import run_sdk_loop, load_credentials
+
+        api_key = load_credentials()
+        if not api_key:
+            logger.warning("SDK 模式无可用凭证（env ANTHROPIC_API_KEY/AUTH_TOKEN 或 "
+                           "~/.claude/.credentials.json），降级 CLI 模式")
+            async for ev in self._run_query(req, rid, _extract_prompt(req)):
+                yield ev
+            return
+
+        yield sender_event("claude", rid)
+
+        # 审批回调（在 SDK loop 的工作线程执行）：经 run_coroutine_threadsafe
+        # 把裁决请求投递到主事件循环（decision 由 stream() 在主循环 set_result）
+        main_loop = asyncio.get_running_loop()
+
+        def _on_approval(decision_id: str, tool_name: str, command: str):
+            fut = asyncio.run_coroutine_threadsafe(
+                self._wait_decision_future(decision_id, tool_name, command, rid),
+                main_loop)
+            return fut.result()  # "approve"/"deny"/None
+
+        # 构建 SDK 消息历史（req.messages 已含云端全量历史；跳过 system 项）
+        messages = []
+        for m in req.messages:
+            if not isinstance(m, dict) or m.get("role") not in ("user", "assistant"):
+                continue
+            content = m.get("content", "")
+            if isinstance(content, list):
+                parts = [c.get("text", "") for c in content
+                         if isinstance(c, dict) and c.get("type") == "text"]
+                content = "\n".join(parts)
+            if isinstance(content, str) and content.strip():
+                messages.append({"role": m["role"], "content": content})
+
+        is_error = False
+        final_result = ""
+        async for ev in run_sdk_loop(
+                messages, api_key=api_key, system=_BRIDGE_SYSTEM_PROMPT,
+                on_approval=_on_approval):
+            kind = ev.get("type", "")
+            if kind == "token":
+                yield ev_token(ev["data"], rid)
+            elif kind == "reasoning":
+                yield ev_reasoning(ev["data"], rid)
+            elif kind == "tool_start":
+                yield ev_tool_start(ev["data"]["name"], rid, sender="claude")
+            elif kind == "tool_end":
+                yield ev_tool_end(ev["data"]["name"], ev["data"]["output"], rid, sender="claude")
+            elif kind == "approval":
+                pass  # 审批事件已由 _on_approval 经 WS 直发（避免双重发送）
+            elif kind == "done":
+                final_result = ev["data"].get("display_content", "")
+            elif kind == "error":
+                is_error = True
+                final_result = ev["data"]
+
+        # SDK 直连失败且无产出 → 降级 CLI 路径兜底
+        if is_error and not final_result:
+            logger.warning("SDK loop 无产出，降级 CLI 模式")
+            async for ev in self._run_query(req, rid, _extract_prompt(req)):
+                yield ev
+            return
+
+        if is_error:
+            yield error_event(f"Claude Code 执行失败: {final_result[:500]}", rid)
+        else:
+            self._flush_memory_markers(req, final_result)
+            yield ev_done(final_result, "", rid)
 
     async def _run_query(self, req: ChatRequest, rid: str, prompt: str):
         claude_path = shutil.which(CLAUDE_CLI)
@@ -393,6 +490,9 @@ def parse_args():
     p.add_argument("--agent-name", default="Claude Code 桥接", help="Agent 显示名称")
     p.add_argument("--agent-token", default=None,
                    help="Agent 认证凭据（默认：命令行 > 身份文件 > CLAUDE_BRIDGE_TOKEN/AGENT_TOKEN 环境变量）")
+    p.add_argument("--sdk", action="store_true",
+                   help="anthropic SDK 直连模式（P0 审批流：git commit 等 review 级命令走云端审批；"
+                        "默认关闭走 CLI 模式；凭证缺失自动降级 CLI）")
     args = p.parse_args()
     # 机器模式：未显式指定时回退到安装注册保存的身份，再回退环境变量
     from agent.main import load_identity
@@ -434,12 +534,13 @@ async def main():
     )
     logging.getLogger("websockets").setLevel(logging.WARNING)
 
-    # 启动预检
-    if shutil.which(CLAUDE_CLI) is None:
+    # 启动预检：CLI 模式必须有 claude 可执行文件；SDK 模式可无（凭证在运行时降级）
+    if not args.sdk and shutil.which(CLAUDE_CLI) is None:
         logger.error("未找到 Claude Code CLI（claude），请先安装并登录；桥接进程退出")
         return
 
-    handler = ClaudeBridgeHandler(server_url=args.server_url, agent_id=args.agent_id, agent_token=args.agent_token)
+    handler = ClaudeBridgeHandler(server_url=args.server_url, agent_id=args.agent_id,
+                                  agent_token=args.agent_token, sdk_mode=args.sdk)
     client = AgentWSClient(
         server_url=args.server_url,
         agent_id=args.agent_id,

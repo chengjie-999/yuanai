@@ -8,7 +8,7 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onRegenerate, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest, sendTick, isMobile, onOpenPanel }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onRegenerate, onStartVoiceCall, targetAgent, setTargetAgent, onOpenDirectChat, onSuggest, sendTick, isMobile, onOpenPanel }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
@@ -30,6 +30,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   onStartVoiceCall: () => void
   targetAgent: string
   setTargetAgent: (v: string) => void
+  onOpenDirectChat: (target: string) => void
   onSuggest: (text: string) => void
   sendTick: number
   isMobile: boolean
@@ -173,7 +174,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         model={model} setModel={setModel}
         effort={effort} setEffort={setEffort}
         onStartVoiceCall={onStartVoiceCall}
-        targetAgent={targetAgent} setTargetAgent={setTargetAgent} />
+        targetAgent={targetAgent} setTargetAgent={setTargetAgent}
+        onOpenDirectChat={onOpenDirectChat} />
     </>
   )
 }

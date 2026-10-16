@@ -103,7 +103,7 @@ export default function SettingsPage() {
 
   const modelOptions = Object.entries(models).map(([id, v]) => ({
     value: id,
-    label: `${v.label} (${id.slice(0, 18)}...)`,
+    label: id,  // 真实模型 ID（显示名无意义）
     provider: v.provider,
   }))
 

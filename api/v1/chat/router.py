@@ -204,8 +204,9 @@ async def chat_stream(req: ChatRequest, request: Request):
                 raise HTTPException(status_code=429, detail=f"今日消息额度已用完（{DAILY_MESSAGE_QUOTA} 条/天），请明天再来")
 
         model = req.model
-        # DeepSeek V4 不支持图片 → 自动切到豆包多模态
-        if req.images and 'deepseek' in model:
+        # 图片识别（2026-10-16 收窄）：DeepSeek V4.1 Flash 原生支持图像输入，
+        # 豆包全系多模态——只有不支持图片的 deepseek-v4-pro 才切豆包（切换有延迟）
+        if req.images and model == "deepseek-v4-pro":
             from config.settings import VISION_MODEL
             model = VISION_MODEL
 
@@ -241,6 +242,10 @@ async def chat_stream(req: ChatRequest, request: Request):
                           "turn": turn + 1, "type": "chat"})
 
         system_prompt = req.system_prompt
+        # 模型如实自报（2026-10-16）：用户问「你是什么模型」时如实回答实际运行的模型 ID
+        system_prompt = (f"{system_prompt}\n\n你当前实际运行的模型 ID 是 {model}。"
+                         f"当用户问「你是什么模型/哪个模型」时，如实回答这个模型 ID，"
+                         f"不要模糊、不要编造其他名称。")
 
         # 获取当前用户 ID
         user_id = _get_user_id(request)

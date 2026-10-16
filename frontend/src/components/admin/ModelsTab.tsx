@@ -18,7 +18,7 @@ export default function ModelsTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [newId, setNewId] = useState(''); const [newLabel, setNewLabel] = useState('')
+  const [newId, setNewId] = useState('')
   const [newProvider, setNewProvider] = useState('Custom'); const [newKey, setNewKey] = useState('')
   const [agentModels, setAgentModels] = useState<Record<string, string>>({})
   const [savingAssign, setSavingAssign] = useState(false)
@@ -97,12 +97,13 @@ export default function ModelsTab() {
   useEffect(() => { loadVoiceConfig() }, [])
 
   const handleAdd = async () => {
-    if (!newId.trim() || !newLabel.trim()) return
+    if (!newId.trim()) return
     setError('')
-    const res = await fetch(`${API_BASE}/admin/models`, { method: 'POST', headers: headers(), body: JSON.stringify({ model_id: newId.trim(), label: newLabel.trim(), provider: newProvider.trim() || 'Custom' }) })
+    // label 用模型 ID 本身（显示名无意义）
+    const res = await fetch(`${API_BASE}/admin/models`, { method: 'POST', headers: headers(), body: JSON.stringify({ model_id: newId.trim(), label: newId.trim(), provider: newProvider.trim() || 'Custom' }) })
     if (!res.ok) { const d = await safeJson(res); setError(d?.detail || '添加失败'); return }
     if (newKey.trim()) { await fetch(`${API_BASE}/admin/apikeys`, { method: 'POST', headers: headers(), body: JSON.stringify({ provider: newProvider.trim() || 'Custom', key: newKey.trim() }) }) }
-    setShowModal(false); setNewId(''); setNewLabel(''); setNewProvider('Custom'); setNewKey('')
+    setShowModal(false); setNewId(''); setNewProvider('Custom'); setNewKey('')
     loadModels()
   }
   const handleDelete = async (id: string) => {
@@ -123,17 +124,14 @@ export default function ModelsTab() {
           {entries.length === 0 ? <Empty msg="暂无模型配置" /> : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
-                {['用途', '模型 ID', '供应商', ''].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)' }}>{h}</th>)}
+                {['模型 ID', '供应商', ''].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)' }}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {entries.map(([id, info]) => {
                   if (!info || typeof info !== 'object') return null
-                  const label = (info as any).label; if (!label) return null
-                  const desc = id.includes('deepseek') ? (label.includes('Pro') ? '强推理' : '快速轻量') : label.includes('Pro') ? '多模态/强推理' : '轻量任务'
                   return (
                     <tr key={id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                      <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{label}<span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>{desc}</span></td>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>{id}</td>
+                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: 'var(--text-primary)' }}>{id}</td>
                       <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: 12 }}>{info.provider as string}</td>
                       <td style={{ padding: '10px 14px' }}>{!info.builtin && <button onClick={() => handleDelete(id)} title="删除" aria-label={`删除模型 ${id}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><XIcon size={14} /></button>}</td>
                     </tr>)
@@ -162,8 +160,8 @@ export default function ModelsTab() {
                         <option value={agentModels[key]}>{agentModels[key]}</option>
                       )}
                       {Object.entries(models).map(([id, info]) => {
-                        if (!info || typeof info !== 'object' || !(info as any).label) return null
-                        return <option key={id} value={id}>{(info as any).label}（{id}）</option>
+                        if (!info || typeof info !== 'object') return null
+                        return <option key={id} value={id}>{id}</option>
                       })}
                     </select>
                   </td>
@@ -246,9 +244,8 @@ export default function ModelsTab() {
           <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 24, minWidth: 380, boxShadow: '0 8px 40px var(--shadow-md)' }}>
             <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>添加模型</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="模型 ID (如 gpt-4)" style={inputStyle} />
-              <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="显示名 (如 GPT-4)" style={inputStyle} />
-              <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)} placeholder="供应商 (如 OpenAI)" style={inputStyle} />
+              <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="模型 ID (如 doubao-seed-2-1-lite-260915)" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+              <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)} placeholder="供应商 (如 Doubao/DeepSeek)" style={inputStyle} />
               <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="API Key (可选)" style={inputStyle} />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>

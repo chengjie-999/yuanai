@@ -64,22 +64,23 @@ export function ModelSelector({ model, onChange }: { model: string; onChange: (v
   const provider = current.provider
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={toggle} aria-label={`选择模型: ${current.label}`} style={{
+      <button onClick={toggle} aria-label={`选择模型: ${current.value}`} className="yuan-tip" data-tip="切换模型" style={{
         padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)',
-        background: 'var(--bg-input)', cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)',
-        display: 'flex', alignItems: 'center', gap: 6,
+        background: 'var(--bg-input)', cursor: 'pointer', color: 'var(--text-primary)',
+        display: 'flex', alignItems: 'center', gap: 6, maxWidth: 260,
       }} onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--text-secondary)')}
         onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: provider === 'Doubao' ? '#10a37f' : '#6366f1' }} />
-        <span style={{ fontSize: 13 }}>{current.label}</span>
-        <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 2 }}>▼</span>
+        {/* 真实模型 ID（显示名无意义，直接展示注册表 ID） */}
+        <span style={{ fontSize: 12, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{current.value}</span>
+        <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 2, flexShrink: 0 }}>▼</span>
       </button>
       {open && (
         <div ref={menuRef} style={{
           position: 'absolute', [upward ? 'bottom' : 'top']: '100%',
           [upward ? 'marginBottom' : 'marginTop']: 4, left: 0,
           background: 'var(--bg-primary)', borderRadius: 10, border: '1px solid var(--border)',
-          boxShadow: '0 4px 24px var(--shadow-md)', padding: 6, zIndex: 100, minWidth: 210,
+          boxShadow: '0 4px 24px var(--shadow-md)', padding: 6, zIndex: 100, minWidth: 300,
         }}>
           {[...new Set(models.map(m => m.provider))].map((p) => (
             <div key={p}>
@@ -89,7 +90,7 @@ export function ModelSelector({ model, onChange }: { model: string; onChange: (v
                   style={{ padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: model === m.value ? 'var(--hover-bg)' : 'transparent', display: 'flex', alignItems: 'center', gap: 10 }}
                 >
                   <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: p === 'Doubao' ? '#10a37f' : '#6366f1' }} />
-                  <div style={{ flex: 1 }}><div style={{ fontSize: 14, color: 'var(--text-primary)' }}>{m.label}</div></div>
+                  <div style={{ flex: 1 }}><div style={{ fontSize: 12.5, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{m.value}</div></div>
                   {model === m.value && <span style={{ color: '#10a37f', fontSize: 14 }}>✓</span>}
                 </div>
               ))}

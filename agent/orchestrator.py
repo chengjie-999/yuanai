@@ -398,19 +398,27 @@ class Orchestrator:
         orch_tools = self._build_tools_for_intent(intent)
         logger.info("加载 %d 个工具 (意图: %s)", len(orch_tools), intent.group)
 
-        # 图片识别 → 自动切换到视觉模型（DeepSeek V4 不支持图片）
+        # 图片识别（2026-10-16 收窄）：DeepSeek V4.1 Flash 原生支持图像输入，
+        # 豆包全系多模态——只有不支持图片的 deepseek-v4-pro 才切豆包（切换有延迟）
         has_images = bool(req.images) or any(
             isinstance(m.get("content"), list) and
             any(c.get("type") == "image_url" for c in m["content"] if isinstance(c, dict))
             for m in input_messages if isinstance(m, dict)
         )
         orch_model = AGENT_MODEL_MAP["orchestrator"]
-        if has_images and "deepseek" in orch_model:
+        if has_images and orch_model == "deepseek-v4-pro":
             from config.settings import VISION_MODEL
             orch_model = VISION_MODEL
             logger.info("检测到图片，自动切换到视觉模型: %s", orch_model)
 
         llm = get_llm(orch_model, temperature=0.7, verbose=False, streaming=True)
+        # 模型如实自报（2026-10-16）：用户问「你是什么模型」时如实回答实际运行的模型 ID
+        input_messages.insert(0, {
+            "role": "system",
+            "content": (f"你当前实际运行的模型 ID 是 {orch_model}。"
+                        f"当用户问「你是什么模型/哪个模型」时，如实回答这个模型 ID，"
+                        f"不要模糊、不要编造其他名称。"),
+        })
         agent = create_react_agent(llm, orch_tools)
 
         full_response = ""

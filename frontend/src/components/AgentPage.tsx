@@ -127,7 +127,6 @@ function ModelsCard() {
   const [models, setModels] = useState<Record<string, any>>({})
   const [showModal, setShowModal] = useState(false)
   const [newId, setNewId] = useState('')
-  const [newLabel, setNewLabel] = useState('')
   const [newProvider, setNewProvider] = useState('Custom')
   const [newKey, setNewKey] = useState('')
 
@@ -140,10 +139,11 @@ function ModelsCard() {
   useEffect(() => { loadModels() }, [])
 
   const handleAdd = async () => {
-    if (!newId.trim() || !newLabel.trim()) return
+    if (!newId.trim()) return
+    // label 用模型 ID 本身（显示名无意义）
     await fetch(`${API_BASE}/admin/models`, {
       method: 'POST', headers: headers(),
-      body: JSON.stringify({ model_id: newId.trim(), label: newLabel.trim(), provider: newProvider.trim() || 'Custom' }),
+      body: JSON.stringify({ model_id: newId.trim(), label: newId.trim(), provider: newProvider.trim() || 'Custom' }),
     })
     if (newKey.trim()) {
       await fetch(`${API_BASE}/admin/apikeys`, {
@@ -173,7 +173,6 @@ function ModelsCard() {
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr style={{ background: "var(--bg-tertiary)" }}>
-            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "var(--text-secondary)" }}>用途</th>
             <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "var(--text-secondary)" }}>模型 ID</th>
             <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "var(--text-secondary)" }}>供应商</th>
             <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "var(--text-secondary)", width: 40 }}></th>
@@ -182,13 +181,9 @@ function ModelsCard() {
         <tbody>
           {Object.entries(models).map(([id, info]) => {
             if (!info || typeof info !== 'object') return null
-            const label = (info as any).label
-            if (!label) return null
-            const desc = id.includes('deepseek') ? (label.includes('Pro') ? '强推理' : '快速轻量') : label.includes('Pro') ? '多模态/强推理' : '轻量任务'
             return (
             <tr key={id} style={{ borderBottom: "1px solid var(--border-light)" }}>
-              <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{label}{desc && <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 6 }}>{desc}</span>}</td>
-              <td style={{ padding: "10px 14px", fontFamily: 'monospace', fontSize: 11, color: 'var(--text-secondary)' }}>{id}</td>
+              <td style={{ padding: "10px 14px", fontFamily: 'monospace', fontSize: 12, color: 'var(--text-primary)' }}>{id}</td>
               <td style={{ padding: "10px 14px", color: "var(--text-secondary)", fontSize: 12 }}>{info.provider as string}</td>
               <td style={{ padding: "10px 14px" }}>
                 {!info.builtin && <button onClick={() => handleDelete(id)} title="删除" aria-label="删除"
@@ -205,9 +200,8 @@ function ModelsCard() {
           <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 24, minWidth: 360, boxShadow: '0 8px 40px var(--shadow-md)' }}>
             <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>添加模型</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="模型 ID (如 gpt-4)" style={inputStyle} />
-              <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="显示名 (如 GPT-4)" style={inputStyle} />
-              <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)} placeholder="供应商 (如 OpenAI)" style={inputStyle} />
+              <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="模型 ID (如 doubao-seed-2-1-lite-260915)" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+              <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)} placeholder="供应商 (如 Doubao/DeepSeek)" style={inputStyle} />
               <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="API Key (可选)" style={inputStyle} />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>

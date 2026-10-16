@@ -20,6 +20,8 @@ python -m agent.main --install YUAN-XXXX-XXXX-XXXX --server-url ws://localhost:8
 python -m agent.main
 
 # 本地 Agent（托盘模式，发布用；首次启动无身份时弹窗引导输入安装码）
+# 安装包化（2026-10-16）：exe 双击自动引导安装（选目录/桌面快捷方式/旧数据迁移），
+# 数据统一落 %LOCALAPPDATA%\XiaoYuanAI\data，不再散落 exe 所在目录（桌面）
 python -m agent.main --tray
 
 # 一键启动（Windows 双击 start_agent.bat）

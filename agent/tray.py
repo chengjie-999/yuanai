@@ -622,6 +622,15 @@ def main():
             exec(compile(_f.read(), _script_path, "exec"), {"__name__": "__main__", "__file__": _script_path})
         sys.exit(0)
 
+    # 首启安装引导（安装包化 2026-10-16）：exe 非安装位置双击 → 引导安装
+    # （选目录 + 桌面快捷方式 + 旧数据迁移），装完启动新副本；已安装则跳过
+    if getattr(sys, "frozen", False) and len(sys.argv) < 2:
+        from utils.data_path import is_frozen_in_install_dir
+        if not is_frozen_in_install_dir():
+            from agent.bootstrap import run_install_bootstrap
+            run_install_bootstrap()  # 内部处理完会启动新副本并 sys.exit(0)
+            sys.exit(0)
+
     import argparse
 
     p = argparse.ArgumentParser(description="小元AI 本地 Agent（托盘模式）")

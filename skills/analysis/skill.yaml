@@ -6,7 +6,7 @@
 name: analysis
 display_name: 数据分析
 description: 统计分析、图表生成、数据挖掘、客户分群
-model: doubao-seed-2-1-pro
+model: doubao-seed-2-0-pro
 type: script_dispatch
 icon: 📊
 keywords:

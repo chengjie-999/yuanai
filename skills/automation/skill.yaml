@@ -5,7 +5,7 @@
 name: automation
 display_name: 自动化
 description: 浏览器控制、题目审核、截图监控、网页自动化操作
-model: doubao-seed-2-1-pro
+model: doubao-seed-2-0-pro
 type: react
 icon: 🤖
 keywords:

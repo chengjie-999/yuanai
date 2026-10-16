@@ -4,6 +4,7 @@ import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
 import type { ReasoningEffort } from './ReasoningSelector'
 import ReasoningSelector from './ReasoningSelector'
+import { ModelSelector } from '../ModelSelector'
 import { compressImage } from './imageUtils'
 import { AGENT_CONFIG } from '../../config/agents'
 import { uploadDataset } from '../../api'
@@ -16,11 +17,12 @@ const TARGET_AGENTS = [
   { key: 'claude', desc: '本机代码、终端、Git 任务' },
 ]
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, effort, setEffort, onStartVoiceCall, targetAgent, setTargetAgent }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, targetAgent, setTargetAgent }: {
   input: string; setInput: (v: string | ((p: string) => string)) => void; loading: boolean; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
   sessions: SessionInfo[]; messages: ChatMessage[]
+  model: string; setModel: (v: string) => void
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   localOnline: boolean; claudeOnline: boolean
   onStartVoiceCall: () => void
@@ -203,6 +205,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <ModelSelector model={model} onChange={setModel} />
               <ReasoningSelector effort={effort} setEffort={setEffort} />
             </div>
           </div>

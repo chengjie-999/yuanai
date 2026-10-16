@@ -73,7 +73,7 @@ def test_load_agent_models_custom_override(models_file_backup, settings_restore)
     assert m["orchestrator"] == "deepseek-v4-pro"          # 自定义覆盖
     assert m["analysis"] == "deepseek-v4-pro"              # 未覆盖项保留默认
     assert m["memory_fold"] == "doubao-seed-2-0-pro-260215"
-    assert m["planet_article"] == "doubao-seed-2-1-lite-260915"  # 未覆盖项保留默认（2026-10 已换 2.1）
+    assert m["planet_article"] == "doubao-seed-2-0-lite-260215"  # 未覆盖项保留默认（豆包 2.1 未开通暂用 2.0）
     assert len(m) == 7
 
 
@@ -197,14 +197,18 @@ def test_delete_model_referenced_blocked(client, db, admin_jwt, models_file_back
 
     # 切换分配后 → 删除成功
     assert client.put("/api/v1/admin/agent-models", headers=h,
-                      json={"agent_models": {"planet_article": "doubao-seed-2-1-lite-260915"}}).status_code == 200
+                      json={"agent_models": {"planet_article": "doubao-seed-2-0-lite-260215"}}).status_code == 200
     resp = client.request("DELETE", "/api/v1/admin/models", headers=h,
                           json={"model_id": "test-ghost-model"})
     assert resp.status_code == 200
 
 
 def test_model_upgrade_plan_and_apply(client, db, admin_jwt, models_file_backup, settings_restore):
-    """自动检查更新：存量旧分配 → 升级清单 → 确认后自动添加新模型 + 切分配 + 热更新"""
+    """自动检查更新：存量旧分配 → 升级清单 → 确认后自动添加新模型 + 切分配 + 热更新
+
+    注：豆包 2.0→2.1 条目在账号开通前未登记（ModelNotOpen），本测试只覆盖
+    DeepSeek 升级；豆包条目开通后恢复登记时再补豆包用例。
+    """
     h = {"Authorization": f"Bearer {admin_jwt}"}
 
     # 模拟存量自定义分配还指着退役模型
@@ -216,21 +220,19 @@ def test_model_upgrade_plan_and_apply(client, db, admin_jwt, models_file_backup,
     from config.settings import reload_agent_models
     reload_agent_models()
 
-    # 检查 → 2 项升级建议
+    # 检查 → 1 项升级建议（deepseek-v4-flash；豆包条目未登记）
     plan = client.get("/api/v1/admin/models/upgrade-plan", headers=h).json()
-    assert len(plan["model_upgrades"]) == 2
-    assert {u["old"] for u in plan["model_upgrades"]} == {
-        "deepseek-v4-flash", "doubao-seed-2-0-lite-260215"}
+    assert len(plan["model_upgrades"]) == 1
+    assert {u["old"] for u in plan["model_upgrades"]} == {"deepseek-v4-flash"}
 
     # 确认 → 自动更换
     d = client.post("/api/v1/admin/models/upgrade", headers=h).json()
-    assert d["ok"] and len(d["model_upgrades"]) == 2
+    assert d["ok"] and len(d["model_upgrades"]) == 1
 
     from config import settings as s
     assert s.AGENT_MODEL_MAP["orchestrator"] == "deepseek-flash"
-    assert s.AGENT_MODEL_MAP["memory_fold"] == "doubao-seed-2-1-lite-260915"
+    assert s.AGENT_MODEL_MAP["memory_fold"] == "doubao-seed-2-0-lite-260215"  # 豆包未升级（条目未登记）
     assert "deepseek-flash" in s.MODELS
-    assert "doubao-seed-2-1-lite-260915" in s.MODELS
 
     # 再检查 → 无待升级
     plan2 = client.get("/api/v1/admin/models/upgrade-plan", headers=h).json()

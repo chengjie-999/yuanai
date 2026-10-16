@@ -5,7 +5,7 @@
 name: collection
 display_name: 数据采集
 description: 网页爬取、数据抓取、内容解析
-model: doubao-seed-2-1-lite
+model: doubao-seed-2-0-lite
 type: script_dispatch
 icon: 🕷️
 keywords:

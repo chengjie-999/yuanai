@@ -8,12 +8,14 @@ const MODEL_KEY = 'selectedModel'
 const DEFAULT_MODEL = 'deepseek-flash'
 
 // 退役模型 ID → 新 ID（与后端升级知识表 yuanai_core/pure/model_upgrades.py 对应）：
-// 用户 localStorage 里的旧选择静默迁移，不回退到已退役模型
+// 用户 localStorage 里的旧选择静默迁移，不回退到已退役模型。
+// 注意：豆包 2.1 账号未开通（ModelNotOpen）暂不迁移——开通后在此登记
 const RETIRED_MODEL_MAP: Record<string, string> = {
-  'doubao-seed-2-0-pro-260215': 'doubao-seed-2-1-pro-260628',
-  'doubao-seed-2-0-lite-260215': 'doubao-seed-2-1-lite-260915',
   'deepseek-v4-flash': 'deepseek-flash',
   'deepseek-chat': 'deepseek-flash',
+  // 豆包 2.1 曾迁移过一轮，未开通前反向迁回 2.0（开通后删除本组并加 2.0→2.1）
+  'doubao-seed-2-1-pro-260628': 'doubao-seed-2-0-pro-260215',
+  'doubao-seed-2-1-lite-260915': 'doubao-seed-2-0-lite-260215',
 }
 
 export function getStoredModel(): string {

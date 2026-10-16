@@ -71,9 +71,9 @@ python -m agent.main --agent-id 1 --tray
 
 | 执行体 | 模型 | 形态 | 职责 |
 |-------|------|------|------|
-| 统筹 | doubao-seed-2-1-lite | 意图分类器 + function calling | 意图识别 → 直接调脚本工具（`script_*`） |
+| 统筹 | doubao-seed-2-0-lite | 意图分类器 + function calling | 意图识别 → 直接调脚本工具（`script_*`） |
 | 脚本工具 | （由统筹模型带 tools 调用） | ScriptRegistry 自动生成 schema | 9 个分析脚本 + 通用网页采集 + 医学工具（执行经 registry.run 统一校验） |
-| 自动化 | doubao-seed-2-1-pro | ReAct + 意图过滤（唯一独立子 Agent） | 浏览器控制、题目审核、截图监控 |
+| 自动化 | doubao-seed-2-0-pro | ReAct + 意图过滤（唯一独立子 Agent） | 浏览器控制、题目审核、截图监控 |
 | Claude Code | 本机 | 桥接进程 | 代码编写、终端命令、Git 操作 |
 
 **脚本工具 key 对照**：`script_descriptive_stats`=描述性统计分析、`script_correlation`=相关性分析、`script_regression`=回归分析、`script_categorical`=分类数据分析、`script_timeseries`=时间序列分析、`script_preprocess`=数据预处理、`script_rfm_cluster`=RFM客户分群、`script_churn_predict`=客户流失预测、`script_gene_expression`=基因表达分析、`script_generic_crawl`=通用网页采集（静态表 `agent/scripts/registry.py SCRIPT_KEYS`，未登记脚本 md5 兜底）。

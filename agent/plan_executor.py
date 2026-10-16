@@ -111,7 +111,7 @@ class PlanExecutor:
         tools = build_script_tools(registry, skill=skill, progress_cb=progress_cb)
         if not tools:
             return "failed_noretry", f"技能 {skill} 无可用脚本"
-        llm = get_llm(cfg.model if cfg else "doubao-seed-2-1-lite", temperature=0)
+        llm = get_llm(cfg.model if cfg else "doubao-seed-2-0-lite", temperature=0)
         try:
             msg = llm.bind_tools(tools).invoke([
                 SystemMessage(content=(cfg.system_prompt if cfg else "") or

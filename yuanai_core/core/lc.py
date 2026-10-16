@@ -52,8 +52,8 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
     from yuanai_core.pure.model_upgrades import MODEL_UPGRADES
     if model in MODEL_UPGRADES:
         model = MODEL_UPGRADES[model]["new"]
-    # 短名解析（2026-10-14）：skills/*.yaml 用短名（doubao-seed-2-1-lite），
-    # 注册表是完整 ID（doubao-seed-2-1-lite-260915）。前缀匹配替换——
+    # 短名解析（2026-10-14）：skills/*.yaml 用短名（doubao-seed-2-0-lite），
+    # 注册表是完整 ID（doubao-seed-2-0-lite-260215）。前缀匹配替换——
     # 委派/@定向/计划执行器共用本工厂，此前短名落 custom 分支报「未找到 API Key」。
     if model not in dsllm and model not in seed:
         for m in seed + dsllm:

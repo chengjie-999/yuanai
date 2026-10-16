@@ -30,7 +30,7 @@ INITIAL_STATE = {
     "xiao_yuan_false_cause": '格式问题',
 }
 
-AUDIT_MODEL = 'doubao-seed-2-1-pro-260215'
+AUDIT_MODEL = 'doubao-seed-2-0-pro-260215'
 
 
 def home_start(xiao_yuan, xiao_yuan_card, output_placeholder=None):

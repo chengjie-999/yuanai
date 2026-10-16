@@ -8,12 +8,14 @@ load_dotenv()
 import json as _json
 from pathlib import Path as _Path
 
-# 2026-10-16 模型升级（旧代退役，默认换新）：
-# - 豆包 Seed 2.0 → 2.1（火山方舟官方 ID；pro 260628 / lite 260915）
+# 2026-10-16 模型换代：
+# - 豆包 Seed 2.1 已上线（pro 260628 / lite 260915）但账号尚未在方舟控制台开通
+#   （ModelNotOpen）→ 暂回退 2.0，开通后把 _DOUBAO_* 换成 2.1 并在
+#   yuanai_core/pure/model_upgrades.py 重新登记升级映射
 # - DeepSeek V4 Flash 已退役（官方路由至 V4.1 Flash，新 ID = deepseek-flash）；
 #   V4 Pro 0813 仍在服务
-_DOUBAO_PRO = "doubao-seed-2-1-pro-260628"
-_DOUBAO_LITE = "doubao-seed-2-1-lite-260915"
+_DOUBAO_PRO = "doubao-seed-2-0-pro-260215"
+_DOUBAO_LITE = "doubao-seed-2-0-lite-260215"
 _DEEPSEEK_FLASH = "deepseek-flash"
 _DEEPSEEK_PRO = "deepseek-v4-pro"
 
@@ -119,7 +121,7 @@ def _model_with_override(env_key: str, map_key: str, default: str) -> str:
 # 默认豆包（火山引擎国内节点，本地直连快且稳）；DeepSeek 海外 API 本地直连实测
 # 一半请求卡超时（120s×2 后走大纲兜底），故不设为默认。后台可换（分配键 planet_article）。
 PLANET_ARTICLE_MODEL = _model_with_override(
-    "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-1-lite-260915")
+    "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-0-lite-260215")
 
 
 def reload_agent_models() -> None:
@@ -128,15 +130,15 @@ def reload_agent_models() -> None:
     global MEMORY_MODEL, PLANET_ARTICLE_MODEL
     AGENT_MODEL_MAP.clear()
     AGENT_MODEL_MAP.update(_load_agent_models())
-    MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-1-lite-260915")
+    MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-0-lite-260215")
     PLANET_ARTICLE_MODEL = _model_with_override(
-        "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-1-lite-260915")
+        "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-0-lite-260215")
 
 # ===================== 记忆机制（短期工作记忆 / 长期条目化记忆） =====================
 # 决策：最近 N 条原样保留；超出部分豆包 lite 后台异步折叠成条目化事实存 users.memory；
 # 设置页「我的记忆」透明可编辑；点踩内容不进记忆。全部可 .env 覆盖。
 MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "true").lower() == "true"     # 压缩总开关
-MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-1-lite-260915")  # 折叠用模型
+MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-0-lite-260215")  # 折叠用模型
 MEMORY_WORKING_WINDOW = int(os.getenv("MEMORY_WORKING_WINDOW", "20"))      # 工作记忆条数（最近 N 条永不折叠）
 MEMORY_TRIGGER_CHARS = int(os.getenv("MEMORY_TRIGGER_CHARS", "8000"))      # 触发阈值：会话总字数
 MEMORY_FOLD_MIN_MESSAGES = int(os.getenv("MEMORY_FOLD_MIN_MESSAGES", "5")) # 单次折叠最小条数（烧钱护栏，设 1 = 字面口径）

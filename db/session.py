@@ -26,7 +26,7 @@ class ChatSession(Base):
     session_id = Column(String(36), unique=True, nullable=False, index=True)
     user_id = Column(Integer, nullable=True, index=True)
     title = Column(String(200), default='新对话')
-    model = Column(String(50), default='doubao-seed-2-1-pro-260628')
+    model = Column(String(50), default='doubao-seed-2-0-pro-260628')
     is_main = Column(Integer, default=0)  # 1 = 豆包式置顶主对话（每用户一条）
     create_time = Column(TIMESTAMP, server_default=func.now())
     update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())

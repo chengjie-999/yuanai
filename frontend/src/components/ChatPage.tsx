@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
+import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
@@ -61,7 +61,9 @@ export default function ChatPage({ user }: { user?: any }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [model] = useState(getStoredModel)
+  const [model, setModel] = useState(getStoredModel)
+  // 聊天页模型下拉（输入区工具行）：切换即持久化 localStorage
+  const handleModelChange = (v: string) => { setModel(v); setStoredModel(v) }
   const [quickInput, setQuickInput] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth > 768)
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
@@ -624,6 +626,7 @@ export default function ChatPage({ user }: { user?: any }) {
             currentSid={currentSid}
             sessions={sessions}
             localOnline={localOnline} claudeOnline={claudeOnline}
+            model={model} setModel={handleModelChange}
             effort={effort} setEffort={setEffort}
             autoRead={autoRead}
             autoReadTick={autoReadTick}

@@ -11,9 +11,11 @@ deepseek-flash（旧 deepseek-v4-flash 已路由至它，deepseek-chat 别名 20
 """
 
 # 旧模型 ID → 新模型 ID（在用即提示升级）
+# 2026-10-16：豆包 2.0→2.1 条目暂不登记——2.1 需先在方舟控制台开通（ModelNotOpen），
+# 账号开通后把下面注释的两条解回 MODEL_UPGRADES 并同步 UPSTREAM_MODELS 即可一键升级
 MODEL_UPGRADES = {
-    "doubao-seed-2-0-pro-260215": {"new": "doubao-seed-2-1-pro-260628", "label": "豆包 Pro"},
-    "doubao-seed-2-0-lite-260215": {"new": "doubao-seed-2-1-lite-260915", "label": "豆包 Lite"},
+    # "doubao-seed-2-0-pro-260215": {"new": "doubao-seed-2-1-pro-260628", "label": "豆包 Pro"},
+    # "doubao-seed-2-0-lite-260215": {"new": "doubao-seed-2-1-lite-260915", "label": "豆包 Lite"},
     "deepseek-v4-flash": {"new": "deepseek-flash", "label": "DeepSeek V4.1 Flash"},
     "deepseek-chat": {"new": "deepseek-flash", "label": "DeepSeek V4.1 Flash"},
 }
@@ -21,7 +23,7 @@ MODEL_UPGRADES = {
 # 上游当前有效清单（本地没有的模型列为「可添加的新模型」，不自动添加）
 UPSTREAM_MODELS = {
     "DeepSeek": {"deepseek-flash", "deepseek-v4-pro"},
-    "Doubao": {"doubao-seed-2-1-pro-260628", "doubao-seed-2-1-lite-260915"},
+    "Doubao": {"doubao-seed-2-0-pro-260215", "doubao-seed-2-0-lite-260215"},
 }
 
 # 语音合成模型升级（seed-tts-2.0 为 2026-10 官方最新；出新版时在此登记）

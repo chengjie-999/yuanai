@@ -3,7 +3,7 @@ from typing import List, Optional
 
 
 class ChatRequest(BaseModel):
-    model: str = Field("doubao-seed-2-1-pro-260628", description="模型名称")
+    model: str = Field("doubao-seed-2-0-pro-260628", description="模型名称")
     temperature: float = Field(0.7, ge=0.0, le=1.0, description="生成温度")
     prompt: str = Field(..., description="用户输入文本")
     images: List[str] = Field(default_factory=list, description="Base64 图片列表")

@@ -8,7 +8,7 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onRegenerate, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest, sendTick, isMobile, onOpenPanel }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onRegenerate, onStartVoiceCall, targetAgent, setTargetAgent, onSuggest, sendTick, isMobile, onOpenPanel }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
@@ -16,6 +16,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   currentSid: string
   sessions: SessionInfo[]
   localOnline: boolean; claudeOnline: boolean
+  model: string; setModel: (v: string) => void
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   autoRead: boolean; autoReadTick: number
   pendingApproval: { decision_id: string; tool_name: string; command: string } | null
@@ -169,6 +170,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         currentSid={currentSid}
         sessions={sessions} messages={messages}
         localOnline={localOnline} claudeOnline={claudeOnline}
+        model={model} setModel={setModel}
         effort={effort} setEffort={setEffort}
         onStartVoiceCall={onStartVoiceCall}
         targetAgent={targetAgent} setTargetAgent={setTargetAgent} />

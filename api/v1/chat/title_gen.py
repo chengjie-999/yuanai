@@ -37,13 +37,14 @@ def generate_title(session_id: str, messages: list) -> bool:
     """同步执行体（可测试）：从对话生成标题并落库。返回是否更新。"""
     if len(messages) < 2:
         return False
-    # 剥 META 信封前缀（防 \x00META\x00 乱码进标题提示词）
-    from yuanai_core.core.message import strip as _strip
-    first_msg = _strip(messages[0].get("content") or "").strip()
+    # 剥 META 信封前缀（防 \x00META\x00 乱码进标题提示词）；
+    # text_of 先归一化（图片消息 content 是 list，直接 strip 会炸）
+    from yuanai_core.core.message import strip as _strip, text_of as _text_of
+    first_msg = _strip(_text_of(messages[0].get("content"))).strip()
     last_user = ""
     for m in reversed(messages):
-        if m.get("role") == "user" and _strip(m.get("content") or "").strip():
-            last_user = _strip(m["content"]).strip()
+        if m.get("role") == "user" and _strip(_text_of(m.get("content"))).strip():
+            last_user = _strip(_text_of(m["content"])).strip()
             break
 
     from db.session import get_db, ChatSession

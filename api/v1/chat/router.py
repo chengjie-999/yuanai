@@ -629,11 +629,12 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
             # AI 已生成的标题不被后续消息的自动标题压掉
             if req.title:
                 from api.v1.chat.title_gen import _is_auto_title
+                from yuanai_core.core.message import text_of
                 cur = sess.query(ChatSession).filter_by(session_id=req.session_id).first()
                 first_user = ""
                 for m in req.messages or []:
                     if m.get("role") == "user":
-                        first_user = (m.get("content") or "").strip()
+                        first_user = text_of(m.get("content")).strip()
                         break
                 if cur and _is_auto_title(cur.title, first_user):
                     chat_update["title"] = req.title

@@ -325,6 +325,17 @@ def test_file_crud_roundtrip(client, db):
 
 # ===================== AI 会话标题 =====================
 
+def test_text_of_normalizes_list_content():
+    """图片消息 content 是 list——归一化后 .strip() 安全（曾炸生产：'list' object
+    has no attribute 'strip'，/chat/save 标题判断路径）"""
+    from yuanai_core.core.message import text_of
+    assert text_of([{"type": "text", "text": "看图"},
+                    {"type": "image_url", "image_url": {"url": "data:..."}}]) == "看图"
+    assert text_of([{"type": "image_url", "image_url": {}}]) == ""   # 纯图片无文本
+    assert text_of("plain") == "plain"
+    assert text_of(None) == ""
+
+
 def test_title_is_auto_heuristic():
     from api.v1.chat.title_gen import _is_auto_title
     assert _is_auto_title("新对话", "任何") is True

@@ -123,6 +123,16 @@ def strip(content: str) -> str:
     return split_meta(content)[1]
 
 
+def text_of(content) -> str:
+    """消息 content 归一化为纯文本：list（图片/多块消息）→ 拼接 text 块；
+    其他类型 → str。调用方无需再判断类型，直接 .strip() 安全。"""
+    if isinstance(content, list):
+        return "\n".join(
+            c.get("text", "") for c in content
+            if isinstance(c, dict) and isinstance(c.get("text"), str))
+    return content if isinstance(content, str) else str(content or "")
+
+
 def assign_turns(messages: List[dict]) -> List[dict]:
     """落库/补齐兜底：按序给消息赋 turn（user 自增、assistant 继承），就地返回"""
     turn = 0

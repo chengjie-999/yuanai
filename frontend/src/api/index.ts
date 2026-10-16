@@ -5,10 +5,24 @@ export function getToken(): string {
 }
 
 const MODEL_KEY = 'selectedModel'
-const DEFAULT_MODEL = 'deepseek-v4-flash'
+const DEFAULT_MODEL = 'deepseek-flash'
+
+// 退役模型 ID → 新 ID（与后端升级知识表 yuanai_core/pure/model_upgrades.py 对应）：
+// 用户 localStorage 里的旧选择静默迁移，不回退到已退役模型
+const RETIRED_MODEL_MAP: Record<string, string> = {
+  'doubao-seed-2-0-pro-260215': 'doubao-seed-2-1-pro-260628',
+  'doubao-seed-2-0-lite-260215': 'doubao-seed-2-1-lite-260915',
+  'deepseek-v4-flash': 'deepseek-flash',
+  'deepseek-chat': 'deepseek-flash',
+}
 
 export function getStoredModel(): string {
-  return localStorage.getItem(MODEL_KEY) || DEFAULT_MODEL
+  const stored = localStorage.getItem(MODEL_KEY)
+  if (stored && RETIRED_MODEL_MAP[stored]) {
+    localStorage.setItem(MODEL_KEY, RETIRED_MODEL_MAP[stored])
+    return RETIRED_MODEL_MAP[stored]
+  }
+  return stored || DEFAULT_MODEL
 }
 
 export function setStoredModel(model: string) {

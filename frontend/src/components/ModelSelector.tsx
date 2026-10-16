@@ -4,9 +4,9 @@ import { API_BASE, headers } from '../api'
 type ModelInfo = { value: string; label: string; provider: string }
 
 const FALLBACK_MODELS: ModelInfo[] = [
-  { value: 'doubao-seed-2-0-pro-260215', label: '豆包 Pro', provider: 'Doubao' },
-  { value: 'doubao-seed-2-0-lite-260215', label: '豆包 Lite', provider: 'Doubao' },
-  { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', provider: 'DeepSeek' },
+  { value: 'doubao-seed-2-1-pro-260628', label: '豆包 Pro', provider: 'Doubao' },
+  { value: 'doubao-seed-2-1-lite-260915', label: '豆包 Lite', provider: 'Doubao' },
+  { value: 'deepseek-flash', label: 'DeepSeek V4.1 Flash', provider: 'DeepSeek' },
   { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', provider: 'DeepSeek' },
 ]
 

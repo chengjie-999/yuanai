@@ -53,7 +53,7 @@ const SECTIONS: { group: string; items: ApiExample[] }[] = [
   -H "Authorization: Bearer <token>" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model":"deepseek-v4-flash",
+    "model":"deepseek-flash",
     "prompt":"帮我做描述性统计分析",
     "history":[
       {"role":"user","content":"帮我做描述性统计分析",

@@ -464,7 +464,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                   >{msg.pageLink.includes('/agent/dashboard') || msg.pageLink.includes('/agent/board') ? <BarChartIcon size={13} /> : msg.pageLink.includes('/agent/automation') ? <BotIcon size={13} /> : msg.pageLink.includes('/planet') ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</Link>
                 )}
-                {/* 复制独立页面链接（可直接浏览器打开/收藏） */}
+                {/* 独立页面链接明文显示（点击复制，可直接浏览器打开/收藏） */}
                 <button onClick={(e) => {
                   e.stopPropagation()
                   navigator.clipboard.writeText(window.location.origin + msg.pageLink)
@@ -472,16 +472,18 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                     .catch(() => {})
                   setTimeout(() => setCopiedLink(false), 1500)
                 }}
-                  className="yuan-tip" data-tip="复制页面链接（可直接浏览器打开）"
+                  className="yuan-tip" data-tip="点击复制此链接（可直接浏览器打开）"
                   title="复制页面链接" aria-label="复制页面链接"
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6, padding: '5px 9px',
                     borderRadius: 6, border: '1px solid var(--border)', background: 'transparent',
                     color: 'var(--text-secondary)', fontSize: 11, cursor: 'pointer', lineHeight: 1,
+                    fontFamily: 'monospace', maxWidth: '100%', overflow: 'hidden',
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
                   onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
-                >{copiedLink ? <CheckIcon size={12} /> : <LinkIcon size={12} />}</button>
+                >{copiedLink ? <CheckIcon size={12} /> : <LinkIcon size={11} />}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{msg.pageLink}</span></button>
               </div>
             )}
             {msg.images && msg.images.length > 0 && (

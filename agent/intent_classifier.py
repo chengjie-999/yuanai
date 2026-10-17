@@ -32,7 +32,11 @@ INTENT_TOOL_GROUPS: Dict[str, List[str]] = {
     "memory_task":            ["memory", "knowledge", "general"],
     "medical_q":              ["medical", "knowledge", "general"],
     "plan_task":              ["plan", "general", "scripts_all"],
-    "knowledge_q":            ["knowledge", "general"],
+    "knowledge_q":            ["knowledge", "general", "crawl"],
+    # 联网搜索类实时问题（天气/新闻/最新动态）——crawl 类带上 fetch_url/parse_html，
+    # 与 system prompt「搜出链接后抓详情」的引导一致（曾因缺 crawl 组导致模型
+    # 调用不存在的工具、DSML 文本泄漏）
+    "web_query":              ["general", "crawl"],
     "delegate_automation":    ["general", "delegate_automation"],
     "delegate_claude":        ["general", "delegate_claude"],
     "general_chat":           ["general", "memory", "plan", "knowledge", "delegate_all"],
@@ -71,7 +75,12 @@ _KEYWORDS: Dict[str, set] = {
                                "我的计划", "计划进度", "任务清单", "安排一下", "plan"},
     "knowledge_q":           {"知识库", "检索", "搜索", "retrieve", "查找",
                                "相关知识", "知识星球", "星球", "导图", "思维导图",
-                               "笔记", "mindmap"},
+                               "笔记", "mindmap",
+                               # 联网搜索类补充（2026-10-17：模型有 search_web 工具
+                               # 但分类器不认得这类问题，掉进 general_chat 或 LLM 兜底）
+                               "联网", "搜一下", "上网查", "搜索一下", "帮我搜"},
+    "web_query":             {"最新动态", "新闻", "今天有什么", "最近有什么",
+                               "查一下", "查资料", "上网", "百度", "谷歌"},
     "delegate_automation":   {"浏览器", "审核", "自动化", "截图", "xiaoyuan",
                                "启动浏览器", "打开网页", "操控", "题目审核",
                                "打开chrome", "start browser"},
@@ -173,10 +182,11 @@ Categories:
 simple_query - calculation, weather, datetime, unit conversion
 data_task - dataset, statistics, analysis, preview
 crawl_task - web scraping, URL fetching, HTML parsing
+web_query - real-time web search: news, latest updates, "search the web for..." (uses search_web tool)
 memory_task - remember/recall user personal info
 medical_q - PubMed literature, clinical trials, species, drug feasibility
 plan_task - creating a plan, checking plan progress, executing a plan
-knowledge_q - knowledge base search
+knowledge_q - knowledge base search or general web search (联网搜索)
 delegate_automation - browser control, auditing, automation
 delegate_claude - coding, writing/modifying code, terminal commands, git, local file creation
 

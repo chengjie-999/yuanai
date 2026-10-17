@@ -40,7 +40,7 @@ _OFFLINE_SYSTEM_PROMPT = (
     "可直接使用的工具：create_plan(制定计划)、execute_plan(执行计划)、"
     "get_plan_status(查计划进度)、list_datasets(列出数据集)、"
     "preview_dataset(预览数据集)、analyze_dataset(分析数据)、"
-    "search_web(联网搜索，query 用核心短语分词)、fetch_url(抓取网页)、parse_html(解析HTML)、get_today_temperature(天气)、"
+    "search_web(联网搜索，query 用核心短语分词；摘要通常已足够回答，不必逐条抓取)、fetch_url(抓取网页)、parse_html(解析HTML)、get_today_temperature(天气)、"
     "calculate_sum(计算)、get_user_memory(读取用户记忆)、"
     "remember_user_info(记住用户信息)、organize_user_memory(整理记忆)、"
     "retrieve_planet_knowledge(检索知识星球)、search_pubmed(PubMed 文献检索)、"
@@ -256,10 +256,9 @@ async def chat_stream(req: ChatRequest, request: Request):
                           "turn": turn + 1, "type": "chat"})
 
         system_prompt = req.system_prompt
-        # 模型如实自报（2026-10-16）：用户问「你是什么模型」时如实回答实际运行的模型 ID
-        system_prompt = (f"{system_prompt}\n\n你当前实际运行的模型 ID 是 {model}。"
-                         f"当用户问「你是什么模型/哪个模型」时，如实回答这个模型 ID，"
-                         f"不要模糊、不要编造其他名称。")
+        # 注意（2026-10-17）：桥接路径不在此注入自报——本地统筹用自己的
+        # orch_model（AGENT_MODEL_MAP）注入，此处用 req.model 会造成两条互斥
+        # 的「你实际运行的模型 ID」；自报注入只在云端回退分支做
 
         # 获取当前用户 ID
         user_id = _get_user_id(request)
@@ -341,10 +340,11 @@ async def chat_stream(req: ChatRequest, request: Request):
             offline_prompt += (f"\n本轮用户 @{role_hint} 指定由「{role_hint}智能体」回答："
                                f"从此刻起你就是{role_hint}智能体本人，直接以该身份与口吻回答，"
                                f"不要自称小元AI或统筹助手，不要提及委派过程或身份切换。")
-        # 模型如实自报（2026-10-16）：用户问「你是什么模型」时如实回答实际模型 ID
-        offline_prompt += (f"\n\n你当前实际运行的模型 ID 是 {model}。"
-                           f"当用户问「你是什么模型/哪个模型」时，必须如实回答这个模型 ID，"
-                           f"不要说「无法披露」「没有准确信息」之类的话。")
+        # 模型如实自报（2026-10-16 起，2026-10-17 归一化+模板化）：
+        # 模板来自后台设定中心 self_report_template（模型 ID 运行时真值填充）
+        from yuanai_core.core.lc import resolve_model_id
+        from config.settings import self_report_text
+        offline_prompt += "\n\n" + self_report_text(resolve_model_id(model))
         input_messages[0]["content"] = offline_prompt
         effort = req.reasoning_effort if req.reasoning_effort in ("low", "medium", "high") else "low"
         llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True,
@@ -453,6 +453,10 @@ async def claude_stream(req: ChatRequest, request: Request):
                           "不要提及「委派」、不要调用任何 delegate 工具——子智能体在本机"
                           "Agent 上且当前离线，所有请求由你自己直接处理。"
                           "可以直接使用工具完成任务。简洁回复，任务完成时用表格总结本次完成了什么。")
+        # 模型如实自报（2026-10-17 补齐：claude-stream 回退此前漏注入）
+        from yuanai_core.core.lc import resolve_model_id
+        from config.settings import self_report_text
+        offline_prompt += "\n\n" + self_report_text(resolve_model_id(model))
         input_messages[0]["content"] = offline_prompt
         llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True)
 
@@ -471,6 +475,18 @@ async def claude_stream(req: ChatRequest, request: Request):
     except Exception as e:
         logger.error("claude-stream 请求初始化失败: %s", e)
         raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
+@router.get("/system-prompt")
+async def get_system_prompt(request: Request):
+    """助手设定（登录可见）：前端取回提示词——chat_system_prompt 为空时前端
+    用内置默认；self_report_template 仅后台可改，模型 ID 运行时真值填充"""
+    from config.settings import CHAT_SYSTEM_PROMPT, SELF_REPORT_TEMPLATE, CAPABILITY_NOTE
+    return {
+        "system_prompt": CHAT_SYSTEM_PROMPT,
+        "self_report_template": SELF_REPORT_TEMPLATE,
+        "capability_note": CAPABILITY_NOTE,
+    }
 
 
 class NewSessionRequest(BaseModel):

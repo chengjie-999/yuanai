@@ -23,6 +23,7 @@
 """
 
 import os
+import sys
 import logging
 import importlib
 from typing import List, Dict
@@ -39,34 +40,57 @@ def _get_module_category(module) -> str:
     return getattr(module, 'TOOL_CATEGORY', 'general')
 
 
+def _collect_from_modules(modules, tools, seen_names) -> None:
+    """从模块列表收集 BaseTool 实例"""
+    for module in modules:
+        try:
+            cat = _get_module_category(module)
+            for attr_name in sorted(dir(module)):
+                attr = getattr(module, attr_name)
+                if isinstance(attr, BaseTool):
+                    if attr.name not in seen_names:
+                        seen_names.add(attr.name)
+                        tools.append(attr)
+                        _tool_category_map[attr.name] = cat
+        except Exception as e:
+            logger.warning("工具模块 %s 处理失败: %s", module, e)
+
+
 def load_all_tools() -> List[BaseTool]:
-    """递归扫描 tools 目录，自动加载所有 @tool 装饰的工具"""
+    """加载所有 @tool 装饰的工具。
+
+    打包兼容（2026-10-17）：frozen（exe）模式只走 _registry 静态清单
+    （os.walk 在 _MEIPASS 虚拟路径下扫不到模块，曾致 exe 内 all_tools 为空）；
+    开发模式额外 os.walk 补扫，磁盘上有但未登记的模块告警提醒登记。
+    """
     global _tool_category_map
     tools = []
     seen_names = set()
     _tool_category_map = {}
-    base_dir = os.path.dirname(__file__)
 
-    for root, dirs, files in os.walk(base_dir):
-        dirs[:] = sorted(d for d in dirs if not d.startswith('__') and not d.startswith('.'))
-        for file in sorted(files):
-            if file.endswith('.py') and not file.startswith('__'):
-                rel_path = os.path.relpath(os.path.join(root, file), base_dir)
-                module_path = rel_path[:-3].replace(os.sep, '.')
-                module_name = f"yuanai_core.tools.{module_path}"
+    from yuanai_core.tools import _registry
+    _collect_from_modules(_registry.TOOL_MODULES, tools, seen_names)
 
-                try:
-                    module = importlib.import_module(module_name)
-                    cat = _get_module_category(module)
-                    for attr_name in sorted(dir(module)):
-                        attr = getattr(module, attr_name)
-                        if isinstance(attr, BaseTool):
-                            if attr.name not in seen_names:
-                                seen_names.add(attr.name)
-                                tools.append(attr)
-                                _tool_category_map[attr.name] = cat
-                except Exception as e:
-                    logger.warning("导入工具模块 %s 失败: %s", module_name, e)
+    if not getattr(sys, "frozen", False):
+        base_dir = os.path.dirname(__file__)
+        registered = {getattr(m, "__name__", "").rsplit(".", 1)[-1] for m in _registry.TOOL_MODULES}
+        for root, dirs, files in os.walk(base_dir):
+            dirs[:] = sorted(d for d in dirs if not d.startswith('__') and not d.startswith('.'))
+            for file in sorted(files):
+                if file.endswith('.py') and not file.startswith('_'):
+                    stem = file[:-3]
+                    if stem in registered:
+                        continue
+                    module_name = f"yuanai_core.tools.{stem}"
+                    try:
+                        module = importlib.import_module(module_name)
+                        before = len(tools)
+                        _collect_from_modules([module], tools, seen_names)
+                        if len(tools) > before:
+                            logger.warning("工具模块 %s 未在 _registry.py 登记（开发态补扫加载；"
+                                           "打包前请登记，否则 exe 内缺失）", module_name)
+                    except Exception as e:
+                        logger.warning("导入工具模块 %s 失败: %s", module_name, e)
 
     logger.info("已加载 %d 个共享工具，类别分布: %s",
                 len(tools),

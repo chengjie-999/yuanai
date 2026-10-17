@@ -1,3 +1,4 @@
+import os
 import re
 import json
 import asyncio
@@ -9,7 +10,8 @@ from langchain_core.messages import (
 )
 from langchain_core.tools import BaseTool
 
-from yuanai_core.core.lc import get_langgraph_agent
+from yuanai_core.core.lc import get_langgraph_agent, current_reasoning_effort
+from yuanai_core.pure.dsml import DsmlStreamFilter
 
 
 def _is_deepseek_v4(model_name: str) -> bool:
@@ -133,9 +135,15 @@ async def _deepseek_agent_stream(
     messages = [dict(m) for m in input_messages]
     full_reasoning = ""
 
+    # 推理强度：显式传参 > 请求上下文（聊天框开关）> settings（修硬编码 low 吞掉
+    # 用户「快答/深思」开关——DeepSeek V4 专用路径此前固定 low）
+    _effort = ((getattr(llm, "extra_body", None) or {}).get("reasoning_effort")
+               or current_reasoning_effort.get()
+               or os.environ.get("REASONING_EFFORT", "low"))
+
     try:
         for round_idx in range(5):
-            extra_body = {"reasoning_effort": "low"}
+            extra_body = {"reasoning_effort": _effort}
 
             # 流式调用，逐 token 输出思考过程
             stream = await client.chat.completions.create(
@@ -151,6 +159,9 @@ async def _deepseek_agent_stream(
             round_reasoning = ""
             round_content = ""
             tool_call_chunks: list = []
+            # DSML 抑制：本轮 content/reasoning 各一路过滤器
+            content_f = DsmlStreamFilter()
+            reasoning_f = DsmlStreamFilter()
 
             async for chunk in stream:
                 delta = chunk.choices[0].delta if chunk.choices else None
@@ -160,16 +171,31 @@ async def _deepseek_agent_stream(
                 # DeepSeek V4 特有字段，openai SDK ChoiceDelta 未定义该属性
                 reasoning = getattr(delta, 'reasoning_content', None)
                 if reasoning:
-                    round_reasoning += reasoning
-                    full_reasoning += reasoning
-                    yield {"type": "reasoning", "data": reasoning}
+                    rclean = reasoning_f.feed(reasoning)
+                    if rclean:
+                        round_reasoning += rclean
+                        full_reasoning += rclean
+                        yield {"type": "reasoning", "data": rclean}
 
                 if delta.tool_calls:
                     tool_call_chunks.append(delta.tool_calls[0])
 
                 if delta.content:
-                    round_content += delta.content
-                    yield {"type": "token", "data": delta.content}
+                    clean = content_f.feed(delta.content)
+                    if clean:
+                        round_content += clean
+                        yield {"type": "token", "data": clean}
+
+            # 轮末 flush：把被暂扣的合法尾部吐出
+            c_tail = content_f.flush()
+            if c_tail:
+                round_content += c_tail
+                yield {"type": "token", "data": c_tail}
+            r_tail = reasoning_f.flush()
+            if r_tail:
+                round_reasoning += r_tail
+                full_reasoning += r_tail
+                yield {"type": "reasoning", "data": r_tail}
 
             # 合并 tool_call chunks 为完整 tool_calls
             if tool_call_chunks:
@@ -267,6 +293,40 @@ async def _deepseek_agent_stream(
         yield {"type": "error", "data": str(e)}
 
 
+# ——— DSML 流式抑制（DeepSeek 工具调用标记泄漏）———
+# run_id → (content_filter, reasoning_filter)；LangGraph 流式路径共用
+def dsml_filters() -> Dict[str, Any]:
+    """创建空 filter 表（run_id → [DsmlStreamFilter, DsmlStreamFilter]）"""
+    return {}
+
+
+def _dsml_pair(filters: Dict[str, Any], run_id: str):
+    from yuanai_core.pure.dsml import DsmlStreamFilter
+    if run_id not in filters:
+        filters[run_id] = [DsmlStreamFilter(), DsmlStreamFilter()]
+    return filters[run_id]
+
+
+def feed_dsml(filters: Dict[str, Any], run_id: str, kind: str, text: str) -> str:
+    """喂入流式增量，返回清洗后文本（kind: content|reasoning）"""
+    if not text:
+        return ""
+    pair = _dsml_pair(filters, run_id)
+    return pair[0 if kind == "content" else 1].feed(text)
+
+
+def flush_dsml(filters: Dict[str, Any], run_id: str, kind: str) -> str:
+    """流结束 flush 尾部（BLOCK 态残留丢弃）"""
+    pair = filters.get(run_id)
+    return (pair[0 if kind == "content" else 1].flush()) if pair else ""
+
+
+def dsml_saw_block(filters: Dict[str, Any], run_id: str) -> bool:
+    """本轮是否剥过完整 DSML 工具调用块（配合『无结构化 tool_call 则报错』）"""
+    pair = filters.get(run_id)
+    return bool(pair and (pair[0].saw_block or pair[1].saw_block))
+
+
 def limited_tools(tools: List[BaseTool], max_calls_per_tool: int = 3) -> List[BaseTool]:
     """同名工具单轮调用上限：超限不执行、返回引导语（防模型对失败/不存在的工具
     死循环重试——曾出现同一工具被连续调用 20+ 次）。包一层计数，工具本身不改。"""
@@ -316,19 +376,34 @@ async def stream_agent_events(
     config = {"recursion_limit": max_tool_rounds * 2 + 4}
     full_response = ""
     full_reasoning = ""
+    filters = dsml_filters()   # DSML 抑制：run_id → (content, reasoning) 过滤器
     try:
         async for event in agent.astream_events({"messages": input_messages}, version="v2", config=config):
+            run_id = event.get("run_id", "")
             if event["event"] == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
                 if hasattr(chunk, "content") and chunk.content:
-                    full_response += chunk.content
-                    yield {"type": "token", "data": chunk.content}
+                    clean = feed_dsml(filters, run_id, "content", chunk.content)
+                    if clean:
+                        full_response += clean
+                        yield {"type": "token", "data": clean}
                 rc = chunk.additional_kwargs.get("reasoning_content", "") if hasattr(chunk, "additional_kwargs") else ""
                 if not rc:
                     rc = getattr(chunk, "reasoning_content", "")
                 if rc:
-                    full_reasoning += rc
-                    yield {"type": "reasoning", "data": rc}
+                    rclean = feed_dsml(filters, run_id, "reasoning", rc)
+                    if rclean:
+                        full_reasoning += rclean
+                        yield {"type": "reasoning", "data": rclean}
+            elif event["event"] == "on_chat_model_end":
+                tail = flush_dsml(filters, run_id, "content")
+                if tail:
+                    full_response += tail
+                    yield {"type": "token", "data": tail}
+                rtail = flush_dsml(filters, run_id, "reasoning")
+                if rtail:
+                    full_reasoning += rtail
+                    yield {"type": "reasoning", "data": rtail}
             elif event["event"] == "on_tool_start":
                 yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator"}}
             elif event["event"] == "on_tool_end":

@@ -37,7 +37,8 @@ _DEFAULT_MODELS = {
 def _load_models() -> dict:
     models = dict(_DEFAULT_MODELS)
     try:
-        custom_path = _Path(__file__).parent.parent / "data" / "models.json"
+        from utils.data_path import root_path as _root_path
+        custom_path = _Path(_root_path()) / "data" / "models.json"
         if custom_path.exists():
             with open(custom_path, "r", encoding="utf-8") as f:
                 custom = _json.load(f)
@@ -54,10 +55,123 @@ DEFAULT_MODEL = _DEEPSEEK_FLASH
 VISION_MODEL = _DOUBAO_PRO  # DeepSeek 不支持图片，识图自动切豆包
 DEFAULT_TEMPERATURE = 0.7
 
-# 推理强度（DeepSeek 系列 reasoning_effort，.env 可覆盖）：
+# ===================== 后台设定中心（2026-10-17） =====================
+# 存储：models.json 的 `_system_config` 键（与 _agent_models/_voice_config 同构，
+# models_file 单点读写原子落盘）。选择链：env 优先（保持生产语义）→
+# _system_config → 代码默认。GET /admin/system-config 返回 env_override 标记，
+# UI 对 env 压住的项显示黄色提示「环境变量已设置，优先级高于后台」。
+
+_DEFAULT_SYSTEM_CONFIG = {
+    # 记忆机制（MEMORY_* 12 项）
+    "memory_enabled": True,
+    "memory_working_window": 20,
+    "memory_trigger_chars": 8000,
+    "memory_fold_min_messages": 5,
+    "memory_fold_min_chars": 800,
+    "memory_fold_input_max_chars": 12000,
+    "memory_max_items": 100,
+    "memory_max_chars": 2000,
+    "memory_fold_timeout_s": 120,
+    "memory_fold_daily_max": 50,
+    "memory_organize_delete_daily_max": 3,
+    # 推理强度（DeepSeek 系列；low/medium/high）
+    "reasoning_effort": "low",
+    # 成本护栏
+    "register_open": False,
+    "daily_message_quota": 50,
+    "voice_enabled": True,
+    # 模型定价（dict，空=用内置默认；合并 MODEL_PRICING）
+    "model_pricing": {},
+    # 助手设定（提示词，模型自知的「可编辑设定」）
+    "chat_system_prompt": "",
+    "self_report_template": ("你当前实际运行的模型 ID 是 {model}。"
+                             "当用户问「你是什么模型/哪个模型」时，如实回答这个模型 ID，"
+                             "不要模糊、不要编造其他名称。"),
+    "capability_note": "",
+}
+
+# 键 → env 名（env 优先链；不在映射的键只走 _system_config）
+_SYS_CONFIG_ENV_MAP = {
+    "memory_enabled": "MEMORY_ENABLED",
+    "memory_working_window": "MEMORY_WORKING_WINDOW",
+    "memory_trigger_chars": "MEMORY_TRIGGER_CHARS",
+    "memory_fold_min_messages": "MEMORY_FOLD_MIN_MESSAGES",
+    "memory_fold_min_chars": "MEMORY_FOLD_MIN_CHARS",
+    "memory_fold_input_max_chars": "MEMORY_FOLD_INPUT_MAX_CHARS",
+    "memory_max_items": "MEMORY_MAX_ITEMS",
+    "memory_max_chars": "MEMORY_MAX_CHARS",
+    "memory_fold_timeout_s": "MEMORY_FOLD_TIMEOUT_S",
+    "memory_fold_daily_max": "MEMORY_FOLD_DAILY_MAX",
+    "memory_organize_delete_daily_max": "MEMORY_ORGANIZE_DELETE_DAILY_MAX",
+    "reasoning_effort": "REASONING_EFFORT",
+    "register_open": "REGISTER_OPEN",
+    "daily_message_quota": "DAILY_MESSAGE_QUOTA",
+    "voice_enabled": "VOICE_ENABLED",
+}
+
+
+def _load_system_config() -> dict:
+    result = dict(_DEFAULT_SYSTEM_CONFIG)
+    try:
+        from utils.data_path import root_path as _root_path
+        custom_path = _Path(_root_path()) / "data" / "models.json"
+        if custom_path.exists():
+            with open(custom_path, "r", encoding="utf-8") as f:
+                data = _json.load(f)
+            if isinstance(data, dict):
+                custom = data.get("_system_config", {})
+                if isinstance(custom, dict):
+                    result.update(custom)
+    except Exception:
+        pass
+    return result
+
+
+SYSTEM_CONFIG = _load_system_config()
+
+
+def env_overrides_system_config(key: str) -> bool:
+    """该键是否被环境变量压住（后台 UI 提示用）"""
+    env_key = _SYS_CONFIG_ENV_MAP.get(key)
+    return bool(env_key and os.getenv(env_key) is not None)
+
+
+def _syscfg(key: str):
+    """env 优先 → _system_config → 默认（返回原始类型）"""
+    env_key = _SYS_CONFIG_ENV_MAP.get(key)
+    if env_key:
+        raw = os.getenv(env_key)
+        if raw is not None:
+            default = _DEFAULT_SYSTEM_CONFIG[key]
+            if isinstance(default, bool):
+                return raw.lower() == "true"
+            if isinstance(default, int):
+                try:
+                    return int(raw)
+                except ValueError:
+                    return default
+            return raw
+    return SYSTEM_CONFIG.get(key, _DEFAULT_SYSTEM_CONFIG[key])
+
+
+# 助手设定（模型自知的提示词，后台可编辑）
+SELF_REPORT_TEMPLATE = str(_syscfg("self_report_template"))
+CHAT_SYSTEM_PROMPT = str(_syscfg("chat_system_prompt"))
+CAPABILITY_NOTE = str(_syscfg("capability_note"))
+
+
+def self_report_text(model: str) -> str:
+    """自报注入文案（运行时真值填充模型 ID，不可被编辑成假值）"""
+    try:
+        return SELF_REPORT_TEMPLATE.format(model=model)
+    except Exception:
+        return f"你当前实际运行的模型 ID 是 {model}。"
+
+
+# 推理强度（DeepSeek 系列 reasoning_effort，.env/后台可覆盖）：
 #   low = 快答省 token（默认）；medium = 标准；high = 深度思考（复杂分析）
 # 豆包系列不走此参数——思考模式由方舟接入点（火山控制台 endpoint）的 thinking 开关控制
-REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")
+REASONING_EFFORT = str(_syscfg("reasoning_effort"))
 
 # 模型 API 定价（元 / 百万 token，成本面板用）。
 # ⚠ 价格为占位默认值，以官方最新价为准；整体覆盖：.env 设 MODEL_PRICING_JSON
@@ -77,6 +191,10 @@ try:
             MODEL_PRICING = {**_MODEL_PRICING_DEFAULTS, **_pricing_custom}
 except Exception:
     pass
+# 后台设定中心的 model_pricing 合并（env MODEL_PRICING_JSON 仍优先）
+_pricing_syscfg = _syscfg("model_pricing")
+if isinstance(_pricing_syscfg, dict) and _pricing_syscfg:
+    MODEL_PRICING = {**MODEL_PRICING, **_pricing_syscfg}
 
 # Agent 模型分配 — 统一入口，消除代码中 15+ 处硬编码。
 # 模型淘汰可更换（2026-10-16）：后台「模型配置」页可编辑分配（存 models.json
@@ -100,7 +218,8 @@ def _load_agent_models() -> dict:
     """从 models.json 读取自定义 Agent 模型分配，合并到默认映射"""
     result = dict(_DEFAULT_AGENT_MODEL_MAP)
     try:
-        custom_path = _Path(__file__).parent.parent / "data" / "models.json"
+        from utils.data_path import root_path as _root_path
+        custom_path = _Path(_root_path()) / "data" / "models.json"
         if custom_path.exists():
             with open(custom_path, "r", encoding="utf-8") as f:
                 data = _json.load(f)
@@ -144,19 +263,20 @@ def reload_agent_models() -> None:
 
 # ===================== 记忆机制（短期工作记忆 / 长期条目化记忆） =====================
 # 决策：最近 N 条原样保留；超出部分豆包 lite 后台异步折叠成条目化事实存 users.memory；
-# 设置页「我的记忆」透明可编辑；点踩内容不进记忆。全部可 .env 覆盖。
-MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "true").lower() == "true"     # 压缩总开关
+# 设置页「我的记忆」透明可编辑；点踩内容不进记忆。选择链：env 优先 → 后台设定中心
+# （_system_config）→ 默认；后台改完 reload_system_config 热更新。
+MEMORY_ENABLED = bool(_syscfg("memory_enabled"))                          # 压缩总开关
 MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-0-lite-260215")  # 折叠用模型
-MEMORY_WORKING_WINDOW = int(os.getenv("MEMORY_WORKING_WINDOW", "20"))      # 工作记忆条数（最近 N 条永不折叠）
-MEMORY_TRIGGER_CHARS = int(os.getenv("MEMORY_TRIGGER_CHARS", "8000"))      # 触发阈值：会话总字数
-MEMORY_FOLD_MIN_MESSAGES = int(os.getenv("MEMORY_FOLD_MIN_MESSAGES", "5")) # 单次折叠最小条数（烧钱护栏，设 1 = 字面口径）
-MEMORY_FOLD_MIN_CHARS = int(os.getenv("MEMORY_FOLD_MIN_CHARS", "800"))
-MEMORY_FOLD_INPUT_MAX_CHARS = int(os.getenv("MEMORY_FOLD_INPUT_MAX_CHARS", "12000"))  # 单次折叠输入上限
-MEMORY_MAX_ITEMS = int(os.getenv("MEMORY_MAX_ITEMS", "100"))               # 长期记忆条数上限（超限丢最旧）
-MEMORY_MAX_CHARS = int(os.getenv("MEMORY_MAX_CHARS", "2000"))              # 长期记忆字数上限（每轮注入，别开大）
-MEMORY_FOLD_TIMEOUT_S = int(os.getenv("MEMORY_FOLD_TIMEOUT_S", "120"))
-MEMORY_FOLD_DAILY_MAX = int(os.getenv("MEMORY_FOLD_DAILY_MAX", "50"))      # 每用户每日折叠次数上限
-MEMORY_ORGANIZE_DELETE_DAILY_MAX = int(os.getenv("MEMORY_ORGANIZE_DELETE_DAILY_MAX", "3"))  # 自整理删除：每用户每日删条数上限（安全事故教训后设的硬护栏）
+MEMORY_WORKING_WINDOW = int(_syscfg("memory_working_window"))             # 工作记忆条数（最近 N 条永不折叠）
+MEMORY_TRIGGER_CHARS = int(_syscfg("memory_trigger_chars"))               # 触发阈值：会话总字数
+MEMORY_FOLD_MIN_MESSAGES = int(_syscfg("memory_fold_min_messages"))       # 单次折叠最小条数（烧钱护栏，设 1 = 字面口径）
+MEMORY_FOLD_MIN_CHARS = int(_syscfg("memory_fold_min_chars"))
+MEMORY_FOLD_INPUT_MAX_CHARS = int(_syscfg("memory_fold_input_max_chars")) # 单次折叠输入上限
+MEMORY_MAX_ITEMS = int(_syscfg("memory_max_items"))                       # 长期记忆条数上限（超限丢最旧）
+MEMORY_MAX_CHARS = int(_syscfg("memory_max_chars"))                       # 长期记忆字数上限（每轮注入，别开大）
+MEMORY_FOLD_TIMEOUT_S = int(_syscfg("memory_fold_timeout_s"))
+MEMORY_FOLD_DAILY_MAX = int(_syscfg("memory_fold_daily_max"))             # 每用户每日折叠次数上限
+MEMORY_ORGANIZE_DELETE_DAILY_MAX = int(_syscfg("memory_organize_delete_daily_max"))  # 自整理删除：每用户每日删条数上限（安全事故教训后设的硬护栏）
 
 # Agent 音色分配 — 气泡朗读按消息归属 Agent 选音色（均实测有效；须为 2.0 系列配 seed-tts-2.0）
 _DEFAULT_AGENT_VOICE_MAP = {
@@ -173,7 +293,8 @@ def _load_agent_voices() -> dict:
     """从 models.json 读取自定义 Agent 音色分配，合并到默认映射"""
     result = dict(_DEFAULT_AGENT_VOICE_MAP)
     try:
-        custom_path = _Path(__file__).parent.parent / "data" / "models.json"
+        from utils.data_path import root_path as _root_path
+        custom_path = _Path(_root_path()) / "data" / "models.json"
         if custom_path.exists():
             with open(custom_path, "r", encoding="utf-8") as f:
                 data = _json.load(f)
@@ -189,9 +310,9 @@ def _load_agent_voices() -> dict:
 AGENT_VOICE_MAP = _load_agent_voices()
 
 # ===================== 成本护栏（注册/配额/功能开关） =====================
-REGISTER_OPEN = os.getenv("REGISTER_OPEN", "false").lower() == "true"   # 公开注册开关（默认关，用户由管理员后台创建）
-DAILY_MESSAGE_QUOTA = int(os.getenv("DAILY_MESSAGE_QUOTA", "50"))       # 每用户每日消息配额（admin 不限；0 = 不限）
-VOICE_ENABLED = os.getenv("VOICE_ENABLED", "true").lower() == "true"    # 语音通话/朗读功能总开关
+REGISTER_OPEN = bool(_syscfg("register_open"))   # 公开注册开关（默认关，用户由管理员后台创建）
+DAILY_MESSAGE_QUOTA = int(_syscfg("daily_message_quota"))  # 每用户每日消息配额（admin 不限；0 = 不限）
+VOICE_ENABLED = bool(_syscfg("voice_enabled"))    # 语音通话/朗读功能总开关
 
 # ===================== 鉴权配置 =====================
 
@@ -289,7 +410,8 @@ _DEFAULT_VOICE_CONFIG = {
 def _load_voice_config() -> dict:
     result = dict(_DEFAULT_VOICE_CONFIG)
     try:
-        custom_path = _Path(__file__).parent.parent / "data" / "models.json"
+        from utils.data_path import root_path as _root_path
+        custom_path = _Path(_root_path()) / "data" / "models.json"
         if custom_path.exists():
             with open(custom_path, "r", encoding="utf-8") as f:
                 data = _json.load(f)
@@ -346,3 +468,74 @@ VOICE_LLM_TEMPERATURE = float(os.getenv("VOICE_LLM_TEMPERATURE", "0.1"))
 VOICE_LLM_TOP_P = float(os.getenv("VOICE_LLM_TOP_P", "0.3"))
 VOICE_LLM_PREFILL = os.getenv("VOICE_LLM_PREFILL", "true").lower() == "true"
 VOICE_LLM_HISTORY_LENGTH = int(os.getenv("VOICE_LLM_HISTORY_LENGTH", "3"))
+
+
+# ===================== 后台设定中心：热更新函数（2026-10-17） =====================
+# 消费侧多为函数内惰性 import，重赋模块属性即热生效；lc 的模块级快照由
+# reload 主动同步刷新。
+
+def reload_system_config() -> None:
+    """_system_config 改动后热更新：重算全部覆盖链派生量 + 同步 lc 快照"""
+    global SYSTEM_CONFIG, SELF_REPORT_TEMPLATE, CHAT_SYSTEM_PROMPT, CAPABILITY_NOTE
+    global REASONING_EFFORT, MEMORY_ENABLED, MEMORY_WORKING_WINDOW, MEMORY_TRIGGER_CHARS
+    global MEMORY_FOLD_MIN_MESSAGES, MEMORY_FOLD_MIN_CHARS, MEMORY_FOLD_INPUT_MAX_CHARS
+    global MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, MEMORY_FOLD_TIMEOUT_S
+    global MEMORY_FOLD_DAILY_MAX, MEMORY_ORGANIZE_DELETE_DAILY_MAX
+    global REGISTER_OPEN, DAILY_MESSAGE_QUOTA, VOICE_ENABLED, MODEL_PRICING
+
+    SYSTEM_CONFIG.clear()
+    SYSTEM_CONFIG.update(_load_system_config())
+    SELF_REPORT_TEMPLATE = str(_syscfg("self_report_template"))
+    CHAT_SYSTEM_PROMPT = str(_syscfg("chat_system_prompt"))
+    CAPABILITY_NOTE = str(_syscfg("capability_note"))
+    REASONING_EFFORT = str(_syscfg("reasoning_effort"))
+    MEMORY_ENABLED = bool(_syscfg("memory_enabled"))
+    MEMORY_WORKING_WINDOW = int(_syscfg("memory_working_window"))
+    MEMORY_TRIGGER_CHARS = int(_syscfg("memory_trigger_chars"))
+    MEMORY_FOLD_MIN_MESSAGES = int(_syscfg("memory_fold_min_messages"))
+    MEMORY_FOLD_MIN_CHARS = int(_syscfg("memory_fold_min_chars"))
+    MEMORY_FOLD_INPUT_MAX_CHARS = int(_syscfg("memory_fold_input_max_chars"))
+    MEMORY_MAX_ITEMS = int(_syscfg("memory_max_items"))
+    MEMORY_MAX_CHARS = int(_syscfg("memory_max_chars"))
+    MEMORY_FOLD_TIMEOUT_S = int(_syscfg("memory_fold_timeout_s"))
+    MEMORY_FOLD_DAILY_MAX = int(_syscfg("memory_fold_daily_max"))
+    MEMORY_ORGANIZE_DELETE_DAILY_MAX = int(_syscfg("memory_organize_delete_daily_max"))
+    REGISTER_OPEN = bool(_syscfg("register_open"))
+    DAILY_MESSAGE_QUOTA = int(_syscfg("daily_message_quota"))
+    VOICE_ENABLED = bool(_syscfg("voice_enabled"))
+    MODEL_PRICING = dict(_MODEL_PRICING_DEFAULTS)
+    try:
+        _pricing_env = os.getenv("MODEL_PRICING_JSON", "")
+        if _pricing_env:
+            MODEL_PRICING = {**MODEL_PRICING, **json.loads(_pricing_env)}
+    except Exception:
+        pass
+    _pricing_syscfg = _syscfg("model_pricing")
+    if isinstance(_pricing_syscfg, dict) and _pricing_syscfg:
+        MODEL_PRICING = {**MODEL_PRICING, **_pricing_syscfg}
+    # 同步 lc 模块级快照（REASONING_EFFORT / dsllm / seed）
+    try:
+        import yuanai_core.core.lc as _lc
+        _lc.REASONING_EFFORT = REASONING_EFFORT
+    except Exception:
+        pass
+
+
+def reload_models_registry() -> None:
+    """模型清单热更新：MODELS + MODEL_NAMES + lc.dsllm/seed 全链路刷新
+    （修「新加模型走不了 DeepSeek/豆包通道，重启才生效」的缺口）"""
+    global MODELS, MODEL_NAMES
+    MODELS.clear()
+    MODELS.update(_load_models())
+    MODEL_NAMES[:] = list(MODELS.keys())
+    try:
+        import yuanai_core.core.lc as _lc
+        _lc.refresh_model_lists()
+    except Exception:
+        pass
+
+
+def reload_agent_voices() -> None:
+    """Agent 音色分配热更新（修「用户设置页改音色写盘但内存不刷新」的缺口）"""
+    AGENT_VOICE_MAP.clear()
+    AGENT_VOICE_MAP.update(_load_agent_voices())

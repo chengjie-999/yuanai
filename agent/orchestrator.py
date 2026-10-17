@@ -22,7 +22,7 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是小元AI的统筹 Agent，正运行在用�
 你可以直接使用的工具：
 - 数据分析脚本工具：script_descriptive_stats（描述性统计）/ script_correlation（相关性）/ script_regression（回归）/ script_categorical（分类数据分析）/ script_timeseries（时间序列）/ script_preprocess（数据预处理）/ script_rfm_cluster（RFM 客户分群）/ script_churn_predict（客户流失预测）/ script_gene_expression（基因表达）
 - 数据采集脚本工具：script_generic_crawl（通用网页采集）等
-- 联网搜索：search_web（query 用核心短语、词间空格分词，如「AI 大模型 最新进展」；搜出链接后可用 fetch_url + parse_html 取详情）
+- 联网搜索：search_web（query 用核心短语、词间空格分词，如「AI 大模型 最新进展」；搜索摘要通常已足够回答，不必逐条抓取，仅需正文详情时才用 fetch_url + parse_html）
 - 计算器 / 天气 / 用户记忆 / 知识库 / 知识星球 / 文件操作 / 数据集管理 / 网页爬取等共享工具
 - 本地代码执行：delegate_to_claude_agent（编写/修改代码、终端命令、Git 操作，交给本机 Claude Code）
 
@@ -411,35 +411,62 @@ class Orchestrator:
             orch_model = VISION_MODEL
             logger.info("检测到图片，自动切换到视觉模型: %s", orch_model)
 
+        # 模型如实自报（2026-10-16 起，2026-10-17 修正）：
+        # - resolve_model_id 归一化 + 后台设定中心模板（模型 ID 运行时真值填充）
+        # - 追加进已有首条 system 消息（云端已下发前端提示）而非 insert 双 system
+        from yuanai_core.core.lc import resolve_model_id
+        from config.settings import self_report_text
+        self_report = "\n\n" + self_report_text(resolve_model_id(orch_model))
+        if input_messages and input_messages[0].get("role") == "system":
+            input_messages[0]["content"] = (input_messages[0].get("content") or "") + self_report
+        else:
+            input_messages.insert(0, {"role": "system", "content": self_report.strip()})
         llm = get_llm(orch_model, temperature=0.7, verbose=False, streaming=True)
-        # 模型如实自报（2026-10-16）：用户问「你是什么模型」时如实回答实际运行的模型 ID
-        input_messages.insert(0, {
-            "role": "system",
-            "content": (f"你当前实际运行的模型 ID 是 {orch_model}。"
-                        f"当用户问「你是什么模型/哪个模型」时，如实回答这个模型 ID，"
-                        f"不要模糊、不要编造其他名称。"),
-        })
+        # 同名工具单轮 ≤3 次护栏（与云端 limited_tools 同口径）+ 显式轮数上限
+        from yuanai_core.core.chat import limited_tools
+        orch_tools = limited_tools(orch_tools)
         agent = create_react_agent(llm, orch_tools)
 
         full_response = ""
         full_reasoning = ""
+        from yuanai_core.core.chat import feed_dsml, flush_dsml, dsml_filters, dsml_saw_block
+        filters = dsml_filters()   # DSML 抑制：run_id → (content, reasoning) 过滤器
+        saw_tool = False           # 本轮是否有结构化工具调用（配合 DSML 抑制兜底）
         try:
-            async for event in agent.astream_events({"messages": input_messages}, version="v2"):
+            async for event in agent.astream_events(
+                    {"messages": input_messages}, version="v2",
+                    config={"recursion_limit": 25}):
                 kind = event.get("event", "")
+                run_id = event.get("run_id", "")
 
                 if kind == "on_chat_model_stream":
                     chunk = event["data"]["chunk"]
                     if hasattr(chunk, "content") and chunk.content:
-                        full_response += chunk.content
-                        yield ev_token(chunk.content, rid)
+                        clean = feed_dsml(filters, run_id, "content", chunk.content)
+                        if clean:
+                            full_response += clean
+                            yield ev_token(clean, rid)
                     rc = chunk.additional_kwargs.get("reasoning_content", "") if hasattr(chunk, "additional_kwargs") else ""
                     if not rc:
                         rc = getattr(chunk, "reasoning_content", "")
                     if rc:
-                        full_reasoning += rc
-                        yield reasoning(rc, rid)
+                        rclean = feed_dsml(filters, run_id, "reasoning", rc)
+                        if rclean:
+                            full_reasoning += rclean
+                            yield reasoning(rclean, rid)
+
+                elif kind == "on_chat_model_end":
+                    tail = flush_dsml(filters, run_id, "content")
+                    if tail:
+                        full_response += tail
+                        yield ev_token(tail, rid)
+                    rtail = flush_dsml(filters, run_id, "reasoning")
+                    if rtail:
+                        full_reasoning += rtail
+                        yield reasoning(rtail, rid)
 
                 elif kind == "on_tool_start":
+                    saw_tool = True
                     name = event.get("name", "未知工具")
                     yield ev_tool_start(name, rid, sender=_tool_sender(name))
 
@@ -452,6 +479,10 @@ class Orchestrator:
                         yield ev
                     yield ev_tool_end(name, clean_output, rid, sender=_tool_sender(name))
 
+            # DSML 兜底：模型把工具调用写成了文本（已被抑制）且没有结构化工具调用 → 明确报错
+            if not saw_tool and any(dsml_saw_block(filters, r) for r in filters):
+                yield error_event("模型把工具调用写成了文本（已抑制）。请重试或换种问法", rid)
+                return
             yield done(full_response, full_reasoning, rid)
         except Exception as e:
             logger.error("统筹 Agent 异常: %s", e, exc_info=True)

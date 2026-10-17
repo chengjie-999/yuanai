@@ -343,7 +343,8 @@ async def add_model(req: ModelUpsert, request: Request):
     data[req.model_id] = {"label": req.label, "provider": req.provider}
     _write_models_file(data)
     from config.settings import _load_models, MODELS
-    MODELS.clear(); MODELS.update(_load_models())
+    from config.settings import reload_models_registry
+    reload_models_registry()
     return {"ok": True, "model_id": req.model_id}
 
 
@@ -362,7 +363,8 @@ async def delete_model(req: ModelDelete, request: Request):
         del data[req.model_id]
         _write_models_file(data)
     from config.settings import _load_models, MODELS
-    MODELS.clear(); MODELS.update(_load_models())
+    from config.settings import reload_models_registry
+    reload_models_registry()
     return {"ok": True}
 
 
@@ -474,9 +476,112 @@ async def model_upgrade_apply(request: Request):
     reload_agent_models()
     reload_voice_config()
     from config.settings import _load_models, MODELS
-    MODELS.clear(); MODELS.update(_load_models())
+    from config.settings import reload_models_registry
+    reload_models_registry()
     _audit_upgrade(applied + voice_applied)
     return {"ok": True, "model_upgrades": applied, "voice_upgrades": voice_applied}
+
+
+# ===================== 后台设定中心（查看与编辑，2026-10-17） =====================
+
+# 可编辑键声明：类型 / 范围 / 选择（GET 返回给前端渲染控件）
+_SYSTEM_CONFIG_SCHEMA = {
+    "memory_enabled": {"type": "bool"},
+    "memory_working_window": {"type": "int", "min": 1, "max": 500},
+    "memory_trigger_chars": {"type": "int", "min": 500, "max": 100000},
+    "memory_fold_min_messages": {"type": "int", "min": 1, "max": 100},
+    "memory_fold_min_chars": {"type": "int", "min": 100, "max": 100000},
+    "memory_fold_input_max_chars": {"type": "int", "min": 500, "max": 200000},
+    "memory_max_items": {"type": "int", "min": 1, "max": 1000},
+    "memory_max_chars": {"type": "int", "min": 100, "max": 20000},
+    "memory_fold_timeout_s": {"type": "int", "min": 10, "max": 600},
+    "memory_fold_daily_max": {"type": "int", "min": 0, "max": 500},
+    "memory_organize_delete_daily_max": {"type": "int", "min": 0, "max": 50},
+    "reasoning_effort": {"type": "str", "choices": ["low", "medium", "high"]},
+    "register_open": {"type": "bool"},
+    "daily_message_quota": {"type": "int", "min": 0, "max": 10000},
+    "voice_enabled": {"type": "bool"},
+    "model_pricing": {"type": "json"},
+    "chat_system_prompt": {"type": "text", "max": 20000},
+    "self_report_template": {"type": "text", "max": 2000},
+    "capability_note": {"type": "text", "max": 5000},
+}
+
+
+class SystemConfigUpdate(BaseModel):
+    system_config: dict
+
+
+@router.get("/system-config")
+async def get_system_config(request: Request):
+    """设定中心读：可编辑项（合并默认 + env_override 标记）+ 运行实况（只读）"""
+    require_admin(request)
+    from config.settings import (
+        SYSTEM_CONFIG, _DEFAULT_SYSTEM_CONFIG, env_overrides_system_config,
+        AGENT_MODEL_MAP, VOICE_CONFIG, CHAT_SYSTEM_PROMPT, MODEL_PRICING,
+    )
+    editable = {}
+    for key in _SYSTEM_CONFIG_SCHEMA:
+        editable[key] = {
+            "value": SYSTEM_CONFIG.get(key, _DEFAULT_SYSTEM_CONFIG.get(key)),
+            "env_override": env_overrides_system_config(key),
+        }
+    try:
+        from yuanai_core.tools import all_tools, _tool_category_map
+        tool_count = len(all_tools)
+        categories = {c: sum(1 for v in _tool_category_map.values() if v == c)
+                      for c in set(_tool_category_map.values())}
+    except Exception:
+        tool_count, categories = 0, {}
+    return {
+        "editable": editable,
+        "schema": _SYSTEM_CONFIG_SCHEMA,
+        "effective": {
+            "agent_models": dict(AGENT_MODEL_MAP),
+            "voice_config": dict(VOICE_CONFIG),
+            "chat_system_prompt": CHAT_SYSTEM_PROMPT or "（内置默认提示词）",
+            "model_pricing": MODEL_PRICING,
+            "tool_count": tool_count,
+            "tool_categories": categories,
+        },
+    }
+
+
+@router.put("/system-config")
+async def update_system_config(req: SystemConfigUpdate, request: Request):
+    """设定中心写：白名单 + 类型/范围校验 → 写 models.json `_system_config` → 热更新"""
+    require_admin(request)
+    incoming = req.system_config or {}
+    for key, val in incoming.items():
+        schema = _SYSTEM_CONFIG_SCHEMA.get(key)
+        if not schema:
+            raise HTTPException(status_code=400, detail=f"未知设定项: {key}")
+        t = schema["type"]
+        if t == "bool" and not isinstance(val, bool):
+            raise HTTPException(status_code=400, detail=f"{key} 需为布尔值")
+        if t == "int":
+            if not isinstance(val, int) or isinstance(val, bool):
+                raise HTTPException(status_code=400, detail=f"{key} 需为整数")
+            if "min" in schema and val < schema["min"]:
+                raise HTTPException(status_code=400, detail=f"{key} 不能小于 {schema['min']}")
+            if "max" in schema and val > schema["max"]:
+                raise HTTPException(status_code=400, detail=f"{key} 不能大于 {schema['max']}")
+        if t == "str" and "choices" in schema and val not in schema["choices"]:
+            raise HTTPException(status_code=400, detail=f"{key} 仅支持: {schema['choices']}")
+        if t in ("str", "text") and not isinstance(val, str):
+            raise HTTPException(status_code=400, detail=f"{key} 需为字符串")
+        if t == "json" and not isinstance(val, dict):
+            raise HTTPException(status_code=400, detail=f"{key} 需为 JSON 对象")
+        if t == "text" and "max" in schema and len(val) > schema["max"]:
+            raise HTTPException(status_code=400, detail=f"{key} 超过长度上限 {schema['max']}")
+    data = _read_models_file()
+    merged = dict(data.get("_system_config") or {})
+    merged.update(incoming)
+    data["_system_config"] = merged
+    _write_models_file(data)
+    from config.settings import reload_system_config
+    reload_system_config()
+    return {"ok": True}
 
 
 # ===================== 语音配置（合成模型/音色/资源，易淘汰项可换） =====================

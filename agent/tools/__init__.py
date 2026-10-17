@@ -1,6 +1,7 @@
 """Agent 工具自动发现 + 按 Agent 角色分配"""
 
 import os
+import sys
 import logging
 import importlib
 from typing import List
@@ -12,29 +13,50 @@ logger = logging.getLogger(__name__)
 
 
 def _scan_agent_tools() -> List[BaseTool]:
-    """扫描 agent/tools/ 目录，加载所有专用工具（不含共享工具）"""
+    """加载所有专用工具（不含共享工具）。
+
+    打包兼容（2026-10-17）：frozen（exe）只走 _registry 静态清单（os.walk 在
+    _MEIPASS 下扫不到）；开发模式补扫磁盘并告警未登记模块。
+    """
     tools = []
     seen_names = set()
-    base_dir = os.path.dirname(__file__)
 
-    for root, dirs, files in os.walk(base_dir):
-        dirs[:] = sorted(d for d in dirs if not d.startswith('__') and not d.startswith('.'))
-        for file in sorted(files):
-            if file.endswith('.py') and not file.startswith('__'):
-                rel_path = os.path.relpath(os.path.join(root, file), base_dir)
-                module_path = rel_path[:-3].replace(os.sep, '.')
-                module_name = f"agent.tools.{module_path}"
+    def _collect(module):
+        try:
+            for attr_name in sorted(dir(module)):
+                attr = getattr(module, attr_name)
+                if isinstance(attr, BaseTool):
+                    if attr.name not in seen_names:
+                        seen_names.add(attr.name)
+                        tools.append(attr)
+        except Exception as e:
+            logger.warning("工具模块 %s 处理失败: %s", module, e)
 
-                try:
-                    module = importlib.import_module(module_name)
-                    for attr_name in sorted(dir(module)):
-                        attr = getattr(module, attr_name)
-                        if isinstance(attr, BaseTool):
-                            if attr.name not in seen_names:
-                                seen_names.add(attr.name)
-                                tools.append(attr)
-                except Exception as e:
-                    logger.warning("导入工具模块 %s 失败: %s", module_name, e)
+    from agent.tools import _registry
+    for m in _registry.TOOL_MODULES:
+        _collect(m)
+
+    if not getattr(sys, "frozen", False):
+        base_dir = os.path.dirname(__file__)
+        registered = {getattr(m, "__name__", "").rsplit(".", 1)[-1] for m in _registry.TOOL_MODULES}
+        for root, dirs, files in os.walk(base_dir):
+            dirs[:] = sorted(d for d in dirs if not d.startswith('__') and not d.startswith('.'))
+            for file in sorted(files):
+                if file.endswith('.py') and not file.startswith('_'):
+                    rel_path = os.path.relpath(os.path.join(root, file), base_dir)
+                    stem = file[:-3]
+                    if any(reg == stem or reg.endswith("." + stem) for reg in registered):
+                        continue
+                    module_name = f"agent.tools.{rel_path[:-3].replace(os.sep, '.')}"
+                    try:
+                        module = importlib.import_module(module_name)
+                        before = len(tools)
+                        _collect(module)
+                        if len(tools) > before:
+                            logger.warning("工具模块 %s 未在 _registry.py 登记（开发态补扫加载；"
+                                           "打包前请登记，否则 exe 内缺失）", module_name)
+                    except Exception as e:
+                        logger.warning("导入工具模块 %s 失败: %s", module_name, e)
 
     return tools
 

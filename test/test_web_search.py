@@ -136,3 +136,22 @@ def test_search_tool_category_general():
 
 if __name__ == "__main__":
     print("测试入口：pytest test/test_web_search.py -v")
+
+
+# ---------------- P0-2 搜索链路：意图组与分类（2026-10-17） ----------------
+
+def test_knowledge_q_group_includes_crawl():
+    """搜索类问题需能 fetch_url/parse_html（与三处 system prompt 引导一致；
+    曾因缺 crawl 组，模型调用不存在的工具 → DSML 文本泄漏）"""
+    from agent.intent_classifier import INTENT_TOOL_GROUPS
+    assert "crawl" in INTENT_TOOL_GROUPS["knowledge_q"]
+    assert "crawl" in INTENT_TOOL_GROUPS["web_query"]
+
+
+def test_classify_web_search_questions():
+    """「帮我搜索最新的 AI 大模型动态」应归 knowledge_q/web_query（含 crawl 工具组）"""
+    from agent.intent_classifier import classifier
+    m = classifier.classify("帮我搜索最新的 AI 大模型动态")
+    assert m.group in ("knowledge_q", "web_query")
+    m2 = classifier.classify("今天有什么新闻")
+    assert m2.group in ("web_query", "knowledge_q", "general_chat")

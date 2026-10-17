@@ -290,6 +290,10 @@ def update_agent_models(req: AgentModelUpdate, request: Request):
     agent_models[req.role] = req.model_id
     data["_agent_models"] = agent_models
     _write_models_file(data)
+    # 2026-10-17 修复：用户侧写盘此前不热更新（内存 AGENT_MODEL_MAP 不变，
+    # 改了分配要重启才生效）——统一补 reload
+    from config.settings import reload_agent_models
+    reload_agent_models()
     return {"ok": True, "role": req.role, "model_id": req.model_id}
 
 
@@ -323,6 +327,10 @@ def update_agent_voices(req: AgentVoiceUpdate, request: Request):
     agent_voices[req.role] = req.voice_id
     data["_agent_voices"] = agent_voices
     _write_models_file(data)
+    # 2026-10-17 修复：音色分配此前无 reload（改完要重启才生效，用户反馈「音色
+    # 不生效」的根因）——写盘后热更新内存 AGENT_VOICE_MAP
+    from config.settings import reload_agent_voices
+    reload_agent_voices()
     return {"ok": True, "role": req.role, "voice_id": req.voice_id}
 
 

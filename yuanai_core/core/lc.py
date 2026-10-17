@@ -16,6 +16,15 @@ current_reasoning_effort: ContextVar[str] = ContextVar("lc_reasoning_effort", de
 dsllm = [m for m in MODEL_NAMES if 'deepseek' in m]
 seed = [m for m in MODEL_NAMES if 'doubao' in m]
 
+
+def refresh_model_lists() -> None:
+    """模型清单热更新（后台 add/delete/upgrade 模型后调用）：重算 dsllm/seed
+    前缀通道，修「新加模型走不了 DeepSeek/豆包通道，重启才生效」的缺口"""
+    global dsllm, seed
+    from config.settings import MODEL_NAMES as _names
+    dsllm = [m for m in _names if 'deepseek' in m]
+    seed = [m for m in _names if 'doubao' in m]
+
 def _get_stored_key(provider: str) -> str | None:
     """从 data/models.json 读取存储的 API Key"""
     try:
@@ -45,8 +54,12 @@ def call_llm(
         return None
 
 
-def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[str] = None, **kwargs):
-    """LLM 工厂。reasoning_effort 优先级：显式参数 > 请求上下文（聊天框开关）> settings。"""
+def resolve_model_id(model: str) -> str:
+    """模型 ID 归一化：退役 ID 路由 + 短名前缀匹配到注册表完整 ID。
+
+    get_llm 调用它执行实际推理；自报注入（模型「如实回答自己是什么模型」）
+    也必须用它——否则注入的字符串与实际调用的 ID 不一致（说一套跑一套）。
+    """
     # 旧模型 ID 兼容（2026-10-16）：已退役 ID 自动路由到新 ID（升级知识表维护）——
     # 存量配置/历史数据里的旧 ID 不报错，静默走新模型
     from yuanai_core.pure.model_upgrades import MODEL_UPGRADES
@@ -60,6 +73,12 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
             if m.startswith(model) or model.startswith(m):
                 model = m
                 break
+    return model
+
+
+def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[str] = None, **kwargs):
+    """LLM 工厂。reasoning_effort 优先级：显式参数 > 请求上下文（聊天框开关）> settings。"""
+    model = resolve_model_id(model)
     if model in dsllm:
         ds_api_key = _get_stored_key("DeepSeek") or get_api_key('dsllm')
         extra_params = {}

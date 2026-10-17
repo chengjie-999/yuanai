@@ -11,11 +11,13 @@ a = Analysis(
     pathex=[str(ROOT)],
     binaries=[],
     datas=[
-        # 注意：不打包 .env（内含 API Key，分发会泄露；运行时从 exe 同级目录读取）
+        # 注意：不打包 .env（内含 API Key，分发会泄露；运行时从数据根 %LOCALAPPDATA%\\XiaoYuanAI\\.env 读取）
         (str(ROOT / 'skills'), 'skills'),
         (str(ROOT / 'agent' / 'datanalysis' / 'scripts'), 'agent/datanalysis/scripts'),
         (str(ROOT / 'agent' / 'datanalysis' / 'crawl'), 'agent/datanalysis/crawl'),
         (str(ROOT / 'agent' / 'datanalysis' / 'tools'), 'agent/datanalysis/tools'),
+        # 报告模板（export.py 用 FileSystemLoader 按 __file__ 定位，frozen 下需随包分发）
+        (str(ROOT / 'yuanai_core' / 'pure' / 'report_template.html'), 'yuanai_core/pure'),
     ],
     hiddenimports=[
         'yuanai_core', 'yuanai_core.core', 'yuanai_core.core.lc', 'yuanai_core.core.chat', 'yuanai_core.core.schemas',
@@ -23,18 +25,21 @@ a = Analysis(
         'yuanai_core.memory', 'yuanai_core.memory_store',
         'yuanai_core.pure', 'yuanai_core.pure.calculate', 'yuanai_core.pure.crawl', 'yuanai_core.pure.files', 'yuanai_core.pure.stats', 'yuanai_core.pure.analysis', 'yuanai_core.pure.cookie',
         'yuanai_core.pure.plan', 'yuanai_core.pure.export', 'yuanai_core.pure.ssrf',
-        'yuanai_core.tools', 'yuanai_core.tools.calculator', 'yuanai_core.tools.crawl_tools', 'yuanai_core.tools.data_tools', 'yuanai_core.tools.file_tools',
-        'yuanai_core.tools.convert_tools', 'yuanai_core.tools.datetime_tools', 'yuanai_core.tools.knowledge_tool',
-        'yuanai_core.tools.plan_tools', 'yuanai_core.tools.planet_tool', 'yuanai_core.tools.pubmed_tools',
-        'yuanai_core.tools.stats_tool', 'yuanai_core.tools.text_tools', 'yuanai_core.tools.user_memory', 'yuanai_core.tools.weather',
+        'yuanai_core.pure.model_upgrades', 'yuanai_core.pure.dsml',
+        'yuanai_core.pure.mindmap_parser', 'yuanai_core.pure.web_search', 'yuanai_core.pure.vault_note',
+        # 工具模块：由 _registry 静态字面量导入自动打包（新增工具改 _registry 即可，
+        # 无需再逐个登记本清单）
+        'yuanai_core.tools', 'yuanai_core.tools._registry',
+        'yuanai_core.usage', 'yuanai_core.planet_convert',
+        'yuanai_core.utils', 'yuanai_core.utils.image',
         'skills',
         'agent', 'agent.main', 'agent.ws_client', 'agent.orchestrator', 'agent.intent_classifier',
-        'agent.claude_bridge', 'agent.tools.claude_delegate',
-        'agent.vault_sync', 'yuanai_core.pure.vault_note',
+        'agent.claude_bridge', 'agent.claude_loop', 'agent.bootstrap', 'agent.bridge_policy',
+        'agent.vault_sync',
         'agent.plan_executor',
         'agent.scripts', 'agent.scripts.registry', 'agent.scripts.tools',
         'agent.agents', 'agent.agents.base', 'agent.agents.automation',
-        'agent.tools', 'agent.tools.errors', 'agent.tools.audit_tools', 'agent.tools.browser_info_tools', 'agent.tools.cookie_tools', 'agent.tools.monitor_tools',
+        'agent.tools', 'agent.tools._registry', 'agent.tools.errors',
         'agent.tools.selenium_tools', 'agent.tools.selenium_tools.core', 'agent.tools.selenium_tools.xiaoyuan',
         'agent.audit', 'agent.audit.core', 'agent.audit.parser',
         'agent.rag',

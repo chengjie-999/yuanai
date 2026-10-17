@@ -16,6 +16,8 @@ export interface ChatMessage {
   msgType?: MsgType         // 避免与 DOM/TS 的 type 概念冲突，字段名用 msgType
   pageLink?: string
   progress?: { current: number; total: number; message?: string }
+  error?: string    // 流式错误（气泡错误卡 + 重试入口；META 短键 e）
+  stopped?: boolean // 用户手动停止生成（META 短键 sp）
 }
 
 export interface ToolCall {

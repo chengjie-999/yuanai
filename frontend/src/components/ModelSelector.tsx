@@ -71,8 +71,9 @@ export function ModelSelector({ model, onChange }: { model: string; onChange: (v
       }} onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--text-secondary)')}
         onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: provider === 'Doubao' ? '#10a37f' : '#6366f1' }} />
-        {/* 真实模型 ID（显示名无意义，直接展示注册表 ID） */}
-        <span style={{ fontSize: 12, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{current.value}</span>
+        {/* 显示名主显 + 真实模型 ID 副显（monospace 小字） */}
+        <span style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{current.label}</span>
+        <span style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{current.value}</span>
         <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 2, flexShrink: 0 }}>▼</span>
       </button>
       {open && (
@@ -90,7 +91,10 @@ export function ModelSelector({ model, onChange }: { model: string; onChange: (v
                   style={{ padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: model === m.value ? 'var(--hover-bg)' : 'transparent', display: 'flex', alignItems: 'center', gap: 10 }}
                 >
                   <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: p === 'Doubao' ? '#10a37f' : '#6366f1' }} />
-                  <div style={{ flex: 1 }}><div style={{ fontSize: 12.5, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{m.value}</div></div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{m.label}</div>
+                    <div style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.value}</div>
+                  </div>
                   {model === m.value && <span style={{ color: '#10a37f', fontSize: 14 }}>✓</span>}
                 </div>
               ))}

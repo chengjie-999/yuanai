@@ -32,6 +32,8 @@ function parseHistory(history: any[]): ChatMessage[] {
     let recipient: string | undefined = undefined
     let turn: number | undefined = undefined
     let msgType: any = undefined
+    let error: string | undefined
+    let stopped: boolean | undefined
     let content = m.content || ''
     if (typeof content === 'string' && content.startsWith('\x00META\x00')) {
       const end = content.indexOf('\x00', 6)
@@ -41,6 +43,8 @@ function parseHistory(history: any[]): ChatMessage[] {
           sender = meta.s; toolCalls = meta.t; reasoning = meta.r
           pageLink = normalizePageLink(meta.p)
           recipient = meta.rp; turn = meta.tn; msgType = meta.ty
+          if (meta.e) error = meta.e
+          if (meta.sp) stopped = true
         } catch {}
         content = content.substring(end + 1)
       }
@@ -51,7 +55,7 @@ function parseHistory(history: any[]): ChatMessage[] {
     if (m.turn) turn = m.turn
     if (m.type) msgType = m.type
     return { role: m.role, content, images: m.images, sender, toolCalls,
-             reasoning, pageLink, recipient, turn, msgType }
+             reasoning, pageLink, recipient, turn, msgType, error, stopped }
   })
 }
 
@@ -112,6 +116,42 @@ export default function ChatPage({ user }: { user?: any }) {
   sidRef.current = currentSid
   const loadingRef = useRef(loading)
   loadingRef.current = loading
+  // 在途流（P1-1 停止生成/会话切换守卫）：sid + AbortController
+  const streamRef = useRef<{ sid: string; controller: AbortController } | null>(null)
+  // 轻提示（handleSend 静默 return 反馈，2s 自动消失）
+  const [notice, setNotice] = useState('')
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flashNotice = (text: string) => {
+    setNotice(text)
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = setTimeout(() => setNotice(''), 2000)
+  }
+  // 停止生成：abort → 补「已停止」标记 → 立即落库（abort 后 onDone/onError 不触发）
+  const stopStream = () => {
+    const s = streamRef.current
+    if (!s) return
+    streamRef.current = null
+    try { s.controller.abort() } catch { /* 忽略 */ }
+    setMessages((prev) => {
+      const last = [...prev]
+      const i = last.length - 1
+      if (i >= 0) last[i] = { ...last[i], stopped: true }
+      return last
+    })
+    setLoading(false)
+    // 立即保存已生成内容（encodeMsg 会带上 stopped 短键）
+    const cur = messagesRef.current
+    const finalMsgs = flushVoiceTranscripts(cur)
+    saveMessages(s.sid, finalMsgs.map(encodeMsg))
+    refreshSessions()
+  }
+  // 会话切换/新建/删除守卫：流式进行中先停并保存
+  const guardBusySession = (): boolean => {
+    if (!loading || !streamRef.current) return true
+    if (!window.confirm('回复仍在生成，切换将停止并保存已生成内容，继续？')) return false
+    stopStream()
+    return true
+  }
 
   // 计划面板窗口：用户手动开/关（AI 不自动开关，用户拍板）；协议见 chat/planWindow.ts
   const navigate = useNavigate()
@@ -235,6 +275,7 @@ export default function ChatPage({ user }: { user?: any }) {
   }
 
   const handleNewSession = async () => {
+    if (!guardBusySession()) return
     // 新建普通对话并立即打开（登录已直接落主对话，新对话按钮=另开一个会话）
     const sid = await createSession()
     setCurrentSid(sid)
@@ -261,6 +302,8 @@ export default function ChatPage({ user }: { user?: any }) {
   }
 
   const handleSelectSession = async (sid: string) => {
+    if (sid === currentSid) return
+    if (!guardBusySession()) return
     setCurrentSid(sid)
     // 小窗会话：恢复持久定向；普通会话：不动（@ 定向单次生效机制不变）
     const dm = dmTargetsRef.current[sid]
@@ -273,12 +316,24 @@ export default function ChatPage({ user }: { user?: any }) {
       ? [{ role: 'assistant', content: '你好！有什么可以帮你的？' }]
       : parseHistory(history))
     scrollToLatest()  // 历史异步加载完成后补滚（时序缺口）
+    if (isMobile) setSidebarOpen(false)  // P2：移动端选中会话后收起侧栏
   }
 
   const handleDeleteSession = async (e: React.MouseEvent, sid: string) => {
     e.stopPropagation()
+    const title = sessions.find((s) => s.session_id === sid)?.title || '该会话'
+    if (!window.confirm(`删除会话「${title}」？该操作不可恢复。`)) return
+    if (loading && streamRef.current && sidRef.current === sid) stopStream()
     await deleteSession(sid)
     if (currentSid === sid) { setCurrentSid(''); setMessages([]) }
+    // 清理小窗定向映射孤儿（删除会话后 localStorage 里残留的 dmTargets 键）
+    setDmTargets((prev) => {
+      if (!(sid in prev)) return prev
+      const next = { ...prev }
+      delete next[sid]
+      localStorage.setItem('dmTargets', JSON.stringify(next))
+      return next
+    })
     refreshSessions()
   }
 
@@ -305,6 +360,9 @@ export default function ChatPage({ user }: { user?: any }) {
     // 本地 Agent 模式气泡显示「小元AI · 本机」，云端模式显示「小元AI」，Claude 模式显示 Claude Code
     let currentSender = chatMode === 'cloud' ? 'orchestrator' : 'local'
     const onEvent = (event: any) => {
+      // 旁路守卫（P1-1）：流式期间会话已切换/停止 → 丢弃迟到事件，防跨会话写入
+      const s = streamRef.current
+      if (!s || s.sid !== sidRef.current) return
       if (event.type === 'token') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender) as any }; return last })
       } else if (event.type === 'reasoning') {
@@ -407,12 +465,24 @@ export default function ChatPage({ user }: { user?: any }) {
       } else if (event.type === 'approval') {
         setPendingApproval({ decision_id: event.data.decision_id, tool_name: event.data.tool_name, command: event.data.command })
       } else if (event.type === 'error') {
-        // 展示真实错误信息（截断），便于排查
+        // 展示真实错误信息（截断），便于排查；error 标记进消息（可落库、气泡显示错误卡）
         const errMsg = typeof event.data === 'string' && event.data ? event.data.slice(0, 300) : '请求失败，请重试'
-        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: `请求失败: ${errMsg}` }; return last }); setLoading(false)
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content || `请求失败: ${errMsg}`, error: `请求失败: ${errMsg}` }; return last }); setLoading(false)
       }
     }
-    const onError = (msg?: string) => { setMessages((prev) => { const last = [...prev]; last[last.length - 1] = { role: 'assistant', content: msg || '网络异常，请检查连接' }; return last }); setLoading(false) }
+    const onError = (msg?: string) => {
+      const errText = msg || '网络异常，请检查连接'
+      setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content || errText, error: errText }; return last })
+      setLoading(false)
+      // P1-1：断流也落库（此前 onError 不保存，刷新后部分输出丢失）
+      const s = streamRef.current
+      streamRef.current = null
+      if (s) {
+        const finalMsgs = flushVoiceTranscripts(messagesRef.current)
+        saveMessages(s.sid, finalMsgs.map(encodeMsg))
+        refreshSessions()
+      }
+    }
     return { onEvent, onError }
   }
 
@@ -445,11 +515,15 @@ export default function ChatPage({ user }: { user?: any }) {
     setMessages([...msgs, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
-    streamChat(
+    const controller = streamChat(
       { model, temperature: 0.7, prompt, images: sentImages, history, system_prompt: sysPrompt,
         session_id: isClaude ? sid : undefined, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
       onEvent, onError,
       () => {
+        const s = streamRef.current
+        streamRef.current = null
+        // 会话切换守卫兜底：流结束时 sid 已变（异常路径）→ 不写库、不处理
+        if (s && s.sid !== sid) { setLoading(false); return }
         setLoading(false)
         if (autoRead) setAutoReadTick((t) => t + 1)  // 触发最后一条 AI 气泡自动朗读
         const finalMsgs = flushVoiceTranscripts(messagesRef.current)
@@ -460,11 +534,14 @@ export default function ChatPage({ user }: { user?: any }) {
         refreshSessions()
       },
     )
+    streamRef.current = { sid, controller }
   }
 
   const handleSend = (textOverride?: string) => {
     const text = (textOverride ?? input).trim()
-    if (!text || loading || !currentSid) return
+    if (!currentSid) { flashNotice('请先选择或创建一个会话'); return }
+    if (loading) { flashNotice('正在生成中，可点击「停止」或等待完成'); return }
+    if (!text) return
     const sentImages = images.length > 0 ? [...images] : undefined
     const prevMsgs = [...messages, { role: 'user' as const, content: text, images: sentImages }]
     setMessages(prevMsgs)
@@ -545,6 +622,7 @@ export default function ChatPage({ user }: { user?: any }) {
   }
 
   const sendWithNewSession = async (text: string) => {
+    if (!guardBusySession()) return
     setLoading(true)
     const sid = await createSession()
     setCurrentSid(sid); refreshSessions()
@@ -562,11 +640,14 @@ export default function ChatPage({ user }: { user?: any }) {
     setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers()
-    streamChat(
+    const controller = streamChat(
       { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: sysPrompt,
         session_id: isClaude ? sid : undefined, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
       onEvent, onError,
       () => {
+        const s = streamRef.current
+        streamRef.current = null
+        if (s && s.sid !== sid) { setLoading(false); return }
         setLoading(false)
         if (autoRead) setAutoReadTick((t) => t + 1)
         const finalMsgs = flushVoiceTranscripts(messagesRef.current)
@@ -576,6 +657,7 @@ export default function ChatPage({ user }: { user?: any }) {
         refreshSessions()
       },
     )
+    streamRef.current = { sid, controller }
   }
 
   return (
@@ -684,6 +766,7 @@ export default function ChatPage({ user }: { user?: any }) {
             onStartVoiceCall={startVoiceCallWithPermission}
             targetAgent={targetAgent} setTargetAgent={setTargetAgent}
             onOpenDirectChat={openDirectChat}
+            onStop={stopStream} notice={notice}
             onSuggest={handleSend}
             sendTick={sendTick}
             isMobile={isMobile}

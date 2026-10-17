@@ -26,7 +26,7 @@ let globalStopReading: (() => void) | null = null
 function HtmlFrame({ url, title }: { url: string; title: string }) {
   const src = useSecuredUrl(url)
   return (
-    <div style={{
+    <div className="chat-html-frame" style={{
       borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)',
       background: 'var(--bg-primary)', aspectRatio: '2/1', maxHeight: 450,
     }}>
@@ -54,6 +54,13 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   const agent = sender ? AGENT_CONFIG[sender] : null
   const [copied, setCopied] = useState(false)
   const [draft, setDraft] = useState(msg.content)
+  // P1-3 思考块受控展开：流式期间保持展开（随 reasoning 增长可见），
+  // 用户手动折叠后尊重其选择（不被后续 token 重置）
+  const [thinkOpen, setThinkOpen] = useState(false)
+  const userToggledRef = useRef(false)
+  useEffect(() => {
+    if (loading && isLast && !userToggledRef.current) setThinkOpen(true)
+  }, [loading, isLast, msg.reasoning?.length])
   // 朗读状态（AI 气泡）：获取中/播放中
   const [speaking, setSpeaking] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -385,7 +392,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
               </div>
             )}
             {(msg.reasoning || msg.toolCalls?.length) ? (
-              <details open={loading && isLast && !msg.content} style={{ marginBottom: 8 }}>
+              <details open={thinkOpen} style={{ marginBottom: 8 }}
+                onToggle={(e) => { userToggledRef.current = true; setThinkOpen((e.target as HTMLDetailsElement).open) }}>
                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none', outline: 'none' }}>
                   {loading && isLast && !msg.content ? '执行中...' : msg.reasoning ? `思考与工具调用${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''}` : `工具调用 (${msg.toolCalls!.length} 项)`}
                 </summary>
@@ -400,6 +408,29 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
               </details>
             ) : null}
             <MarkdownContent content={msg.content} />
+            {msg.error && (
+              <div style={{
+                marginTop: 8, padding: '8px 12px', borderRadius: 8,
+                background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                fontSize: 12.5, color: 'var(--text-secondary)',
+                display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              }}>
+                <span style={{ flex: 1, wordBreak: 'break-word' }}>{msg.error}</span>
+                <button onClick={() => onRegenerate?.(index)}
+                  title="重试" aria-label="重试"
+                  style={{
+                    padding: '4px 12px', borderRadius: 6, border: '1px solid var(--accent)',
+                    background: 'transparent', color: 'var(--accent)', cursor: 'pointer',
+                    fontSize: 12, flexShrink: 0,
+                  }}>重试</button>
+              </div>
+            )}
+            {msg.stopped && !msg.content && (
+              <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>已停止</div>
+            )}
+            {msg.stopped && msg.content && (
+              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>— 已停止生成 —</div>
+            )}
             {msg.pageLink && (
               !isMobile && onOpenPanel && isPlanLink(msg.pageLink) ? (
                 // 计划面板：桌面端以独立窗口打开（同名复用 + AI 受控）；修饰键点击放行浏览器默认

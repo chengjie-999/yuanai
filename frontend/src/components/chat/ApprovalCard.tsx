@@ -21,10 +21,11 @@ export default function ApprovalCard({ decisionId, toolName, command, onDecision
   return (
     <div style={{
       marginTop: 10, marginBottom: 14, borderRadius: 10,
-      border: '1px solid #d97757', background: '#fdf6f0',
-      padding: '10px 14px', fontSize: 13, maxWidth: 460,
+      border: '1px solid #d97757', background: 'var(--bg-tertiary)',
+      padding: '10px 14px', fontSize: 13, width: '100%', maxWidth: 460,
+      boxSizing: 'border-box',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
         <span style={{ fontWeight: 600, color: '#d97757' }}>⌘ Claude Code 请求执行</span>
         <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           工具: {toolName} · 审批ID: {decisionId.slice(0, 8)}

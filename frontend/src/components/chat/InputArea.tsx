@@ -17,7 +17,7 @@ const TARGET_AGENTS = [
   { key: 'claude', desc: '本机代码、终端、Git 任务' },
 ]
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, targetAgent, setTargetAgent, onOpenDirectChat }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice }: {
   input: string; setInput: (v: string | ((p: string) => string)) => void; loading: boolean; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
@@ -28,10 +28,31 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   onStartVoiceCall: () => void
   targetAgent: string; setTargetAgent: (v: string) => void
   onOpenDirectChat: (target: string) => void
+  onStop: () => void
+  notice: string
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickIndex, setPickIndex] = useState(0)
+
+  // 选中 @ 候选：设定定向 + 移除输入框里残留的裸 @（及其后的半截文字）
+  const selectTarget = (key: string) => {
+    setTargetAgent(key)
+    setPickerOpen(false)
+    setPickIndex(0)
+    const idx = input.lastIndexOf('@')
+    if (idx >= 0) setInput((p) => p.slice(0, idx).trimEnd())
+  }
+
+  // @ 面板可用候选（按 @ 后已输入串过滤）
+  const atQuery = pickerOpen ? input.slice(input.lastIndexOf('@') + 1).trim().toLowerCase() : ''
+  const filteredAgents = TARGET_AGENTS.filter((a) => {
+    if (!atQuery) return true
+    const cfg = AGENT_CONFIG[a.key]
+    return a.key.includes(atQuery) || cfg.label.toLowerCase().includes(atQuery)
+      || a.desc.toLowerCase().includes(atQuery)
+  })
 
   return (
     <div className="chat-input-area" style={{ padding: '12px 24px 20px', borderTop: '1px solid var(--border)' }}>
@@ -78,19 +99,38 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>本条消息将定向该智能体处理</span>
             </div>
           )}
-          {/* 输入行：只留输入框 + 发送（豆包式，功能键全部下沉工具行） */}
+          {/* 输入行：只留输入框 + 发送/停止（豆包式，功能键全部下沉工具行）；
+              P1-2：loading 时输入框不锁（可继续打字），发送键变停止键 */}
           <div style={{ display: 'flex', alignItems: 'flex-end', padding: '4px 4px 4px 16px' }}>
-            <textarea value={input} onChange={(e) => { setInput(e.target.value); if (!pickerOpen && e.target.value.endsWith('@')) setPickerOpen(true); const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; t.style.overflowY = t.scrollHeight > 200 ? 'auto' : 'hidden' }}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-              placeholder="输入消息，@ 可指定智能体..." disabled={loading}
+            <textarea value={input} onChange={(e) => { setInput(e.target.value); if (!pickerOpen && e.target.value.endsWith('@')) { setPickerOpen(true); setPickIndex(0) }; const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; t.style.overflowY = t.scrollHeight > 200 ? 'auto' : 'hidden' }}
+              onKeyDown={(e) => {
+                // @面板键盘导航：↑↓ 移动 / Enter 选中 / Esc 关闭
+                if (pickerOpen) {
+                  if (e.key === 'ArrowDown') { e.preventDefault(); setPickIndex((i) => Math.min(i + 1, filteredAgents.length - 1)); return }
+                  if (e.key === 'ArrowUp') { e.preventDefault(); setPickIndex((i) => Math.max(i - 1, 0)); return }
+                  if (e.key === 'Enter') { e.preventDefault(); const a = filteredAgents[pickIndex]; if (a && !(a.key === 'automation' && !localOnline) && !(a.key === 'claude' && !claudeOnline)) selectTarget(a.key); return }
+                  if (e.key === 'Escape') { e.preventDefault(); setPickerOpen(false); return }
+                }
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (loading) { onStop() } else { handleSend() } }
+              }}
+              placeholder="输入消息，@ 可指定智能体..."
               rows={1}
               style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflow: 'hidden', color: 'var(--text-primary)' }}
             />
-            <button onClick={() => handleSend()} disabled={loading || !input.trim() || !currentSid}
-              className="btn btn-primary"
-              style={{ padding: '10px 24px', fontSize: 14, fontWeight: 600, borderRadius: 10, opacity: loading || !input.trim() || !currentSid ? 0.5 : 1 }}
-            >{loading ? '...' : '发送'}</button>
+            {loading ? (
+              <button onClick={onStop} title="停止生成" aria-label="停止生成"
+                style={{ padding: '10px 20px', fontSize: 14, fontWeight: 600, borderRadius: 10, border: '1px solid var(--danger, #d93025)', background: 'transparent', color: 'var(--danger, #d93025)', cursor: 'pointer' }}
+              >停止</button>
+            ) : (
+              <button onClick={() => handleSend()} disabled={!input.trim() || !currentSid}
+                className="btn btn-primary"
+                style={{ padding: '10px 24px', fontSize: 14, fontWeight: 600, borderRadius: 10, opacity: !input.trim() || !currentSid ? 0.5 : 1 }}
+              >发送</button>
+            )}
           </div>
+          {notice && (
+            <div style={{ padding: '0 16px 6px', fontSize: 12, color: 'var(--accent)' }}>{notice}</div>
+          )}
           {/* 工具行：左侧动作群（@指定/图片/语音/朗读/下载），右侧设置群（模式/推理强度） */}
           <div className="chat-tool-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '0 14px 10px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
@@ -143,7 +183,10 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px 6px', fontWeight: 600 }}>
                         @指定智能体处理本条消息
                       </div>
-                      {TARGET_AGENTS.map((a) => {
+                      {filteredAgents.length === 0 && (
+                        <div style={{ padding: '8px', fontSize: 12, color: 'var(--text-muted)' }}>无匹配的智能体</div>
+                      )}
+                      {filteredAgents.map((a, ai) => {
                         const cfg = AGENT_CONFIG[a.key]
                         const active = targetAgent === a.key
                         // 群聊规则：本地 Agent 离线时子智能体不可 @（不做云端角色冒充）；
@@ -153,16 +196,18 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                           : a.key === 'claude' ? claudeOnline : localOnline
                         // 长任务小窗：claude/automation 可开独立会话（不占主对话 60 条截断）
                         const canDirect = available && a.key !== 'orchestrator'
+                        const highlighted = ai === pickIndex
                         return (
                           <div key={a.key}
-                            onClick={() => { if (!available) return; setTargetAgent(a.key); setPickerOpen(false) }}
-                            onMouseEnter={(e) => { if (available) e.currentTarget.style.background = 'var(--hover-bg)' }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'var(--hover-bg)' : 'transparent' }}
+                            onClick={() => { if (!available) return; selectTarget(a.key) }}
+                            onMouseEnter={(e) => { if (available) { e.currentTarget.style.background = 'var(--hover-bg)'; setPickIndex(ai) } }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = (active || highlighted) ? 'var(--hover-bg)' : 'transparent' }}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px',
                               borderRadius: 7, cursor: available ? 'pointer' : 'not-allowed',
                               fontSize: 13, opacity: available ? 1 : 0.45,
-                              color: 'var(--text-primary)', background: active ? 'var(--hover-bg)' : 'transparent',
+                              color: 'var(--text-primary)',
+                              background: (active || highlighted) ? 'var(--hover-bg)' : 'transparent',
                             }}>
                             <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
                             <span style={{ fontWeight: 600, color: cfg.color }}>{cfg.label}</span>

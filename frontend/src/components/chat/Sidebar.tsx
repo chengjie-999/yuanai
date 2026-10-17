@@ -53,9 +53,10 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                   </span>
                 </span>
                 <span onClick={(e) => onDelete(e, s.session_id)} title="删除对话" aria-label="删除对话"
-                  style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', flexShrink: 0, opacity: 0, transition: 'opacity 0.12s', display: 'flex', alignItems: 'center' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--danger)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0'; e.currentTarget.style.color = 'var(--text-muted)' }}
+                  className="chat-session-del"
+                  style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', flexShrink: 0, display: 'flex', alignItems: 'center' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
                 ><TrashIcon size={13} /></span>
               </div>
             ))}

@@ -91,6 +91,9 @@ export function encodeMsg(m: any) {
   if (m.recipient) meta.rp = m.recipient
   if (m.turn) meta.tn = m.turn
   if (m.msgType && m.msgType !== 'chat') meta.ty = m.msgType
+  // P1-1：错误/停止标记（前端状态持久化；META 短键 e=错误文案 / sp=停止）
+  if (m.error) meta.e = m.error
+  if (m.stopped) meta.sp = 1
   const content = Object.keys(meta).length > 0
     ? `\x00META\x00${JSON.stringify(meta)}\x00${m.content || ''}`
     : (m.content || '')

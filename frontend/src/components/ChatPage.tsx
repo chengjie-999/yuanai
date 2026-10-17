@@ -11,7 +11,7 @@ import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
 import { usePlanWindow } from './chat/usePlanWindow'
 import { useAutoRead } from '../hooks/useAutoRead'
-import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, XIcon, LinkIcon } from './icons'
+import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, LinkIcon } from './icons'
 
 // 移动端计划浮层（懒加载，对话内嵌子页面不占首屏）
 const PlanPageLazy = lazy(() => import('../pages/PlanPage'))
@@ -832,8 +832,15 @@ export default function ChatPage({ user }: { user?: any }) {
                 display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
                 cursor: 'grab', userSelect: 'none', touchAction: 'none',
               }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flexShrink: 0 }}>计划面板</span>
-              {/* 浏览器式地址栏：显示独立页面链接，点击复制 */}
+              <button onClick={() => setPlanOverlay(false)}
+                title="返回对话" aria-label="返回对话"
+                style={{
+                  fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
+                  padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
+                  display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+                  background: 'transparent', cursor: 'pointer', flexShrink: 0,
+                }}><ArrowLeftIcon size={12} /> 返回对话</button>
+              {/* 浏览器式地址栏：链接地址明文显示，点击复制 */}
               <button onClick={() => {
                 const url = window.location.origin + '/chat/plan'
                 navigator.clipboard.writeText(url).then(() => flashNotice('链接已复制，可直接在浏览器打开')).catch(() => {})
@@ -850,14 +857,6 @@ export default function ChatPage({ user }: { user?: any }) {
                 <LinkIcon size={11} style={{ flexShrink: 0 }} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{window.location.origin}/chat/plan</span>
               </button>
-              <button onClick={() => setPlanOverlay(false)}
-                title="关闭计划面板" aria-label="关闭计划面板"
-                style={{
-                  fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
-                  padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
-                  display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
-                  background: 'transparent', cursor: 'pointer', flexShrink: 0,
-                }}><XIcon size={12} /> 关闭</button>
             </div>
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
               <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>加载中…</div>}>

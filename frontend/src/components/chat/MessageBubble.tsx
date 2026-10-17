@@ -432,7 +432,11 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
               <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>— 已停止生成 —</div>
             )}
             {msg.pageLink && (
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <div style={{
+                display: 'inline-flex', alignItems: 'stretch', marginTop: 6,
+                borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)',
+                maxWidth: '100%', background: 'var(--bg-input)',
+              }}>
                 {!isMobile && onOpenPanel && isPlanLink(msg.pageLink) ? (
                   // 计划面板：桌面端以对话内浮窗打开（AI 受控）；修饰键点击放行浏览器默认
                   <a href={msg.pageLink}
@@ -443,10 +447,10 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                       onOpenPanel(msg.pageLink!)
                     }}
                     style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
-                      borderRadius: 6, background: agent?.color || 'var(--accent)',
+                      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px',
+                      background: agent?.color || 'var(--accent)',
                       color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
-                      transition: 'opacity 0.15s',
+                      transition: 'opacity 0.15s', flexShrink: 0,
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
@@ -455,16 +459,16 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                   <Link to={msg.pageLink}
                     onClick={(e) => e.stopPropagation()}
                     style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
-                      borderRadius: 6, background: agent?.color || 'var(--accent)',
+                      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px',
+                      background: agent?.color || 'var(--accent)',
                       color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
-                      transition: 'opacity 0.15s',
+                      transition: 'opacity 0.15s', flexShrink: 0,
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                   >{msg.pageLink.includes('/agent/dashboard') || msg.pageLink.includes('/agent/board') ? <BarChartIcon size={13} /> : msg.pageLink.includes('/agent/automation') ? <BotIcon size={13} /> : msg.pageLink.includes('/planet') ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</Link>
                 )}
-                {/* 独立页面链接明文显示（点击复制，可直接浏览器打开/收藏） */}
+                {/* 独立页面链接明文显示（同框右侧；点击复制，可直接浏览器打开/收藏） */}
                 <button onClick={(e) => {
                   e.stopPropagation()
                   navigator.clipboard.writeText(window.location.origin + msg.pageLink)
@@ -475,15 +479,14 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                   className="yuan-tip" data-tip="点击复制此链接（可直接浏览器打开）"
                   title="复制页面链接" aria-label="复制页面链接"
                   style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6, padding: '5px 9px',
-                    borderRadius: 6, border: '1px solid var(--border)', background: 'transparent',
+                    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px',
                     color: 'var(--text-secondary)', fontSize: 11, cursor: 'pointer', lineHeight: 1,
-                    fontFamily: 'monospace', maxWidth: '100%', overflow: 'hidden',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
-                >{copiedLink ? <CheckIcon size={12} /> : <LinkIcon size={11} />}
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{msg.pageLink}</span></button>
+                    fontFamily: 'monospace', minWidth: 0, background: 'transparent', border: 'none',
+                    borderLeft: '1px solid var(--border)',
+                  }}>
+                  {copiedLink ? <CheckIcon size={12} /> : <LinkIcon size={11} />}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{msg.pageLink}</span>
+                </button>
               </div>
             )}
             {msg.images && msg.images.length > 0 && (

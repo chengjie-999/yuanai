@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
@@ -12,7 +11,7 @@ import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
 import { usePlanWindow } from './chat/usePlanWindow'
 import { useAutoRead } from '../hooks/useAutoRead'
-import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon } from './icons'
+import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, XIcon } from './icons'
 
 // 移动端计划浮层（懒加载，对话内嵌子页面不占首屏）
 const PlanPageLazy = lazy(() => import('../pages/PlanPage'))
@@ -156,12 +155,14 @@ export default function ChatPage({ user }: { user?: any }) {
     return true
   }
 
-  // 计划面板窗口：用户手动开/关（AI 不自动开关，用户拍板）；协议见 chat/planWindow.ts
-  // 移动端（2026-10-17）：改为对话内浮层（不离开对话；桌面保持命名弹窗）
-  const navigate = useNavigate()
+  // 计划面板：用户手动开/关（AI 不自动开关，用户拍板）
+  // 形态（2026-10-17）：桌面=对话内可拖动浮窗 / 移动=对话内全屏浮层（都不离开对话）
   const [planOverlay, setPlanOverlay] = useState(false)
-  const planWin = usePlanWindow({ isMobile, navigate, onMobileOpen: () => setPlanOverlay(true) })
+  const planWin = usePlanWindow({ onOpen: () => setPlanOverlay(true) })
   const handleOpenPanel = useCallback((_link: string) => { planWin.openPanel() }, [planWin.openPanel])
+  // 桌面浮窗位置（可拖动；null = 默认位置：右上角）
+  const [planPos, setPlanPos] = useState<{ x: number; y: number } | null>(null)
+  const planDragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null)
 
   // 后台执行中的计划（指示条数据源；15s 轮询，有 queued/running 才显示）
   const [activePlans, setActivePlans] = useState<{ id: number; title: string; status: string; progress: number; done_steps: number; total_steps: number }[]>([])
@@ -793,7 +794,57 @@ export default function ChatPage({ user }: { user?: any }) {
         <ZoomableImage src={expandedImage} onClose={() => setExpandedImage(null)} />
       )}
 
-      {/* 移动端计划面板：对话内浮层（不离开对话；桌面为命名弹窗） */}
+      {/* 计划面板：桌面=可拖动浮窗 / 移动=全屏浮层（均不离开对话） */}
+      {planOverlay && !isMobile && (() => {
+        const pos = planPos || { x: window.innerWidth - 740 - 16, y: 72 }
+        return (
+          <div style={{
+            position: 'fixed', zIndex: 300,
+            left: Math.max(8, Math.min(pos.x, window.innerWidth - 400)),
+            top: Math.max(56, Math.min(pos.y, window.innerHeight - 200)),
+            width: 740, maxWidth: 'calc(100vw - 24px)', height: 560,
+            maxHeight: 'calc(100vh - 90px)',
+            background: 'var(--bg-secondary)', borderRadius: 12,
+            boxShadow: '0 12px 48px rgba(0,0,0,0.28)', border: '1px solid var(--border)',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}>
+            <div
+              onPointerDown={(e) => {
+                e.preventDefault()
+                const base = planPos || { x: window.innerWidth - 740 - 16, y: 72 }
+                planDragRef.current = { startX: e.clientX, startY: e.clientY, baseX: base.x, baseY: base.y }
+                ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+              }}
+              onPointerMove={(e) => {
+                const d = planDragRef.current
+                if (!d) return
+                setPlanPos({ x: d.baseX + e.clientX - d.startX, y: d.baseY + e.clientY - d.startY })
+              }}
+              onPointerUp={() => { planDragRef.current = null }}
+              style={{
+                padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
+                display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+                cursor: 'grab', userSelect: 'none', touchAction: 'none',
+              }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>计划面板</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1 }}>按住标题拖动</span>
+              <button onClick={() => setPlanOverlay(false)}
+                title="关闭计划面板" aria-label="关闭计划面板"
+                style={{
+                  fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
+                  padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
+                  display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+                  background: 'transparent', cursor: 'pointer',
+                }}><XIcon size={12} /> 关闭</button>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+              <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>加载中…</div>}>
+                <PlanPageLazy onClose={() => setPlanOverlay(false)} />
+              </Suspense>
+            </div>
+          </div>
+        )
+      })()}
       {planOverlay && isMobile && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 300,

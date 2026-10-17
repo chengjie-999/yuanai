@@ -7,7 +7,7 @@ import { AGENT_CONFIG } from '../../config/agents'
 import { voiceTtsStream } from '../../api'
 import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl } from './helpers'
 import { isPlanLink } from './planWindow'
-import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon } from '../icons'
+import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon } from '../icons'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
 const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSProperties => ({
@@ -53,6 +53,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   const sender = !isUser ? (msg.sender || 'orchestrator') : null
   const agent = sender ? AGENT_CONFIG[sender] : null
   const [copied, setCopied] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
   const [draft, setDraft] = useState(msg.content)
   // P1-3 思考块受控展开：流式期间保持展开（随 reasoning 增长可见），
   // 用户手动折叠后尊重其选择（不被后续 token 重置）
@@ -431,37 +432,57 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
               <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>— 已停止生成 —</div>
             )}
             {msg.pageLink && (
-              !isMobile && onOpenPanel && isPlanLink(msg.pageLink) ? (
-                // 计划面板：桌面端以独立窗口打开（同名复用 + AI 受控）；修饰键点击放行浏览器默认
-                <a href={msg.pageLink}
-                  onClick={(e) => {
-                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onOpenPanel(msg.pageLink!)
-                  }}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {!isMobile && onOpenPanel && isPlanLink(msg.pageLink) ? (
+                  // 计划面板：桌面端以对话内浮窗打开（AI 受控）；修饰键点击放行浏览器默认
+                  <a href={msg.pageLink}
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onOpenPanel(msg.pageLink!)
+                    }}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
+                      borderRadius: 6, background: agent?.color || 'var(--accent)',
+                      color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
+                      transition: 'opacity 0.15s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                  ><ClipboardIcon size={13} /> 打开面板</a>
+                ) : (
+                  <Link to={msg.pageLink}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
+                      borderRadius: 6, background: agent?.color || 'var(--accent)',
+                      color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
+                      transition: 'opacity 0.15s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                  >{msg.pageLink.includes('/agent/dashboard') || msg.pageLink.includes('/agent/board') ? <BarChartIcon size={13} /> : msg.pageLink.includes('/agent/automation') ? <BotIcon size={13} /> : msg.pageLink.includes('/planet') ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</Link>
+                )}
+                {/* 复制独立页面链接（可直接浏览器打开/收藏） */}
+                <button onClick={(e) => {
+                  e.stopPropagation()
+                  navigator.clipboard.writeText(window.location.origin + msg.pageLink)
+                    .then(() => setCopiedLink(true))
+                    .catch(() => {})
+                  setTimeout(() => setCopiedLink(false), 1500)
+                }}
+                  className="yuan-tip" data-tip="复制页面链接（可直接浏览器打开）"
+                  title="复制页面链接" aria-label="复制页面链接"
                   style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
-                    borderRadius: 6, background: agent?.color || 'var(--accent)',
-                    color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
-                    transition: 'opacity 0.15s',
+                    display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6, padding: '5px 9px',
+                    borderRadius: 6, border: '1px solid var(--border)', background: 'transparent',
+                    color: 'var(--text-secondary)', fontSize: 11, cursor: 'pointer', lineHeight: 1,
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
-                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-                ><ClipboardIcon size={13} /> 打开面板</a>
-              ) : (
-                <Link to={msg.pageLink}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '5px 12px',
-                    borderRadius: 6, background: agent?.color || 'var(--accent)',
-                    color: '#fff', fontSize: 12, fontWeight: 500, textDecoration: 'none',
-                    transition: 'opacity 0.15s',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
-                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-                >{msg.pageLink.includes('/agent/dashboard') || msg.pageLink.includes('/agent/board') ? <BarChartIcon size={13} /> : msg.pageLink.includes('/agent/automation') ? <BotIcon size={13} /> : msg.pageLink.includes('/planet') ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</Link>
-              )
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+                >{copiedLink ? <CheckIcon size={12} /> : <LinkIcon size={12} />}</button>
+              </div>
             )}
             {msg.images && msg.images.length > 0 && (
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8 }}>

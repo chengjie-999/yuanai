@@ -832,27 +832,31 @@ export default function ChatPage({ user }: { user?: any }) {
                 display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
                 cursor: 'grab', userSelect: 'none', touchAction: 'none',
               }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>计划面板</span>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1 }}>按住标题拖动</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flexShrink: 0 }}>计划面板</span>
+              {/* 浏览器式地址栏：显示独立页面链接，点击复制 */}
               <button onClick={() => {
                 const url = window.location.origin + '/chat/plan'
                 navigator.clipboard.writeText(url).then(() => flashNotice('链接已复制，可直接在浏览器打开')).catch(() => {})
               }}
-                className="yuan-tip" data-tip="复制独立页面链接（可直接在浏览器打开）"
+                className="yuan-tip" data-tip="点击复制此链接（可直接在浏览器打开）"
                 title="复制页面链接" aria-label="复制页面链接"
                 style={{
-                  fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
-                  padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
-                  display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
-                  background: 'transparent', cursor: 'pointer',
-                }}><LinkIcon size={12} /> 复制链接</button>
+                  flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '4px 10px', borderRadius: 999, background: 'var(--bg-input)',
+                  border: '1px solid var(--border)', cursor: 'pointer', fontSize: 11,
+                  fontFamily: 'monospace', color: 'var(--text-secondary)',
+                  overflow: 'hidden', whiteSpace: 'nowrap',
+                }}>
+                <LinkIcon size={11} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{window.location.origin}/chat/plan</span>
+              </button>
               <button onClick={() => setPlanOverlay(false)}
                 title="关闭计划面板" aria-label="关闭计划面板"
                 style={{
                   fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
                   padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
                   display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
-                  background: 'transparent', cursor: 'pointer',
+                  background: 'transparent', cursor: 'pointer', flexShrink: 0,
                 }}><XIcon size={12} /> 关闭</button>
             </div>
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
@@ -906,18 +910,23 @@ export default function ChatPage({ user }: { user?: any }) {
                 display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
                 background: 'transparent', cursor: 'pointer',
               }}><ArrowLeftIcon size={12} /> 返回对话</button>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>计划面板</span>
+            {/* 浏览器式地址栏：显示独立页面链接，点击复制 */}
             <button onClick={() => {
               const url = window.location.origin + '/chat/plan'
               navigator.clipboard.writeText(url).then(() => flashNotice('链接已复制，可直接在浏览器打开')).catch(() => {})
             }}
-              className="yuan-tip" data-tip="复制独立页面链接" title="复制页面链接" aria-label="复制页面链接"
+              className="yuan-tip" data-tip="点击复制此链接（可直接在浏览器打开）"
+              title="复制页面链接" aria-label="复制页面链接"
               style={{
-                fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
-                padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
-                display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
-                background: 'transparent', cursor: 'pointer',
-              }}><LinkIcon size={12} /> 复制链接</button>
+                flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', borderRadius: 999, background: 'var(--bg-input)',
+                border: '1px solid var(--border)', cursor: 'pointer', fontSize: 11,
+                fontFamily: 'monospace', color: 'var(--text-secondary)',
+                overflow: 'hidden', whiteSpace: 'nowrap',
+              }}>
+              <LinkIcon size={11} style={{ flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{window.location.origin}/chat/plan</span>
+            </button>
           </div>
           <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
             <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>加载中…</div>}>

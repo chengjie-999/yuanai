@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { listPlans, getPlan, executePlan, deletePlan } from '../api/plan'
 import type { Plan, PlanStep } from '../api/plan'
-import { ArrowLeftIcon, ClipboardIcon, TrashIcon, AlertIcon, CheckIcon, LoaderIcon, XIcon } from '../components/icons'
+import { ArrowLeftIcon, ClipboardIcon, TrashIcon, AlertIcon, CheckIcon, LoaderIcon, XIcon, LinkIcon } from '../components/icons'
 import { renderBody } from '../components/analysis/ResultBlocks'
 import { AGENT_CONFIG } from '../config/agents'
 import { timeAgo } from '../components/chat/helpers'
@@ -65,6 +65,7 @@ function StepIcon({ status }: { status: string }) {
 
 export default function PlanPage({ onClose, hideBack }: { onClose?: () => void; hideBack?: boolean } = {}) {
   const [plans, setPlans] = useState<Plan[]>([])
+  const [copiedUrl, setCopiedUrl] = useState(false)
   const [detail, setDetail] = useState<Plan | null>(null)
   const [selectedId, setSelectedId] = useState<number>(0)
   const [loading, setLoading] = useState(true)
@@ -194,10 +195,30 @@ export default function PlanPage({ onClose, hideBack }: { onClose?: () => void; 
             fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
             padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
             flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
-          }}><ArrowLeftIcon size={12} /> 返回</Link>
+          }}><ArrowLeftIcon size={12} /> 返回对话</Link>
         )}
-        <span style={{ lineHeight: 1, color: 'var(--text-primary)', display: 'flex' }}><ClipboardIcon size={18} /></span>
-        <div>
+        {/* 独立路由形态（浏览器直接打开）：与浮窗/浮层一致的浏览器式地址栏 */}
+        {!isPopup && !hideBack && (
+          <button onClick={() => {
+            navigator.clipboard.writeText(window.location.href).then(() => {
+              setCopiedUrl(true)
+              setTimeout(() => setCopiedUrl(false), 1500)
+            }).catch(() => {})
+          }}
+            className="yuan-tip" data-tip="点击复制此链接" title="复制页面链接" aria-label="复制页面链接"
+            style={{
+              flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 10px', borderRadius: 999, background: 'var(--bg-input)',
+              border: '1px solid var(--border)', cursor: 'pointer', fontSize: 11,
+              fontFamily: 'monospace', color: 'var(--text-secondary)',
+              overflow: 'hidden', whiteSpace: 'nowrap',
+            }}>
+            {copiedUrl ? <CheckIcon size={11} style={{ flexShrink: 0 }} /> : <LinkIcon size={11} style={{ flexShrink: 0 }} />}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{window.location.href}</span>
+          </button>
+        )}
+        <span style={{ lineHeight: 1, color: 'var(--text-primary)', display: 'flex', flexShrink: 0 }}><ClipboardIcon size={18} /></span>
+        <div style={{ flexShrink: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>计划</div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>手机定计划，电脑执行</div>
         </div>

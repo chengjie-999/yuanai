@@ -160,9 +160,11 @@ export default function ChatPage({ user }: { user?: any }) {
   const [planOverlay, setPlanOverlay] = useState(false)
   const planWin = usePlanWindow({ onOpen: () => setPlanOverlay(true) })
   const handleOpenPanel = useCallback((_link: string) => { planWin.openPanel() }, [planWin.openPanel])
-  // 桌面浮窗位置（可拖动；null = 默认位置：右上角）
+  // 桌面浮窗位置/尺寸（可拖动 + 右下角可随意放大缩小；null = 默认）
   const [planPos, setPlanPos] = useState<{ x: number; y: number } | null>(null)
+  const [planSize, setPlanSize] = useState<{ w: number; h: number } | null>(null)
   const planDragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null)
+  const planResizeRef = useRef<{ startX: number; startY: number; baseW: number; baseH: number } | null>(null)
 
   // 后台执行中的计划（指示条数据源；15s 轮询，有 queued/running 才显示）
   const [activePlans, setActivePlans] = useState<{ id: number; title: string; status: string; progress: number; done_steps: number; total_steps: number }[]>([])
@@ -794,16 +796,18 @@ export default function ChatPage({ user }: { user?: any }) {
         <ZoomableImage src={expandedImage} onClose={() => setExpandedImage(null)} />
       )}
 
-      {/* 计划面板：桌面=可拖动浮窗 / 移动=全屏浮层（均不离开对话） */}
+      {/* 计划面板：桌面=可拖动+可放大缩小浮窗 / 移动=全屏浮层（均不离开对话） */}
       {planOverlay && !isMobile && (() => {
         const pos = planPos || { x: window.innerWidth - 740 - 16, y: 72 }
+        const size = planSize || { w: 740, h: 560 }
+        const w = Math.max(480, Math.min(size.w, window.innerWidth - 16))
+        const h = Math.max(360, Math.min(size.h, window.innerHeight - 80))
         return (
           <div style={{
             position: 'fixed', zIndex: 300,
-            left: Math.max(8, Math.min(pos.x, window.innerWidth - 400)),
-            top: Math.max(56, Math.min(pos.y, window.innerHeight - 200)),
-            width: 740, maxWidth: 'calc(100vw - 24px)', height: 560,
-            maxHeight: 'calc(100vh - 90px)',
+            left: Math.max(8, Math.min(pos.x, window.innerWidth - 200)),
+            top: Math.max(56, Math.min(pos.y, window.innerHeight - 120)),
+            width: w, height: h,
             background: 'var(--bg-secondary)', borderRadius: 12,
             boxShadow: '0 12px 48px rgba(0,0,0,0.28)', border: '1px solid var(--border)',
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -843,6 +847,32 @@ export default function ChatPage({ user }: { user?: any }) {
               <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>加载中…</div>}>
                 <PlanPageLazy onClose={() => setPlanOverlay(false)} hideBack />
               </Suspense>
+            </div>
+            {/* 右下角缩放把手：拖动随意放大缩小（最小 480x360，最大到视口边缘） */}
+            <div
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                const base = planSize || { w: 740, h: 560 }
+                planResizeRef.current = { startX: e.clientX, startY: e.clientY, baseW: base.w, baseH: base.h }
+                ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+              }}
+              onPointerMove={(e) => {
+                const d = planResizeRef.current
+                if (!d) return
+                setPlanSize({ w: d.baseW + e.clientX - d.startX, h: d.baseH + e.clientY - d.startY })
+              }}
+              onPointerUp={() => { planResizeRef.current = null }}
+              title="拖动调整大小" aria-label="拖动调整大小"
+              style={{
+                position: 'absolute', right: 0, bottom: 0, width: 22, height: 22,
+                cursor: 'nwse-resize', touchAction: 'none', zIndex: 2,
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
+                padding: '0 3px 3px 0', color: 'var(--text-muted)',
+              }}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <path d="M10 2 L2 10 M10 6 L6 10 M10 10 L10 10" />
+              </svg>
             </div>
           </div>
         )

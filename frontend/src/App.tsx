@@ -229,6 +229,20 @@ function AppInner() {
     }, 1500)
     return () => clearTimeout(timer)
   }, [token, isAdmin])
+  // P1-6：首次用户交互预热 Audio（播放静音解锁 autoplay）——自动朗读在
+  // 非用户手势下触发，未解锁时 Audio.play 被 Chrome 拒绝导致「只读一小段」
+  useEffect(() => {
+    const unlock = () => {
+      try {
+        const a = new Audio()
+        a.muted = true
+        a.play().then(() => { a.pause() }).catch(() => { /* 忽略 */ })
+      } catch { /* 忽略 */ }
+      window.removeEventListener('pointerdown', unlock)
+    }
+    window.addEventListener('pointerdown', unlock)
+    return () => window.removeEventListener('pointerdown', unlock)
+  }, [])
 
   return (
     <Suspense fallback={<PageLoading />}>

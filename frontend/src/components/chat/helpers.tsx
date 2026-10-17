@@ -168,6 +168,12 @@ export function toSpeechText(text: string): string {
   t = t.split('\n').map((ln) => (/^\s*\|.*\|\s*$/.test(ln) ? '（这里有一张表格）' : ln)).join('\n')
   // 裸 URL → （链接）
   t = t.replace(/https?:\/\/[^\s)\]]+/g, '（链接）')
+  // HTML 标签（模型输出里的 <br>/<div>/<span> 等，乱读来源之一）
+  t = t.replace(/<[^>]+>/g, '')
+  // 有序列表序号（"1. " "2、" "3）"）——数字序号读出来是噪音
+  t = t.replace(/^\s*\d+\s*[.、)）]\s*/gm, '')
+  // 多余空白归一（中文间多空格/制表符）
+  t = t.replace(/[ \t]+/g, ' ')
   // emoji / 装饰符号剔除
   t = t.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
   // 连续标点归一

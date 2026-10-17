@@ -76,7 +76,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     if (!autoRead || !autoReadTick || autoReadTick <= autoReadFired.current) return
     if (isLast && !isUser && msg.content.trim()) {
       autoReadFired.current = autoReadTick
-      toggleRead()
+      toggleRead(true)  // 自动朗读：失败静默不弹窗
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoReadTick])
@@ -120,9 +120,9 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
 
   // 朗读消息（豆包 TTS 分段连播）：口语化文本 → 按句分段（≤200 字/段）→
   // 串行合成 + 预取 1 段 → 每段一个 Audio 整段播放（段内不再字节切分，
-  // 根除接缝咔哒；帧协议保证整帧边界）。长文不再截断（原 slice(0,1000)
-  // 静默丢尾）。再点一次打断（作废在途请求）
-  const toggleRead = async () => {
+  // 根除接缝咔哒；帧协议保证整帧边界）。长文不再截断。再点一次打断。
+  // P1-6：单段合成失败跳过继续下一段（不再整体停）；自动朗读失败静默
+  const toggleRead = async (isAuto = false) => {
     if (speaking) {
       readSeqRef.current += 1  // 作废在途合成请求
       stopReading()
@@ -144,13 +144,13 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
       let fetchingIdx = 0          // 下一个要发起的合成段
       let activeFetches = 0        // 在途合成数（预取 1 段 → ≤2）
       let allFetched = false
-      let fetchError: string | null = null
+      let failedSegments = 0       // 合成失败段数（全失败才提示；部分失败跳过继续）
 
       const pump = () => {
         if (seq !== readSeqRef.current) return  // 已打断：队列作废
         if (playing) return
         if (!queue.length) {
-          if (allFetched) stopReading()  // 全部段播完：正常收尾
+          if (allFetched) stopReading()  // 全部段处理完：正常收尾
           return
         }
         const { blob } = queue.shift()!
@@ -166,7 +166,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
 
       // 串行预取：发起下一段合成时保持 1 段预取余量（播放第 i 段时第 i+1 段已在途）
       const fetchNext = () => {
-        if (seq !== readSeqRef.current || fetchError) return
+        if (seq !== readSeqRef.current) return
         if (fetchingIdx >= segments.length) { allFetched = true; pump(); return }
         if (activeFetches >= 2) return  // 在途 ≤2：当前播放段 + 预取段
         const i = fetchingIdx++
@@ -183,31 +183,30 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             fetchNext()  // 首个分片到达即可预取下一段
           },
           () => { done(); fetchNext() },
-        ).catch((err: any) => {
+        ).catch(() => {
           done()
-          if (seq !== readSeqRef.current) return
-          fetchError = err?.message || '语音合成失败，请稍后重试'
-          allFetched = true
-          pump()
+          failedSegments += 1
+          // P1-6：单段失败跳过继续下一段（此前 fetchError → 整体停播，导致「只读一小段」）
+          fetchNext()
         })
       }
       fetchNext()
-      // 等待全部完成（fetchError 或正常收尾）——由 pump 的 stopReading 或异常分支收口
+      // 等待全部完成（全部段处理完或 seq 作废）
       await new Promise<void>((resolve) => {
         const timer = setInterval(() => {
           if (seq !== readSeqRef.current) { clearInterval(timer); resolve(); return }
-          if (fetchError) { clearInterval(timer); resolve(); return }
-          if (allFetched && !queue.length && !playing) { clearInterval(timer); resolve(); return }
+          if (allFetched && !queue.length && !playing && activeFetches === 0) { clearInterval(timer); resolve(); return }
         }, 150)
       })
-      if (seq === readSeqRef.current && fetchError) {
+      // 全部段都失败才提示；自动朗读失败静默（P1-6）
+      if (seq === readSeqRef.current && failedSegments >= segments.length && !isAuto) {
         stopReading()
-        alert(fetchError)
+        alert('语音合成失败，请稍后重试')
       }
     } catch (err: any) {
       if (seq === readSeqRef.current) {
         stopReading()
-        alert(err?.message || '语音合成失败，请稍后重试')
+        if (!isAuto) alert(err?.message || '语音合成失败，请稍后重试')
       }
     }
   }
@@ -219,7 +218,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   const bubbleActions = showActions ? (
     <div className="msg-actions" style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', marginTop: 6, marginBottom: -4 }}>
       {!isUser && (
-        <button onClick={toggleRead} className="yuan-tip" data-tip={speaking ? '打断朗读' : '朗读'} aria-label={speaking ? '打断朗读' : '朗读'}
+        <button onClick={() => toggleRead()} className="yuan-tip" data-tip={speaking ? '打断朗读' : '朗读'} aria-label={speaking ? '打断朗读' : '朗读'}
           style={iconBtnStyle(false, speaking)}
           onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
           onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>

@@ -23,14 +23,17 @@ function stopPoll() {
   if (pollTimer) { window.clearInterval(pollTimer); pollTimer = null }
 }
 
-export function usePlanWindow({ isMobile, navigate }: { isMobile: boolean; navigate: NavigateFunction }) {
-  const optsRef = useRef({ isMobile, navigate })
-  optsRef.current = { isMobile, navigate }
+export function usePlanWindow({ isMobile, navigate, onMobileOpen }: {
+  isMobile: boolean; navigate: NavigateFunction; onMobileOpen?: () => void
+}) {
+  const optsRef = useRef({ isMobile, navigate, onMobileOpen })
+  optsRef.current = { isMobile, navigate, onMobileOpen }
 
   const openPanel = useCallback(() => {
-    // 只由用户点击调用（手势 → 弹窗不被拦）；手机端同标签回退
-    const { isMobile: mobile, navigate: nav } = optsRef.current
-    if (mobile) { nav(PLAN_PATH); return }
+    // 只由用户点击调用（手势 → 弹窗不被拦）；手机端改为对话内浮层
+    // （2026-10-17：不再整页跳转离开对话——用户要「不影响对话的子页面」）
+    const { isMobile: mobile, navigate: nav, onMobileOpen: mobileOpen } = optsRef.current
+    if (mobile) { mobileOpen?.(); return }
     let w: Window | null = null
     try {
       w = win && !win.closed ? win : window.open(PLAN_PATH, PLAN_WIN_NAME, PLAN_WIN_FEATURES)

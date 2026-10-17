@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
@@ -12,7 +12,10 @@ import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
 import { usePlanWindow } from './chat/usePlanWindow'
 import { useAutoRead } from '../hooks/useAutoRead'
-import { ChevronLeftIcon, ChevronRightIcon } from './icons'
+import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon } from './icons'
+
+// 移动端计划浮层（懒加载，对话内嵌子页面不占首屏）
+const PlanPageLazy = lazy(() => import('../pages/PlanPage'))
 
 type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean }
 
@@ -154,8 +157,10 @@ export default function ChatPage({ user }: { user?: any }) {
   }
 
   // 计划面板窗口：用户手动开/关（AI 不自动开关，用户拍板）；协议见 chat/planWindow.ts
+  // 移动端（2026-10-17）：改为对话内浮层（不离开对话；桌面保持命名弹窗）
   const navigate = useNavigate()
-  const planWin = usePlanWindow({ isMobile, navigate })
+  const [planOverlay, setPlanOverlay] = useState(false)
+  const planWin = usePlanWindow({ isMobile, navigate, onMobileOpen: () => setPlanOverlay(true) })
   const handleOpenPanel = useCallback((_link: string) => { planWin.openPanel() }, [planWin.openPanel])
 
   // 后台执行中的计划（指示条数据源；15s 轮询，有 queued/running 才显示）
@@ -337,7 +342,7 @@ export default function ChatPage({ user }: { user?: any }) {
     refreshSessions()
   }
 
-  const SYSTEM_PROMPT_BASE = '你是小元AI的统筹助手。数据分析、数据采集、生命科学等能力以「脚本工具」（script_ 开头）直接挂在你名下，一次函数调用即可选定脚本并执行，不需要委派。\n\n可直接使用的工具：\n- 脚本工具：script_descriptive_stats（描述性统计）/ script_correlation（相关性）/ script_regression（回归）/ script_categorical（分类数据）/ script_timeseries（时间序列）/ script_preprocess（数据预处理）/ script_rfm_cluster（RFM 分群）/ script_churn_predict（流失预测）/ script_gene_expression（基因表达）/ script_generic_crawl（通用网页采集）\n- create_plan：把多步组合任务（先采集后分析等）拆成草稿计划\n- execute_plan：用户说「执行」时把计划加入队列\n- get_plan_status：查询计划进度\n- search_web：联网搜索（query 用核心短语、词间空格分词；搜索摘要通常已足够回答，不必逐条抓取，仅需正文详情时才用 fetch_url + parse_html）\n- retrieve_planet_knowledge：检索用户个人知识星球（导图/笔记，只读）\n- delegate_to_automation_agent：仅浏览器控制/审核等需多步自主操作的任务才委派\n\n计划流（重要）：多步骤组合任务（如「先抓取数据，再做统计分析」）先用 create_plan 制定草稿计划（每步写清 skill 与意图，能确定脚本时填 script 工具名与 params，信息不足先问用户），向用户复述步骤并说明「说『执行』才会开始」；用户明确说执行时再调用 execute_plan。不要用文字代替计划、不要连续自行委派执行。\n\n群聊说话人协议（重要）：历史消息中带【xx Agent】前缀的是其他智能体说过的话，不是你说的；无前缀的 assistant 消息才是你自己说过的。不要复述、冒充或接续别人的话，不要替其他智能体总结其发言。\n\n工作原则：\n1. 判断意图：分析/采集类直接选脚本工具执行，一句话说明在做什么\n2. 工具返回结果后，如果结果已经清晰完整，只做简短确认如"以上是结果"，不要再复述\n3. 只有当结果需要解读、比较或给出建议时，才补充分析\n4. 用户能看到工具输出，重复内容只会让对话冗余\n5. 对话结束或任务完成时，用表格总结本次完成了什么、关键结论是什么'
+  const SYSTEM_PROMPT_BASE = '你是小元AI的统筹助手。数据分析、数据采集、生命科学等能力以「脚本工具」（script_ 开头）直接挂在你名下，一次函数调用即可选定脚本并执行，不需要委派。\n\n可直接使用的工具：\n- 脚本工具：script_descriptive_stats（描述性统计）/ script_correlation（相关性）/ script_regression（回归）/ script_categorical（分类数据）/ script_timeseries（时间序列）/ script_preprocess（数据预处理）/ script_rfm_cluster（RFM 分群）/ script_churn_predict（流失预测）/ script_gene_expression（基因表达）/ script_generic_crawl（通用网页采集）\n- create_plan：把多步组合任务（先采集后分析等）拆成草稿计划\n- execute_plan：用户说「执行」时把计划加入队列\n- get_plan_status：查询计划进度\n- search_web：联网搜索（query 用核心短语、词间空格分词；搜索摘要通常已足够回答，不必逐条抓取，仅需正文详情时才用 fetch_url + parse_html）\n- retrieve_planet_knowledge：检索用户个人知识星球（导图/笔记，只读）\n- delegate_to_automation_agent：仅浏览器控制/审核等需多步自主操作的任务才委派\n\n计划流（重要）：多步骤组合任务（如「先抓取数据，再做统计分析」）先用 create_plan 制定草稿计划（每步写清 skill 与意图，能确定脚本时填 script 工具名与 params，信息不足先问用户），向用户复述步骤并说明「说『执行』才会开始」；用户明确说执行时再调用 execute_plan。不要用文字代替计划、不要连续自行委派执行。\n\n群聊说话人协议（重要）：历史消息中带【xx Agent】前缀的是其他智能体说过的话，不是你说的；无前缀的 assistant 消息才是你自己说过的。不要复述、冒充或接续别人的话，不要替其他智能体总结其发言。\n\n工作原则：\n1. 判断意图：分析/采集类直接选脚本工具执行，一句话说明在做什么\n2. 工具返回结果后，如果结果已经清晰完整，只做简短确认如"以上是结果"，不要再复述\n3. 只有当结果需要解读、比较或给出建议时，才补充分析\n4. 用户能看到工具输出，重复内容只会让对话冗余\n5. 对话结束或任务完成时，用表格总结本次完成了什么、关键结论是什么\n\n界面入口说明（重要）：计划面板、分析看板等界面由客户端提供入口按钮，你不能直接打开页面或生成界面链接。用户问界面在哪/怎么打开时，如实指引入口位置：① 计划面板——聊天页顶部「后台执行中」指示条、或计划相关工具气泡里的「打开面板」按钮；② 分析看板——分析完成后气泡里的「打开面板」按钮；③ 用户设置——页面右上角设置入口。不要回答「这个给不了」「没有权限」之类，也不要编造不存在的标签页或路径。'
 
   // 助手设定（2026-10-17）：后台设定中心可覆盖聊天提示词（chat_system_prompt
   // + capability_note）；拉取失败回退内置常量
@@ -786,6 +791,34 @@ export default function ChatPage({ user }: { user?: any }) {
 
       {expandedImage && (
         <ZoomableImage src={expandedImage} onClose={() => setExpandedImage(null)} />
+      )}
+
+      {/* 移动端计划面板：对话内浮层（不离开对话；桌面为命名弹窗） */}
+      {planOverlay && isMobile && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{
+            padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+          }}>
+            <button onClick={() => setPlanOverlay(false)}
+              title="关闭计划面板" aria-label="关闭计划面板"
+              style={{
+                fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
+                padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
+                display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+                background: 'transparent', cursor: 'pointer',
+              }}><ArrowLeftIcon size={12} /> 返回对话</button>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>计划面板</span>
+          </div>
+          <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+            <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>加载中…</div>}>
+              <PlanPageLazy onClose={() => setPlanOverlay(false)} />
+            </Suspense>
+          </div>
+        </div>
       )}
     </div>
     </>

@@ -11,7 +11,7 @@ import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
 import { usePlanWindow } from './chat/usePlanWindow'
 import { useAutoRead } from '../hooks/useAutoRead'
-import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, XIcon } from './icons'
+import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, XIcon, LinkIcon } from './icons'
 
 // 移动端计划浮层（懒加载，对话内嵌子页面不占首屏）
 const PlanPageLazy = lazy(() => import('../pages/PlanPage'))
@@ -834,6 +834,18 @@ export default function ChatPage({ user }: { user?: any }) {
               }}>
               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>计划面板</span>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1 }}>按住标题拖动</span>
+              <button onClick={() => {
+                const url = window.location.origin + '/chat/plan'
+                navigator.clipboard.writeText(url).then(() => flashNotice('链接已复制，可直接在浏览器打开')).catch(() => {})
+              }}
+                className="yuan-tip" data-tip="复制独立页面链接（可直接在浏览器打开）"
+                title="复制页面链接" aria-label="复制页面链接"
+                style={{
+                  fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
+                  padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
+                  display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+                  background: 'transparent', cursor: 'pointer',
+                }}><LinkIcon size={12} /> 复制链接</button>
               <button onClick={() => setPlanOverlay(false)}
                 title="关闭计划面板" aria-label="关闭计划面板"
                 style={{
@@ -894,7 +906,18 @@ export default function ChatPage({ user }: { user?: any }) {
                 display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
                 background: 'transparent', cursor: 'pointer',
               }}><ArrowLeftIcon size={12} /> 返回对话</button>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>计划面板</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>计划面板</span>
+            <button onClick={() => {
+              const url = window.location.origin + '/chat/plan'
+              navigator.clipboard.writeText(url).then(() => flashNotice('链接已复制，可直接在浏览器打开')).catch(() => {})
+            }}
+              className="yuan-tip" data-tip="复制独立页面链接" title="复制页面链接" aria-label="复制页面链接"
+              style={{
+                fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
+                padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
+                display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+                background: 'transparent', cursor: 'pointer',
+              }}><LinkIcon size={12} /> 复制链接</button>
           </div>
           <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
             <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>加载中…</div>}>

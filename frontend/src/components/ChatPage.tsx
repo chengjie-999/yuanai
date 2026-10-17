@@ -810,6 +810,8 @@ export default function ChatPage({ user }: { user?: any }) {
           }}>
             <div
               onPointerDown={(e) => {
+                // 关闭按钮不启动拖动（PointerCapture 会吞掉按钮 click）
+                if ((e.target as HTMLElement).closest('button')) return
                 e.preventDefault()
                 const base = planPos || { x: window.innerWidth - 740 - 16, y: 72 }
                 planDragRef.current = { startX: e.clientX, startY: e.clientY, baseX: base.x, baseY: base.y }
@@ -839,7 +841,7 @@ export default function ChatPage({ user }: { user?: any }) {
             </div>
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
               <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>加载中…</div>}>
-                <PlanPageLazy onClose={() => setPlanOverlay(false)} />
+                <PlanPageLazy onClose={() => setPlanOverlay(false)} hideBack />
               </Suspense>
             </div>
           </div>
@@ -866,7 +868,7 @@ export default function ChatPage({ user }: { user?: any }) {
           </div>
           <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
             <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>加载中…</div>}>
-              <PlanPageLazy onClose={() => setPlanOverlay(false)} />
+              <PlanPageLazy onClose={() => setPlanOverlay(false)} hideBack />
             </Suspense>
           </div>
         </div>

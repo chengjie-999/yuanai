@@ -63,7 +63,7 @@ function StepIcon({ status }: { status: string }) {
   return <span style={{ width: 7, height: 7, borderRadius: '50%', border: '1.5px solid currentColor', display: 'inline-block' }} />
 }
 
-export default function PlanPage({ onClose }: { onClose?: () => void } = {}) {
+export default function PlanPage({ onClose, hideBack }: { onClose?: () => void; hideBack?: boolean } = {}) {
   const [plans, setPlans] = useState<Plan[]>([])
   const [detail, setDetail] = useState<Plan | null>(null)
   const [selectedId, setSelectedId] = useState<number>(0)
@@ -182,7 +182,7 @@ export default function PlanPage({ onClose }: { onClose?: () => void } = {}) {
               flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
               background: 'transparent', cursor: 'pointer',
             }}><XIcon size={12} /> 关闭</button>
-        ) : onClose ? (
+        ) : hideBack ? null : onClose ? (
           <button onClick={onClose} style={{
             fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
             padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',

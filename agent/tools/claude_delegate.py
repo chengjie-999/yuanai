@@ -37,6 +37,11 @@ _BRIDGE_SYSTEM_PROMPT = (
     "绝不使用 sudo / runas 提权；绝不执行 npm install -g / pip install --user；"
     "绝不执行 shutdown / format / diskpart / taskkill /f 等系统命令；"
     "文件写入仅限本仓库目录内。git commit 可以做，但绝不推送。"
+    "【联网搜索通道】实时联网搜索的唯一允许方式："
+    "python -m yuanai_core.pure.cc_search \"查询词\"（走平台内置三级搜索通道，可加第二参数 1-20 控制条数）。"
+    "WebSearch/WebFetch 工具与 curl/wget 已被禁，直接执行 python 脚本文件（python xxx.py）也会被权限表拦截——"
+    "不要反复尝试这些被禁途径；需要深度检索或用户要求交互式搜索时，"
+    "说明搜索结果可在小元AI对话里用联网搜索获取。"
     "完成后用简洁中文总结：做了什么、改了哪些文件、如何验证。"
 )
 

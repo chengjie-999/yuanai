@@ -33,8 +33,16 @@ export default function InputArea({ input, setInput, loading, handleSend, images
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadType, setUploadType] = useState<'image' | 'dataset'>('image')
+  const [uploadErr, setUploadErr] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickIndex, setPickIndex] = useState(0)
+  // B1：本地上传的数据集卡片（名称/行数/列数，可移除）
+  const [uploadedDs, setUploadedDs] = useState<{ id: number; name: string; row_count: number; columns: { name: string }[] }[]>([])
+  // B1：数据集选择弹层
+  const [dsPickerOpen, setDsPickerOpen] = useState(false)
+  const [dsList, setDsList] = useState<{ id: number; name: string; row_count: number; file_type: string }[]>([])
+  const [dsLoading, setDsLoading] = useState(false)
 
   // 选中 @ 候选：设定定向 + 移除输入框里残留的裸 @（及其后的半截文字）
   const selectTarget = (key: string) => {
@@ -64,7 +72,30 @@ export default function InputArea({ input, setInput, loading, handleSend, images
           {uploading && (
             <div style={{ fontSize: 12, color: 'var(--accent)', padding: '8px 12px 0', display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-              正在压缩图片…
+              {uploadType === 'dataset' ? '正在上传数据集…' : '正在压缩图片…'}
+            </div>
+          )}
+          {uploadErr && (
+            <div style={{ fontSize: 12, color: 'var(--danger, #d93025)', padding: '8px 12px 0' }}>{uploadErr}</div>
+          )}
+          {/* B1：已上传数据集卡片（名称/行数/列数，可移除） */}
+          {uploadedDs.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, padding: '8px 12px 0', overflowX: 'auto', flexWrap: 'wrap' }}>
+              {uploadedDs.map((ds) => (
+                <div key={ds.id} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 10px',
+                  borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-primary)',
+                  fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0,
+                }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{ds.name}</span>
+                  <span>{ds.row_count} 行 · {ds.columns?.length || 0} 列</span>
+                  <span onClick={() => setUploadedDs((p) => p.filter((x) => x.id !== ds.id))}
+                    title="移除" aria-label={`移除数据集 ${ds.name}`}
+                    style={{ cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 2 }}>
+                    <XIcon size={10} />
+                  </span>
+                </div>
+              ))}
             </div>
           )}
           {images.length > 0 && (
@@ -142,12 +173,18 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   for (const f of Array.from(files)) {
                     const ext = f.name.split('.').pop()?.toLowerCase()
                     if (['csv', 'xlsx', 'xls', 'json'].includes(ext || '')) {
-                      // 数据集文件：上传后以 [数据集 #id] 引用注入输入框（原欢迎页入口）
+                      // 数据集文件：上传后注入 [数据集 #id] 引用 + 显示数据卡片
+                      setUploadType('dataset')
                       try {
                         const result = await uploadDataset(f)
+                        setUploadedDs((p) => [...p.filter((x) => x.id !== result.id), result])
+                        setUploadErr('')
                         setInput((p) => p + ` [数据集 #${result.id}: ${result.name}]`)
-                      } catch { /* ignore */ }
+                      } catch {
+                        setUploadErr(`数据集 ${f.name} 上传失败，请重试`)
+                      }
                     } else {
+                      setUploadType('image')
                       try {
                         const compressed = await compressImage(f)
                         setImages((p) => [...p, compressed])
@@ -230,11 +267,69 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   </>
                 )}
               </div>
-              <button onClick={() => fileRef.current?.click()} className="yuan-tip" data-tip="上传图片" aria-label="上传图片"
+              <button onClick={() => fileRef.current?.click()} className="yuan-tip" data-tip="上传图片或数据集" aria-label="上传图片或数据集"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
                 onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
               ><PaperclipIcon size={17} /></button>
+              {/* B1：数据集选择弹层（历史数据集一键注入 [数据集 #id]） */}
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <button onClick={() => {
+                  if (!dsPickerOpen) {
+                    setDsLoading(true)
+                    import('../../api').then(({ fetchDatasets }) => fetchDatasets()
+                      .then((list: any[]) => { setDsList(Array.isArray(list) ? list : []); setDsLoading(false) })
+                      .catch(() => setDsLoading(false)))
+                  }
+                  setDsPickerOpen((o) => !o)
+                }} className="yuan-tip" data-tip="选择数据集" aria-label="选择数据集"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
+                >
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <ellipse cx="12" cy="5" rx="9" ry="3" />
+                    <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+                    <path d="M3 12a9 3 0 0 0 18 0" />
+                  </svg>
+                </button>
+                {dsPickerOpen && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setDsPickerOpen(false)} />
+                    <div style={{
+                      position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 41,
+                      minWidth: 260, maxWidth: '78vw', maxHeight: 280, overflowY: 'auto',
+                      background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                      borderRadius: 10, boxShadow: '0 8px 28px var(--shadow-md)', padding: 6, textAlign: 'left',
+                    }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px 6px', fontWeight: 600 }}>
+                        选择数据集（点击注入引用）
+                      </div>
+                      {dsLoading ? (
+                        <div style={{ padding: '12px 8px', fontSize: 12, color: 'var(--text-muted)' }}>加载中…</div>
+                      ) : dsList.length === 0 ? (
+                        <div style={{ padding: '12px 8px', fontSize: 12, color: 'var(--text-muted)' }}>暂无数据集，用回形针上传</div>
+                      ) : dsList.map((ds) => (
+                        <div key={ds.id}
+                          onClick={() => {
+                            setInput((p) => p + ` [数据集 #${ds.id}: ${ds.name}]`)
+                            setDsPickerOpen(false)
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover-bg)' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                          style={{
+                            padding: '7px 8px', borderRadius: 7, cursor: 'pointer', fontSize: 12,
+                            color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8,
+                          }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{ds.name}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{ds.row_count} 行</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
               <button onClick={onStartVoiceCall} className="yuan-tip" data-tip="语音通话" aria-label="语音通话"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}

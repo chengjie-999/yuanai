@@ -41,7 +41,7 @@ def test_list_datasets_mixed_columns(monkeypatch):
     from yuanai_core.tools.data_tools import list_datasets
 
     class FakeDB:
-        def get_datasets(self):
+        def get_datasets(self, user_id=None):
             return [
                 {"id": 1, "name": "正常", "file_type": "csv", "row_count": 10,
                  "file_size": 1024, "columns": [{"name": "A"}, {"name": "B"}]},

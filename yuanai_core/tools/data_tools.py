@@ -35,10 +35,15 @@ def _col_names(columns) -> list:
 
 @tool
 def list_datasets() -> str:
-    """List all available datasets with ID, name, size, columns."""
+    """List all available datasets with ID, name, size, columns.
+
+    只列当前用户的数据集（B1：此前列全部用户）；含 file_path 供
+    path 型脚本（RFM/流失/bio）直接使用。"""
     from db.session import get_db
+    from yuanai_core.rag import current_user_id
     db = get_db()
-    datasets = db.get_datasets()
+    uid = current_user_id.get() or 0
+    datasets = db.get_datasets(user_id=uid if uid else None)
     if not datasets:
         return "暂无数据集。请在数据工作台上传 CSV/Excel/JSON 文件。"
     lines = [f"共 {len(datasets)} 个数据集:", ""]
@@ -46,9 +51,10 @@ def list_datasets() -> str:
         names = _col_names(ds.get("columns", []))
         cols = ", ".join(names[:8])
         more = "..." if len(names) > 8 else ""
+        path_note = f" | path: {ds['file_path']}" if ds.get("file_path") else ""
         lines.append(
             f"  #{ds['id']} {ds['name']} | {ds['file_type']} | "
-            f"{ds['row_count']}行 | {ds['file_size']//1024}KB"
+            f"{ds['row_count']}行 | {ds['file_size']//1024}KB{path_note}"
         )
         if cols:
             lines.append(f"     列: {cols}{more}")
@@ -224,12 +230,13 @@ def transform_dataset(dataset_id: int, operation: str, params: str) -> str:
     fname = f"{ds['name'].rsplit('.',1)[0]}_{op}_{datetime.now().strftime('%H%M%S')}.csv"
     fpath = os.path.join(base_dir, fname)
     df.to_csv(fpath, index=False, encoding="utf-8-sig")
+    from yuanai_core.rag import current_user_id
     new_id = db.add_dataset(
         name=fname, file_path=fpath, file_type="csv",
         file_size=os.path.getsize(fpath), row_count=len(df),
         columns_info=_json.dumps([{"name": str(c), "dtype": str(df[c].dtype)} for c in df.columns], ensure_ascii=False),
         preview_rows=_json.dumps(df.head(10).fillna("").to_dict(orient="records"), ensure_ascii=False),
-        user_id=None,
+        user_id=current_user_id.get() or None,  # B1：归属当前用户（此前 None 不出现于工作台列表）
     )
     preview = df.head(5).to_string(index=False)
     return f"转换完成! 新数据集 #{new_id} '{fname}'\n{len(df)}行\n\n前5行:\n```\n{preview}\n```"

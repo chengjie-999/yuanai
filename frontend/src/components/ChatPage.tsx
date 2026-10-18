@@ -394,8 +394,10 @@ export default function ChatPage({ user }: { user?: any }) {
       .catch(() => {})
   }, [])
 
-  const makeStreamHandlers = () => {
+  const makeStreamHandlers = (noOrchestratorReset = false) => {
     // 本地 Agent 模式气泡显示「小元AI · 本机」，云端模式显示「小元AI」，Claude 模式显示 Claude Code
+    // noOrchestratorReset：claude 流/定向小窗里没有统筹参与，工具结束不得复位成统筹气泡
+    //（否则 Claude 工具后 token 落进新开的统筹气泡 → CC 与小元交替、最终答案归小元）
     let currentSender = chatMode === 'cloud' ? 'orchestrator' : 'local'
     const onEvent = (event: any) => {
       // 旁路守卫（P1-1）：流式期间会话已切换/停止 → 丢弃迟到事件，防跨会话写入
@@ -476,7 +478,7 @@ export default function ChatPage({ user }: { user?: any }) {
           }
           return last
         })
-        if (isDel) {
+        if (isDel && !noOrchestratorReset) {
           currentSender = 'orchestrator'
           setMessages((prev) => {
             const last = prev[prev.length - 1]
@@ -557,7 +559,7 @@ export default function ChatPage({ user }: { user?: any }) {
       : chatMode === 'cloud' ? 'orchestrator' : 'local'
     setMessages([...msgs, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
-    const { onEvent, onError } = makeStreamHandlers()
+    const { onEvent, onError } = makeStreamHandlers(isClaude || !!dmTarget)
     const controller = streamChat(
       { model, temperature: 0.7, prompt, images: sentImages, history, system_prompt: sysPrompt,
         session_id: sid, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
@@ -683,7 +685,7 @@ export default function ChatPage({ user }: { user?: any }) {
       : chatMode === 'cloud' ? 'orchestrator' : 'local'
     setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
-    const { onEvent, onError } = makeStreamHandlers()
+    const { onEvent, onError } = makeStreamHandlers(isClaude)
     const controller = streamChat(
       { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: sysPrompt,
         session_id: sid, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },

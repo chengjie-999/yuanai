@@ -172,7 +172,7 @@ export default function ModelsTab() {
           </table>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
             <button onClick={handleSaveAssign} disabled={savingAssign} style={{ ...btnPrimary, opacity: savingAssign ? 0.6 : 1 }}>保存分配</button>
-            {assignMsg && <span style={{ fontSize: 12, color: assignMsg.includes('已保存') ? 'var(--accent)' : 'var(--danger, #d93025)' }}>{assignMsg}</span>}
+            {assignMsg && <span style={{ fontSize: 12, color: assignMsg.includes('已保存') ? 'var(--accent)' : 'var(--danger)' }}>{assignMsg}</span>}
           </div>
         </Card>
       )}
@@ -180,12 +180,12 @@ export default function ModelsTab() {
         <Card>
           <CardHeader title="自动检查更新" action={<button onClick={handleCheckUpdates} disabled={checking} title="检查模型更新" aria-label="检查模型更新" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--accent)', fontWeight: 500, opacity: checking ? 0.6 : 1 }}>{checking ? '检查中…' : '检查更新'}</button>} />
           <div style={{ padding: '0 14px 4px', fontSize: 12, color: 'var(--text-muted)' }}>对照升级知识表检查在用模型与语音模型，确认后自动添加新模型、切换分配、移除旧模型</div>
-          {upgradeMsg && <div style={{ padding: '0 14px 8px', fontSize: 12, color: upgradeMsg.includes('已自动') || upgradeMsg.includes('没有') ? 'var(--accent)' : 'var(--danger, #d93025)' }}>{upgradeMsg}</div>}
+          {upgradeMsg && <div style={{ padding: '0 14px 8px', fontSize: 12, color: upgradeMsg.includes('已自动') || upgradeMsg.includes('没有') ? 'var(--accent)' : 'var(--danger)' }}>{upgradeMsg}</div>}
           {upgradePlan && (upgradePlan.model_upgrades.length > 0 || upgradePlan.voice_upgrades.length > 0 || upgradePlan.available.length > 0) ? (
             <div style={{ padding: '8px 14px 12px' }}>
               {[...upgradePlan.model_upgrades, ...upgradePlan.voice_upgrades].map((u, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border-light)', fontSize: 13 }}>
-                  <span style={{ color: 'var(--danger, #d93025)', fontFamily: 'monospace', fontSize: 12 }}>{u.old}</span>
+                  <span style={{ color: 'var(--danger)', fontFamily: 'monospace', fontSize: 12 }}>{u.old}</span>
                   <span style={{ color: 'var(--text-muted)' }}>→</span>
                   <span style={{ color: 'var(--accent)', fontFamily: 'monospace', fontSize: 12 }}>{u.new}</span>
                   <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{u.label}</span>
@@ -235,7 +235,7 @@ export default function ModelsTab() {
           </table>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
             <button onClick={handleSaveVoice} disabled={savingVoice} style={{ ...btnPrimary, opacity: savingVoice ? 0.6 : 1 }}>保存语音配置</button>
-            {voiceMsg && <span style={{ fontSize: 12, color: voiceMsg.includes('已保存') ? 'var(--accent)' : 'var(--danger, #d93025)' }}>{voiceMsg}</span>}
+            {voiceMsg && <span style={{ fontSize: 12, color: voiceMsg.includes('已保存') ? 'var(--accent)' : 'var(--danger)' }}>{voiceMsg}</span>}
           </div>
         </Card>
       )}

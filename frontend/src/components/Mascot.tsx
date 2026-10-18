@@ -115,11 +115,11 @@ export default function Mascot({ size = 80 }: { size?: number }) {
       ) : (
         <svg viewBox="0 0 100 100" width={size} height={size}>
           <circle cx="50" cy="50" r="42" fill="#42a5f5" opacity="0.08" />
-          <circle cx="50" cy="52" r="32" fill="#1976d2" />
+          <circle cx="50" cy="52" r="32" fill="#2563eb" />
           <circle cx="50" cy="52" r="27" fill="#42a5f5" />
           {[[12,30],[88,30],[20,76],[80,76]].map(([x,y],i)=>(
             <g key={i}>
-              <line x1={i<2?26:34} y1={i<2?40:62} x2={x} y2={y} stroke="#1976d2" strokeWidth="5" strokeLinecap="round" />
+              <line x1={i<2?26:34} y1={i<2?40:62} x2={x} y2={y} stroke="#2563eb" strokeWidth="5" strokeLinecap="round" />
               <circle cx={x} cy={y} r="6" fill="#90caf9" />
             </g>
           ))}

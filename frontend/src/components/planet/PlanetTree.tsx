@@ -161,7 +161,7 @@ export default function PlanetTree({ planets, selectedPid, selectedMid, selected
                               onMouseEnter={(e) => { if (selectedMid !== m.id) (e.currentTarget as HTMLElement).style.background = 'var(--hover-bg)' }}
                               onMouseLeave={(e) => { if (selectedMid !== m.id) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                             >
-                              <StarIcon size={13} style={{ color: 'var(--warning, #f5a623)', flexShrink: 0 }} />
+                              <StarIcon size={13} style={{ color: 'var(--warning)', flexShrink: 0 }} />
                               <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</span>
                               <span style={{ fontSize: 10, color: m.quality === 'full' ? 'var(--success)' : 'var(--text-muted)', flexShrink: 0 }}>
                                 {m.quality === 'full' ? '完整' : '纯文本'}

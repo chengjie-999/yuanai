@@ -133,7 +133,7 @@ function AppLayout() {
             className="theme-toggle yuan-tip yuan-tip-down" data-tip={isDark ? '切换亮色模式' : '切换暗色模式'}
             style={{
               width: 44, height: 24, borderRadius: 12, border: 'none',
-              background: isDark ? '#45494a' : '#d0d7de',
+              background: isDark ? 'var(--bg-tertiary)' : 'var(--border)',
               cursor: 'pointer', position: 'relative', padding: 0, flexShrink: 0,
               transition: 'background 0.3s',
             }}

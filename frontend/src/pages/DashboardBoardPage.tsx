@@ -52,7 +52,7 @@ export default function DashboardBoardPage({ boardKey: propKey, onClose, hideBac
         src={src}
         sandbox="allow-scripts"
         title="分析看板"
-        style={{ flex: 1, width: '100%', border: 0, background: '#f5f6f8' }}
+        style={{ flex: 1, width: '100%', border: 0, background: 'var(--bg-secondary)' }}
       />
     </div>
   )

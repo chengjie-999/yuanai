@@ -32,7 +32,7 @@ export default function AgentsTab() {
           { label: 'Agent 总数', value: agents.length, color: 'var(--accent)' },
           { label: '在线', value: online.length, color: 'var(--success)' },
           { label: '离线', value: offline.length, color: 'var(--text-muted)' },
-          { label: '子 Agent 类型', value: SUB_AGENTS.length, color: '#ff9800' },
+          { label: '子 Agent 类型', value: SUB_AGENTS.length, color: 'var(--warning)' },
         ].map((c) => (
           <div key={c.label} style={{ background: 'var(--bg-primary)', borderRadius: 10, border: '1px solid var(--border)', padding: '14px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 22, fontWeight: 700, color: c.color }}>{c.value}</div>

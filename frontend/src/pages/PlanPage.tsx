@@ -16,19 +16,19 @@ import { PLAN_MSG } from '../components/chat/planWindow'
    ============================================================ */
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
-  draft: { label: '草稿', color: '#6b7280', bg: 'var(--bg-secondary)' },
-  queued: { label: '排队中', color: '#2563eb', bg: '#eff6ff' },
-  running: { label: '执行中', color: '#d97706', bg: '#fff7ed' },
-  done: { label: '已完成', color: '#16a34a', bg: '#f0fdf4' },
-  failed: { label: '失败', color: '#dc2626', bg: '#fef2f2' },
+  draft: { label: '草稿', color: 'var(--text-muted)', bg: 'var(--bg-secondary)' },
+  queued: { label: '排队中', color: 'var(--accent)', bg: 'var(--accent-soft)' },
+  running: { label: '执行中', color: 'var(--warning)', bg: 'var(--warning-soft)' },
+  done: { label: '已完成', color: 'var(--success)', bg: 'var(--success-soft)' },
+  failed: { label: '失败', color: 'var(--danger)', bg: 'var(--danger-soft)' },
 }
 
 const STEP_STATUS: Record<string, { label: string; color: string }> = {
-  pending: { label: '待执行', color: '#9ca3af' },
-  running: { label: '运行中', color: '#d97706' },
-  done: { label: '已完成', color: '#16a34a' },
-  failed: { label: '失败', color: '#dc2626' },
-  skipped: { label: '已跳过', color: '#9ca3af' },
+  pending: { label: '待执行', color: 'var(--text-muted)' },
+  running: { label: '运行中', color: 'var(--warning)' },
+  done: { label: '已完成', color: 'var(--success)' },
+  failed: { label: '失败', color: 'var(--danger)' },
+  skipped: { label: '已跳过', color: 'var(--text-muted)' },
 }
 
 const RUN_EVENT_CN: Record<string, string> = {
@@ -225,7 +225,7 @@ export default function PlanPage({ onClose, hideBack }: { onClose?: () => void; 
       </header>
 
       {actionErr && (
-        <div style={{ margin: '10px 20px 0', padding: '8px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: 12 }}>{actionErr}</div>
+        <div style={{ margin: '10px 20px 0', padding: '8px 14px', borderRadius: 8, background: 'var(--danger-soft)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 12 }}>{actionErr}</div>
       )}
 
       <div className="plan-body agent-page-body" style={{ flex: 1, overflow: 'auto', maxWidth: 1080, width: '100%', margin: '0 auto', boxSizing: 'border-box', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
@@ -369,7 +369,7 @@ function StepCard({ s }: { s: PlanStep }) {
           justifyContent: 'center', color: st.color, border: `1.5px solid ${st.color}`,
           flexShrink: 0, animation: s.status === 'running' ? 'plan-spin 1.2s linear infinite' : 'none',
         }}><StepIcon status={s.status} /></span>
-        <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 6, color: skillCfg?.color || '#6b7280', background: skillCfg?.bg || 'var(--bg-secondary)' }}>{s.skill === 'analysis' ? '数据分析' : s.skill === 'collection' ? '数据采集' : s.skill}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 6, color: skillCfg?.color || 'var(--text-muted)', background: skillCfg?.bg || 'var(--bg-secondary)' }}>{s.skill === 'analysis' ? '数据分析' : s.skill === 'collection' ? '数据采集' : s.skill}</span>
         {s.script && (
           <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 6, color: 'var(--text-secondary)', background: 'var(--bg-secondary)', whiteSpace: 'nowrap' }}>{s.script}</span>
         )}
@@ -388,7 +388,7 @@ function StepCard({ s }: { s: PlanStep }) {
         <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>{s.last_message}</div>
       )}
       {s.status === 'failed' && s.error && (
-        <div style={{ marginTop: 8, fontSize: 12, color: '#dc2626', lineHeight: 1.6 }}>{s.error}</div>
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--danger)', lineHeight: 1.6 }}>{s.error}</div>
       )}
       {s.status === 'done' && result && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-light)' }}>

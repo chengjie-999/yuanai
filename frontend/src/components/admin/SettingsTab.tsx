@@ -136,7 +136,7 @@ export default function SettingsTab() {
             style={{ padding: '8px 18px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: 13, opacity: saving ? 0.6 : 1 }}>
             保存设定
           </button>
-          {msg && <span style={{ fontSize: 12, color: msg.includes('已保存') ? 'var(--accent)' : 'var(--danger, #d93025)' }}>{msg}</span>}
+          {msg && <span style={{ fontSize: 12, color: msg.includes('已保存') ? 'var(--accent)' : 'var(--danger)' }}>{msg}</span>}
         </div>
       </Card>
 

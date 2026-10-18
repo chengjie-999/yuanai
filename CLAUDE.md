@@ -146,9 +146,44 @@ data/                   数据目录
 - **豁免**：标题/正文/表单标签/表格表头/营销文案等内容性文字保留；公开页（官网/登录）文字即内容，谨慎图标化；移动端无悬浮提示，关键 CTA 保留文字
 - **面板入口规范（2026-10-17 用户拍板，对话中生成的面板统一此形态）**：计划/分析看板/自动化等子页面入口 = **合并框**——左侧彩色「打开面板」按钮 + 右侧明文链接（monospace，点击复制完整 URL，可直接浏览器打开）；子页面窗口（桌面浮窗可拖动+右下角缩放 / 移动全屏浮层 / 浏览器独立路由）三形态布局统一：标题栏只留「返回对话」+ 浏览器式明文地址栏（点击复制）。新增面板入口一律复用 MessageBubble 的 pageLink 合并框渲染
 
+## 配色与设计规范（2026-10-18 用户拍板：全前端统一，应用界面不搞首页式花哨）
+
+**分层原则**：营销页（LandingPage/登录页）可以花哨——渐变标题、神经元背景、光晕球、玻璃拟态、入场动画；**应用界面（聊天/后台/各面板/设置）一律克制**——纯色分层 + 微交互，不做渐变铺底、不做装饰动画。
+
+**色板（全部经 `frontend/src/index.css` CSS 变量消费，新增颜色先加变量，禁止硬编码 hex）**：
+
+| 变量 | 亮色 | 暗色 | 用途 |
+|------|------|------|------|
+| `--bg-primary` | #f8fafc | #0b1220 | 页面底 |
+| `--bg-secondary` | #f1f5f9 | #101a2c | 侧栏/分区底 |
+| `--bg-tertiary` | #e2e8f0 | #16233a | 代码块/输入框底/chip |
+| `--bg-input` | #ffffff | #1b2942 | 输入框 |
+| `--text-primary` | #0f172a | #e2e8f0 | 标题/正文 |
+| `--text-secondary` | #475569 | #94a3b8 | 次要说明 |
+| `--text-muted` | #64748b | #64748b | 占位/弱化信息 |
+| `--border` / `--border-light` | #cbd5e1 / #e2e8f0 | #2b3b56 / #1f2c44 | 描边两级 |
+| `--accent` / `--accent-light` | #2563eb / rgba(37,99,235,.09) | #60a5fa / rgba(96,165,250,.13) | 品牌蓝/淡底 |
+| `--accent-soft` / `--accent-glow` | rgba(59,130,246,.12) / .35 | rgba(96,165,250,.14) / .30 | 强调淡底/光晕 |
+| `--accent-gradient` | 135deg #3b82f6→#2563eb→#1d4ed8 | 135deg 浅蓝渐变 | 仅品牌强调点（CTA/统计数字/装饰线） |
+| `--danger` / `--success` / `--warning` | #dc2626 / #16a34a / #d97706 | #f87171 / #4ade80 / #fbbf24 | 语义色 |
+| `--danger-soft` / `--success-soft` / `--warning-soft` | 各语义色 10-14% 淡底 | 同左（随语义色换调） | 状态徽章底/错误横幅底 |
+| `--header-bg` | #ffffff 实底 | rgba(16,26,44,.86) | 顶栏（亮色不半透明） |
+| `--shadow-sm` / `--shadow-md` | rgba(15,23,42,.05) / .10 | rgba(0,0,0,.30) / .50 | 阴影两级 |
+
+**组件规则**：
+- **文字层级三档**：primary（标题正文）/ secondary（说明）/ muted（占位弱化），小字禁用更浅的灰
+- **按钮**：primary=accent、danger/success=语义变量、warning=#f59e0b 深字、outline=白底 border 描边 text-primary；**暗色模式按钮底必须换深色调**（暗色 accent/danger/success 变量是浅色作文字用的，白字对比不足——index.css 已有 dark 覆盖，新增按钮照此写）；inline 样式做不了主题分支的实底按钮加 `.bg-success-solid`（已含暗色深调覆盖）
+- **状态徽章/文字**：语义色一律 `var(--success/warning/danger)`（作文字色时暗色浅调正合适）；淡底用 `*-soft` 变量；admin `badge()` 助手已改 color-mix 支持传 var——**不要传硬编码 hex**
+- **卡片**：亮色=白底 `#fff` + `--border-light` 描边 + `--shadow-sm`；暗色=`--bg-secondary` + `--border`；glass backdrop-filter 仅营销页
+- **圆角**：小元素（按钮/输入框）6px，卡片 12–14px，chip 999px
+- **动效**：应用内微交互 0.12–0.18s（hover/active）；大块入场动画（fade-up/float）仅营销页；尊重 `prefers-reduced-motion`
+- **渐变只出现在**：主 CTA 按钮、统计数字文字、标题装饰线、营销页 Hero——不铺满应用界面
+- **主题切换**：一切颜色经变量自适应；Canvas 类组件（NeuralBackground 等）用 MutationObserver 监听 `data-theme` 换调色板
+- **豁免清单（2026-10-18 一致性清扫边界，新增色先对照本表）**：① 图表系列色板（recharts 多序列需多色区分，Dashboard/Analytics/Monitor/UserAnalytics 的 CHART_* 常量）② Agent/服务商身份色（agents.ts 各智能体识别色、ToolCallCard AGENT_LABELS、ModelSelector 服务商色）③ 吉祥物画作（Mascot）④ 营销公开页（Landing/Login/About 自含花哨样式）⑤ index.css 变量定义与暗色按钮深调覆盖本身
+
 ## 对话界面
 
-业务入口。域名根路径 `/` 是**免登录的官网公开首页**（LandingPage，静态内容 + 基础 SEO + 「小元数据冲刺」Canvas 小游戏 `DataRunGame.tsx`，零依赖跑酷，主题跟随明暗），`/about` 是**关于我公开页**（个人简历，匿名署名），两者共享 LandingHeader（首页/关于我们导航）。聊天页在 `/chat`（ProtectedRoute 保护，未登录跳 `/login`，登录后落 `/chat`），Header 按登录态显示「进入对话」/「登录」。聊天欢迎页居中显示输入框，历史对话以群聊形式展示：
+业务入口。域名根路径 `/` 是**免登录的官网公开首页**（LandingPage，静态内容 + 基础 SEO + 神经元网络 Hero 背景 `NeuralBackground.tsx`，零依赖 Canvas，主题跟随明暗），`/about` 是**关于我公开页**（个人简历，匿名署名），两者共享 LandingHeader（首页/关于我们导航）。聊天页在 `/chat`（ProtectedRoute 保护，未登录跳 `/login`，登录后落 `/chat`），Header 按登录态显示「进入对话」/「登录」。聊天欢迎页居中显示输入框，历史对话以群聊形式展示：
 - 蓝色 = 小元AI（统筹）
 - 棕色/橙色 = Claude Code（本机桥接）
 - 紫色 = 数据分析 Agent
@@ -425,11 +460,13 @@ GitHub Actions（`.github/workflows/ci.yml`）：
 - 协调器检测 `__DASHBOARD__` → 缓存 Redis（TTL 1h）**并落库 analysis_history** → yield dashboard_event
 
 **A 看板缓存（2026-10-16，脚本运行一次即保存完整看板，未更新直接展示不重跑）：**
-- registry 执行前算 `cache_key = md5(脚本源文件 + 规范化参数)`（`_dashboard_cache_key`），`data/analysis/dashboards/{key}.html` 命中 → 直接输出 `__DASHBOARD__:{key}` 不启动子进程；未命中执行成功后组装**完整看板 HTML**（__RESULT__ 拍平 KPI 卡前 12 + 各 __HTML__ 图表全文去 plotly CDN script 内联 + plotly.min.js 从本地包 package_data 内联**单文件自包含离线可看**）写缓存
+- registry 执行前算 `cache_key = md5(脚本源文件 + 规范化参数 + **数据集文件指纹(mtime+size)**)`（`_dashboard_cache_key` / `_dataset_fingerprint`：dataset_id 查库取 file_path；上传覆盖同名文件 → 旧看板自动失效），`data/analysis/dashboards/{key}.html` 命中 → 直接输出 `__DASHBOARD__:{key}` 不启动子进程；未命中执行成功后组装**完整看板 HTML**（__RESULT__ 拍平 KPI 卡前 12 + 各 __HTML__ 图表全文去 plotly CDN script 内联 + plotly.min.js 从本地包 package_data 内联**单文件自包含离线可看**）写缓存
 - `__DASHBOARD__` 两态：32hex = 看板缓存 key（orchestrator finditer 区分 → dashboard_event 带 `dashboard_html` 字段）；文件路径 = 原 __RESULT__ JSON（Redis + 历史落库）
 - 展示：`GET /api/v1/data/dashboard-html/{key}`（32hex 白名单 + sandbox CSP；全局缓存无 .owner——分析产物非个人数据；middleware `_extract_token` 白名单已加该路径）→ 前端 dashboard 事件有 dashboard_html 时「打开面板」指向轻量页 `/chat/agent/board/:key`（DashboardBoardPage，useSecuredUrl + sandbox iframe）；否则原通用大屏
+- **分析历史（2026-10-18 B1-10）**：AnalysisDashboard 页内嵌历史分析列表（消费 `GET /analysis/history`，点击回溯查看历次结果，附「回到最新」）；`/history` 与 `/dashboard/{sid}` 已做会话归属校验（verify_session_owner）；修复 B0 遗留 bug——add_analysis_history 传 script_name 但模型缺列（TypeError 被吞、历史持久化一直失败），迁移 0017 补列
+- **停止联动（2026-10-18 B1-11）**：聊天「停止生成」→ SSE 中断 → 云端 `_bridge_sse` CancelledError → `send_stop_to_agent` WS `stop_request` 事件 → 本地 Agent `on_stop_request` → `Orchestrator.cancel_request` → `registry.cancel_running(request_id)` 杀脚本子进程（按 request_id 登记隔离，计划执行器不受影响；脚本返回 `__ERROR__:已停止生成`）
 - 已知限制：本地形态成立；跨机/云端挂账（.dockerignore 排除 agent/、无 html 上行通道）；RFM 大屏端点未接（云端无 registry 组装函数）
-- 测试：test/test_script_dashboard_cache.py 9 项（hash 命中不重跑/参数与脚本变更重跑/组装断言/端点白名单）
+- 测试：test/test_script_dashboard_cache.py 11 项（hash 命中不重跑/参数与脚本变更重跑/数据集指纹/停止联动杀进程/组装断言/端点白名单）
 
 **大屏页面：**
 - `/agent/rfm` — RFM 3D 散点大屏（直连 API，不需要 Agent）

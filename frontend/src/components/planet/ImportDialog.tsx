@@ -11,7 +11,7 @@ const FMT_META: Record<string, { label: string; color: string }> = {
   xmind: { label: 'XMind', color: '#8b5cf6' },
   mm: { label: 'FreeMind', color: '#8b5cf6' },
   opml: { label: 'OPML', color: '#8b5cf6' },
-  emmx: { label: 'emmx 纯文本', color: 'var(--warning, #f5a623)' },
+  emmx: { label: 'emmx 纯文本', color: 'var(--warning)' },
   txt: { label: '纯文本', color: 'var(--text-muted)' },
 }
 

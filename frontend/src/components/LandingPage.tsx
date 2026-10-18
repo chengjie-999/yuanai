@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { trackVisit } from '../api'
-import DataRunGame from './DataRunGame'
+import NeuralBackground from './NeuralBackground'
 import { SUB_AGENTS } from '../config/agents'
 import Mascot from './Mascot'
 import LandingHeader from './LandingHeader'
@@ -142,28 +142,19 @@ export default function LandingPage() {
         <div className="landing-orb orb-1" />
         <div className="landing-orb orb-2" />
         <div className="landing-orb orb-3" />
+        <div className="landing-neural"><NeuralBackground /></div>
         <div className="landing-hero-content">
-          <div className="landing-hero-row">
-            <div className="landing-hero-game">
-              <div className="landing-hero-mascot" style={{ marginBottom: 8 }}>
-                <Mascot size={96} />
-              </div>
-              <DataRunGame />
-              <div className="landing-hero-actions" style={{ marginTop: 14 }}>
-                <Link to="/chat" className="landing-cta landing-cta-primary">进入对话</Link>
-              </div>
-            </div>
-            <div className="landing-hero-main">
-              <span className="landing-hero-badge">
-                <span className="landing-hero-badge-dot" /> AI 智能体平台 · 云边协同
-              </span>
-              <h1 className="landing-hero-title">小元AI</h1>
-              <p className="landing-hero-desc">云边协同 · 对话即执行</p>
-              <p className="landing-hero-sub">手机定计划 · 电脑执行 / 分析·采集·医学脚本一问直调 / 浏览器自动化</p>
-              <div className="landing-hero-actions" style={{ marginTop: 18, justifyContent: 'center' }}>
-                <a href="#agents" className="landing-cta landing-cta-ghost" style={{ gap: 8 }}>了解能力 <ArrowDownIcon size={15} /></a>
-              </div>
-            </div>
+          <div className="landing-hero-mascot">
+            <Mascot size={128} />
+          </div>
+          <h1 className="landing-hero-title">小元AI</h1>
+          <p className="landing-hero-desc">云边协同 · 对话即执行</p>
+          <span className="landing-hero-badge">
+            <span className="landing-hero-badge-dot" /> AI 智能体平台 · 云边协同
+          </span>
+          <div className="landing-hero-actions">
+            <Link to="/chat" className="landing-cta landing-cta-primary">进入对话</Link>
+            <a href="#agents" className="landing-cta landing-cta-ghost" style={{ gap: 8 }}>了解能力 <ArrowDownIcon size={15} /></a>
           </div>
         </div>
       </section>
@@ -317,28 +308,21 @@ export default function LandingPage() {
            ============================ */
         .landing-hero {
           position: relative;
-          background:
-            radial-gradient(ellipse 80% 60% at 70% -10%, rgba(255,255,255,0.16) 0%, transparent 60%),
-            radial-gradient(ellipse 60% 50% at 10% 110%, var(--accent-glow) 0%, transparent 60%),
-            var(--accent-gradient);
+          background: linear-gradient(180deg, #e8f2ff 0%, #f8fafc 72%);
+          border-bottom: 1px solid var(--border-light);
           overflow: hidden;
-          padding: 96px 24px 104px;
+          padding: 72px 24px 88px;
         }
         [data-theme="dark"] .landing-hero {
           background:
             radial-gradient(ellipse 80% 60% at 70% -10%, rgba(255,255,255,0.05) 0%, transparent 60%),
             radial-gradient(ellipse 60% 50% at 10% 110%, var(--accent-glow) 0%, transparent 60%),
             linear-gradient(135deg, #10263e 0%, #0a1628 45%, #0f1a2e 100%);
+          border-bottom: none;
         }
-        /* 网格纹理叠加（极淡，增加科技感层次） */
-        .landing-hero::after {
-          content: '';
-          position: absolute; inset: 0;
-          background-image:
-            linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
-          background-size: 44px 44px;
-          mask-image: radial-gradient(ellipse 90% 80% at 50% 30%, #000 30%, transparent 75%);
+        /* 神经元网络背景（Canvas，覆盖整块 Hero，网格纹理已由神经元取代） */
+        .landing-neural {
+          position: absolute; inset: 0; z-index: 0;
           pointer-events: none;
         }
 
@@ -347,10 +331,31 @@ export default function LandingPage() {
           position: absolute;
           border-radius: 50%;
           filter: blur(80px);
-          opacity: 0.3;
+          opacity: 0.45;
           animation: orb-float 12s ease-in-out infinite;
         }
+        .orb-1 {
+          width: 380px; height: 380px;
+          background: rgba(147,197,253,0.55);
+          top: -110px; right: -80px;
+          animation-delay: 0s;
+        }
+        .orb-2 {
+          width: 280px; height: 280px;
+          background: rgba(165,180,252,0.5);
+          bottom: -90px; left: -60px;
+          animation-delay: -4s;
+        }
+        .orb-3 {
+          width: 200px; height: 200px;
+          background: rgba(125,211,252,0.45);
+          top: 60%; right: 16%;
+          animation-delay: -8s;
+        }
         [data-theme="dark"] .landing-orb { opacity: 0.18; }
+        [data-theme="dark"] .orb-1 { background: rgba(96,165,250,0.4); }
+        [data-theme="dark"] .orb-2 { background: rgba(59,130,246,0.35); }
+        [data-theme="dark"] .orb-3 { background: rgba(129,140,248,0.3); }
         @keyframes orb-float {
           0%, 100% { transform: translate(0, 0) scale(1); }
           33%  { transform: translate(30px, -20px) scale(1.05); }
@@ -363,30 +368,26 @@ export default function LandingPage() {
           max-width: 960px;
           margin: 0 auto;
           text-align: center;
-          color: #fff;
+          color: var(--text-primary);
         }
-        /* 游戏在吉祥物左侧，窄屏自动堆叠 */
-        .landing-hero-row {
-          display: flex;
-          align-items: center;
-          gap: 36px;
-        }
-        .landing-hero-game {
-          flex: 0 0 440px;  /* 不压缩：游戏不挤压吉祥物与文案 */
-          min-width: 0;
-        }
-        .landing-hero-main {
-          flex: 1;
-          min-width: 0;
-        }
-        @media (max-width: 900px) {
-          .landing-hero-row { flex-direction: column; gap: 20px; }
-          .landing-hero-game { flex: none; width: 100%; max-width: 430px; }
-        }
+        [data-theme="dark"] .landing-hero-content { color: #fff; }
+        /* 吉祥物：Hero 主视觉——光晕底座 + 缓慢悬浮 */
         .landing-hero-mascot {
+          position: relative;
           display: inline-block;
-          margin-bottom: 20px;
+          margin-bottom: 26px;
           animation: logo-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        .landing-hero-mascot::before {
+          content: '';
+          position: absolute;
+          inset: -30px;
+          border-radius: 50%;
+          background: radial-gradient(circle, var(--accent-soft) 0%, transparent 68%);
+          z-index: -1;
+        }
+        .landing-hero-mascot svg {
+          animation: float 5s ease-in-out infinite;
         }
         @keyframes logo-in {
           from { opacity: 0; transform: scale(0.8); }
@@ -398,20 +399,29 @@ export default function LandingPage() {
           gap: 8px;
           padding: 6px 16px;
           border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.25);
-          background: rgba(255,255,255,0.10);
+          border: 1px solid var(--border-light);
+          background: rgba(255,255,255,0.75);
           backdrop-filter: blur(8px);
           font-size: 12px;
           letter-spacing: 1px;
-          color: rgba(255,255,255,0.92);
-          margin-bottom: 18px;
-          animation: fade-up 0.6s 0.05s cubic-bezier(0.16, 1, 0.3, 1) both;
+          color: var(--text-secondary);
+          margin-bottom: 30px;
+          animation: fade-up 0.6s 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
         .landing-hero-badge-dot {
           width: 6px; height: 6px; border-radius: 50%;
+          background: var(--accent);
+          box-shadow: 0 0 8px var(--accent-glow);
+          animation: badge-pulse 2.4s ease-in-out infinite;
+        }
+        [data-theme="dark"] .landing-hero-badge {
+          border-color: rgba(255,255,255,0.25);
+          background: rgba(255,255,255,0.10);
+          color: rgba(255,255,255,0.92);
+        }
+        [data-theme="dark"] .landing-hero-badge-dot {
           background: #4fc3f7;
           box-shadow: 0 0 8px #4fc3f7;
-          animation: badge-pulse 2.4s ease-in-out infinite;
         }
         @keyframes badge-pulse {
           0%, 100% { opacity: 1; }
@@ -422,26 +432,26 @@ export default function LandingPage() {
           font-weight: 800;
           margin: 0 0 12px;
           letter-spacing: 2px;
-          background: linear-gradient(120deg, #ffffff 30%, #a5d8ff 65%, #7cc4ff 100%);
+          background: linear-gradient(120deg, #1e40af 10%, #2563eb 50%, #0ea5e9 95%);
           -webkit-background-clip: text;
           background-clip: text;
           -webkit-text-fill-color: transparent;
-          text-shadow: 0 2px 24px rgba(0,0,0,0.18);
           animation: fade-up 0.6s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        [data-theme="dark"] .landing-hero-title {
+          background: none;
+          color: #fff;
+          -webkit-text-fill-color: #fff;
+          text-shadow: 0 0 32px rgba(96,165,250,0.5);
         }
         .landing-hero-desc {
           font-size: 17px;
-          opacity: 0.92;
-          margin: 0 0 14px;
+          color: var(--text-secondary);
+          margin: 0 0 18px;
           letter-spacing: 3px;
           animation: fade-up 0.6s 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
-        .landing-hero-sub {
-          font-size: 13px;
-          opacity: 0.7;
-          margin: 0 0 36px;
-          animation: fade-up 0.6s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
-        }
+        [data-theme="dark"] .landing-hero-desc { color: #fff; opacity: 0.92; }
         @keyframes fade-up {
           from { opacity: 0; transform: translateY(12px); }
           to   { opacity: 1; transform: translateY(0); }
@@ -465,21 +475,40 @@ export default function LandingPage() {
           transition: all 0.15s;
         }
         .landing-cta-primary {
+          background: var(--accent-gradient);
+          color: #fff;
+          box-shadow: 0 6px 20px var(--accent-glow);
+        }
+        .landing-cta-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 28px var(--accent-glow);
+          filter: brightness(1.05);
+        }
+        .landing-cta-ghost {
+          border: 1px solid var(--border);
+          color: var(--text-primary);
+          background: rgba(255,255,255,0.7);
+          backdrop-filter: blur(8px);
+        }
+        .landing-cta-ghost:hover {
+          background: rgba(255,255,255,0.95);
+          border-color: var(--accent);
+        }
+        [data-theme="dark"] .landing-cta-primary {
           background: linear-gradient(135deg, #ffffff 0%, #dbeafe 100%);
           color: #0d47a1;
           box-shadow: 0 4px 24px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.35) inset;
         }
-        .landing-cta-primary:hover {
-          transform: translateY(-2px);
+        [data-theme="dark"] .landing-cta-primary:hover {
           box-shadow: 0 10px 32px rgba(0,0,0,0.28), 0 0 0 1px rgba(255,255,255,0.5) inset;
+          filter: none;
         }
-        .landing-cta-ghost {
+        [data-theme="dark"] .landing-cta-ghost {
           border: 1px solid rgba(255,255,255,0.45);
           color: #fff;
           background: rgba(255,255,255,0.06);
-          backdrop-filter: blur(8px);
         }
-        .landing-cta-ghost:hover {
+        [data-theme="dark"] .landing-cta-ghost:hover {
           background: rgba(255,255,255,0.16);
           border-color: rgba(255,255,255,0.7);
         }
@@ -511,7 +540,7 @@ export default function LandingPage() {
           transform: translateX(-50%);
           width: 44px; height: 3px;
           border-radius: 2px;
-          background: linear-gradient(90deg, var(--accent), #4fc3f7);
+          background: var(--accent-gradient);
         }
         .landing-section-desc {
           font-size: 14px;
@@ -566,12 +595,19 @@ export default function LandingPage() {
           position: relative;
           padding: 20px 20px 20px 24px;
           border-radius: 14px;
-          border: 1px solid var(--border);
-          background: var(--bg-secondary);
-          backdrop-filter: blur(6px);
+          border: 1px solid var(--border-light);
+          background: #ffffff;
+          box-shadow: 0 1px 3px var(--shadow-sm);
           transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s, border-color 0.18s;
           animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
           overflow: hidden;
+        }
+        /* 暗色：玻璃拟态（亮色下背景近纯色，白卡+浅描边分离更清晰） */
+        [data-theme="dark"] .landing-agent-card {
+          background: var(--bg-secondary);
+          border-color: var(--border);
+          box-shadow: none;
+          backdrop-filter: blur(6px);
         }
         /* 悬浮光晕：左上角柔光跟随 hover */
         .landing-agent-card::before {
@@ -612,12 +648,18 @@ export default function LandingPage() {
           position: relative;
           padding: 24px;
           border-radius: 14px;
-          border: 1px solid var(--border);
-          background: var(--bg-secondary);
-          backdrop-filter: blur(6px);
+          border: 1px solid var(--border-light);
+          background: #ffffff;
+          box-shadow: 0 1px 3px var(--shadow-sm);
           transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s, border-color 0.18s;
           animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
           overflow: hidden;
+        }
+        [data-theme="dark"] .landing-feature-card {
+          background: var(--bg-secondary);
+          border-color: var(--border);
+          box-shadow: none;
+          backdrop-filter: blur(6px);
         }
         .landing-feature-card::before {
           content: '';
@@ -644,7 +686,7 @@ export default function LandingPage() {
           justify-content: center;
           width: 44px; height: 44px;
           border-radius: 12px;
-          background: linear-gradient(135deg, var(--accent-light), rgba(79,195,247,0.16));
+          background: linear-gradient(135deg, var(--accent-soft), rgba(125,211,252,0.16));
           color: var(--accent);
           margin-bottom: 14px;
           flex-shrink: 0;
@@ -665,12 +707,18 @@ export default function LandingPage() {
           gap: 14px;
           padding: 18px 20px;
           border-radius: 14px;
-          border: 1px solid var(--border);
-          background: var(--bg-secondary);
-          backdrop-filter: blur(6px);
+          border: 1px solid var(--border-light);
+          background: #ffffff;
+          box-shadow: 0 1px 3px var(--shadow-sm);
           text-decoration: none;
           transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s, border-color 0.18s;
           animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        [data-theme="dark"] .landing-entry-card {
+          background: var(--bg-secondary);
+          border-color: var(--border);
+          box-shadow: none;
+          backdrop-filter: blur(6px);
         }
         .landing-entry-card .landing-feature-icon { margin-bottom: 0; }
         .landing-entry-card:hover {
@@ -760,9 +808,9 @@ export default function LandingPage() {
           .landing-hero-desc { font-size: 14px; letter-spacing: 2px; }
           .landing-hero-actions { flex-direction: column; align-items: center; }
           .landing-cta { width: min(100%, 280px); }  /* 全宽按钮，方便拇指点按 */
-          .landing-hero-main { text-align: center; }   /* 手机端 Hero 文案居中 */
           /* 光晕降模糊半径与透明度，减轻移动端 GPU 负担 */
-          .landing-orb { filter: blur(60px); opacity: 0.22; }
+          .landing-orb { filter: blur(60px); opacity: 0.35; }
+          [data-theme="dark"] .landing-orb { opacity: 0.22; }
           .landing-section { padding: 48px 16px 0; }
           .landing-section-title { font-size: 22px; }
           .landing-agent-grid,
@@ -777,8 +825,7 @@ export default function LandingPage() {
         @media (max-width: 480px) {
           .landing-hero { padding: 40px 12px 48px; }
           .landing-hero-title { font-size: 26px; }
-          .landing-hero-sub { margin-bottom: 28px; }
-          .landing-hero-mascot svg { width: 72px; height: 72px; }  /* 吉祥物缩小，游戏区不挤压文案 */
+          .landing-hero-mascot svg { width: 88px; height: 88px; }  /* 吉祥物缩小，小屏不挤压文案 */
           .landing-orb { filter: blur(50px); }
           .orb-3 { display: none; }  /* 隐藏第三个光晕，减渲染量 */
           .landing-section { padding: 40px 12px 0; }

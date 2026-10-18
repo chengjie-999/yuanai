@@ -8,14 +8,14 @@
 :root {
   --bg-primary: #f8fafc;
   --bg-secondary: #f1f5f9;
-  --bg-tertiary: #e8eef5;
+  --bg-tertiary: #e2e8f0;
   --bg-input: #ffffff;
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-muted: #64748b;
   --border: #cbd5e1;
   --border-light: #e2e8f0;
-  --header-bg: rgba(255,255,255,0.86);
+  --header-bg: #ffffff;
   --sidebar-bg: #f1f5f9;
   --shadow-sm: rgba(15,23,42,0.05);
   --shadow-md: rgba(15,23,42,0.10);
@@ -23,9 +23,13 @@
   --accent-light: rgba(37,99,235,0.09);
   --danger: #dc2626;
   --success: #16a34a;
+  --warning: #d97706;
+  --danger-soft: rgba(220,38,38,0.10);
+  --success-soft: rgba(22,163,74,0.12);
+  --warning-soft: rgba(245,158,11,0.12);
   --hover-bg: rgba(203,213,225,0.35);
   /* 新增：渐变与品牌色（Hero/CTA/装饰用） */
-  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 45%, #4f46e5 100%);
+  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 45%, #1d4ed8 100%);
   --accent-soft: rgba(59,130,246,0.12);
   --accent-glow: rgba(59,130,246,0.35);
 }
@@ -48,6 +52,10 @@
   --accent-light: rgba(96,165,250,0.13);
   --danger: #f87171;
   --success: #4ade80;
+  --warning: #fbbf24;
+  --danger-soft: rgba(248,113,113,0.12);
+  --success-soft: rgba(74,222,128,0.14);
+  --warning-soft: rgba(251,191,36,0.12);
   --hover-bg: rgba(148,163,184,0.10);
   --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #60a5fa 45%, #818cf8 100%);
   --accent-soft: rgba(96,165,250,0.14);
@@ -208,38 +216,47 @@ input, textarea, select {
 }
 
 .btn-primary {
-  background: #1976d2;
+  background: var(--accent);
   color: #fff;
 }
 .btn-danger {
-  background: #e53935;
+  background: var(--danger);
   color: #fff;
 }
 .btn-success {
-  background: #4caf50;
+  background: var(--success);
   color: #fff;
 }
 .btn-warning {
-  background: #f5a623;
-  color: #fff;
+  background: #f59e0b;
+  color: #1c1917;
 }
 .btn-outline {
   background: #fff;
-  border: 1px solid #ddd;
-  color: #333;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
 }
 .btn-outline:hover {
-  border-color: #bbb;
-  background: #fafafa;
+  border-color: var(--text-muted);
+  background: var(--bg-secondary);
 }
 .btn-outline-danger {
   background: #fff;
-  border: 1px solid #e53935;
-  color: #e53935;
+  border: 1px solid var(--danger);
+  color: var(--danger);
 }
 .btn-outline-danger:hover {
-  background: #fff5f5;
+  background: rgba(220,38,38,0.06);
 }
+
+/* 暗色：accent/danger/success 变量为浅色调（作文字色用），按钮底需换回深色调保证白字对比度 */
+[data-theme="dark"] .btn-primary { background: #2563eb; }
+[data-theme="dark"] .btn-danger { background: #e53935; }
+[data-theme="dark"] .btn-success { background: #4caf50; }
+
+/* 语义实底（inline 样式无 class 场景）：白字 + 暗色自动换深色调 */
+.bg-success-solid { background: var(--success); color: #fff; }
+[data-theme="dark"] .bg-success-solid { background: #4caf50 !important; }
 
 [data-theme="dark"] .btn-outline {
   background: var(--bg-tertiary);

@@ -126,7 +126,7 @@ export default function UsersTab() {
                 return (
                   <tr key={u.id} style={{ borderBottom: '1px solid var(--border-light)', opacity: isFrozen ? 0.5 : 1 }}>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.id}</td>
-                    <td style={{ padding: '10px 14px', color: 'var(--text-primary)', fontWeight: 600 }}>{u.username}{isAdminRole && badge('管理员', '#589df6')}{isFrozen && badge('已冻结', '#bc3f3c')}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-primary)', fontWeight: 600 }}>{u.username}{isAdminRole && badge('管理员', 'var(--accent)')}{isFrozen && badge('已冻结', 'var(--danger)')}</td>
                     <td style={{ padding: '10px 14px' }}>{isAdminRole ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>admin</span> : <span style={{ color: 'var(--text-secondary)' }}>user</span>}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>{isFrozen ? `冻结至 ${u.frozen_until?.slice(0, 10)}` : '正常'}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.create_time?.slice(0, 10)}</td>

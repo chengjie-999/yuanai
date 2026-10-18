@@ -109,7 +109,7 @@ export default function KnowledgeTab() {
                     <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text-primary)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.source}>{s.source}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{s.chunks}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{s.images}</td>
-                    <td style={{ padding: '10px 14px' }}>{s.visibility === 'shared' ? badge('共享', '#4caf50') : badge('私有', '#ff9800')}</td>
+                    <td style={{ padding: '10px 14px' }}>{s.visibility === 'shared' ? badge('共享', 'var(--success)') : badge('私有', 'var(--warning)')}</td>
                     <td style={{ padding: '10px 14px' }}><button onClick={() => handleDelete(s.source)} title="删除" aria-label="删除" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>删除</button></td>
                   </tr>
                 ))}

@@ -37,10 +37,10 @@ export default function ApprovalCard({ decisionId, toolName, command, onDecision
         wordBreak: 'break-all', fontSize: 12, maxHeight: 100, overflowY: 'auto',
       }}>{command}</pre>
       <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
-        <button onClick={() => onDecision(true)}
+        <button className="bg-success-solid" onClick={() => onDecision(true)}
           style={{
             padding: '6px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
-            background: '#4caf50', color: '#fff', fontWeight: 600, fontSize: 13,
+            background: 'var(--success)', color: '#fff', fontWeight: 600, fontSize: 13,
             display: 'flex', alignItems: 'center', gap: 5, lineHeight: 1,
           }}><CheckIcon size={14} /> 同意执行</button>
         <button onClick={() => onDecision(false)}

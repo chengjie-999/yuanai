@@ -76,7 +76,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
             </div>
           )}
           {uploadErr && (
-            <div style={{ fontSize: 12, color: 'var(--danger, #d93025)', padding: '8px 12px 0' }}>{uploadErr}</div>
+            <div style={{ fontSize: 12, color: 'var(--danger)', padding: '8px 12px 0' }}>{uploadErr}</div>
           )}
           {/* B1：已上传数据集卡片（名称/行数/列数，可移除） */}
           {uploadedDs.length > 0 && (
@@ -150,7 +150,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
             />
             {loading ? (
               <button onClick={onStop} title="停止生成" aria-label="停止生成"
-                style={{ padding: '10px 20px', fontSize: 14, fontWeight: 600, borderRadius: 10, border: '1px solid var(--danger, #d93025)', background: 'transparent', color: 'var(--danger, #d93025)', cursor: 'pointer' }}
+                style={{ padding: '10px 20px', fontSize: 14, fontWeight: 600, borderRadius: 10, border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', cursor: 'pointer' }}
               >停止</button>
             ) : (
               <button onClick={() => handleSend()} disabled={!input.trim() || !currentSid}

@@ -32,9 +32,9 @@ const ICONS = {
 
 /* 可行性指示灯配色（红黄绿 ↔ 低中高） */
 const VERDICT_META: Record<string, { label: string; color: string; desc: string }> = {
-  高: { label: '高', color: '#16a34a', desc: '证据充分，可行性高' },
-  中: { label: '中', color: '#f59e0b', desc: '证据有限，需谨慎评估' },
-  低: { label: '低', color: '#dc2626', desc: '证据不足或风险高' },
+  高: { label: '高', color: 'var(--success)', desc: '证据充分，可行性高' },
+  中: { label: '中', color: 'var(--warning)', desc: '证据有限，需谨慎评估' },
+  低: { label: '低', color: 'var(--danger)', desc: '证据不足或风险高' },
 }
 
 function SectionTitle({ icon, title, desc }: { icon: string; title: string; desc: string }) {

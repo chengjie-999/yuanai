@@ -33,8 +33,8 @@ function CopyBtn({ text, label = '复制安装命令' }: { text: string; label?:
     <button onClick={copy} title={copied ? '已复制' : label} aria-label={copied ? '已复制' : label}
       style={{
         padding: '3px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12,
-        border: '1px solid var(--border)', background: copied ? '#4caf5022' : 'var(--bg-tertiary)',
-        color: copied ? '#4caf50' : 'var(--text-primary)', whiteSpace: 'nowrap',
+        border: '1px solid var(--border)', background: copied ? 'var(--success-soft)' : 'var(--bg-tertiary)',
+        color: copied ? 'var(--success)' : 'var(--text-primary)', whiteSpace: 'nowrap',
       }}>
       {copied ? '✓ 已复制' : label}
     </button>
@@ -290,8 +290,8 @@ export default function AgentDevicesTab() {
                   <td style={{ padding: '8px 10px' }}>
                     <span style={{
                       fontSize: 12, padding: '2px 8px', borderRadius: 10,
-                      background: d.registered ? '#4caf5022' : 'var(--bg-tertiary)',
-                      color: d.registered ? '#4caf50' : 'var(--text-muted)',
+                      background: d.registered ? 'var(--success-soft)' : 'var(--bg-tertiary)',
+                      color: d.registered ? 'var(--success)' : 'var(--text-muted)',
                     }}>{d.registered ? '已注册' : '未注册'}</span>
                   </td>
                   <td style={{ padding: '8px 10px' }}>
@@ -323,8 +323,8 @@ export default function AgentDevicesTab() {
                       <button onClick={() => postJson(`${API_BASE}/admin/agent-unbind`, { agent_id: d.agent_id })} title="解绑" aria-label="解绑"
                         style={{ ...btnDangerSm, marginRight: 6 }}>解绑</button>
                     )}
-                    <button onClick={() => postJson(`${API_BASE}/admin/agent-freeze`, { agent_id: d.agent_id, enabled: d.enabled ? 0 : 1 })} title={d.enabled ? '冻结' : '解冻'} aria-label={d.enabled ? '冻结' : '解冻'}
-                      style={{ ...btnDangerSm, background: d.enabled ? undefined : '#4caf50' }}>
+                    <button className={d.enabled ? undefined : 'bg-success-solid'} onClick={() => postJson(`${API_BASE}/admin/agent-freeze`, { agent_id: d.agent_id, enabled: d.enabled ? 0 : 1 })} title={d.enabled ? '冻结' : '解冻'} aria-label={d.enabled ? '冻结' : '解冻'}
+                      style={{ ...btnDangerSm, background: d.enabled ? undefined : 'var(--success)' }}>
                       {d.enabled ? '冻结' : '解冻'}
                     </button>
                   </td>

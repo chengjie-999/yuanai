@@ -15,9 +15,9 @@ function AnimatedDot() {
 }
 
 const statusConfig = {
-  running: { label: '执行中', dotColor: '#f5a623' },
-  done: { label: '完成', dotColor: '#4caf50' },
-  error: { label: '失败', dotColor: '#f44336' },
+  running: { label: '执行中', dotColor: 'var(--warning)' },
+  done: { label: '完成', dotColor: 'var(--success)' },
+  error: { label: '失败', dotColor: 'var(--danger)' },
 }
 
 const AGENT_LABELS: Record<string, { label: string; color: string }> = {

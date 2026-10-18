@@ -759,7 +759,7 @@ export default function ChatPage({ user }: { user?: any }) {
             boxShadow: '0 1px 3px var(--shadow-sm)',
           }} onClick={() => handleOpenPanel('/chat/plan')}>
             <span style={{
-              width: 7, height: 7, borderRadius: '50%', background: '#d97706', flexShrink: 0,
+              width: 7, height: 7, borderRadius: '50%', background: 'var(--warning)', flexShrink: 0,
               animation: 'pulse 1.2s ease-in-out infinite',
             }} />
             <span style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>

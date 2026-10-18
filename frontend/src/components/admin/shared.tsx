@@ -43,6 +43,6 @@ export const CardHeader = ({ title, action }: { title: string; action?: React.Re
 export const btnPrimary: React.CSSProperties = { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 500 }
 export const btnDangerSm: React.CSSProperties = { fontSize: 12, padding: '4px 10px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer' }
 export const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--bg-input)', color: 'var(--text-primary)' }
-export const badge = (text: string, color: string) => <span style={{ fontSize: 11, color, background: `${color}15`, padding: '2px 6px', borderRadius: 4, marginLeft: 6 }}>{text}</span>
+export const badge = (text: string, color: string) => <span style={{ fontSize: 11, color, background: `color-mix(in srgb, ${color} 10%, transparent)`, padding: '2px 6px', borderRadius: 4, marginLeft: 6 }}>{text}</span>
 
 export { headers, safeJson, API_BASE } from '../../api'

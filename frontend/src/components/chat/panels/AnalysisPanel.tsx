@@ -118,7 +118,7 @@ export default function AnalysisPanel() {
           </button>
         </div>
         {tip && (
-          <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center', color: tip === '导出成功' ? '#629755' : 'var(--danger)' }}>
+          <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center', color: tip === '导出成功' ? 'var(--success)' : 'var(--danger)' }}>
             {tip}
           </div>
         )}

@@ -1,8 +1,8 @@
 export const AGENT_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  orchestrator: { label: '小元AI', color: '#1976d2', bg: '#f0f5ff' },
+  orchestrator: { label: '小元AI', color: '#2563eb', bg: '#eff6ff' },
   // 统一身份：本地模式不再暴露「本机」后缀（用户体验拍板 2026-10-15，
   // 豆包式——执行位置对用户透明，离线回退提示语承担差异化）
-  local: { label: '小元AI', color: '#1976d2', bg: '#f0f5ff' },
+  local: { label: '小元AI', color: '#2563eb', bg: '#eff6ff' },
   // 融合后：analysis/collection 不再是独立 Agent，仅历史会话气泡复用键位
   analysis: { label: '数据分析', color: '#7b1fa2', bg: '#faf5ff' },
   collection: { label: '数据采集', color: '#00695c', bg: '#f0faf9' },
@@ -15,7 +15,7 @@ export const AGENT_CONFIG: Record<string, { label: string; color: string; bg: st
 // 团队能力矩阵（LandingPage/AgentPage/后台 AgentsTab 三处数据源）：
 // 融合后 = 统筹（内置脚本工具）+ 自动化 + Claude Code
 export const SUB_AGENTS = [
-  { key: 'orchestrator', label: '统筹 Agent', desc: '内置数据分析/采集/生命科学脚本工具，一问直调', color: '#1976d2' },
+  { key: 'orchestrator', label: '统筹 Agent', desc: '内置数据分析/采集/生命科学脚本工具，一问直调', color: '#2563eb' },
   { key: 'automation', label: '自动化 Agent', desc: '浏览器控制、题目审核、截图监控（多步自主）', color: '#e65100' },
   { key: 'claude', label: 'Claude Code', desc: '本机代码编写、终端命令、Git 操作', color: '#d97757' },
 ]

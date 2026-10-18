@@ -61,7 +61,7 @@ export default function ToolsTab() {
                       <tr key={t.name} style={{ borderBottom: '1px solid var(--border-light)' }}>
                         <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontSize: 12, color: 'var(--text-primary)' }}>
                           {t.name}
-                          {t.admin_only && badge('管理员', '#e65100')}
+                          {t.admin_only && badge('管理员', 'var(--accent)')}
                         </td>
                         <td style={{ padding: '8px 14px', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{t.description}</td>
                         <td style={{ padding: '8px 14px' }}>

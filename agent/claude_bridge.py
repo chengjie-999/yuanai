@@ -169,14 +169,14 @@ class ClaudeBridgeHandler:
     """把 chat_request 交给 headless Claude Code 并流式映射为 WS 事件"""
 
     def __init__(self, ws_send=None, server_url: str = "", agent_id: str = "",
-                 agent_token: str = "", sdk_mode: bool = False):
+                 agent_token: str = "", sdk_mode: bool | None = None):
         self._ws_send = ws_send  # callable(event) fire-and-forget（心跳等旁路事件）
         self._server_url = server_url  # 记忆上传用（【记住】标记 → 云端 REST）
         self._sessions = SessionStore(SESSIONS_FILE)
         self._sessions.load()
         self._locks = {}  # cloud session_id -> asyncio.Lock（防并发 query）
         self._pending_approvals = {}  # decision_id -> asyncio.Future（SDK 审批流）
-        self._sdk_mode = sdk_mode  # --sdk：anthropic SDK 直连（可选；默认 CLI 模式）
+        self._sdk_mode = sdk_mode  # None=auto（有凭证即 SDK，否则 CLI）；True/False 强制
         # 全局并发上限：Claude Code 子进程重量级（内存 + 网关配额），默认 2
         max_conc = int(os.getenv("CLAUDE_BRIDGE_MAX_CONCURRENCY", "2"))
         self._sem = asyncio.Semaphore(max_conc)
@@ -208,7 +208,12 @@ class ClaudeBridgeHandler:
             return
         async with self._sem:
             async with lock:
-                if self._sdk_mode:
+                # SDK 决策：auto 模式按凭证有无（有 → SDK 全功能，无 → CLI 兜底）
+                use_sdk = self._sdk_mode
+                if use_sdk is None:
+                    from agent.claude_loop import load_credentials
+                    use_sdk = bool(load_credentials())
+                if use_sdk:
                     async for ev in self._run_sdk_query(req, rid):
                         yield ev
                 else:
@@ -490,9 +495,11 @@ def parse_args():
     p.add_argument("--agent-name", default="Claude Code 桥接", help="Agent 显示名称")
     p.add_argument("--agent-token", default=None,
                    help="Agent 认证凭据（默认：命令行 > 身份文件 > CLAUDE_BRIDGE_TOKEN/AGENT_TOKEN 环境变量）")
-    p.add_argument("--sdk", action="store_true",
-                   help="anthropic SDK 直连模式（P0 审批流：git commit 等 review 级命令走云端审批；"
-                        "默认关闭走 CLI 模式；凭证缺失自动降级 CLI）")
+    p.add_argument("--sdk", dest="sdk_mode", action="store_true", default=None,
+                   help="强制 anthropic SDK 直连模式（P0 审批流：git commit 等 review 级命令走云端审批；凭证缺失自动降级 CLI）")
+    p.add_argument("--no-sdk", dest="sdk_mode", action="store_false",
+                   help="强制 CLI 模式（关闭 SDK 直连）")
+    # 默认（两者都不加）= auto：有 Anthropic 凭证（env/credentials.json）即 SDK，否则 CLI
     args = p.parse_args()
     # 机器模式：未显式指定时回退到安装注册保存的身份，再回退环境变量
     from agent.main import load_identity
@@ -534,13 +541,14 @@ async def main():
     )
     logging.getLogger("websockets").setLevel(logging.WARNING)
 
-    # 启动预检：CLI 模式必须有 claude 可执行文件；SDK 模式可无（凭证在运行时降级）
-    if not args.sdk and shutil.which(CLAUDE_CLI) is None:
-        logger.error("未找到 Claude Code CLI（claude），请先安装并登录；桥接进程退出")
+    # 启动预检：仅当强制 CLI（--no-sdk）时才必须有 claude 可执行文件；
+    # auto/SDK 模式可无（凭证缺失运行时自动降级——降级后无 CLI 会报错提示）
+    if args.sdk_mode is False and shutil.which(CLAUDE_CLI) is None:
+        logger.error("--no-sdk 模式下未找到 Claude Code CLI（claude），请先安装并登录；桥接进程退出")
         return
 
     handler = ClaudeBridgeHandler(server_url=args.server_url, agent_id=args.agent_id,
-                                  agent_token=args.agent_token, sdk_mode=args.sdk)
+                                  agent_token=args.agent_token, sdk_mode=args.sdk_mode)
     client = AgentWSClient(
         server_url=args.server_url,
         agent_id=args.agent_id,

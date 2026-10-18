@@ -27,6 +27,7 @@ export interface ToolCall {
   result?: string
   duration?: number
   reasoning?: string  // 本次调用前的思考片段（时序交叉渲染）
+  args?: string      // 工具参数（JSON 串，展示「它执行了什么」）
 }
 
 export interface SSEEvent {

@@ -424,7 +424,7 @@ export default function ChatPage({ user }: { user?: any }) {
             const last = prev[prev.length - 1]
             // 时序交叉：累积思考快照进本次调用卡，原气泡 reasoning 复位重计
             const take = last?.reasoning || ''
-            const newCall = { name: event.data.name, status: 'running' as const, ...(take ? { reasoning: take } : {}) }
+            const newCall = { name: event.data.name, status: 'running' as const, ...(take ? { reasoning: take } : {}), ...(event.data.args ? { args: event.data.args } : {}) }
             if (last && last.role === 'assistant' && last.sender === ns && !last.content) {
               // 同一 Agent 连续工具调用/重复事件 → 复用气泡
               const calls = [...(last.toolCalls || [])]
@@ -442,7 +442,7 @@ export default function ChatPage({ user }: { user?: any }) {
           // 「打开面板」链接（计划工具不独立成泡后，这是 /chat/plan 的入口）
           const isPlanTool = event.data.name === 'create_plan'
             || event.data.name === 'execute_plan' || event.data.name === 'get_plan_status'
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; const take = last[i].reasoning || ''; calls.push({ name: event.data.name, status: 'running', ...(take ? { reasoning: take } : {}) }); last[i] = { ...last[i], toolCalls: [...calls], reasoning: '', pageLink: isPlanTool ? '/chat/plan' : last[i].pageLink } }; return last })
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; const take = last[i].reasoning || ''; calls.push({ name: event.data.name, status: 'running', ...(take ? { reasoning: take } : {}), ...(event.data.args ? { args: event.data.args } : {}) }); last[i] = { ...last[i], toolCalls: [...calls], reasoning: '', pageLink: isPlanTool ? '/chat/plan' : last[i].pageLink } }; return last })
         }
       } else if (event.type === 'dashboard') {
         // 分析大屏数据就绪：给最近的统筹气泡挂「打开面板」（融合后脚本工具
@@ -473,7 +473,7 @@ export default function ChatPage({ user }: { user?: any }) {
           const last = prev.slice()
           const i = last.length - 1
           if (i >= 0) {
-            const calls = (last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { ...c, status: event.data.is_error ? 'error' : 'done', result: event.data.output || '' } : c })
+            const calls = (last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { ...c, status: event.data.is_error ? 'error' : 'done', result: event.data.output || '', ...(event.data.args ? { args: event.data.args } : {}) } : c })
             last[i] = { ...last[i], toolCalls: calls }
           }
           return last

@@ -1,6 +1,7 @@
 """云边消息协议：云端↔Agent（WebSocket）和 云端↔前端（SSE）"""
 
 from __future__ import annotations
+import json
 import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional
@@ -58,17 +59,28 @@ def reasoning(text: str, request_id: str = "") -> AgentEvent:
     return AgentEvent(type="reasoning", data=text, request_id=request_id)
 
 
-def tool_start(name: str, request_id: str = "", sender: str = "") -> AgentEvent:
-    """工具开始事件；sender = 工具归属 Agent（信封协议，空串=旧行为前端兜底推断）"""
+def tool_start(name: str, request_id: str = "", sender: str = "", args=None) -> AgentEvent:
+    """工具开始事件；sender = 工具归属 Agent（信封协议，空串=旧行为前端兜底推断）
+    args = 工具参数（JSON 串截断 500 字符，前端工具卡展示「它执行了什么」）"""
     data = {"name": name}
+    if args is not None:
+        try:
+            data["args"] = json.dumps(args, ensure_ascii=False, default=str)[:500]
+        except Exception:
+            pass
     if sender:
         data["sender"] = sender
     return AgentEvent(type="tool_start", data=data, request_id=request_id)
 
 
 def tool_end(name: str, output: str, request_id: str = "", sender: str = "",
-             is_error: bool = False) -> AgentEvent:
+             is_error: bool = False, args=None) -> AgentEvent:
     data = {"name": name, "output": output}
+    if args is not None:
+        try:
+            data["args"] = json.dumps(args, ensure_ascii=False, default=str)[:500]
+        except Exception:
+            pass
     if sender:
         data["sender"] = sender
     if is_error:

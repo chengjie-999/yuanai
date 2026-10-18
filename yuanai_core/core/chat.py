@@ -252,7 +252,7 @@ async def _deepseek_agent_stream(
                 else:
                     tc_args = tc_args_raw
 
-                yield {"type": "tool_start", "data": {"name": tc_name, "sender": "orchestrator"}}
+                yield {"type": "tool_start", "data": {"name": tc_name, "sender": "orchestrator", "args": tc_args}}
 
                 tool_func = tools_by_name.get(tc_name)
                 if tool_func:
@@ -405,7 +405,7 @@ async def stream_agent_events(
                     full_reasoning += rtail
                     yield {"type": "reasoning", "data": rtail}
             elif event["event"] == "on_tool_start":
-                yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator"}}
+                yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator", "args": (event.get("data") or {}).get("input")}}
             elif event["event"] == "on_tool_end":
                 output = _tool_output_str(event["data"].get("output", ""))
                 img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', output)
@@ -487,7 +487,7 @@ async def stream_agent_with_messages(
                     full_reasoning += rc
                     yield {"type": "reasoning", "data": rc}
             elif event["event"] == "on_tool_start":
-                yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator"}}
+                yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator", "args": (event.get("data") or {}).get("input")}}
             elif event["event"] == "on_tool_end":
                 output = _tool_output_str(event["data"].get("output", ""))
                 img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', output)
@@ -524,7 +524,7 @@ async def stream_agent_with_inject(
                         full_reasoning += chunk.reasoning_content
                         yield {"type": "reasoning", "data": chunk.reasoning_content}
                 elif event["event"] == "on_tool_start":
-                    yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator"}}
+                    yield {"type": "tool_start", "data": {"name": event.get("name", "未知工具"), "sender": "orchestrator", "args": (event.get("data") or {}).get("input")}}
                 elif event["event"] == "on_tool_end":
                     name = event.get("name", "未知工具")
                     tool_names.add(name)

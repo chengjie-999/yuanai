@@ -438,8 +438,16 @@ async def run_sdk_loop(
                 if len(output) > MAX_TOOL_OUTPUT:
                     output = output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
                 tool_results.append((name, output))
+                # 参数：SDK 流式累积的是 JSON 字符串 → 解析成 dict（schemas 再统一序列化）
+                _args_raw = blk.get("input", "")
+                if isinstance(_args_raw, str) and _args_raw.strip().startswith(("{", "[")):
+                    try:
+                        _args_raw = json.loads(_args_raw)
+                    except Exception:
+                        pass
                 yield {"type": "tool_end", "data": {"name": name, "output": output,
-                                                    "sender": "claude"}}
+                                                    "sender": "claude",
+                                                    "args": _args_raw or None}}
 
             # 追加 assistant(tool_use) + user(tool_result) 继续下一轮
             assistant_content = [c for c in assistant_content if c.get("type") == "tool_use"]

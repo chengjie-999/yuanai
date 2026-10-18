@@ -47,6 +47,20 @@ function toolLabel(name: string): { label: string; color: string } | null {
   return null
 }
 
+/* 参数展示：bash 命令/文件路径直接显示原文，其他 JSON 原样（schemas 已截断 500） */
+function fmtArgs(args: string): string {
+  try {
+    const o = JSON.parse(args)
+    if (o && typeof o === 'object' && typeof o.command === 'string' && Object.keys(o).length <= 2) {
+      return o.command
+    }
+    if (o && typeof o === 'object' && typeof o.file_path === 'string' && Object.keys(o).length <= 2) {
+      return o.file_path
+    }
+    return args
+  } catch { return args }
+}
+
 function ToolCallCard({ call }: { call: ToolCall }) {
   const cfg = statusConfig[call.status] || statusConfig.done
   const agent = toolLabel(call.name)
@@ -90,6 +104,17 @@ function ToolCallCard({ call }: { call: ToolCall }) {
           </span>
         )}
       </div>
+      {/* 参数区：展示「它执行了什么」——bash 命令/文件路径直接显示，其他 JSON 原文 */}
+      {call.args && (
+        <div style={{
+          padding: '6px 12px', borderTop: '1px solid var(--border-light)',
+          fontFamily: 'monospace', fontSize: 11.5, color: 'var(--text-muted)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.5,
+          maxHeight: 80, overflow: 'auto',
+        }}>
+          {fmtArgs(call.args)}
+        </div>
+      )}
       {/* 结果区：markdown 渲染（搜索结果链接可点击、表格/列表正常排版），
           默认折叠预览，点击头部展开（内部滚动） */}
       {showBody && (

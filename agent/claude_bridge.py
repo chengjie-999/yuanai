@@ -287,9 +287,10 @@ class ClaudeBridgeHandler:
             elif kind == "reasoning":
                 yield ev_reasoning(ev["data"], rid)
             elif kind == "tool_start":
-                yield ev_tool_start(ev["data"]["name"], rid, sender="claude")
+                yield ev_tool_start(ev["data"]["name"], rid, sender="claude", args=ev["data"].get("args"))
             elif kind == "tool_end":
-                yield ev_tool_end(ev["data"]["name"], ev["data"]["output"], rid, sender="claude")
+                yield ev_tool_end(ev["data"]["name"], ev["data"]["output"], rid, sender="claude",
+                                  args=ev["data"].get("args"))
             elif kind == "approval":
                 pass  # 审批事件已由 _on_approval 经 WS 直发（避免双重发送）
             elif kind == "done":
@@ -401,7 +402,7 @@ class ClaudeBridgeHandler:
                         if b.get("type") == "tool_use":
                             name = b.get("name", "unknown")
                             tool_id_map[b.get("id", "")] = name
-                            yield ev_tool_start(name, rid, sender="claude")
+                            yield ev_tool_start(name, rid, sender="claude", args=b.get("input"))
                         elif b.get("type") == "text" and not saw_delta:
                             # 无流式增量时降级补发完整文本
                             if b.get("text"):

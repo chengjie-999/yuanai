@@ -489,7 +489,8 @@ class Orchestrator:
                 elif kind == "on_tool_start":
                     saw_tool = True
                     name = event.get("name", "未知工具")
-                    yield ev_tool_start(name, rid, sender=_tool_sender(name))
+                    yield ev_tool_start(name, rid, sender=_tool_sender(name),
+                                        args=(event.get("data") or {}).get("input"))
 
                 elif kind == "on_tool_end":
                     name = event.get("name", "未知工具")

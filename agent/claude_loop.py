@@ -287,9 +287,25 @@ _EXECUTORS = {
 }
 
 
+def _audit_tool(name: str, verdict: str, tool_input: dict):
+    """SDK 模式工具调用审计（与 CLI 钩子 claude_guard 同文件同格式——
+    CLI 走 hooks 审计，SDK 执行器此前无审计落盘，2026-10-19 补齐）"""
+    try:
+        import time as _time
+        from utils.data_path import root_path
+        log = os.path.join(root_path(), "data", "logs", "claude_audit.log")
+        os.makedirs(os.path.dirname(log), exist_ok=True)
+        summary = json.dumps(tool_input, ensure_ascii=False)[:200]
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(f"{_time.strftime('%Y-%m-%d %H:%M:%S')} | SDK | {name} | {verdict} | {summary}\n")
+    except Exception:
+        pass
+
+
 def execute_tool(name: str, tool_input: dict) -> str:
     """工具执行入口（含安全分类；deny 直接拒绝不执行）"""
     verdict = classify(name, tool_input)
+    _audit_tool(name, verdict, tool_input)
     if verdict == "deny":
         return f"[拒绝] {explain(name, tool_input) or '被安全策略拒绝'}"
     fn = _EXECUTORS.get(name)
@@ -409,6 +425,8 @@ async def run_sdk_loop(
                         "reason": explain(name, tool_input)}}
                     decision = await _wait_decision(on_approval, decision_id, name,
                                                     str(tool_input.get("command", "")))
+                    _audit_tool(name, "review→approve" if decision == "approve" else
+                                f"review→denied({'超时' if decision is None else '用户拒绝'})", tool_input)
                     if decision == "approve":
                         output = execute_tool(name, tool_input)
                     else:

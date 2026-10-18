@@ -54,6 +54,7 @@ function parseHistory(history: any[]): ChatMessage[] {
     let sender: any = undefined
     let toolCalls: any = undefined
     let reasoning: string | undefined
+    let finalReasoning: string | undefined
     let pageLink: string | undefined
     let recipient: string | undefined = undefined
     let turn: number | undefined = undefined
@@ -68,6 +69,7 @@ function parseHistory(history: any[]): ChatMessage[] {
         try {
           const meta = JSON.parse(content.substring(6, end))
           sender = meta.s; toolCalls = meta.t; reasoning = meta.r
+          finalReasoning = meta.fr
           pageLink = normalizePageLink(meta.p)
           recipient = meta.rp; turn = meta.tn; msgType = meta.ty
           if (meta.e) error = meta.e
@@ -83,7 +85,7 @@ function parseHistory(history: any[]): ChatMessage[] {
     if (m.turn) turn = m.turn
     if (m.type) msgType = m.type
     return { role: m.role, content, images: m.images, sender, toolCalls,
-             reasoning, pageLink, recipient, turn, msgType, error, stopped, htmls }
+             reasoning, finalReasoning, pageLink, recipient, turn, msgType, error, stopped, htmls }
   })
 }
 
@@ -400,7 +402,9 @@ export default function ChatPage({ user }: { user?: any }) {
       const s = streamRef.current
       if (!s || s.sid !== sidRef.current) return
       if (event.type === 'token') {
-        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender) as any }; return last })
+        // 时序交叉渲染：首个 token 时把累积思考快照为「最终思考」（回答前展示），
+        // 之后 reasoning 字段复位（下一阶段重新累积）
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const firstToken = !last[i].content && !last[i].finalReasoning; last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender) as any, ...(firstToken && last[i].reasoning ? { finalReasoning: last[i].reasoning, reasoning: '' } : {}) } }; return last })
       } else if (event.type === 'reasoning') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
       } else if (event.type === 'tool_start') {
@@ -416,15 +420,19 @@ export default function ChatPage({ user }: { user?: any }) {
           const link = ns === 'automation' ? '/chat/agent/' + ns : ns === 'planet' ? '/chat/planet' : ns === 'plan' ? '/chat/plan' : undefined
           setMessages((prev) => {
             const last = prev[prev.length - 1]
+            // 时序交叉：累积思考快照进本次调用卡，原气泡 reasoning 复位重计
+            const take = last?.reasoning || ''
+            const newCall = { name: event.data.name, status: 'running' as const, ...(take ? { reasoning: take } : {}) }
             if (last && last.role === 'assistant' && last.sender === ns && !last.content) {
               // 同一 Agent 连续工具调用/重复事件 → 复用气泡
               const calls = [...(last.toolCalls || [])]
               if (!calls.some((c) => c.name === event.data.name && c.status === 'running')) {
-                calls.push({ name: event.data.name, status: 'running' as const })
+                calls.push(newCall)
               }
-              return [...prev.slice(0, -1), { ...last, toolCalls: calls, pageLink: link || last.pageLink }]
+              return [...prev.slice(0, -1), { ...last, toolCalls: calls, reasoning: '', pageLink: link || last.pageLink }]
             }
-            return [...prev, { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [{ name: event.data.name, status: 'running' as const }] }]
+            return [...prev.slice(0, -1), ...(last ? [{ ...last, reasoning: '' }] : []),
+              { role: 'assistant' as const, content: '', sender: ns as any, pageLink: link, toolCalls: [newCall] }]
           })
         }
         else {
@@ -432,7 +440,7 @@ export default function ChatPage({ user }: { user?: any }) {
           // 「打开面板」链接（计划工具不独立成泡后，这是 /chat/plan 的入口）
           const isPlanTool = event.data.name === 'create_plan'
             || event.data.name === 'execute_plan' || event.data.name === 'get_plan_status'
-          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; calls.push({ name: event.data.name, status: 'running' }); last[i] = { ...last[i], toolCalls: [...calls], pageLink: isPlanTool ? '/chat/plan' : last[i].pageLink } }; return last })
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const calls = last[i].toolCalls || []; const take = last[i].reasoning || ''; calls.push({ name: event.data.name, status: 'running', ...(take ? { reasoning: take } : {}) }); last[i] = { ...last[i], toolCalls: [...calls], reasoning: '', pageLink: isPlanTool ? '/chat/plan' : last[i].pageLink } }; return last })
         }
       } else if (event.type === 'dashboard') {
         // 分析大屏数据就绪：给最近的统筹气泡挂「打开面板」（融合后脚本工具
@@ -463,8 +471,8 @@ export default function ChatPage({ user }: { user?: any }) {
           const last = prev.slice()
           const i = last.length - 1
           if (i >= 0) {
-            const calls = (last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { name: c.name, status: event.data.is_error ? 'error' : 'done', result: event.data.output || '' } : c })
-            last[i] = { role: last[i].role, content: last[i].content, sender: last[i].sender, toolCalls: calls, pageLink: last[i].pageLink, images: last[i].images }
+            const calls = (last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { ...c, status: event.data.is_error ? 'error' : 'done', result: event.data.output || '' } : c })
+            last[i] = { ...last[i], toolCalls: calls }
           }
           return last
         })

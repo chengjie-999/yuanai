@@ -54,12 +54,13 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   const [copiedLink, setCopiedLink] = useState(false)
   const [draft, setDraft] = useState(msg.content)
   // P1-3 思考块受控展开：流式期间保持展开（随 reasoning 增长可见），
-  // 用户手动折叠后尊重其选择（不被后续 token 重置）
+  // 完成后默认收起；用户手动折叠/展开后尊重其选择（不被后续 token 重置）
   const [thinkOpen, setThinkOpen] = useState(false)
   const userToggledRef = useRef(false)
   useEffect(() => {
     if (loading && isLast && !userToggledRef.current) setThinkOpen(true)
-  }, [loading, isLast, msg.reasoning?.length])
+    else if (!loading && !userToggledRef.current) setThinkOpen(false)
+  }, [loading, isLast, msg.reasoning?.length, msg.finalReasoning?.length, msg.toolCalls?.length])
   // 朗读状态（AI 气泡）：获取中/播放中
   const [speaking, setSpeaking] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -389,20 +390,38 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 </div>
               </div>
             )}
-            {(msg.reasoning || msg.toolCalls?.length) ? (
+            {(msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? (
               <details open={thinkOpen} style={{ marginBottom: 8 }}
                 onToggle={(e) => { userToggledRef.current = true; setThinkOpen((e.target as HTMLDetailsElement).open) }}>
                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none', outline: 'none' }}>
-                  {loading && isLast && !msg.content ? '执行中...' : msg.reasoning ? `思考与工具调用${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''}` : `工具调用 (${msg.toolCalls!.length} 项)`}
+                  {loading && isLast && !msg.content ? '执行中...'
+                    : msg.toolCalls?.length
+                      ? `${(msg.reasoning || msg.finalReasoning) ? `思考${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''} · ` : ''}${msg.toolCalls.length} 次工具调用`
+                      : `思考过程${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''}`}
                 </summary>
+                {/* 旧消息：整段思考（时序交叉改造前的历史数据） */}
                 {msg.reasoning && (
                   <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 200, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
                     {msg.reasoning}
                   </div>
                 )}
+                {/* 时序交叉：每段思考紧跟其触发的工具调用卡 */}
                 {msg.toolCalls?.map((tc, j) => (
-                  <ToolCallCard key={j} call={tc} />
+                  <div key={j}>
+                    {tc.reasoning && (
+                      <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 160, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+                        {tc.reasoning}
+                      </div>
+                    )}
+                    <ToolCallCard call={tc} />
+                  </div>
                 ))}
+                {/* 最终思考：无后续工具调用时的收尾推理（回答前） */}
+                {msg.finalReasoning && (
+                  <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 160, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+                    {msg.finalReasoning}
+                  </div>
+                )}
               </details>
             ) : null}
             <MarkdownContent content={msg.content} />

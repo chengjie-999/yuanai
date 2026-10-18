@@ -86,6 +86,7 @@ export function encodeMsg(m: any) {
   if (m.sender && m.sender !== 'orchestrator') meta.s = m.sender
   if (m.toolCalls?.length) meta.t = m.toolCalls
   if (m.reasoning) meta.r = m.reasoning
+  if (m.finalReasoning) meta.fr = m.finalReasoning
   if (m.pageLink) meta.p = m.pageLink
   // 信封新增短键（与后端 message.py 对偶）：recipient→rp / turn→tn / msgType→ty
   if (m.recipient) meta.rp = m.recipient

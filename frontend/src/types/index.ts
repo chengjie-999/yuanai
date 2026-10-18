@@ -9,6 +9,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   reasoning?: string
   reasoningTime?: number
+  finalReasoning?: string  // 无后续工具调用时的收尾思考（回答前展示；META 短键 fr）
   sender?: 'orchestrator' | 'local' | 'analysis' | 'collection' | 'automation' | 'claude' | 'planet' | 'plan' | 'user'
   // 信封字段（多智能体群聊身份协议；META 短键 rp/tn/ty，与后端 message.py 对偶）
   recipient?: string        // "" = 广播；否则定向（@agent）
@@ -25,6 +26,7 @@ export interface ToolCall {
   status: 'running' | 'done' | 'error'
   result?: string
   duration?: number
+  reasoning?: string  // 本次调用前的思考片段（时序交叉渲染）
 }
 
 export interface SSEEvent {

@@ -192,6 +192,8 @@ data/                   数据目录
 
 每个 Agent 气泡上方有彩色标签和身份标识，工具调用卡片显示 Agent 归属。
 
+**思考/工具/回答时序交叉渲染（2026-10-19）**：模型输出顺序 = 思考→工具调用→思考→…→最终思考→正式回答。气泡内不再把思考堆顶部——每段思考快照到其触发的工具卡上方（tool_start 时取累积 reasoning 并复位重计），首个 token 时剩余思考存为「最终思考」（`finalReasoning`，META 短键 fr）置于回答上方；旧消息整段 reasoning（META.r）兼容渲染在折叠区顶部。折叠区标题「思考 (Xs) · N 次工具调用」，流式期间展开、完成后默认收起（用户手动了则不干预）。
+
 **@指定智能体（群聊式定向）**：输入区 @ 按钮（或输入 `@`）弹出选择面板（**统筹/自动化/Claude**，融合后分析/采集并入统筹不再单独指定），选定后本条消息确定性分派。分派链路：`target_agent` 字段贯穿 ChatRequest（云端 models/schemas → chat/router → ws_client）→ Agent 端 `agent/main.py` + `agent/tray.py` 的 `route()` 三路分派（mode=claude 桥接 / target=automation → `Orchestrator.stream_target()` 直接调 automation Agent / 其余统筹）。`stream_target` 与 delegate 工具共用 `_extract_tool_output`（图片/大屏/HTML 协议提取）。**群聊规则（微信式群聊定位）**：本地 Agent 离线时子智能体在 @ 面板置灰不可选（不做云端角色冒充），@Claude Code 需桥接在线；离线降级 role_hint（仅 API 直调时）强制身份不自称小元AI。
 
 **群聊说话人协议（信封化，2026-10-11 升级）**：身份从「正文【xx】前缀靠模型写」升级为**信封元数据**（sender/recipient/turn/type，编排代码填，模型碰不到）+ **视图滤波**（每个 Agent 只看自己该看的部分）。核心：`yuanai_core/core/message.py`（Envelope 编解码，短键 s/rp/tn/ty，与前端 encodeMsg/parseHistory 对偶）+ `yuanai_core/core/views.py`（`view_for(agent, messages, self_senders, envelopes)` 七规则滤波 + `compose_target_prompt`）。信封过云端的载体 = ChatRequest **并行数组 `envelopes`**（build_input_messages 会重建 dict 丢附加键）；落库 ai_chat 四列（迁移 0014 + 自包含 backfill：user→'user'、assistant→META.s 或 orchestrator）；读取优先级 列 > META > 缺省；全空信封退化直通（旧数据兼容）。裁剪点四处：云端 /stream 与 claude-stream 回退分支、本地 Orchestrator.stream、stream_target/delegate_fn。tool_start/tool_end 事件带 sender（前端 senderFromTool 降级为兜底）。

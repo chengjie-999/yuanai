@@ -526,11 +526,13 @@ class AgentDatabase:
     # --------------------------------------------------------------------------
     # 分析大屏结果历史
     # --------------------------------------------------------------------------
-    def add_analysis_history(self, session_id: str, result_json: str, dataset_id: int = None):
+    def add_analysis_history(self, session_id: str, result_json: str, dataset_id: int = None,
+                             script_name: str = ""):
         """保存分析大屏结果（每次分析追加一条；Redis TTL 过期后从此恢复）"""
         sess = self.Session()
         try:
-            sess.add(AnalysisHistory(session_id=session_id, dataset_id=dataset_id, result_json=result_json))
+            sess.add(AnalysisHistory(session_id=session_id, dataset_id=dataset_id,
+                                     result_json=result_json, script_name=script_name))
             sess.commit()
         finally:
             sess.close()

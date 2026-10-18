@@ -66,10 +66,13 @@ def tool_start(name: str, request_id: str = "", sender: str = "") -> AgentEvent:
     return AgentEvent(type="tool_start", data=data, request_id=request_id)
 
 
-def tool_end(name: str, output: str, request_id: str = "", sender: str = "") -> AgentEvent:
+def tool_end(name: str, output: str, request_id: str = "", sender: str = "",
+             is_error: bool = False) -> AgentEvent:
     data = {"name": name, "output": output}
     if sender:
         data["sender"] = sender
+    if is_error:
+        data["is_error"] = True  # B0：脚本失败态（工具卡红色失败显示）
     return AgentEvent(type="tool_end", data=data, request_id=request_id)
 
 

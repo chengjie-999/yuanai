@@ -60,6 +60,7 @@ function parseHistory(history: any[]): ChatMessage[] {
     let msgType: any = undefined
     let error: string | undefined
     let stopped: boolean | undefined
+    let htmls: string[] | undefined
     let content = m.content || ''
     if (typeof content === 'string' && content.startsWith('\x00META\x00')) {
       const end = content.indexOf('\x00', 6)
@@ -71,6 +72,7 @@ function parseHistory(history: any[]): ChatMessage[] {
           recipient = meta.rp; turn = meta.tn; msgType = meta.ty
           if (meta.e) error = meta.e
           if (meta.sp) stopped = true
+          if (meta.h) htmls = meta.h
         } catch {}
         content = content.substring(end + 1)
       }
@@ -81,7 +83,7 @@ function parseHistory(history: any[]): ChatMessage[] {
     if (m.turn) turn = m.turn
     if (m.type) msgType = m.type
     return { role: m.role, content, images: m.images, sender, toolCalls,
-             reasoning, pageLink, recipient, turn, msgType, error, stopped }
+             reasoning, pageLink, recipient, turn, msgType, error, stopped, htmls }
   })
 }
 
@@ -461,7 +463,7 @@ export default function ChatPage({ user }: { user?: any }) {
           const last = prev.slice()
           const i = last.length - 1
           if (i >= 0) {
-            const calls = (last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { name: c.name, status: 'done', result: event.data.output || '' } : c })
+            const calls = (last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { name: c.name, status: event.data.is_error ? 'error' : 'done', result: event.data.output || '' } : c })
             last[i] = { role: last[i].role, content: last[i].content, sender: last[i].sender, toolCalls: calls, pageLink: last[i].pageLink, images: last[i].images }
           }
           return last
@@ -551,7 +553,7 @@ export default function ChatPage({ user }: { user?: any }) {
     const { onEvent, onError } = makeStreamHandlers()
     const controller = streamChat(
       { model, temperature: 0.7, prompt, images: sentImages, history, system_prompt: sysPrompt,
-        session_id: isClaude ? sid : undefined, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
+        session_id: sid, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
       onEvent, onError,
       () => {
         const s = streamRef.current
@@ -676,7 +678,7 @@ export default function ChatPage({ user }: { user?: any }) {
     const { onEvent, onError } = makeStreamHandlers()
     const controller = streamChat(
       { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: sysPrompt,
-        session_id: isClaude ? sid : undefined, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
+        session_id: sid, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
       onEvent, onError,
       () => {
         const s = streamRef.current

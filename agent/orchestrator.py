@@ -250,8 +250,13 @@ class Orchestrator:
                 return m.content if hasattr(m, "content") else str(m)
         return ""
 
-    def _extract_tool_output(self, output: str, session_id: str, rid: str):
-        """提取 delegate 工具输出协议（图片/大屏/HTML），返回 (事件列表, 清洗后文本)"""
+    def _extract_tool_output(self, output: str, session_id: str, rid: str, tool_name: str = ""):
+        """提取 delegate 工具输出协议（图片/大屏/HTML），返回 (事件列表, 清洗后文本)
+
+        B0（2026-10-17）：统一走 A 看板——32hex 看板 key 存在即只发一个带
+        dashboard_html 的 dashboard 事件（首次/缓存命中同一入口）；文件路径
+        JSON 仍缓存 Redis/落库供通用大屏历史数据，但不再抢占事件入口。
+        """
         events = []
         img_urls = re.findall(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', str(output))
         for img_url in img_urls:
@@ -259,10 +264,15 @@ class Orchestrator:
         # __DASHBOARD__ 两态：文件路径（__RESULT__ JSON，缓存 Redis + 落库）与
         # 32hex 看板缓存 key（A 看板，前端开 /chat/agent/board 轻量页）
         dash_html_url = ""
+        sent_dashboard = False
         for dash_match in re.finditer(r'__DASHBOARD__:(.+)', str(output)):
             value = dash_match.group(1).strip()
             if re.fullmatch(r'[0-9a-f]{32}', value):
+                # 看板 key 存在 → 统一入口挂看板（首次与缓存命中同一形态）
                 dash_html_url = f"/api/v1/data/dashboard-html/{value}"
+                if not sent_dashboard:
+                    events.append(dashboard_event(session_id, rid, dashboard_html=dash_html_url))
+                    sent_dashboard = True
                 continue
             try:
                 with open(value, "r", encoding="utf-8") as f:
@@ -274,18 +284,19 @@ class Orchestrator:
                     rds.setex(cache_key, 3600, json.dumps(dash_data, ensure_ascii=False))
                 except Exception:
                     pass
-                # 持久化到 analysis_history（Redis TTL 过期后恢复用）
+                # 持久化到 analysis_history（Redis TTL 过期后恢复用；带脚本名）
                 try:
-                    from db.session import get_db as _db, AnalysisHistory
-                    _db().add_analysis_history(session_id, json.dumps(dash_data, ensure_ascii=False))
+                    from db.session import get_db as _db
+                    _db().add_analysis_history(session_id, json.dumps(dash_data, ensure_ascii=False),
+                                               script_name=tool_name)
                 except Exception as e:
                     logger.warning("analysis history persist failed: %s", e)
-                events.append(dashboard_event(session_id, rid, dashboard_html=dash_html_url))
+                if not sent_dashboard:
+                    # 纯 JSON 无看板 → 原大屏事件
+                    events.append(dashboard_event(session_id, rid))
+                    sent_dashboard = True
             except Exception as e:
                 logger.warning("dashboard parse failed: %s", e)
-        if dash_html_url and not any(e.type == "dashboard" for e in events):
-            # 纯缓存命中（无 __RESULT__ JSON）：只挂看板链接，大屏数据留给历史
-            events.append(dashboard_event(session_id, rid, dashboard_html=dash_html_url))
         html_match = re.search(r'__HTML__URL:(.+)', str(output))
         if html_match:
             for url in html_match.group(1).split(","):
@@ -474,10 +485,17 @@ class Orchestrator:
                     name = event.get("name", "未知工具")
                     from yuanai_core.core.chat import _tool_output_str
                     output = _tool_output_str(event["data"].get("output", ""))
-                    events, clean_output = self._extract_tool_output(output, req.session_id, rid)
+                    # B0：脚本失败协议（__ERROR__: 前缀）→ tool_end 数据带 error 标记
+                    is_error = str(output).startswith("__ERROR__:")
+                    if is_error:
+                        output = str(output)[len("__ERROR__:"):]
+                    events, clean_output = self._extract_tool_output(output, req.session_id, rid, tool_name=name)
                     for ev in events:
                         yield ev
-                    yield ev_tool_end(name, clean_output, rid, sender=_tool_sender(name))
+                    if is_error:
+                        yield ev_tool_end(name, clean_output, rid, sender=_tool_sender(name), is_error=True)
+                    else:
+                        yield ev_tool_end(name, clean_output, rid, sender=_tool_sender(name))
 
             # DSML 兜底：模型把工具调用写成了文本（已被抑制）且没有结构化工具调用 → 明确报错
             if not saw_tool and any(dsml_saw_block(filters, r) for r in filters):

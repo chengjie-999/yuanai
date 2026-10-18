@@ -199,7 +199,7 @@ def _inline_chart_html(chart_path: str) -> str:
                   content, flags=re.IGNORECASE)
 
 
-def _build_dashboard_html(result_data, chart_paths: List[str]) -> str:
+def _build_dashboard_html(result_data, chart_paths: List[str], script_name: str = "") -> str:
     """A 看板：组装完整看板 HTML——__RESULT__ 拍平 KPI 卡 + 各 __HTML__ 图表内联 +
     plotly.min.js 内联（单文件自包含，离线可看）。无内容可组装返回空串。"""
     kpi_cards = []
@@ -224,6 +224,10 @@ def _build_dashboard_html(result_data, chart_paths: List[str]) -> str:
     plotly_script = f"<script>{plotly_js}</script>" if plotly_js else ""
     kpi_html = f'<div class="kpis">{"".join(kpi_cards)}</div>' if kpi_cards else ""
 
+    import datetime as _dt
+    meta_line = (f'<div class="meta">{script_name} · '
+                 f'{_dt.datetime.now().strftime("%Y-%m-%d %H:%M")}</div>'
+                 if script_name else "")
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -238,6 +242,7 @@ def _build_dashboard_html(result_data, chart_paths: List[str]) -> str:
  .kpi {{ background: #fff; border-radius: 8px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06) }}
  .kpi .k {{ font-size: 12px; color: #8a9099; margin-bottom: 4px; word-break: break-all }}
  .kpi .v {{ font-size: 18px; font-weight: 600; word-break: break-all }}
+ .meta {{ font-size: 11px; color: #8a9099; margin: 0 2px 10px }}
  .chart {{ background: #fff; border-radius: 8px; padding: 8px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden }}
  .chart .plotly-graph-div {{ width: 100% !important }}
 </style>
@@ -245,6 +250,7 @@ def _build_dashboard_html(result_data, chart_paths: List[str]) -> str:
 <body>
 <div class="board">
 <h2>小元AI · 分析看板</h2>
+{meta_line}
 {kpi_html}
 {''.join(chart_blocks)}
 </div>
@@ -290,7 +296,7 @@ class _ScriptHandle:
                 # S1.6：类型化校验（int/path/enum/url + 启发式默认）；不通过即拒绝启动子进程
                 err = _validate_param(k, val, self._param_schemas.get(k, {}))
                 if err:
-                    return f"参数校验失败: {err}（收到 {val[:100]!r}）"
+                    return f"__ERROR__:参数校验失败: {err}（收到 {val[:100]!r}）"
                 args.append(val)
 
         # A 看板缓存：脚本源+参数未变 → 命中直接展示看板，不启动子进程
@@ -347,7 +353,7 @@ class _ScriptHandle:
                 if elapsed > 300:
                     proc.kill()
                     proc.wait()
-                    return "脚本执行超时（300 秒），已终止"
+                    return "__ERROR__:脚本执行超时（300 秒），已终止"
                 if progress_cb and time.time() - last_beat >= 10:
                     progress_cb(0, 0, f"分析中（已运行 {int(elapsed)} 秒）...")
                     last_beat = time.time()
@@ -423,7 +429,7 @@ class _ScriptHandle:
 
             # A 看板缓存：有结果或有图表才组装完整看板（KPI 卡 + 图表内联 + plotly 内联自包含）
             if dash_key and (result_data is not None or chart_paths):
-                dash_html = _build_dashboard_html(result_data, chart_paths)
+                dash_html = _build_dashboard_html(result_data, chart_paths, script_name=self.name)
                 if dash_html:
                     try:
                         ddir = _dashboards_dir()
@@ -436,9 +442,9 @@ class _ScriptHandle:
 
             return output.strip()
         except subprocess.TimeoutExpired:
-            return "脚本执行超时（5分钟）"
+            return "__ERROR__:脚本执行超时（5分钟）"
         except Exception as e:
-            return f"脚本执行异常: {e}"
+            return f"__ERROR__:脚本执行异常: {e}"
 
 
 class ScriptRegistry:

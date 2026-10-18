@@ -515,8 +515,7 @@ export default function ChatPage({ user }: { user?: any }) {
       streamRef.current = null
       if (s) {
         const finalMsgs = flushVoiceTranscripts(messagesRef.current)
-        saveMessages(s.sid, finalMsgs.map(encodeMsg))
-        refreshSessions()
+        saveMessages(s.sid, finalMsgs.map(encodeMsg)).finally(() => refreshSessions())
       }
     }
     return { onEvent, onError }
@@ -565,9 +564,10 @@ export default function ChatPage({ user }: { user?: any }) {
         const finalMsgs = flushVoiceTranscripts(messagesRef.current)
         const msgs = finalMsgs.map(encodeMsg)
         // C AI 会话标题：只透传显式 title（新会话首次发送），普通发送不再覆盖标题
-        saveMessages(sid, msgs, title)
+        // 会话日期更新（2026-10-19 修复）：等 /chat/save 落库提交后再刷新列表——
+        // 此前未 await，列表查询先于保存提交返回旧 update_time，旧对话日期永不更新
+        saveMessages(sid, msgs, title).finally(() => refreshSessions())
         noteLastAssistant(finalMsgs)
-        refreshSessions()
       },
     )
     streamRef.current = { sid, controller }

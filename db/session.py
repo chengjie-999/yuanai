@@ -1,7 +1,8 @@
 import logging
 from urllib.parse import quote_plus
-from sqlalchemy import create_engine, Column, Integer, Text, TIMESTAMP, String, text, UniqueConstraint
+from sqlalchemy import create_engine, Column, Integer, BigInteger, Text, TIMESTAMP, String, text, UniqueConstraint, Computed
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
@@ -28,6 +29,9 @@ class ChatSession(Base):
     title = Column(String(200), default='新对话')
     model = Column(String(50), default='doubao-seed-2-0-pro-260628')
     is_main = Column(Integer, default=0)  # 1 = 豆包式置顶主对话（每用户一条）
+    # 主对话唯一性（迁移 0018）：is_main=1 时等于 user_id，否则 NULL——唯一索引在
+    # NULL 上不冲突，相当于 MySQL 版的部分唯一索引（MySQL 不支持 WHERE 过滤索引）
+    main_uid = Column(BigInteger, Computed("IF(is_main = 1, user_id, NULL)", persisted=True))
     create_time = Column(TIMESTAMP, server_default=func.now())
     update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
@@ -430,7 +434,9 @@ class AgentDatabase:
             session.close()
 
     def ensure_main_session(self, user_id: int, model: str = "") -> dict:
-        """取/建当前用户的置顶主对话（豆包式；每用户一条）"""
+        """取/建当前用户的置顶主对话（豆包式；每用户一条）
+        并发防护（2026-10-19）：main_uid 唯一索引兜底——并发插入撞唯一约束时
+        回滚并重查，返回竞态赢家已建的那条，绝不复用 check-then-insert 双建。"""
         sess = self.Session()
         try:
             row = sess.query(ChatSession).filter_by(user_id=user_id, is_main=1).first()
@@ -440,7 +446,16 @@ class AgentDatabase:
             sid = str(uuid.uuid4())
             sess.add(ChatSession(session_id=sid, user_id=user_id, title="主对话",
                                  model=model or DEFAULT_MODEL, is_main=1))
-            sess.commit()
+            try:
+                sess.commit()
+            except IntegrityError:
+                # 并发竞态：另一请求已建好主对话 → 回滚，取它返回
+                sess.rollback()
+                row = sess.query(ChatSession).filter_by(user_id=user_id, is_main=1).first()
+                if row:
+                    return {"session_id": row.session_id, "title": row.title,
+                            "create_time": str(row.create_time), "is_main": True}
+                raise
             return {"session_id": sid, "title": "主对话",
                     "create_time": str(datetime.now()), "is_main": True}
         finally:

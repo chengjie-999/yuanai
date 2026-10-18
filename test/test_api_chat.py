@@ -124,3 +124,39 @@ class TestHistoryEnvelope:
         history = [{"role": "user", "content": "hi"},
                    {"role": "assistant", "content": "hello"}]
         assert _fix_history_for_api(history) == history
+
+
+def test_main_session_idempotent(client, auth_headers):
+    """主对话幂等：连续调用返回同一条（2026-10-19 唯一性修复）"""
+    if not auth_headers:
+        pytest.skip("需要有效登录凭据")
+    r1 = client.post("/api/v1/chat/main-session", headers=auth_headers)
+    r2 = client.post("/api/v1/chat/main-session", headers=auth_headers)
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.json()["session_id"] == r2.json()["session_id"]
+    assert r1.json()["is_main"] is True
+
+
+def test_ensure_main_session_unique_constraint():
+    """DB 层：唯一索引兜底——同用户第二条主对话被拒（并发竞态防线）"""
+    import uuid as _uuid
+    from sqlalchemy.exc import IntegrityError
+    from db.session import get_db, ChatSession
+
+    db = get_db()
+    uid = 99999901  # 一次性临时用户
+    sess = db.Session()
+    try:
+        sess.query(ChatSession).filter_by(user_id=uid).delete()
+        sess.commit()
+        r = db.ensure_main_session(uid)
+        r2 = db.ensure_main_session(uid)
+        assert r2["session_id"] == r["session_id"], "ensure 幂等：同一条主对话"
+        sess.add(ChatSession(session_id=str(_uuid.uuid4()), user_id=uid, title="x", is_main=1))
+        with pytest.raises(IntegrityError):
+            sess.commit()
+        sess.rollback()
+    finally:
+        sess.query(ChatSession).filter_by(user_id=uid).delete()
+        sess.commit()
+        sess.close()

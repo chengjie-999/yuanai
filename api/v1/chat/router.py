@@ -515,16 +515,22 @@ async def new_session(req: NewSessionRequest, request: Request):
 
 
 @router.get("/sessions")
-async def list_sessions(request: Request):
-    """获取会话列表（管理员看全部，普通用户只看自己的）"""
+async def list_sessions(request: Request, own: bool = False):
+    """获取会话列表（管理员看全部，普通用户只看自己的）
+    own=1（聊天侧栏专用）：一律只看当前用户的——否则 admin 侧栏会把
+    其他用户的主对话也带📌显示（每用户一条主对话 → 侧栏出现多个置顶）。"""
     try:
         db = _get_db()
         is_admin = getattr(request.state, "role", "") == "admin"
-        user_id = None if is_admin else _get_user_id(request)
-        limit = 200 if is_admin else 50
+        if own:
+            user_id = _get_user_id(request)
+            limit = 50
+        else:
+            user_id = None if is_admin else _get_user_id(request)
+            limit = 200 if is_admin else 50
         sessions = db.get_sessions(user_id=user_id, limit=limit)
-        # 管理员补充用户名和消息数
-        if is_admin:
+        # 管理员补充用户名和消息数（侧栏 own=1 无需补充）
+        if is_admin and not own:
             from db.session import User, ChatSession, AIChat
             from sqlalchemy import func
             sess = db.Session()

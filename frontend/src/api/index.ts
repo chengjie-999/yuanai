@@ -316,7 +316,8 @@ export async function createSession(title?: string): Promise<string> {
 
 export async function listSessions(): Promise<any[]> {
   try {
-    const res = await fetch(`${API_BASE}/chat/sessions`, { headers: authHeaders() })
+    // own=1：聊天侧栏只看自己的会话（admin 也不混入其他用户的主对话，避免多个置顶）
+    const res = await fetch(`${API_BASE}/chat/sessions?own=1`, { headers: authHeaders() })
     return await res.json()
   } catch { return [] }
 }

@@ -4,7 +4,9 @@
 请求走 safe_fetch（SSRF 守卫 + 超时 + 体积上限，与 fetch_url 同一条咽喉）。
 业内常规对齐（2026-10-15）：来源域名标注、同域去重、摘要去日期前缀、答案卡。
 """
+import os
 import re
+import json
 from typing import List, Dict
 from urllib.parse import unquote, urlparse
 
@@ -118,15 +120,67 @@ def _dedup_domains(results: List[Dict], keep: int) -> List[Dict]:
     return out
 
 
+def _search_deepseek(q: str, max_results: int) -> List[Dict]:
+    """DeepSeek 官方搜索 API（2026-10-17 上线）：POST /v1/tools/search。
+
+    结构化结果（rerank_score/authority 权威评级/长摘要），自研 AI 原生索引，
+    过滤 SEO 作弊/低质 AIGC。免费过渡期至 2026-11-01，之后 5 元/千次（成功才计费）。
+    失败/超时/限流抛异常，由 web_search 降级链兜底。
+    """
+    import urllib.request
+    from utils.sensitive_data import get_api_key
+
+    key = os.getenv("DEEPSEEK_API_KEY") or ""
+    if not key:
+        try:
+            key = get_api_key("dsllm") or ""
+        except Exception:
+            key = ""
+    if not key:
+        raise RuntimeError("DEEPSEEK_API_KEY 未配置")
+
+    payload = json.dumps({"query": q[:128], "count": min(max_results, 20)},
+                         ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.deepseek.com/v1/tools/search",
+        data=payload, method="POST",
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "User-Agent": "yuanai-agent/1.0",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    results = data.get("results") or []
+    out = []
+    for r in results:
+        title = (r.get("title") or "").strip()
+        url = (r.get("url") or "").strip()
+        if not title or not url.startswith("http"):
+            continue
+        snippet = (r.get("summary") or r.get("snippet") or "").strip()  # 面向模型的长摘要优先
+        # 剥掉摘要里的 markdown 标题符号（summary 常以 # 标题 开头）
+        snippet = re.sub(r"(?m)^#+\s*", "", snippet)
+        out.append({
+            "title": title[:120],
+            "url": url[:300],
+            "snippet": snippet[:300],
+            "date": r.get("date") or "",
+            "authority": r.get("authority"),
+        })
+    return out
+
+
 def web_search(query: str, max_results: int = SEARCH_MAX_RESULTS) -> List[Dict]:
-    """网页搜索（Bing 主用，失败回退 DDG）→ [{title, url, snippet, answer?}]
+    """网页搜索（DeepSeek 官方优先 → Bing → DDG 三级兜底）→ [{title, url, snippet, answer?}]
 
     query 过短（<2 字）直接返回 []——单字查询必然跑偏（曾出现「大」）。
     """
     q = (query or "").strip()
     if len(q) < 2:
         return []
-    for searcher in (_search_bing, _search_ddg):
+    for searcher in (_search_deepseek, _search_bing, _search_ddg):
         try:
             results = searcher(q, max_results)
             if results:

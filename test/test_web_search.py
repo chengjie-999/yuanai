@@ -69,6 +69,9 @@ def test_web_search_bing_first(monkeypatch):
         calls.append(url)
         return FakeResult(_BING_HTML)
 
+    def _no_deepseek(q, n):
+        raise RuntimeError("deepseek off in test")
+    monkeypatch.setattr(ws, "_search_deepseek", _no_deepseek)
     monkeypatch.setattr(ws, "_fetch", fake)
     r = ws.web_search("最新 AI 大模型")
     assert calls == ["https://cn.bing.com/search"]
@@ -83,6 +86,9 @@ def test_web_search_ddg_fallback(monkeypatch):
             raise OSError("挂了")
         return FakeResult(_DDG_HTML)
 
+    def _no_deepseek(q, n):
+        raise RuntimeError("deepseek off in test")
+    monkeypatch.setattr(ws, "_search_deepseek", _no_deepseek)
     monkeypatch.setattr(ws, "_fetch", fake)
     r = ws.web_search("测试")
     assert len(r) == 2
@@ -90,6 +96,9 @@ def test_web_search_ddg_fallback(monkeypatch):
 
 def test_dedup_domains(monkeypatch):
     """同域去重：知乎两条只留首条"""
+    def _no_deepseek(q, n):
+        raise RuntimeError("deepseek off in test")
+    monkeypatch.setattr(ws, "_search_deepseek", _no_deepseek)
     monkeypatch.setattr(ws, "_fetch", lambda url, params: FakeResult(_BING_HTML))
     r = ws.web_search("测试")
     zhihu = [x for x in r if "zhihu" in x["url"]]
@@ -155,3 +164,83 @@ def test_classify_web_search_questions():
     assert m.group in ("knowledge_q", "web_query")
     m2 = classifier.classify("今天有什么新闻")
     assert m2.group in ("web_query", "knowledge_q", "general_chat")
+
+
+# ---------------- DeepSeek 官方搜索接入（2026-10-17） ----------------
+
+def test_search_deepseek_parses_results(monkeypatch):
+    """_search_deepseek：请求格式正确 + 响应解析（summary 优先作 snippet）"""
+    from yuanai_core.pure import web_search as ws
+
+    captured = {}
+
+    class FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            import json
+            return json.dumps({"results": [
+                {"title": "结果一", "url": "https://a.com/1",
+                 "snippet": "短摘要", "summary": "面向模型的长摘要", "authority": 4},
+                {"title": "", "url": "https://a.com/2"},  # 无标题跳过
+                {"title": "结果三", "url": "not-a-url"},   # 非 http 跳过
+            ]}).encode()
+
+    def fake_urlopen(req, timeout=10):
+        captured["url"] = req.full_url
+        captured["headers"] = req.headers
+        captured["body"] = req.data.decode()
+        return FakeResp()
+
+    import urllib.request
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+
+    out = ws._search_deepseek("AI 大模型", 8)
+    assert len(out) == 1
+    assert out[0]["title"] == "结果一" and out[0]["snippet"] == "面向模型的长摘要"
+    assert out[0]["authority"] == 4
+    assert captured["url"] == "https://api.deepseek.com/v1/tools/search"
+    assert captured["headers"]["Authorization"] == "Bearer sk-test"
+    assert '"count": 8' in captured["body"]
+
+
+def test_web_search_deepseek_first_fallback(monkeypatch):
+    """三级兜底：DeepSeek 成功 → 不再调 Bing/DDG；DeepSeek 异常 → 降级"""
+    from yuanai_core.pure import web_search as ws
+
+    calls = []
+
+    def ok_deepseek(q, n):
+        calls.append("deepseek")
+        return [{"title": "x", "url": "https://a.com", "snippet": "s"}]
+
+    def fail_deepseek(q, n):
+        calls.append("deepseek")
+        raise RuntimeError("boom")
+
+    def ok_bing(q, n):
+        calls.append("bing")
+        return [{"title": "b", "url": "https://b.com", "snippet": "s2"}]
+
+    monkeypatch.setattr(ws, "_search_deepseek", ok_deepseek)
+    monkeypatch.setattr(ws, "_search_bing", ok_bing)
+    monkeypatch.setattr(ws, "_search_ddg", ok_bing)
+    assert ws.web_search("测试")[0]["title"] == "x"
+    assert calls == ["deepseek"]
+
+    calls.clear()
+    monkeypatch.setattr(ws, "_search_deepseek", fail_deepseek)
+    assert ws.web_search("测试")[0]["title"] == "b"
+    assert calls == ["deepseek", "bing"]
+
+
+def test_search_deepseek_no_key_raises(monkeypatch):
+    """无 DEEPSEEK_API_KEY → 抛异常（web_search 降级链兜底）"""
+    from yuanai_core.pure import web_search as ws
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    import pytest
+    with pytest.raises(RuntimeError):
+        ws._search_deepseek("测试", 5)

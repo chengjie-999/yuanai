@@ -35,6 +35,10 @@ MAX_TOKENS_DEFAULT = 64000  # 流式请求给足输出空间（含 thinking）
 MAX_ITERATIONS = 60         # 单次会话工具轮数上限（防死循环）
 # 模型可配（env CLAUDE_BRIDGE_MODEL）；默认 Opus 4.8（最新 Opus 档）
 SDK_MODEL = os.getenv("CLAUDE_BRIDGE_MODEL", "claude-opus-4-8")
+# thinking 参数可关（env CLAUDE_BRIDGE_THINKING=0）：第三方网关（deepseek 系等）
+# 多不识别 Anthropic 的 thinking 字段，硬发会 400 → 关闭后网关侧自带的思维链
+# 仍会以 reasoning 流回传
+SDK_THINKING = os.getenv("CLAUDE_BRIDGE_THINKING", "1") == "1"
 
 # ——— SDK tool 定义 ———
 # bash 与 text editor 是 Anthropic 内置工具（schema-less，type+name 声明即可，
@@ -334,8 +338,9 @@ async def run_sdk_loop(
             iteration += 1
             stream = await client.messages.create(
                 model=model, max_tokens=max_tokens,
-                # 自适应思考（Opus 4.8 系唯一开启方式）+ 摘要可见（reasoning 流给用户）
-                thinking={"type": "adaptive", "display": "summarized"},
+                # 自适应思考（Opus 4.8 系唯一开启方式）+ 摘要可见（reasoning 流给用户）；
+                # 第三方网关不识别时用 CLAUDE_BRIDGE_THINKING=0 关闭
+                **({"thinking": {"type": "adaptive", "display": "summarized"}} if SDK_THINKING else {}),
                 system=system or None,
                 messages=pending_messages,
                 tools=_SDK_TOOLS,

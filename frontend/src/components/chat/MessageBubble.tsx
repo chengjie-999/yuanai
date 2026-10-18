@@ -437,8 +437,10 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)',
                 maxWidth: '100%', background: 'var(--bg-input)',
               }}>
-                {!isMobile && onOpenPanel && isPlanLink(msg.pageLink) ? (
-                  // 计划面板：桌面端以对话内浮窗打开（AI 受控）；修饰键点击放行浏览器默认
+                {onOpenPanel ? (
+                  // 统一入口形态（2026-10-17 用户拍板）：所有子页面链接点击
+                  // 均在对话内浮窗/浮层打开（桌面浮窗可拖动缩放/移动全屏浮层）；
+                  // 修饰键点击放行浏览器默认（新标签/直接访问独立路由）
                   <a href={msg.pageLink}
                     onClick={(e) => {
                       if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
@@ -454,7 +456,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-                  ><ClipboardIcon size={13} /> 打开面板</a>
+                  >{msg.pageLink.includes('/agent/dashboard') || msg.pageLink.includes('/agent/board') ? <BarChartIcon size={13} /> : msg.pageLink.includes('/agent/automation') ? <BotIcon size={13} /> : msg.pageLink.includes('/planet') ? <PlanetIcon size={13} /> : <ClipboardIcon size={13} />} 打开面板</a>
                 ) : (
                   <Link to={msg.pageLink}
                     onClick={(e) => e.stopPropagation()}

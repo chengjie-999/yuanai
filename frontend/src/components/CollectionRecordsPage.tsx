@@ -100,7 +100,7 @@ const IconBox = () => (
 
 // ===== 页面组件 =====
 
-export default function CollectionRecordsPage() {
+export default function CollectionRecordsPage({ onClose, hideBack }: { onClose?: () => void; hideBack?: boolean } = {}, ) {
   const [records, setRecords] = useState<CrawlRecord[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -220,11 +220,16 @@ export default function CollectionRecordsPage() {
         padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
       }}>
-        <Link to="/chat" style={{
+        {hideBack ? null : onClose ? (
+        <button onClick={onClose} style={{
           fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
           padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
           flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
-        }}><ArrowLeftIcon size={12} /> 返回</Link>
+          background: 'transparent', cursor: 'pointer',
+        }}><ArrowLeftIcon size={12} /> 返回对话</button>
+      ) : (
+        
+      )}
         <span style={{ fontSize: 15, lineHeight: 1, color: 'var(--accent)', display: 'flex' }}><IconFile /></span>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>采集记录</div>

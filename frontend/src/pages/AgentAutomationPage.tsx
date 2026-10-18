@@ -5,7 +5,7 @@ import { AGENT_CONFIG } from '../config/agents'
 import { API_BASE } from '../api'
 import { ArrowLeftIcon, BotIcon } from '../components/icons'
 
-export default function AgentAutomationPage() {
+export default function AgentAutomationPage({ onClose, hideBack }: { onClose?: () => void; hideBack?: boolean } = {}) {
   const agent = AGENT_CONFIG.automation
   const [agentOnline, setAgentOnline] = useState(false)
 
@@ -38,11 +38,16 @@ export default function AgentAutomationPage() {
         padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
       }}>
-        <Link to="/chat" style={{
+        {hideBack ? null : onClose ? (
+        <button onClick={onClose} style={{
           fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
           padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
           flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
-        }}><ArrowLeftIcon size={12} /> 返回</Link>
+          background: 'transparent', cursor: 'pointer',
+        }}><ArrowLeftIcon size={12} /> 返回对话</button>
+      ) : (
+        
+      )}
         <span style={{ lineHeight: 1, color: agent.color, display: 'flex' }}><BotIcon size={18} /></span>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: agent.color, display: 'flex', alignItems: 'center', gap: 8 }}>

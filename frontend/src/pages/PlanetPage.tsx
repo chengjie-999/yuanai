@@ -17,7 +17,7 @@ import { ArrowLeftIcon, GalaxyIcon } from '../components/icons'
    左：星球 → 导图 → 笔记 三级树 + 检索；右：笔记/导图/大纲阅读器
    ============================================================ */
 
-export default function PlanetPage() {
+export default function PlanetPage({ onClose, hideBack }: { onClose?: () => void; hideBack?: boolean } = {}, ) {
   // vault 同步徽标：轮询 /admin/agent-status 取本用户绑定 Agent 的 vault_sync 状态
   const [vaultStatus, setVaultStatus] = useState<{ label: string; tip: string; tone: string } | null>(null)
   useEffect(() => {
@@ -144,11 +144,16 @@ export default function PlanetPage() {
         padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
       }}>
-        <Link to="/chat" style={{
+        {hideBack ? null : onClose ? (
+        <button onClick={onClose} style={{
           fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
           padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
           flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
-        }}><ArrowLeftIcon size={12} /> 返回</Link>
+          background: 'transparent', cursor: 'pointer',
+        }}><ArrowLeftIcon size={12} /> 返回对话</button>
+      ) : (
+        
+      )}
         <span style={{ lineHeight: 1, color: 'var(--accent)', display: 'flex' }}><GalaxyIcon size={19} /></span>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>知识星球</div>

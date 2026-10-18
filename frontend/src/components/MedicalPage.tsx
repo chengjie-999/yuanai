@@ -53,7 +53,7 @@ function SectionTitle({ icon, title, desc }: { icon: string; title: string; desc
   )
 }
 
-export default function MedicalPage() {
+export default function MedicalPage({ onClose, hideBack }: { onClose?: () => void; hideBack?: boolean } = {}, ) {
   /* ---- 文献检索 ---- */
   const [q, setQ] = useState('')
   const [searching, setSearching] = useState(false)
@@ -136,11 +136,16 @@ export default function MedicalPage() {
         padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
       }}>
-        <Link to="/chat" style={{
+        {hideBack ? null : onClose ? (
+        <button onClick={onClose} style={{
           fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
           padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
           flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
-        }}><ArrowLeftIcon size={12} /> 返回</Link>
+          background: 'transparent', cursor: 'pointer',
+        }}><ArrowLeftIcon size={12} /> 返回对话</button>
+      ) : (
+        
+      )}
         <span style={{ fontSize: 18, lineHeight: 1, color: MEDICAL_COLOR, display: 'flex' }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d={ICONS.flask} />

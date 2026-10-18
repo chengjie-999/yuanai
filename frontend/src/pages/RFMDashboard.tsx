@@ -6,7 +6,7 @@ import { useSecuredUrl } from '../components/chat/helpers'
 
 interface RFMData { summary: { users: number; orders: number; ref_date: string }; means: { R: number; F: number; M: number }; segments: { label: string; count: number; amount: number; count_pct: string; amount_pct: string; color: string }[]; chart_html: string }
 
-export default function RFMDashboard() {
+export default function RFMDashboard({ onClose, hideBack }: { onClose?: () => void; hideBack?: boolean } = {}, ) {
   const [searchParams] = useSearchParams()
   const dsId = searchParams.get('dataset_id')
   const [datasets, setDatasets] = useState<any[]>([])
@@ -40,7 +40,11 @@ export default function RFMDashboard() {
   return (
     <div style={{ minHeight: '100dvh', background: '#1a1a2e' }}>
       <header style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 16, background: '#16213e', borderBottom: '1px solid #0f3460' }}>
-        <Link to="/chat" style={{ color: '#e94560', textDecoration: 'none', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1 }}><ArrowLeftIcon size={13} /> Back</Link>
+        {hideBack ? null : onClose ? (
+          <button onClick={onClose} style={{ color: '#e94560', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1, padding: 0 }}><ArrowLeftIcon size={13} /> 返回对话</button>
+        ) : (
+          <Link to="/chat" style={{ color: '#e94560', textDecoration: 'none', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1 }}><ArrowLeftIcon size={13} /> Back</Link>
+        )}
         <span style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>RFM Customer Analysis</span>
         <div style={{ flex: 1 }} />
         <select value={datasetId} onChange={(e) => runRFM(e.target.value)}

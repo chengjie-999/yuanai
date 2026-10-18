@@ -13,8 +13,33 @@ import { usePlanWindow } from './chat/usePlanWindow'
 import { useAutoRead } from '../hooks/useAutoRead'
 import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, LinkIcon } from './icons'
 
-// 移动端计划浮层（懒加载，对话内嵌子页面不占首屏）
+// 子页面懒加载（对话内浮窗/浮层宿主，统一入口形态 2026-10-17）
 const PlanPageLazy = lazy(() => import('../pages/PlanPage'))
+const AgentAnalysisLazy = lazy(() => import('../pages/AgentAnalysisPage'))
+const AgentAutomationLazy = lazy(() => import('../pages/AgentAutomationPage'))
+const AgentKnowledgeLazy = lazy(() => import('../pages/AgentKnowledgePage'))
+const MedicalLazy = lazy(() => import('../components/MedicalPage'))
+const RecordsLazy = lazy(() => import('../components/CollectionRecordsPage'))
+const BoardLazy = lazy(() => import('../pages/DashboardBoardPage'))
+const DashboardLazy = lazy(() => import('../pages/AnalysisDashboard'))
+const RfmLazy = lazy(() => import('../pages/RFMDashboard'))
+const PlanetLazy = lazy(() => import('../pages/PlanetPage'))
+
+// 页面路径 → 懒加载组件 + 标题（浮窗/浮层标题栏与地址栏用）
+function resolvePanel(path: string): { Comp: any; props: any; title: string } | null {
+  if (!path) return null
+  if (path.split('?')[0] === '/chat/plan') return { Comp: PlanPageLazy, props: {}, title: '计划面板' }
+  if (path.startsWith('/chat/agent/dashboard/')) return { Comp: DashboardLazy, props: { sessionId: path.split('/').pop() }, title: '分析大屏' }
+  if (path.startsWith('/chat/agent/board/')) return { Comp: BoardLazy, props: { boardKey: path.split('/').pop() }, title: '分析看板' }
+  if (path.startsWith('/chat/agent/analysis')) return { Comp: AgentAnalysisLazy, props: {}, title: '数据分析' }
+  if (path.startsWith('/chat/agent/automation')) return { Comp: AgentAutomationLazy, props: {}, title: '自动化' }
+  if (path.startsWith('/chat/agent/knowledge')) return { Comp: AgentKnowledgeLazy, props: {}, title: '知识库' }
+  if (path.startsWith('/chat/agent/medical')) return { Comp: MedicalLazy, props: {}, title: '医学工作台' }
+  if (path.startsWith('/chat/agent/records')) return { Comp: RecordsLazy, props: {}, title: '采集记录' }
+  if (path.startsWith('/chat/agent/rfm')) return { Comp: RfmLazy, props: {}, title: 'RFM 大屏' }
+  if (path.startsWith('/chat/planet')) return { Comp: PlanetLazy, props: {}, title: '知识星球' }
+  return null
+}
 
 type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean }
 
@@ -155,11 +180,14 @@ export default function ChatPage({ user }: { user?: any }) {
     return true
   }
 
-  // 计划面板：用户手动开/关（AI 不自动开关，用户拍板）
-  // 形态（2026-10-17）：桌面=对话内可拖动浮窗 / 移动=对话内全屏浮层（都不离开对话）
-  const [planOverlay, setPlanOverlay] = useState(false)
-  const planWin = usePlanWindow({ onOpen: () => setPlanOverlay(true) })
-  const handleOpenPanel = useCallback((_link: string) => { planWin.openPanel() }, [planWin.openPanel])
+  // 子页面浮窗/浮层宿主（统一入口形态 2026-10-17）：用户手动开/关，AI 不自动开关
+  // 形态：桌面=对话内可拖动+可缩放浮窗 / 移动=对话内全屏浮层（都不离开对话）
+  const [panel, setPanel] = useState<{ path: string; title: string } | null>(null)
+  const panelWin = usePlanWindow({ onOpen: () => {} })  // 兼容占位；实际入口走 MessageBubble 传 path
+  const handleOpenPanel = useCallback((link: string) => {
+    const resolved = resolvePanel(link)
+    setPanel({ path: link, title: resolved?.title || '面板' })
+  }, [])
   // 桌面浮窗位置/尺寸（可拖动 + 右下角可随意放大缩小；null = 默认）
   const [planPos, setPlanPos] = useState<{ x: number; y: number } | null>(null)
   const [planSize, setPlanSize] = useState<{ w: number; h: number } | null>(null)
@@ -729,7 +757,7 @@ export default function ChatPage({ user }: { user?: any }) {
             background: 'var(--bg-primary)', border: '1px solid var(--border)',
             cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)',
             boxShadow: '0 1px 3px var(--shadow-sm)',
-          }} onClick={() => planWin.openPanel()}>
+          }} onClick={() => handleOpenPanel('/chat/plan')}>
             <span style={{
               width: 7, height: 7, borderRadius: '50%', background: '#d97706', flexShrink: 0,
               animation: 'pulse 1.2s ease-in-out infinite',
@@ -796,12 +824,15 @@ export default function ChatPage({ user }: { user?: any }) {
         <ZoomableImage src={expandedImage} onClose={() => setExpandedImage(null)} />
       )}
 
-      {/* 计划面板：桌面=可拖动+可放大缩小浮窗 / 移动=全屏浮层（均不离开对话） */}
-      {planOverlay && !isMobile && (() => {
+      {/* 子页面面板：桌面=可拖动+可放大缩小浮窗 / 移动=全屏浮层（均不离开对话） */}
+      {panel && !isMobile && (() => {
+        const resolved = resolvePanel(panel.path)
+        if (!resolved) return null
         const pos = planPos || { x: window.innerWidth - 740 - 16, y: 72 }
         const size = planSize || { w: 740, h: 560 }
         const w = Math.max(480, Math.min(size.w, window.innerWidth - 16))
         const h = Math.max(360, Math.min(size.h, window.innerHeight - 80))
+        const { Comp, props, title } = resolved
         return (
           <div style={{
             position: 'fixed', zIndex: 300,
@@ -832,7 +863,7 @@ export default function ChatPage({ user }: { user?: any }) {
                 display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
                 cursor: 'grab', userSelect: 'none', touchAction: 'none',
               }}>
-              <button onClick={() => setPlanOverlay(false)}
+              <button onClick={() => setPanel(null)}
                 title="返回对话" aria-label="返回对话"
                 style={{
                   fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
@@ -842,7 +873,7 @@ export default function ChatPage({ user }: { user?: any }) {
                 }}><ArrowLeftIcon size={12} /> 返回对话</button>
               {/* 浏览器式地址栏：链接地址明文显示，点击复制 */}
               <button onClick={() => {
-                const url = window.location.origin + '/chat/plan'
+                const url = window.location.origin + panel.path
                 navigator.clipboard.writeText(url).then(() => flashNotice('链接已复制，可直接在浏览器打开')).catch(() => {})
               }}
                 className="yuan-tip" data-tip="点击复制此链接（可直接在浏览器打开）"
@@ -855,12 +886,12 @@ export default function ChatPage({ user }: { user?: any }) {
                   overflow: 'hidden', whiteSpace: 'nowrap',
                 }}>
                 <LinkIcon size={11} style={{ flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{window.location.origin}/chat/plan</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{window.location.origin}{panel.path}</span>
               </button>
             </div>
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
               <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>加载中…</div>}>
-                <PlanPageLazy onClose={() => setPlanOverlay(false)} hideBack />
+                <Comp {...props} onClose={() => setPanel(null)} hideBack />
               </Suspense>
             </div>
             {/* 右下角缩放把手：拖动随意放大缩小（最小 480x360，最大到视口边缘） */}
@@ -892,7 +923,11 @@ export default function ChatPage({ user }: { user?: any }) {
           </div>
         )
       })()}
-      {planOverlay && isMobile && (
+      {panel && isMobile && (() => {
+        const resolved = resolvePanel(panel.path)
+        if (!resolved) return null
+        const { Comp, props } = resolved
+        return (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 300,
           background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column',
@@ -901,8 +936,8 @@ export default function ChatPage({ user }: { user?: any }) {
             padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
             display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
           }}>
-            <button onClick={() => setPlanOverlay(false)}
-              title="关闭计划面板" aria-label="关闭计划面板"
+            <button onClick={() => setPanel(null)}
+              title="返回对话" aria-label="返回对话"
               style={{
                 fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
                 padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
@@ -911,7 +946,7 @@ export default function ChatPage({ user }: { user?: any }) {
               }}><ArrowLeftIcon size={12} /> 返回对话</button>
             {/* 浏览器式地址栏：显示独立页面链接，点击复制 */}
             <button onClick={() => {
-              const url = window.location.origin + '/chat/plan'
+              const url = window.location.origin + panel.path
               navigator.clipboard.writeText(url).then(() => flashNotice('链接已复制，可直接在浏览器打开')).catch(() => {})
             }}
               className="yuan-tip" data-tip="点击复制此链接（可直接在浏览器打开）"
@@ -924,16 +959,17 @@ export default function ChatPage({ user }: { user?: any }) {
                 overflow: 'hidden', whiteSpace: 'nowrap',
               }}>
               <LinkIcon size={11} style={{ flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{window.location.origin}/chat/plan</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{window.location.origin}{panel.path}</span>
             </button>
           </div>
           <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
             <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>加载中…</div>}>
-              <PlanPageLazy onClose={() => setPlanOverlay(false)} hideBack />
+              <Comp {...props} onClose={() => setPanel(null)} hideBack />
             </Suspense>
           </div>
         </div>
-      )}
+        )
+      })()}
     </div>
     </>
   )

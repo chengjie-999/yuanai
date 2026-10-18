@@ -12,8 +12,11 @@ import { renderBody } from '../components/analysis/ResultBlocks'
    - 主题跟随 CSS 变量；移动端自适应；数据过期时后端自动从历史恢复
    ============================================================ */
 
-export default function AnalysisDashboard() {
-  const { sessionId } = useParams<{ sessionId: string }>()
+export default function AnalysisDashboard({ sessionId: propSid, onClose, hideBack }: {
+  sessionId?: string; onClose?: () => void; hideBack?: boolean
+} = {}) {
+  const params = useParams<{ sessionId: string }>()
+  const sessionId = propSid || params.sessionId
   const [data, setData] = useState<any>(null)
   const [meta, setMeta] = useState<{ recovered?: boolean; created_at?: string }>({})
   const [loading, setLoading] = useState(true)
@@ -60,7 +63,11 @@ export default function AnalysisDashboard() {
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
       <header style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg-primary)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-        <Link to="/chat" style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1 }}><ArrowLeftIcon size={13} /> 返回</Link>
+        {hideBack ? null : onClose ? (
+          <button onClick={onClose} style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1, padding: 0 }}><ArrowLeftIcon size={13} /> 返回对话</button>
+        ) : (
+          <Link to="/chat" style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1 }}><ArrowLeftIcon size={13} /> 返回</Link>
+        )}
         <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>分析大屏</span>
         {created_at && (
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>

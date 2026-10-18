@@ -40,6 +40,7 @@ class AgentWSClient:
         self.capabilities = capabilities
         self.agent_token = agent_token
         self._on_chat_request = on_chat_request
+        self._on_stop_request: Optional[Callable[[str], None]] = None
         self._ws = None
         self._running = False
         self._status = "offline"  # offline | connecting | online | reconnecting
@@ -56,6 +57,10 @@ class AgentWSClient:
                 logger.error("后台任务异常", exc_info=t.exception())
         task.add_done_callback(_done)
         return task
+
+    def on_stop_request(self, handler: Callable[[str], None]):
+        """注册停止请求回调（request_id → 终止该请求的脚本子进程）"""
+        self._on_stop_request = handler
 
     def on_chat_request(
         self, handler: Callable[[ChatRequest], AsyncGenerator[AgentEvent, None]]
@@ -109,6 +114,15 @@ class AgentWSClient:
 
                     if msg_type == "chat_request":
                         self._track_task(self._handle_chat_request(msg))
+                    elif msg_type == "stop_request":
+                        # B1-12 停止联动：云端转发用户「停止生成」→ 终止本机脚本子进程
+                        rid = msg.get("request_id", "")
+                        logger.info("收到停止请求: %s", rid[:8] if rid else "(空)")
+                        if self._on_stop_request and rid:
+                            try:
+                                self._on_stop_request(rid)
+                            except Exception as e:
+                                logger.warning("stop 回调异常: %s", e)
                     else:
                         logger.debug("未知消息类型: %s", msg_type)
 

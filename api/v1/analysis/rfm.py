@@ -133,8 +133,19 @@ async def serve_rfm_chart(filename: str):
 
 
 @router.get("/dashboard/{session_id}")
-async def get_dashboard_data(session_id: str):
+async def get_dashboard_data(request: Request, session_id: str):
     """大屏数据：优先 Redis 缓存（TTL 1h）；过期后从 analysis_history 恢复最新结果（数据不再蒸发）"""
+    # B1-10 会话归属校验：防止越权读取他人会话的大屏数据
+    try:
+        from api.v1.middleware import get_user_id
+        from api.v1.db_helpers import verify_session_owner
+        uid = get_user_id(request)
+        if uid:
+            verify_session_owner(get_db(), session_id, uid)
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     try:
         from db.redis_client import get_redis
         rds = get_redis()
@@ -160,8 +171,19 @@ async def get_dashboard_data(session_id: str):
 @router.get("/history")
 async def get_dashboard_history(request: Request, session_id: str):
     """分析大屏历史列表（最新在前，用于过期提示与回溯）"""
+    # B1-10 会话归属校验：防止越权读取他人会话的分析历史
+    try:
+        from api.v1.middleware import get_user_id
+        from api.v1.db_helpers import verify_session_owner
+        uid = get_user_id(request)
+        if uid:
+            verify_session_owner(get_db(), session_id, uid)
+    except HTTPException:
+        raise
     try:
         from db.session import get_db
         return {"history": get_db().get_analysis_history(session_id, limit=20)}
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail="history query failed")

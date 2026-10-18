@@ -267,5 +267,60 @@ def test_dashboard_html_endpoint(client, db):
             sess.close()
 
 
+# ---------------- B1 挂账：数据集指纹 + 停止联动 ----------------
+
+def test_cache_key_includes_dataset_fingerprint(tmp_path, monkeypatch):
+    """数据集文件内容变化（同名覆盖）→ 看板 key 变化 → 旧看板自然失效"""
+    import agent.scripts.registry as reg
+    import db.session as dbs
+
+    ds_file = tmp_path / "ds.csv"
+    ds_file.write_text("aaa", encoding="utf-8")
+
+    class FakeDB:
+        def get_dataset(self, ds_id):
+            return {"file_path": str(ds_file)}
+
+    monkeypatch.setattr(dbs, "get_db", lambda: FakeDB())
+
+    script_path, _, _ = _make_dashboard_script(tmp_path)
+    handle = reg._ScriptHandle("看板缓存测试脚本", "测试", script_path)
+
+    k1 = handle._dashboard_cache_key({"dataset_id": 1, "n": "5"})
+    ds_file.write_text("bbbb", encoding="utf-8")  # 内容与大小变化（模拟上传覆盖）
+    k2 = handle._dashboard_cache_key({"dataset_id": 1, "n": "5"})
+    assert k1 and k2 and k1 != k2, "数据集文件变化后 key 必须变化"
+
+    k3 = handle._dashboard_cache_key({"dataset_id": 1, "n": "5"})
+    assert k3 == k2, "文件未变时 key 应稳定"
+
+
+def test_cancel_running_kills_proc():
+    """B1-12：cancel_running 按 request_id 只终止所属子进程"""
+    import agent.scripts.registry as reg
+    import subprocess
+
+    p1 = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    p2 = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    with reg._procs_lock:
+        reg._running_procs[id(p1)] = p1
+        reg._proc_rid[id(p1)] = "req-a"
+        reg._running_procs[id(p2)] = p2
+        reg._proc_rid[id(p2)] = "req-b"
+
+    try:
+        n = reg.cancel_running("req-a")
+        assert n == 1
+        assert p1.wait(timeout=10) is not None, "被标记的进程应被终止"
+        assert p2.poll() is None, "其他请求的子进程不应被波及"
+    finally:
+        for p in (p1, p2):
+            if p.poll() is None:
+                p.kill()
+            p.wait()
+        reg._cleanup_proc(id(p1))
+        reg._cleanup_proc(id(p2))
+
+
 if __name__ == "__main__":
     print("测试入口：pytest test/test_script_dashboard_cache.py -v")

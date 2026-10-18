@@ -118,8 +118,9 @@ from api.v1.db_helpers import get_db as _get_db, verify_session_owner as _verify
 from api.v1.middleware import get_user_id as _get_user_id
 
 
-async def _bridge_sse(queue: asyncio.Queue, request_id: str):
-    """Agent 事件队列 → SSE 流（300s 超时按每次事件重置；done/error 终止）"""
+async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0):
+    """Agent 事件队列 → SSE 流（300s 超时按每次事件重置；done/error 终止）
+    B1-12：客户端中断（停止生成/关页）→ 通知本地 Agent 终止脚本子进程"""
     from api.v1.agent.router import cleanup_pending
     try:
         while True:
@@ -135,7 +136,12 @@ async def _bridge_sse(queue: asyncio.Queue, request_id: str):
 
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
     except asyncio.CancelledError:
-        pass
+        # B1-12 停止联动：SSE 被 abort（停止生成）→ 通知 Agent 杀脚本子进程
+        try:
+            from api.v1.agent.router import send_stop_to_agent
+            asyncio.create_task(send_stop_to_agent(user_id, request_id))
+        except Exception:
+            logger.warning("停止通知发送失败（不影响主流程）", exc_info=True)
     finally:
         cleanup_pending(request_id)
 
@@ -306,7 +312,7 @@ async def chat_stream(req: ChatRequest, request: Request):
             if bridged_request_id:
                 logger.info("chat/stream → Agent 桥接 (user=%s, req=%s)", user_id, bridged_request_id[:8])
                 queue = get_pending_queue(bridged_request_id)
-                return StreamingResponse(_bridge_sse(queue, bridged_request_id), media_type="text/event-stream")
+                return StreamingResponse(_bridge_sse(queue, bridged_request_id, user_id), media_type="text/event-stream")
 
         # --- 回退：云端直接调用 LLM ---
         logger.info("chat/stream → 云端直接调用 (user=%s, agent offline)", user_id)
@@ -441,7 +447,7 @@ async def claude_stream(req: ChatRequest, request: Request):
                 logger.info("chat/claude-stream → Claude 桥接 (target=%s, user=%s, session=%s, req=%s)",
                             target_agent_id, user_id, req.session_id, bridged_request_id[:8])
                 queue = get_pending_queue(bridged_request_id)
-                return StreamingResponse(_bridge_sse(queue, bridged_request_id), media_type="text/event-stream")
+                return StreamingResponse(_bridge_sse(queue, bridged_request_id, target_agent_id), media_type="text/event-stream")
 
         # 回退：云端直接调用 LLM
         logger.info("chat/claude-stream → Claude 桥离线，云端回退 (user=%s)", user_id)

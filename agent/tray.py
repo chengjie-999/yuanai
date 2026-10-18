@@ -573,6 +573,8 @@ class AgentTray:
                     agent_token=self.agent_token,
                 )
                 self._client.on_chat_request(route)
+                # B1-12 停止联动：云端 stop 事件 → 终止该请求的脚本子进程
+                self._client.on_stop_request(lambda rid: orchestrator.cancel_request(rid))
                 orchestrator._on_activity = lambda ev: self._set_status("working") or (
                     self._client and self._client.send_activity(ev)
                 )

@@ -21,8 +21,11 @@ export default function AnalysisDashboard({ sessionId: propSid, onClose, hideBac
   const [meta, setMeta] = useState<{ recovered?: boolean; created_at?: string }>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // B1-10 分析历史：会话内历次分析结果，可回溯查看
+  const [history, setHistory] = useState<any[]>([])
+  const [viewingHist, setViewingHist] = useState<number | null>(null)
 
-  useEffect(() => {
+  const loadDashboard = () => {
     if (!sessionId) return
     // 数据优先 Redis 缓存；过期后后端自动从 analysis_history 恢复
     fetch(API_BASE + '/analysis/dashboard/' + sessionId, {
@@ -36,12 +39,33 @@ export default function AnalysisDashboard({ sessionId: propSid, onClose, hideBac
         setMeta({ recovered: !!d.recovered, created_at: d.created_at })
         setData(d)
         setError('')
+        setViewingHist(null)
       })
       .catch((e) => {
         setError(e.message === 'NOT_FOUND' ? '未找到大屏数据：请先在对话中完成一次分析' : '大屏加载失败，请稍后重试')
       })
       .finally(() => setLoading(false))
+  }
+  useEffect(() => { loadDashboard() }, [sessionId])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // B1-10：拉取会话分析历史列表（JWT；后端已做会话归属校验）
+  useEffect(() => {
+    if (!sessionId) return
+    fetch(API_BASE + '/analysis/history?session_id=' + sessionId, {
+      headers: { Authorization: 'Bearer ' + getToken() },
+    })
+      .then((r) => (r.ok ? r.json() : { history: [] }))
+      .then((d) => setHistory(Array.isArray(d.history) ? d.history : []))
+      .catch(() => {})
   }, [sessionId])
+
+  const viewEntry = (h: any) => {
+    // 回溯查看历史分析结果（本地渲染，不发请求）
+    setData(h.result && Object.keys(h.result).length ? h.result : null)
+    setMeta({ recovered: false, created_at: h.create_time })
+    setViewingHist(h.id)
+    setError('')
+  }
 
   // 图表 iframe 安全 URL（5 秒 sse token + 沙箱，S1.2）
   const chartSrc = useSecuredUrl(data?.chart_html || '')
@@ -75,6 +99,12 @@ export default function AnalysisDashboard({ sessionId: propSid, onClose, hideBac
           </span>
         )}
         <div style={{ flex: 1 }} />
+        {viewingHist !== null && (
+          <button onClick={loadDashboard} title="查看最新分析结果"
+            style={{ fontSize: 11, padding: '4px 12px', borderRadius: 6, border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer' }}>
+            回到最新
+          </button>
+        )}
         <button
           onClick={() => { navigator.clipboard.writeText(window.location.href).catch(() => {}) }}
           title="复制大屏链接"
@@ -90,6 +120,38 @@ export default function AnalysisDashboard({ sessionId: propSid, onClose, hideBac
           </div>
         )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>{body}</div>
+
+        {/* B1-10 分析历史：会话内历次分析，点击回溯查看 */}
+        {history.length > 0 && (
+          <div style={{ marginTop: 28, borderTop: '1px solid var(--border-light)', paddingTop: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 10 }}>
+              历史分析{viewingHist !== null ? '（查看中：已选中一条历史结果）' : '（最新在前）'}
+            </div>
+            {history.map((h: any) => (
+              <button
+                key={h.id}
+                onClick={() => viewEntry(h)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                  padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border-light)',
+                  background: viewingHist === h.id ? 'var(--accent-light)' : 'var(--bg-primary)',
+                  cursor: 'pointer', marginBottom: 6, fontSize: 12,
+                  color: 'var(--text-primary)', textAlign: 'left',
+                }}
+              >
+                <span style={{ fontWeight: 600, minWidth: 90, color: viewingHist === h.id ? 'var(--accent)' : 'var(--text-secondary)' }}>
+                  {h.script_name || '分析'}
+                </span>
+                <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: 11 }}>{h.create_time}</span>
+                {h.dataset_id && <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>数据集 #{h.dataset_id}</span>}
+                <span style={{ flex: 1 }} />
+                <span style={{ color: viewingHist === h.id ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11 }}>
+                  {viewingHist === h.id ? '查看中' : '查看'}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <style>{`

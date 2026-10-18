@@ -10,6 +10,7 @@ import hashlib
 import base64
 import subprocess
 import logging
+import threading
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -19,10 +20,64 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 # A 看板缓存：完整看板 HTML 缓存目录（key = md5(脚本源文件+参数)，命中直接展示不重跑）
 _DASH_KEY_RE = re.compile(r"^[0-9a-f]{32}$")
 
+# B1-12 停止联动：按 request_id 跟踪运行中的脚本子进程（聊天「停止生成」→ cancel_running 终止）
+_procs_lock = threading.Lock()
+_running_procs: Dict[int, subprocess.Popen] = {}   # id(proc) → 子进程
+_proc_rid: Dict[int, str] = {}                     # id(proc) → 所属 request_id
+_proc_cancelled: set = set()                       # id(proc) 已被停止联动标记
+
+
+def cancel_running(request_id: str) -> int:
+    """终止指定请求正在运行的脚本子进程（B1-12 停止生成联动），返回终止数"""
+    with _procs_lock:
+        targets = [pid for pid, rid in _proc_rid.items() if rid == request_id]
+    n = 0
+    for pid in targets:
+        with _procs_lock:
+            _proc_cancelled.add(pid)
+            proc = _running_procs.get(pid)
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+                n += 1
+            except OSError:
+                pass
+    return n
+
+
+def _cleanup_proc(pid: int):
+    with _procs_lock:
+        _running_procs.pop(pid, None)
+        _proc_rid.pop(pid, None)
+        _proc_cancelled.discard(pid)
+
 
 def _dashboards_dir() -> str:
     """看板缓存目录（运行时计算：测试 monkeypatch PROJECT_ROOT 可重定向）"""
     return os.path.join(PROJECT_ROOT, "data", "analysis", "dashboards")
+
+
+def _dataset_fingerprint(params: Dict) -> str:
+    """数据集型参数的文件指纹（绝对路径:mtime:size）——上传覆盖同名文件后看板缓存自然失效。
+    dataset_id → 查库取 file_path；file_path/file → 直接用；不可得返回 ""（回退旧行为）。"""
+    fp = None
+    ds_id = params.get("dataset_id")
+    if ds_id not in (None, ""):
+        try:
+            from db.session import get_db
+            ds = get_db().get_dataset(int(ds_id))
+            fp = (ds or {}).get("file_path")
+        except Exception:
+            return ""
+    if not fp:
+        fp = params.get("file_path") or params.get("file")
+    if not fp or not isinstance(fp, str):
+        return ""
+    try:
+        st = os.stat(fp)
+        return f"{os.path.abspath(fp)}:{int(st.st_mtime)}:{st.st_size}"
+    except OSError:
+        return ""
 
 # S1.6：path 型参数允许落脚的根目录（realpath 包含校验）
 ALLOWED_ROOTS = [
@@ -282,6 +337,8 @@ class _ScriptHandle:
                 return None
         canonical = json.dumps({k: str(v) for k, v in sorted(params.items()) if v is not None},
                                ensure_ascii=False, sort_keys=True)
+        # 数据集内容指纹：同名文件被覆盖（内容变化）→ key 变化 → 旧看板失效
+        canonical += _dataset_fingerprint(params)
         return hashlib.md5((source + canonical).encode("utf-8")).hexdigest()
 
     def run(self, progress_cb=None, **params) -> str:
@@ -317,6 +374,18 @@ class _ScriptHandle:
                 popen_kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
             proc = subprocess.Popen(args, **popen_kwargs)
 
+            # B1-12 停止联动：登记当前请求的子进程（云端 stop 事件 → cancel_running 终止）
+            pid = id(proc)
+            rid = ""
+            try:
+                from yuanai_core.rag import current_request_id
+                rid = current_request_id.get() or ""
+            except Exception:
+                pass
+            with _procs_lock:
+                _running_procs[pid] = proc
+                _proc_rid[pid] = rid
+
             # 流式读输出（读线程跨平台）：stdout 识别 __PROGRESS__:{json} 协议；
             # 时间心跳 10s 一次（存量脚本零改动也有进度反馈）
             stdout_lines: List[str] = []
@@ -349,10 +418,16 @@ class _ScriptHandle:
             while True:
                 if proc.poll() is not None:
                     break
+                # B1-12：用户点了「停止生成」→ 云端 stop 事件 → cancel_running 标记并 kill
+                if id(proc) in _proc_cancelled:
+                    proc.wait()
+                    _cleanup_proc(pid)
+                    return "__ERROR__:已停止生成"
                 elapsed = time.time() - start_time
                 if elapsed > 300:
                     proc.kill()
                     proc.wait()
+                    _cleanup_proc(pid)
                     return "__ERROR__:脚本执行超时（300 秒），已终止"
                 if progress_cb and time.time() - last_beat >= 10:
                     progress_cb(0, 0, f"分析中（已运行 {int(elapsed)} 秒）...")
@@ -440,6 +515,7 @@ class _ScriptHandle:
                     except OSError as e:
                         logger.warning("write dashboard cache failed: %s", e)
 
+            _cleanup_proc(pid)
             return output.strip()
         except subprocess.TimeoutExpired:
             return "__ERROR__:脚本执行超时（5分钟）"

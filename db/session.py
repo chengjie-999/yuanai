@@ -118,6 +118,7 @@ class AnalysisHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String(36), nullable=False, index=True)
     dataset_id = Column(Integer, nullable=True)
+    script_name = Column(String(64), nullable=False, server_default="")
     result_json = Column(Text, nullable=False)
     create_time = Column(TIMESTAMP, server_default=func.now())
 
@@ -544,6 +545,7 @@ class AgentDatabase:
             rows = sess.query(AnalysisHistory).filter_by(session_id=session_id) \
                 .order_by(AnalysisHistory.id.desc()).limit(limit).all()
             return [{"id": r.id, "session_id": r.session_id, "dataset_id": r.dataset_id,
+                     "script_name": r.script_name or "",
                      "result": json.loads(r.result_json) if r.result_json else {},
                      "create_time": str(r.create_time)[:19]} for r in rows]
         finally:

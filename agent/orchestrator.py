@@ -91,6 +91,16 @@ class Orchestrator:
     def _skill_enabled(self, name: str) -> bool:
         return self._enabled_skills is None or name in self._enabled_skills
 
+    def cancel_request(self, request_id: str):
+        """B1-12 停止生成联动：终止该请求正在运行的脚本子进程（云端 stop 事件到达时调用）"""
+        try:
+            from agent.scripts.registry import cancel_running
+            n = cancel_running(request_id)
+            if n:
+                logger.info("停止联动：已终止 %d 个脚本子进程 (req=%s)", n, request_id[:8])
+        except Exception as e:
+            logger.warning("cancel_request 失败: %s", e)
+
     @property
     def automation_agent(self):
         if "automation" not in self._agents:

@@ -386,6 +386,21 @@ async def forward_to_agent(user_id: int, chat_request: dict) -> str | None:
         return None
 
 
+async def send_stop_to_agent(user_id: int, request_id: str) -> bool:
+    """B1-12 停止联动：用户中断 SSE（停止生成）时通知本地 Agent 终止该请求的脚本子进程"""
+    if not user_id or not request_id:
+        return False
+    ws = get_agent(user_id)
+    if ws is None:
+        return False
+    try:
+        await ws.send_json({"type": "stop_request", "request_id": request_id})
+        return True
+    except Exception as e:
+        logger.warning("向 Agent 发送停止通知失败: %s", e)
+        return False
+
+
 class BridgeMemoryBody(BaseModel):
     user_id: int = 0
     facts: list = []

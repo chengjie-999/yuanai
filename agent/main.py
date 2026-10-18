@@ -193,6 +193,8 @@ async def main():
                 yield ev
 
     client.on_chat_request(route)
+    # B1-12 停止联动：云端 stop 事件 → 终止该请求的脚本子进程
+    client.on_stop_request(lambda rid: orchestrator.cancel_request(rid))
 
     # 把 orchestrator 的活动事件通过 WebSocket 实时上报
     orchestrator._on_activity = lambda ev: client.send_activity(ev)

@@ -9,7 +9,6 @@ import ChatView from './chat/ChatView'
 import VoiceCall from './chat/VoiceCall'
 import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
-import { usePlanWindow } from './chat/usePlanWindow'
 import { useAutoRead } from '../hooks/useAutoRead'
 import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, LinkIcon } from './icons'
 
@@ -183,7 +182,6 @@ export default function ChatPage({ user }: { user?: any }) {
   // 子页面浮窗/浮层宿主（统一入口形态 2026-10-17）：用户手动开/关，AI 不自动开关
   // 形态：桌面=对话内可拖动+可缩放浮窗 / 移动=对话内全屏浮层（都不离开对话）
   const [panel, setPanel] = useState<{ path: string; title: string } | null>(null)
-  const panelWin = usePlanWindow({ onOpen: () => {} })  // 兼容占位；实际入口走 MessageBubble 传 path
   const handleOpenPanel = useCallback((link: string) => {
     const resolved = resolvePanel(link)
     setPanel({ path: link, title: resolved?.title || '面板' })
@@ -805,7 +803,6 @@ export default function ChatPage({ user }: { user?: any }) {
             onStop={stopStream} notice={notice}
             onSuggest={handleSend}
             sendTick={sendTick}
-            isMobile={isMobile}
             onOpenPanel={handleOpenPanel}
           />
         )}
@@ -832,7 +829,7 @@ export default function ChatPage({ user }: { user?: any }) {
         const size = planSize || { w: 740, h: 560 }
         const w = Math.max(480, Math.min(size.w, window.innerWidth - 16))
         const h = Math.max(360, Math.min(size.h, window.innerHeight - 80))
-        const { Comp, props, title } = resolved
+        const { Comp, props } = resolved
         return (
           <div style={{
             position: 'fixed', zIndex: 300,

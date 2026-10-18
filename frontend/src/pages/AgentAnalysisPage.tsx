@@ -20,7 +20,11 @@ export default function AgentAnalysisPage({ onClose, hideBack }: { onClose?: () 
           background: 'transparent', cursor: 'pointer',
         }}><ArrowLeftIcon size={12} /> 返回对话</button>
       ) : (
-        
+        <Link to="/chat" style={{
+          fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
+          padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1,
+        }}><ArrowLeftIcon size={12} /> 返回</Link>
       )}
         <span style={{ lineHeight: 1, color: agent.color, display: 'flex' }}><BarChartIcon size={18} /></span>
         <div>

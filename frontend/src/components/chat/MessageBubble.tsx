@@ -6,7 +6,6 @@ import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { voiceTtsStream } from '../../api'
 import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl } from './helpers'
-import { isPlanLink } from './planWindow'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon } from '../icons'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
@@ -36,7 +35,7 @@ function HtmlFrame({ url, title }: { url: string; title: string }) {
   )
 }
 
-const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onRegenerate, autoRead, autoReadTick, isMobile, onOpenPanel }: {
+const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onRegenerate, autoRead, autoReadTick, onOpenPanel }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
@@ -46,7 +45,6 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   onFeedback: (i: number, kind: 'like' | 'dislike') => void
   onRegenerate?: (i: number) => void
   autoRead?: boolean; autoReadTick?: number
-  isMobile?: boolean
   onOpenPanel?: (link: string) => void
 }) {
   const isUser = msg.role === 'user'

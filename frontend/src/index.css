@@ -4,47 +4,54 @@
   box-sizing: border-box;
 }
 
-/* ---- Theme: CSS Custom Properties ---- */
+/* ---- Theme: CSS Custom Properties（2026-10-17 配色升级） ---- */
 :root {
-  --bg-primary: #f6f8fa;
-  --bg-secondary: #f0f2f5;
-  --bg-tertiary: #e8eaed;
+  --bg-primary: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --bg-tertiary: #e8eef5;
   --bg-input: #ffffff;
-  --text-primary: #1f2328;
-  --text-secondary: #656d76;
-  --text-muted: #8b949e;
-  --border: #d0d7de;
-  --border-light: #e3e6ea;
-  --header-bg: #ffffff;
-  --sidebar-bg: #f3f4f6;
-  --shadow-sm: rgba(31,35,40,0.04);
-  --shadow-md: rgba(31,35,40,0.08);
-  --accent: #1976d2;
-  --accent-light: rgba(25,118,210,0.08);
-  --danger: #cf222e;
-  --success: #1a7f37;
-  --hover-bg: rgba(208,215,222,0.32);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --border: #cbd5e1;
+  --border-light: #e2e8f0;
+  --header-bg: rgba(255,255,255,0.86);
+  --sidebar-bg: #f1f5f9;
+  --shadow-sm: rgba(15,23,42,0.05);
+  --shadow-md: rgba(15,23,42,0.10);
+  --accent: #2563eb;
+  --accent-light: rgba(37,99,235,0.09);
+  --danger: #dc2626;
+  --success: #16a34a;
+  --hover-bg: rgba(203,213,225,0.35);
+  /* 新增：渐变与品牌色（Hero/CTA/装饰用） */
+  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 45%, #4f46e5 100%);
+  --accent-soft: rgba(59,130,246,0.12);
+  --accent-glow: rgba(59,130,246,0.35);
 }
 
 [data-theme="dark"] {
-  --bg-primary: #1e1e1e;
-  --bg-secondary: #252526;
-  --bg-tertiary: #2d2d2d;
-  --bg-input: #3c3c3c;
-  --text-primary: #cccccc;
-  --text-secondary: #9d9d9d;
-  --text-muted: #6e6e6e;
-  --border: #3e3e42;
-  --border-light: #333333;
-  --header-bg: #2d2d2d;
-  --sidebar-bg: #252526;
-  --shadow-sm: rgba(0,0,0,0.3);
-  --shadow-md: rgba(0,0,0,0.5);
-  --accent: #4da6ff;
-  --accent-light: rgba(77,166,255,0.12);
-  --danger: #f44747;
-  --success: #6a9955;
-  --hover-bg: rgba(255,255,255,0.06);
+  --bg-primary: #0b1220;
+  --bg-secondary: #101a2c;
+  --bg-tertiary: #16233a;
+  --bg-input: #1b2942;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border: #2b3b56;
+  --border-light: #1f2c44;
+  --header-bg: rgba(16,26,44,0.86);
+  --sidebar-bg: #0e1830;
+  --shadow-sm: rgba(0,0,0,0.30);
+  --shadow-md: rgba(0,0,0,0.50);
+  --accent: #60a5fa;
+  --accent-light: rgba(96,165,250,0.13);
+  --danger: #f87171;
+  --success: #4ade80;
+  --hover-bg: rgba(148,163,184,0.10);
+  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #60a5fa 45%, #818cf8 100%);
+  --accent-soft: rgba(96,165,250,0.14);
+  --accent-glow: rgba(96,165,250,0.30);
 }
 
 body {

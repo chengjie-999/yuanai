@@ -168,6 +168,21 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ============ 统计条 ============ */}
+      <section className="landing-stats">
+        {[
+          { num: '80+', label: '内置工具' },
+          { num: '9', label: '分析脚本一问直调' },
+          { num: '3', label: '多智能体协作' },
+          { num: '24/7', label: '本机 Agent 待命执行' },
+        ].map((s) => (
+          <div key={s.label} className="landing-stat">
+            <span className="landing-stat-num">{s.num}</span>
+            <span className="landing-stat-label">{s.label}</span>
+          </div>
+        ))}
+      </section>
+
       {/* ============ 能力矩阵 ============ */}
       <section className="landing-section" id="agents">
         <h2 className="landing-section-title">一支 Agent 团队，一个对话入口</h2>
@@ -304,15 +319,15 @@ export default function LandingPage() {
           position: relative;
           background:
             radial-gradient(ellipse 80% 60% at 70% -10%, rgba(255,255,255,0.16) 0%, transparent 60%),
-            radial-gradient(ellipse 60% 50% at 10% 110%, rgba(64,196,255,0.18) 0%, transparent 60%),
-            linear-gradient(135deg, #1a6fe0 0%, #0d47a1 45%, #1a237e 100%);
+            radial-gradient(ellipse 60% 50% at 10% 110%, var(--accent-glow) 0%, transparent 60%),
+            var(--accent-gradient);
           overflow: hidden;
           padding: 96px 24px 104px;
         }
         [data-theme="dark"] .landing-hero {
           background:
-            radial-gradient(ellipse 80% 60% at 70% -10%, rgba(255,255,255,0.06) 0%, transparent 60%),
-            radial-gradient(ellipse 60% 50% at 10% 110%, rgba(64,196,255,0.10) 0%, transparent 60%),
+            radial-gradient(ellipse 80% 60% at 70% -10%, rgba(255,255,255,0.05) 0%, transparent 60%),
+            radial-gradient(ellipse 60% 50% at 10% 110%, var(--accent-glow) 0%, transparent 60%),
             linear-gradient(135deg, #10263e 0%, #0a1628 45%, #0f1a2e 100%);
         }
         /* 网格纹理叠加（极淡，增加科技感层次） */
@@ -508,6 +523,38 @@ export default function LandingPage() {
         }
 
         /* ============================
+           统计条
+           ============================ */
+        .landing-stats {
+          display: flex;
+          justify-content: center;
+          gap: 48px;
+          flex-wrap: wrap;
+          max-width: 960px;
+          margin: 0 auto;
+          padding: 44px 24px 0;
+        }
+        .landing-stat {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+        }
+        .landing-stat-num {
+          font-size: 26px;
+          font-weight: 800;
+          background: var(--accent-gradient);
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        .landing-stat-label {
+          font-size: 12px;
+          color: var(--text-muted);
+          letter-spacing: 0.5px;
+        }
+
+        /* ============================
            多智能体卡片网格
            ============================ */
         .landing-agent-grid {
@@ -652,7 +699,7 @@ export default function LandingPage() {
           position: relative;
           background:
             radial-gradient(ellipse 70% 90% at 80% 10%, rgba(255,255,255,0.14) 0%, transparent 60%),
-            linear-gradient(135deg, #1a6fe0 0%, #0d47a1 55%, #1a237e 100%);
+            var(--accent-gradient);
           border-radius: 22px;
           padding: 52px 32px;
           text-align: center;

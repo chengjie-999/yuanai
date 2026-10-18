@@ -306,6 +306,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - Agent 专用工具：`agent/tools/` 递归扫描，38 个（浏览器/审核/Cookie/截图）
 - 工具总计：39 共享 + 38 专用 = 80 个，按 Agent 角色精准分配
 - 分析脚本：9 个，输出协议：`__IMAGES__` + `__HTML__` + `__RESULT__`
+- **联网搜索（2026-10-17 接入官方 API）**：`yuanai_core/pure/web_search.py` 三级兜底——DeepSeek 官方 Search（`POST /v1/tools/search`，结构化结果+权威评级+长摘要，免费过渡期至 11-01 后 5 元/千次成功计费）→ Bing 国内 → DDG 兜底；`_search_deepseek` 复用 DEEPSEEK_API_KEY 鉴权
 
 ### 本地 Claude Code 委派工具
 

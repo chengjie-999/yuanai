@@ -26,7 +26,6 @@ _pending: Dict[str, asyncio.Queue] = {}
 _pending_owner: Dict[str, str] = {}
 
 HEARTBEAT_INTERVAL = 30
-HEARTBEAT_TIMEOUT = 90
 
 
 def _get_agent_status(request: Request, include_activities: bool = False) -> list[dict]:

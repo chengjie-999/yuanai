@@ -3,8 +3,10 @@ import { API_BASE, headers, safeJson } from '../api'
 import { SUB_AGENTS } from '../config/agents'
 import { ErrorBoundary } from './ErrorBoundary'
 import { XIcon } from './icons'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function AgentPage({ userId }: { userId?: number }) {
+  const { isAdmin } = useAuth()
   const [agents, setAgents] = useState<any[]>([])
 
   const load = async () => {
@@ -34,8 +36,8 @@ export default function AgentPage({ userId }: { userId?: number }) {
     <div style={{ background: 'var(--bg-secondary)', padding: '40px', display: 'flex', justifyContent: 'center' }}>
       <div style={{ maxWidth: 560, width: '100%', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-        {/* 模型配置 */}
-        <ModelsCard />
+        {/* 模型配置（2026-10-19：仅 admin——普通用户看到的是注定 403 的管理表单） */}
+        {isAdmin && <ModelsCard />}
 
         {/* 运行状态 */}
         <div style={{ background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', padding: '20px 24px' }}>

@@ -1,10 +1,6 @@
 /* 知识星球 API — 星球/导图/笔记/导入任务/检索 */
-import { API_BASE, getToken } from './index'
+import { API_BASE, getToken, authHeaders } from './index'
 
-function authHeaders(): Record<string, string> {
-  const token = getToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
 
 async function req<T = any>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers: { ...authHeaders(), ...(init?.headers || {}) } })

@@ -638,31 +638,6 @@ class ScriptRegistry:
                 self._scripts[instance.name] = handle
                 logger.info("已注册脚本(类): %s → %s", instance.name, filepath)
 
-    def list_for_llm(self) -> str:
-        if not self._scripts:
-            return "（暂无可用脚本）"
-
-        tagged: Dict[str, list] = {}
-        untagged: list = []
-        for s in self._scripts.values():
-            if s.tags:
-                for tag in s.tags:
-                    tagged.setdefault(tag, []).append(s)
-            else:
-                untagged.append(s)
-
-        lines = []
-        for tag in sorted(tagged):
-            lines.append(f"[{tag}]")
-            for s in tagged[tag]:
-                lines.append(f"- {s.name}: {s.description}")
-        if untagged:
-            lines.append("[其他]")
-            for s in untagged:
-                lines.append(f"- {s.name}: {s.description}")
-
-        return "\n".join(lines)
-
     def run(self, name: str, params: dict = None, progress_cb=None) -> str:
         """执行脚本。progress_cb(current, total, message)：进度回调透传 handle。
         名字先经 resolve（中文名/key 双通道，工具化后 model 传 key）。

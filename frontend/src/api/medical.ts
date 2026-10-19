@@ -1,19 +1,10 @@
 // ============================================================
 // 医学与生命科学 API — 物种导航 / PubMed 文献检索 / 药物可行性评估
-// 自包含文件：不依赖 api/index.ts，集成时由他人统一接入
 // 后端: api/v1/medical/router.py（/api/v1/medical 前缀，JWT 保护）
+// 2026-10-19 去重：API_BASE/getToken/authHeaders 复用 api/index.ts
 // ============================================================
 
-const API_BASE = '/api/v1'
-
-function getToken(): string {
-  return localStorage.getItem('token') || sessionStorage.getItem('token') || ''
-}
-
-function authHeaders(): Record<string, string> {
-  const token = getToken()
-  return token ? { 'Authorization': `Bearer ${token}` } : {}
-}
+import { API_BASE, authHeaders } from './index'
 
 function jsonHeaders(): Record<string, string> {
   return { 'Content-Type': 'application/json', ...authHeaders() }

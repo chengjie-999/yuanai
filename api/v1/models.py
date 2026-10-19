@@ -16,13 +16,6 @@ class ChatRequest(BaseModel):
     target_agent: str = Field("", description="@指定智能体：analysis/collection/automation/claude/orchestrator；空=统筹自行路由")
 
 
-class MessageResponse(BaseModel):
-    id: int
-    role: str
-    content: str
-    create_time: str
-
-
 class ToolRequest(BaseModel):
     name: str = Field(..., description="工具名称")
     args: dict = Field(default_factory=dict, description="工具参数")

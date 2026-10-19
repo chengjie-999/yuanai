@@ -30,15 +30,5 @@ export interface ToolCall {
   args?: string      // 工具参数（JSON 串，展示「它执行了什么」）
 }
 
-export interface SSEEvent {
-  type: 'token' | 'reasoning' | 'tool_start' | 'tool_end' | 'done' | 'error' | 'progress' | 'image' | 'html' | 'dashboard' | 'agent' | 'approval'
-  data: any
-}
 
-export interface ToolInfo {
-  name: string
-  description: string
-  args: Record<string, any>
-  category: string
-  admin_only?: boolean
-}
+

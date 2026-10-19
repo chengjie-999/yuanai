@@ -91,15 +91,5 @@ class SkillRegistry:
         """所有 Skill 名称列表"""
         return list(self._skills.keys())
 
-    def list_for_llm(self) -> str:
-        """生成给 Orchestrator LLM 看的 skill 简介"""
-        if not self._skills:
-            return "（暂无可用子Agent）"
-        lines = []
-        for s in self._skills.values():
-            lines.append(f"- delegate_to_{s.name}_agent：{s.description}")
-        return "\n".join(lines)
-
-
-# 全局单例
+# 全局单例（2026-10-19：list_for_llm 死代码已删，单例保留）
 skill_registry = SkillRegistry()

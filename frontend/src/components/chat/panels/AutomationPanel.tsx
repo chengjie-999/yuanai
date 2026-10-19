@@ -3,7 +3,7 @@ import { API_BASE } from '../../../api'
 import { MonitorOffIcon, BotIcon } from '../../icons'
 
 export default function AutomationPanel({ agentOnline }: { agentOnline: boolean }) {
-  const [screenshot] = useState<string | null>(null)
+  // 2026-10-19 清理：screenshot 只有读取无 setter——截屏分支永不可达，已移除
   const [status, setStatus] = useState<string>('')
   const [activities, setActivities] = useState<any[]>([])
 
@@ -58,16 +58,10 @@ export default function AutomationPanel({ agentOnline }: { agentOnline: boolean 
       </div>
 
       <div style={{ flex: 1, overflow: 'auto' }}>
-        {screenshot ? (
-          <div style={{ padding: 8 }}>
-            <img src={screenshot} style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border)' }} alt="截屏" />
-          </div>
-        ) : (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 30, fontSize: 13 }}>
-            <div style={{ marginBottom: 8, opacity: 0.3, display: 'flex', justifyContent: 'center' }}><BotIcon size={32} /></div>
-            浏览器就绪，等待任务...
-          </div>
-        )}
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 30, fontSize: 13 }}>
+          <div style={{ marginBottom: 8, opacity: 0.3, display: 'flex', justifyContent: 'center' }}><BotIcon size={32} /></div>
+          浏览器就绪，等待任务...
+        </div>
 
         {activities.length > 0 && (
           <div style={{ padding: '0 14px' }}>

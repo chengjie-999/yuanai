@@ -14,7 +14,7 @@ _SAFE_ERROR = "工具执行失败"
 
 CATEGORIES = {
     "calculate_sum": "计算", "calculate_multiply": "计算",
-    "get_today_temperature": "天气", "get_tomorrow_forecast": "天气",
+    "get_today_weather": "天气",
     "get_system_stats": "系统",
     "save_data_csv": "文件", "list_data_files": "文件", "read_data_file": "文件",
     "save_crawl_data": "数据采集", "list_crawl_data": "数据采集", "get_crawl_detail": "数据采集",

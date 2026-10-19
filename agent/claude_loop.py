@@ -314,15 +314,6 @@ def execute_tool(name: str, tool_input: dict) -> str:
 
 # ==================== SDK 流式 loop ====================
 
-def _run_async(coro):
-    """同步包装（供决策回调/测试）：当前事件循环上跑任务"""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(1) as pool:
-        return pool.submit(asyncio.run, coro).result()
 
 
 async def run_sdk_loop(

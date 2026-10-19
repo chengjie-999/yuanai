@@ -126,6 +126,7 @@ frontend/                React 18 + TypeScript + React Router 前端
 │       ├── LandingPage.tsx        官网公开首页（免登录，Hero/能力/特性/功能入口区/CTA；功能入口直达 /chat/agent/* 各面板）
 │       ├── LandingHeader.tsx      公开页共享 Header（首页/关于我们导航 + 主题 + 登录态按钮）
 │       ├── AboutPage.tsx          关于我（个人简历，免登录）
+│       ├── ApiDocsPage.tsx        API 文档页（/api-docs，免登录；README.md 实时同步渲染 + API 示例条目）
 │       ├── MedicalPage.tsx        医学与生命科学工作台（/chat/agent/medical：PubMed检索/物种导航/药物可行性）
 │       ├── CollectionRecordsPage.tsx 采集记录页（/chat/agent/records：列表/详情/删除）
 │       ├── AdminPage.tsx          后台管理（11 Tab，嵌套路由 /admin/*）

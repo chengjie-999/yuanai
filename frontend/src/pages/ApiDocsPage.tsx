@@ -1,4 +1,7 @@
+import { useState, useEffect } from 'react'
 import LandingHeader from '../components/LandingHeader'
+import MarkdownContent from '../components/MarkdownContent'
+import { API_BASE } from '../api'
 import { Link } from 'react-router-dom'
 
 /* ============================================================
@@ -136,6 +139,17 @@ const METHOD_COLORS: Record<string, string> = {
 }
 
 export default function ApiDocsPage() {
+  // 项目文档：与仓库 README.md 同一文件（后端 /docs/readme 每次请求读文件，
+  // 改 README 即改本页；生产环境 git pull 后自动同步）
+  const [readme, setReadme] = useState('')
+  const [readmeErr, setReadmeErr] = useState(false)
+  useEffect(() => {
+    fetch(`${API_BASE}/docs/readme`)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+      .then((t) => setReadme(t))
+      .catch(() => setReadmeErr(true))
+  }, [])
+
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
       <LandingHeader />
@@ -150,6 +164,25 @@ export default function ApiDocsPage() {
           限流：登录 5 次/60s · 通用 API 60 次/60s · 上传 10 次/60s。以下为示例版，完整文档与交互式调试见{' '}
           <a href="/docs" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Swagger（新标签打开）</a>。
         </p>
+
+        {/* 项目文档：README.md 原文实时渲染（同一文件，改 README 即改本页） */}
+        <section style={{ marginBottom: 32 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 12px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+            项目文档（与 README.md 实时同步）
+          </h2>
+          {readme ? (
+            <div className="markdown-body" style={{
+              background: 'var(--bg-input)', border: '1px solid var(--border)',
+              borderRadius: 10, padding: '20px 22px', fontSize: 14, lineHeight: 1.7,
+            }}>
+              <MarkdownContent content={readme} />
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '14px 2px' }}>
+              {readmeErr ? 'README 加载失败（后端未运行或文件缺失）' : '加载中…'}
+            </div>
+          )}
+        </section>
 
         {SECTIONS.map((s) => (
           <section key={s.group} style={{ marginBottom: 32 }}>

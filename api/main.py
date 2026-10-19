@@ -15,6 +15,7 @@ from api.v1.chat.router import router as chat_router
 from api.v1.tools.router import router as tools_router
 from api.v1.auth.router import router as auth_router
 from api.v1.stats.router import router as stats_router
+from api.v1.docs_router import router as docs_router
 from api.v1.admin.router import router as admin_router
 from api.v1.data.router import router as data_router
 from api.v1.knowledge.router import router as knowledge_router
@@ -66,6 +67,7 @@ app.include_router(chat_router, prefix="/api/v1", tags=["chat"])
 app.include_router(tools_router, prefix="/api/v1", tags=["tools"])
 app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
 app.include_router(stats_router, prefix="/api/v1", tags=["stats"])
+app.include_router(docs_router)
 app.include_router(admin_router, prefix="/api/v1", tags=["admin"])
 app.include_router(data_router, prefix="/api/v1", tags=["data"])
 app.include_router(knowledge_router, prefix="", tags=["knowledge"])

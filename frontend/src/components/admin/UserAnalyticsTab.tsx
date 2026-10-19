@@ -31,6 +31,9 @@ export default function UserAnalyticsTab() {
   const [days, setDays] = useState(30)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // 2026-10-19 修复：重试此前 setDays(d=>d) 同值 React bail out 不发请求；
+  // 用 reload 计数作为 effect 依赖，重试 +1 重新拉取
+  const [reload, setReload] = useState(0)
 
   useEffect(() => {
     setLoading(true); setError('')
@@ -42,7 +45,7 @@ export default function UserAnalyticsTab() {
       .then((d) => setData(d))
       .catch((e) => setError(`用户分析加载失败: ${e.message}`))
       .finally(() => setLoading(false))
-  }, [days])
+  }, [days, reload])
 
   const trend = useMemo(() => {
     if (!data?.daily?.length) return []
@@ -67,7 +70,7 @@ export default function UserAnalyticsTab() {
   ] : []
 
   if (loading) return <Spinner />
-  if (error) return <ErrorMsg msg={error} onRetry={() => setDays(d => d)} />
+  if (error) return <ErrorMsg msg={error} onRetry={() => setReload((n) => n + 1)} />
 
   const ov = data?.overview || {}
 

@@ -196,8 +196,15 @@ class VaultSyncLoop:
         def _sub(m):
             mid = int(m.group(2))
             name = m.group(3)
+            # 2026-10-19 修复：name 来自云端笔记内容，直接拼路径可 `../` 越界写
+            # 出 vault 目录——realpath 必须落在 assets 目录内
+            assets_dir = os.path.realpath(
+                os.path.join(self.vault_dir, SYNC_DIR_NAME, "assets", str(mid)))
             dest_rel = f"{SYNC_DIR_NAME}/assets/{mid}/{name}"
-            dest = os.path.join(self.vault_dir, dest_rel)
+            dest = os.path.realpath(os.path.join(self.vault_dir, dest_rel))
+            if not (dest == assets_dir or dest.startswith(assets_dir + os.sep)):
+                failed[0] += 1
+                return m.group(0)
             if not os.path.isfile(dest):
                 raw = self._http_raw(f"/asset/{mid}/{name}")
                 if raw is None:

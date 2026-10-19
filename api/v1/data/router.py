@@ -8,7 +8,10 @@ import re
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+
+# 数据集上传大小上限（2026-10-19：此前一次性 read() 无上限，大文件可打爆内存）
+MAX_UPLOAD_BYTES = 300 * 1024 * 1024
 from db.session import get_db
 from utils.data_path import root_path
 
@@ -87,8 +90,18 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)):
 
     user_id = _get_user_id(request)
     db = get_db()
-    content = await file.read()
-    file_size = len(content)
+    # 2026-10-19：流式读盘 + 大小上限（与知识库 zip 同口径 300MB）
+    chunks = []
+    file_size = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        file_size += len(chunk)
+        if file_size > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail=f"文件超过上限 {MAX_UPLOAD_BYTES // (1024*1024)}MB")
+        chunks.append(chunk)
+    content = b"".join(chunks)
 
     # dedup: same name + same size → update existing
     from db.session import Dataset
@@ -264,7 +277,9 @@ async def analyze_dataset_api(ds_id: int, request: Request, force: bool = False,
                     pass
 
     if cache_only:
-        return JSONResponse(content={"cached": False}, status_code=204)
+        # 2026-10-19 修复：JSONResponse 未导入必 NameError；204 不应带 body
+        from fastapi.responses import Response
+        return Response(status_code=204)
 
     # run analysis in process pool
     global _process_pool

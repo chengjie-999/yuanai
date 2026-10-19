@@ -22,7 +22,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const saved = localStorage.getItem('token') || sessionStorage.getItem('token')
+    let saved: string | null = null
+    try { saved = localStorage.getItem('token') || sessionStorage.getItem('token') } catch { /* 存储受限 */ }
     if (saved) {
       checkToken().then((data) => {
         if (data.valid && data.user) {

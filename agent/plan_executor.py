@@ -204,6 +204,16 @@ class PlanExecutor:
 
     def run_once(self) -> dict:
         """单轮：拉取 → 执行 → 上报；返回本轮摘要"""
+        # 2026-10-19 修复：后台线程未设用户/请求上下文——registry 把 .owner 写成 0
+        # （script-html 归属校验判 404）、停止联动拿不到 rid
+        try:
+            from yuanai_core.rag import current_user_id, current_request_id
+            plan_owner = self._http_uid or 0
+            if plan_owner:
+                current_user_id.set(plan_owner)
+            current_request_id.set(f"plan-{plan.get('id', 0)}")
+        except Exception:
+            pass
         try:
             r = self._http("/pull", {}, timeout=30)
         except Exception as e:

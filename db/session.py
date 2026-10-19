@@ -1230,6 +1230,9 @@ class AgentDatabase:
             if len(new_password) < 8:
                 return False, "新密码至少 8 个字符"
             user.password_hash = _bcrypt.hashpw(new_password.encode(), _bcrypt.gensalt()).decode()
+            # 2026-10-19 修复：改密后旧 JWT 全部继续有效（吊销机制未接上）——
+            # token_version +1，携带旧 tv 的 token 立即失效
+            user.token_version = (user.token_version or 0) + 1
             sess.commit()
             return True, ""
         finally:

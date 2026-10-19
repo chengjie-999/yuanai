@@ -22,6 +22,8 @@ _agent_info: Dict[str, dict] = {}
 
 # request_id → asyncio.Queue（SSE 桥等待 Agent 回传事件）
 _pending: Dict[str, asyncio.Queue] = {}
+# request_id → agent_id（2026-10-19：断线清理按归属而非 UUID startswith）
+_pending_owner: Dict[str, str] = {}
 
 HEARTBEAT_INTERVAL = 30
 HEARTBEAT_TIMEOUT = 90
@@ -224,6 +226,7 @@ def get_pending_queue(request_id: str) -> asyncio.Queue:
 def cleanup_pending(request_id: str):
     """清理已完成请求的队列"""
     _pending.pop(request_id, None)
+    _pending_owner.pop(request_id, None)
 
 
 @router.websocket("/ws/agent/{agent_id}")
@@ -326,8 +329,11 @@ async def agent_ws(websocket: WebSocket, agent_id: str):
         if _agents.get(agent_id) is websocket:
             _agents.pop(agent_id, None)
             _agent_info.pop(agent_id, None)
-            # 清理该 agent 关联的所有 pending 请求
-            stale = [rid for rid in _pending if rid.startswith(agent_id)]
+            # 清理该 agent 关联的所有 pending 请求。
+            # 2026-10-19 修复：request_id 是 UUID，startswith(agent_id) 永不匹配
+            # （且数字 id 前缀可能误删他人）——改为按注册连接的 agent 归属表清理
+            stale = [rid for rid, a in list(_pending_owner.items())
+                     if a == agent_id and rid in _pending]
             for rid in stale:
                 cleanup_pending(rid)
             logger.info("Agent %s 已移除（当前在线: %d）", agent_id, len(_agents))
@@ -374,8 +380,11 @@ async def forward_to_agent(user_id: int, chat_request: dict) -> str | None:
         request_id = str(uuid.uuid4())
         chat_request["request_id"] = request_id
 
-    # 预创建等待队列
+    # 预创建等待队列 + 记录归属 agent（断线清理用；机器模式 agent_id≠user_id，
+    # 按 socket 反查真实 agent_id）
     get_pending_queue(request_id)
+    _pending_owner[request_id] = next(
+        (aid for aid, w in _agents.items() if w is ws), str(user_id))
 
     try:
         await ws.send_json(chat_request)

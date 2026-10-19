@@ -93,6 +93,10 @@ async def auth_middleware(request: Request, call_next):
             return JSONResponse(status_code=403, content={"detail": "账号已被冻结"})
         if payload and user and user.token_version and int(payload.get("tv") or 0) < user.token_version:
             return JSONResponse(status_code=401, content={"detail": "token 已失效，请重新登录"})
+        # 2026-10-19 修复：admin 删除用户后 user 为 None 仍放行——JWT 过期前
+        # 可以已删用户身份继续工作；补 401 收口
+        if payload and not user:
+            return JSONResponse(status_code=401, content={"detail": "账号不存在，请重新登录"})
     except Exception:
         logger.exception("冻结检查时数据库异常")
     finally:
@@ -127,8 +131,10 @@ async def rate_limit_middleware(request: Request, call_next):
     from fastapi.responses import JSONResponse
     from api.v1.exceptions import AppError
     try:
-        # 登录/注册使用严格限流（S3.5：安装码注册端点同档——防枚举爆破）
-        if path.startswith("/api/v1/auth/login") or path.startswith("/api/v1/auth/register") \
+        # 注册/安装码使用严格限流（S3.5：防枚举爆破）。
+        # 2026-10-19 修复：login 移出中间件——auth/login 端点自身已 check 一次，
+        # 此前双计导致 5 次/分钟实际约 3 次即 429
+        if path.startswith("/api/v1/auth/register") \
                 or path.startswith("/api/v1/agent/register"):
             auth_limiter.check(ip)
         # 上传端点使用中等限流

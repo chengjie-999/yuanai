@@ -22,7 +22,8 @@ export default function WebsitesTab() {
     if (!newName.trim() || !newUrl.trim()) return
     const urls = newUrl.split(/[,，]/).map((u) => u.trim()).filter(Boolean)
     const r = await addWebsite(newName, JSON.stringify(urls), newRemark)
-    if (r.error) { setError(r.error); return }
+    // 2026-10-19 修复：失败字段是 detail——此前失败也清空表单并关闭弹层
+    if (r.error || r.detail) { setError(r.error || r.detail); return }
     setShowAdd(false); setNewName(''); setNewUrl(''); setNewRemark(''); setError(''); load()
   }
   const handleDelete = async (id: number, name: string) => {

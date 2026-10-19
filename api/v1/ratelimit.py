@@ -114,11 +114,19 @@ upload_limiter = RateLimiter("upload", max_requests=10, window=60)
 
 
 def get_client_ip(request) -> str:
-    """从 Request 提取客户端 IP（优先 X-Forwarded-For）"""
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    # Starlette/FastAPI Request
+    """从 Request 提取客户端 IP。
+
+    2026-10-19 加固：此前无条件取 X-Forwarded-For 第一段——该头由 Nginx
+    （$proxy_add_x_forwarded_for）追加，客户端可伪造任意值绕过限流/登录锁定。
+    改为：仅当直连方是可信反代（本机回环）时才信任 XFF 的真实客户端段，
+    否则用直连 IP。"""
+    client_ip = ""
     if hasattr(request, "client") and request.client:
-        return request.client.host
+        client_ip = request.client.host or ""
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    # 直连方是回环（Nginx 同机反代）→ XFF 追加链里最左侧才是真实客户端
+    if forwarded and client_ip in ("127.0.0.1", "::1", ""):
+        return forwarded.split(",")[0].strip()
+    if client_ip:
+        return client_ip
     return "127.0.0.1"

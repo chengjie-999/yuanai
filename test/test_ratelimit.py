@@ -67,11 +67,22 @@ class TestGetClientIP:
     """IP 提取"""
 
     def test_x_forwarded_for(self):
+        """2026-10-19 加固：仅直连方是回环（可信反代）时信任 XFF"""
         from fastapi import Request
         from unittest.mock import MagicMock
         mock_req = MagicMock(spec=Request)
         mock_req.headers = {"X-Forwarded-For": "1.2.3.4, 5.6.7.8"}
+        mock_req.client.host = "127.0.0.1"  # Nginx 同机反代
         assert get_client_ip(mock_req) == "1.2.3.4"
+
+    def test_x_forwarded_for_spoofed(self):
+        """直连方非可信反代 → 忽略可伪造的 XFF，取直连 IP"""
+        from fastapi import Request
+        from unittest.mock import MagicMock
+        mock_req = MagicMock(spec=Request)
+        mock_req.headers = {"X-Forwarded-For": "1.2.3.4"}
+        mock_req.client.host = "203.0.113.9"
+        assert get_client_ip(mock_req) == "203.0.113.9"
 
     def test_client_host(self):
         from fastapi import Request

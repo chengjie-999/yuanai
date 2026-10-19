@@ -15,7 +15,14 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 2026-10-19 修复：frozen 后 __file__ 指向 _MEIPASS（临时解包目录）——脚本产物
+# （dashboards/html_cache/results）会落进临时目录且每次启动丢失。改用
+# utils.data_path 的 root_path()（frozen 下=用户数据根 %LOCALAPPDATA%\XiaoYuanAI）
+try:
+    from utils.data_path import root_path as _root_path
+    PROJECT_ROOT = _root_path()
+except Exception:
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # A 看板缓存：完整看板 HTML 缓存目录（key = md5(脚本源文件+参数)，命中直接展示不重跑）
 _DASH_KEY_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -34,9 +41,14 @@ def cancel_running(request_id: str) -> int:
     n = 0
     for pid in targets:
         with _procs_lock:
-            _proc_cancelled.add(pid)
             proc = _running_procs.get(pid)
-        if proc and proc.poll() is None:
+            if proc is None:
+                # 2026-10-19 修复：proc 已结束但未清理的 pid 只清登记，不再
+                # 加进取消集（否则 id 复用后误杀新脚本）
+                _proc_rid.pop(pid, None)
+                continue
+            _proc_cancelled.add(pid)
+        if proc.poll() is None:
             try:
                 proc.kill()
                 n += 1
@@ -347,6 +359,18 @@ class _ScriptHandle:
         frozen = getattr(sys, "frozen", False)
         args = [sys.executable, "--run-script", self._filepath] if frozen else [sys.executable, self._filepath]
         param_order = self._param_order or sorted(params)
+        # 2026-10-19 修复：脚本按 sys.argv 位置取值——稀疏传参时整体前移、
+        # 参数落到错误槽位（如只传 file_path+predict_path，predict_path 被当成
+        # label_col）。声明序里存在缺口时 fail-fast，要求模型补齐。
+        if self._param_order:
+            present = [k for k in param_order if k in params]
+            if present:
+                first_i = param_order.index(present[0])
+                last_i = param_order.index(present[-1])
+                missing = [k for k in param_order[first_i:last_i + 1] if k not in params]
+                if missing:
+                    return (f"__ERROR__:参数校验失败: 脚本参数按位置传递，缺少 "
+                            f"{', '.join(missing)} 会导致错位——请补齐后再调用")
         for k in param_order:
             if k in params:
                 val = str(params[k])
@@ -419,7 +443,9 @@ class _ScriptHandle:
                 if proc.poll() is not None:
                     break
                 # B1-12：用户点了「停止生成」→ 云端 stop 事件 → cancel_running 标记并 kill
-                if id(proc) in _proc_cancelled:
+                with _procs_lock:
+                    _cancelled = id(proc) in _proc_cancelled
+                if _cancelled:
                     proc.wait()
                     _cleanup_proc(pid)
                     return "__ERROR__:已停止生成"

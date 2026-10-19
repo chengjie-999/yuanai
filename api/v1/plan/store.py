@@ -114,10 +114,32 @@ def truncate_result(result_json: dict) -> dict:
     elif isinstance(blocks, (list, dict)):
         s = json.dumps(blocks, ensure_ascii=False)
         if len(s) > RESULT_BLOCKS_MAX:
-            out["blocks"] = json.loads(s[:RESULT_BLOCKS_MAX - 1] + '"]') \
-                if isinstance(blocks, list) else {}
+            # 2026-10-19 修复：此前按字符截断后拼 '"]' 生成非法 JSON →
+            # /step-done 解析 500、步骤卡 running。改为截断到合法子结构
+            out["blocks"] = _truncate_json(blocks, RESULT_BLOCKS_MAX)
             out["truncated"] = True
     return out
+
+
+def _truncate_json(obj, limit: int):
+    """把 list/dict 截断到序列化后 ≤ limit 字节的合法 JSON（无法满足返回 None）"""
+    if isinstance(obj, list):
+        items = []
+        for it in obj:
+            items.append(it)
+            if len(json.dumps(items, ensure_ascii=False)) > limit:
+                items.pop()
+                break
+        return items
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            out[k] = v
+            if len(json.dumps(out, ensure_ascii=False)) > limit:
+                out.pop(k)
+                break
+        return out
+    return None
 
 
 def resolve_plan_id(plan_id: int, user_id: int) -> int:

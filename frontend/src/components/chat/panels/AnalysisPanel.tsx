@@ -21,7 +21,15 @@ export default function AnalysisPanel() {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true); setError('')
-    const r = await uploadDataset(file)
+    let r: any = null
+    try {
+      r = await uploadDataset(file)
+    } catch {
+      setError('上传失败，请重试')
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+      return
+    }
     if (r?.id) {
       loadDatasets()
       setSelectedId(r.id)

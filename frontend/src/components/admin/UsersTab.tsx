@@ -54,7 +54,8 @@ export default function UsersTab() {
     try {
       const res = await fetch(`${API_BASE}/admin/users/create`, { method: 'POST', headers: headers(), body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole }) })
       const data = await res.json()
-      if (data.error) { setError(data.error); return }
+      // 2026-10-19 修复：后端 400 返回 detail 而非 error——此前失败也清空表单
+      if (!res.ok || data.error) { setError(data.detail || data.error || '创建失败'); return }
       setShowCreate(false); setNewUsername(''); setNewPassword(''); setNewPassword2(''); setShowPw(false)
       fetchUsers()
     } catch { setError('创建失败') }

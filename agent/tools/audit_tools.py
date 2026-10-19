@@ -4,7 +4,16 @@ from agent.rag import get_all_specs, search_spec, search_steps
 import os
 from datetime import datetime
 
-db = AgentDatabase()
+# 2026-10-19 修复：模块导入即建 AgentDatabase（create_all 立即连 MySQL）——
+# 本地 Agent 无 DB 时 import agent.tools 整个失败；改惰性获取
+_db = None
+
+
+def _get_db():
+    global _db
+    if _db is None:
+        _db = AgentDatabase()
+    return _db
 
 IMPORTANT_EXAMPLES_FILE = "data/file/important_examples.jsonl"
 
@@ -71,7 +80,7 @@ def save_audit_feedback(
         "timestamp": timestamp
     }
     
-    db.set_state(f"audit_feedback_{image_id}", feedback_data)
+    _get_db().set_state(f"audit_feedback_{image_id}", feedback_data)
     
     result_msg = f"反馈已保存: {image_id}"
     
@@ -143,7 +152,7 @@ def get_audit_feedback(image_id: str) -> str:
     输入：图片唯一标识
     输出：反馈详情
     """
-    feedback = db.get_state(f"audit_feedback_{image_id}")
+    feedback = _get_db().get_state(f"audit_feedback_{image_id}")
     if feedback:
         return str(feedback)
     return "无反馈记录"
@@ -156,7 +165,7 @@ def get_recent_feedbacks(limit: int = 10) -> str:
     输入：返回数量限制
     输出：反馈列表
     """
-    all_states = db.get_all_states()
+    all_states = _get_db().get_all_states()
     feedback_list = []
     
     for key, value in all_states.items():
@@ -193,7 +202,7 @@ def analyze_audit_errors() -> str:
     分析审核错误类型分布，用于优化规范。
     输出：错误类型统计
     """
-    all_states = db.get_all_states()
+    all_states = _get_db().get_all_states()
     error_counts = {}
     
     for key, value in all_states.items():

@@ -1,7 +1,16 @@
 export const API_BASE = '/api/v1'
 
+// 2026-10-19 修复：存储被禁用/受限环境裸读 localStorage 抛 SecurityError——
+// 模块初始化/Provider 处直接崩页；统一安全读
+function _safeGet(k: string): string | null {
+  try { return localStorage.getItem(k) } catch { return null }
+}
+function _safeGetSession(k: string): string | null {
+  try { return sessionStorage.getItem(k) } catch { return null }
+}
+
 export function getToken(): string {
-  return localStorage.getItem('token') || sessionStorage.getItem('token') || ''
+  return _safeGet('token') || _safeGetSession('token') || ''
 }
 
 const MODEL_KEY = 'selectedModel'
@@ -19,7 +28,7 @@ const RETIRED_MODEL_MAP: Record<string, string> = {
 }
 
 export function getStoredModel(): string {
-  const stored = localStorage.getItem(MODEL_KEY)
+  const stored = _safeGet(MODEL_KEY)
   if (stored && RETIRED_MODEL_MAP[stored]) {
     localStorage.setItem(MODEL_KEY, RETIRED_MODEL_MAP[stored])
     return RETIRED_MODEL_MAP[stored]
@@ -35,7 +44,7 @@ export function setStoredModel(model: string) {
 const EFFORT_KEY = 'reasoningEffort'
 
 export function getStoredEffort(): 'low' | 'medium' | 'high' {
-  const v = localStorage.getItem(EFFORT_KEY)
+  const v = _safeGet(EFFORT_KEY)
   return v === 'high' || v === 'medium' ? v : 'low'
 }
 
@@ -46,7 +55,7 @@ export function setStoredEffort(effort: 'low' | 'medium' | 'high') {
 const USER_KEY = 'currentUser'
 
 export function getStoredUser(): any {
-  try { return JSON.parse(localStorage.getItem(USER_KEY) || 'null') }
+  try { return JSON.parse(_safeGet(USER_KEY) || 'null') }
   catch { return null }
 }
 
@@ -62,7 +71,7 @@ function authHeaders(): Record<string, string> {
 
 export function headers(): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' }
-  const t = localStorage.getItem('token') || sessionStorage.getItem('token')
+  const t = _safeGet('token') || _safeGetSession('token')
   if (t) h['Authorization'] = `Bearer ${t}`
   return h
 }

@@ -18,6 +18,13 @@ export default function ApprovalCard({ decisionId, toolName, command, onDecision
     return () => clearInterval(t)
   }, [])
 
+  // 2026-10-19 修复：倒计时归零既不关闭卡片也不发决议（后端超时 deny）——
+  // 审批卡永久滞留且可点已失效的「同意」；归零即按拒绝关闭
+  useEffect(() => {
+    if (remaining <= 0) onDecision(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remaining])
+
   return (
     <div style={{
       marginTop: 10, marginBottom: 14, borderRadius: 10,

@@ -98,7 +98,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
       }}>
         <div style={{ maxWidth: 720, width: '100%' }}>
           {messages.map((msg, i) => (
-            <MessageBubble key={i} msg={msg} index={i} isLast={i === messages.length - 1}
+            <MessageBubble key={`${currentSid}-${i}`} msg={msg} index={i} isLast={i === messages.length - 1}
               loading={loading} user={user}
               liked={!!likes[i]?.liked} disliked={!!likes[i]?.disliked} editing={editingIndex === i}
               autoRead={autoRead} autoReadTick={autoReadTick}

@@ -170,7 +170,12 @@ def _install_dialog(server_url: str, title: str = "小元AI Agent 安装") -> bo
         from agent.main import do_install
         do_install(server_url, code.strip())
         root.destroy()
-        messagebox.showinfo("安装成功", "本机 Agent 已注册，开始运行！\n\n图标会常驻任务栏右下角。", parent=root)
+        # 2026-10-19 修复：root 已销毁仍作 parent 弹窗 → TclError 被吞，
+        # 安装成功反而报「失败」；不传 parent 用独立弹窗
+        try:
+            messagebox.showinfo("安装成功", "本机 Agent 已注册，开始运行！\n\n图标会常驻任务栏右下角。")
+        except Exception:
+            pass
         return True
     except Exception as e:
         root.destroy()
@@ -291,6 +296,11 @@ class AgentTray:
         remote_sha = str(data.get("sha256", ""))
 
         # 文件大小优先：更新后 exe 被替换成云端同一文件，大小一致即判定为最新
+        # 2026-10-19 修复：开发态（非 frozen）sys.executable 是 python.exe——
+        # 比大小必误判新版本、点「立即更新」会把 python.exe 替换成 agent exe。
+        # 开发态直接跳过更新检查。
+        if not getattr(sys, "frozen", False):
+            return
         remote_size = data.get("size")
         has_new = False
         if remote_size:
@@ -434,8 +444,12 @@ class AgentTray:
             cfg["path"] = chosen
             save_vault_config(str(_config_file()), cfg)
             root.destroy()
-            messagebox.showinfo("vault 同步",
-                                f"同步目录已设置：\n{chosen}\n\n重启 Agent 后生效。", parent=root)
+            # 2026-10-19 修复：同安装弹窗——root 已销毁勿作 parent
+            try:
+                messagebox.showinfo("vault 同步",
+                                    f"同步目录已设置：\n{chosen}\n\n重启 Agent 后生效。")
+            except Exception:
+                pass
         except Exception as e:
             root.destroy()
             try:
@@ -462,7 +476,10 @@ class AgentTray:
                 identity = load_identity()
                 self.agent_id = str(identity.get("agent_id") or self.agent_id)
                 self.agent_token = identity.get("agent_secret", "") or self.agent_token
-                self._trigger_restart()
+                # 2026-10-19 修复：plan/vault 循环线程持旧 secret，软重连只换
+                # WS——循环持续 401 直到重启进程。身份变更走整循环重建
+                logger.info("身份已更新，重启全部 Agent 循环")
+                self._restart_loops()
 
         items = [
             MenuItem("小元AI Agent", None, enabled=False),
@@ -509,6 +526,18 @@ class AgentTray:
             logger.info("Agent 开关变化: %s = %s", key, self.toggles[key])
             self._trigger_restart()
         return on_toggle
+
+    def _restart_loops(self):
+        """身份变更后重建全部循环：停 plan/vault 线程 + 触发 WS 主循环重建"""
+        self._trigger_restart()
+        for attr in ("_plan_loop", "_vault_loop"):
+            loop_obj = getattr(self, attr, None)
+            if loop_obj and hasattr(loop_obj, "stop"):
+                try:
+                    loop_obj.stop()
+                except Exception:
+                    pass
+            setattr(self, attr, None)
 
     def _trigger_restart(self):
         """触发 Agent 重连（新 capabilities/开关立即生效）"""
@@ -560,6 +589,12 @@ class AgentTray:
                 async def route(req):
                     target = getattr(req, "target_agent", "") or ""
                     if getattr(req, "mode", "") == "claude" or target == "claude":
+                        # 2026-10-19 修复：托盘开关关闭 Claude Code 时桥接分支
+                        # 仍无条件生效——开关失效；关闭时回统筹并如实说明
+                        if not self.toggles.get("claude", True):
+                            from yuanai_core.core.schemas import done as _ev_done
+                            yield _ev_done("Claude Code 已在托盘菜单中停用。如需使用，请在托盘「Agent 开关」里启用后重试。", "", req.request_id)
+                            return
                         async for ev in claude_handler.stream(req):
                             yield ev
                     elif target == "automation":  # 融合后仅 automation 保留 @定向

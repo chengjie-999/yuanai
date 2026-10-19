@@ -381,6 +381,9 @@ async def chat_stream(req: ChatRequest, request: Request):
                 yield f"data: {json.dumps({'type': 'error', 'data': _SAFE_ERROR}, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
+    except HTTPException:
+        # 2026-10-19 修复：此前外层 except Exception 吞掉 HTTPException——配额 429 被改写成 500
+        raise
     except Exception as e:
         logger.error("聊天请求初始化失败: %s", e)
         raise HTTPException(status_code=500, detail=_SAFE_ERROR)

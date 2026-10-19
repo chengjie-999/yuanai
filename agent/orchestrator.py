@@ -378,6 +378,12 @@ class Orchestrator:
 
         # ---- Tier 1: 意图分类（零 API 成本）----
         latest_msg = self._extract_latest_message(input_messages)
+        # 2026-10-19 修复：带图片请求 content 是 list（chat.py 构造多模态），
+        # classify 里 .strip() 抛 AttributeError → 取纯文本部分
+        if isinstance(latest_msg, list):
+            latest_msg = "".join(
+                str(c.get("text", "")) if isinstance(c, dict) else str(c)
+                for c in latest_msg)
         from agent.intent_classifier import classifier as intent_clf
         intent = intent_clf.classify(latest_msg)
 

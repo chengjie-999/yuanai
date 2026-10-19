@@ -41,6 +41,7 @@ class AgentWSClient:
         self.agent_token = agent_token
         self._on_chat_request = on_chat_request
         self._on_stop_request: Optional[Callable[[str], None]] = None
+        self._loop = None  # 主事件循环（send_event 跨线程投递用）
         self._ws = None
         self._running = False
         self._status = "offline"  # offline | connecting | online | reconnecting
@@ -70,6 +71,7 @@ class AgentWSClient:
 
     async def connect(self):
         """建立 WebSocket 连接并进入消息循环"""
+        self._loop = asyncio.get_running_loop()
         self._running = True
         backoff = RECONNECT_MIN
 
@@ -78,10 +80,11 @@ class AgentWSClient:
                 url = f"{self.server_url}/api/v1/agent/ws/agent/{self.agent_id}"
                 # S3.3：agent_secret 走 Authorization 头（不落 URL/日志）；
                 # 云端仍保留 ?token= 兜底一个版本（老客户端平滑过渡）
+                # 2026-10-19 修复：secret 只走 Authorization 头——此前仍拼 ?token=
+                # 进 URL（代理日志/历史记录泄露凭据面）
                 extra_headers = None
                 if self.agent_token:
                     extra_headers = {"Authorization": f"Bearer {self.agent_token}"}
-                    url += f"?token={self.agent_token}"
                 self._status = "connecting"
                 logger.info("正在连接云端: %s/api/v1/agent/ws/agent/%s", self.server_url, self.agent_id)
                 self._ws = await connect(url, ping_interval=None, additional_headers=extra_headers)
@@ -199,12 +202,22 @@ class AgentWSClient:
             pass  # 不在事件循环中，忽略
 
     def send_event(self, event: AgentEvent):
-        """从同步上下文发送任意事件（如工具内的 progress 心跳，fire-and-forget）"""
+        """从同步上下文发送任意事件（如工具内的 progress 心跳，fire-and-forget）。
+
+        2026-10-19 修复：此前非事件循环线程直接 pass 丢弃——registry 读线程/
+        自动化心跳线程的 progress 全部静默丢失，SSE 300s 超时心跳失效。
+        改为 run_coroutine_threadsafe 投递到主循环（无主循环则忽略）。"""
         try:
-            asyncio.get_running_loop()
+            loop = asyncio.get_running_loop()
             self._track_task(self._send(event))
         except RuntimeError:
-            pass  # 不在事件循环中，忽略
+            try:
+                main_loop = self._loop
+                if main_loop and main_loop.is_running():
+                    main_loop.call_soon_threadsafe(
+                        lambda: self._track_task(self._send(event)))
+            except Exception:
+                pass  # 极端情况：连主循环都没了，丢弃
 
     async def disconnect(self):
         """断开连接"""

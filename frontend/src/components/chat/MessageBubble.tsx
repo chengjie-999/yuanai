@@ -173,16 +173,22 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
         activeFetches += 1
         let settled = false
         const done = () => { if (settled) return; settled = true; activeFetches -= 1 }
+        // 2026-10-19 修复：onFragment 按 8KB 音频帧回调——此前每帧单独入队、
+        // 每帧一个 Audio 播放（与「每段一个 Audio 整段播放」设计不符，帧边界
+        // 接缝咔哒）；改为帧聚合，段完成（onDone）时整段入队
+        const segBuf: Blob[] = []
         voiceTtsStream(
           segments[i],
           sender || undefined,
-          (blob) => {
-            if (seq !== readSeqRef.current) return
-            queue.push({ blob, isLast: i === segments.length - 1 })
-            pump()
-            fetchNext()  // 首个分片到达即可预取下一段
+          (blob) => { if (seq === readSeqRef.current) segBuf.push(blob) },
+          () => {
+            done()
+            if (seq === readSeqRef.current && segBuf.length) {
+              queue.push({ blob: new Blob(segBuf, { type: 'audio/mpeg' }), isLast: i === segments.length - 1 })
+              pump()
+            }
+            fetchNext()  // 首段完成即可预取下一段
           },
-          () => { done(); fetchNext() },
         ).catch(() => {
           done()
           failedSegments += 1

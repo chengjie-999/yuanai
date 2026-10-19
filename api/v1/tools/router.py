@@ -75,7 +75,10 @@ async def execute_tool(req: ToolRequest, request: Request):
 
     t0 = time.time()
     try:
-        result = tool.invoke(req.args)
+        # 2026-10-19 修复：async 端点内同步 invoke——analyze_dataset 可阻塞
+        # 事件循环 120s；改线程池执行（工具本身是 sync 的）
+        import asyncio
+        result = await asyncio.to_thread(tool.invoke, req.args)
         elapsed = round(time.time() - t0, 3)
         logger.info("工具执行: %s args=%s → %.3fs", req.name, req.args, elapsed)
         return {"name": req.name, "result": str(result) if result is not None else ""}

@@ -625,6 +625,13 @@ export default function ChatPage({ user }: { user?: any }) {
     base[index] = { ...base[index], content: newContent.trim() }
     const truncated = base.slice(0, index + 1)
     setMessages(truncated)
+    // 2026-10-19 修复：与重新生成同规则——截断其后消息的点赞/点踩态一并清理，
+    // 否则孤儿点赞挂到随后新建的助手消息上
+    setFeedbackState((p) => {
+      const next = { ...p }
+      Object.keys(next).forEach((k) => { if (Number(k) > index) delete next[Number(k)] })
+      return next
+    })
     setSendTick((t) => t + 1)
     setEditingIndex(null)
     sendMessages(truncated, newContent.trim(), base[index].images)

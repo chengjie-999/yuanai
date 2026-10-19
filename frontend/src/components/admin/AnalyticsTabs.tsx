@@ -24,11 +24,14 @@ function useAnalytics(scope: string, days: number) {
   const [error, setError] = useState('')
   useEffect(() => {
     setLoading(true); setError('')
+    // 2026-10-19 修复：快速切换 7/30/90 天时旧响应可覆盖新数据——失效守卫
+    let alive = true
     fetch(`${API_BASE}/admin/analytics/${scope}?days=${days}`, { headers: headers() })
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
-      .then(setData)
-      .catch((e) => setError(`${scope} 分析加载失败: ${e.message}`))
-      .finally(() => setLoading(false))
+      .then((d) => { if (alive) setData(d) })
+      .catch((e) => { if (alive) setError(`${scope} 分析加载失败: ${e.message}`) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
   }, [scope, days])
   return { data, loading, error, setDays: () => {} }
 }

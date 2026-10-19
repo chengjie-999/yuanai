@@ -27,9 +27,13 @@ export default function DatasetsTab() {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true); setError('')
-    const r = await uploadDataset(file)
-    if (r?.id) load()
-    else setError(r?.detail || '上传失败')
+    try {
+      const r = await uploadDataset(file)
+      if (r?.id) load()
+      else setError(r?.detail || '上传失败')
+    } catch {
+      setError('上传失败，请重试')
+    }
     setUploading(false)
     if (fileRef.current) fileRef.current.value = ''
   }

@@ -9,6 +9,7 @@ pool = redis.ConnectionPool(
     password=os.getenv("REDIS_PASSWORD") or None,
     decode_responses=True,
     socket_connect_timeout=2,
+    socket_timeout=3,  # 2026-10-19：此前无读超时——Redis 卡死时调用挂起，所有故障降级不触发
 )
 
 

@@ -45,9 +45,6 @@ const PROMPT_FIELDS: { key: string; label: string; hint: string; rows?: number }
 ]
 
 export default function SettingsTab() {
-  const [logLevel, setLogLevel] = useState(localStorage.getItem('logLevel') || 'info')
-  const [notifyError, setNotifyError] = useState(localStorage.getItem('notifyError') !== 'false')
-  const [autoCollapse, setAutoCollapse] = useState(localStorage.getItem('autoCollapse') === 'true')
   // 设定中心（后端 _system_config）
   const [cfg, setCfg] = useState<Record<string, any>>({})
   const [effective, setEffective] = useState<any>(null)
@@ -67,7 +64,6 @@ export default function SettingsTab() {
   }
   useEffect(() => { loadCfg() }, [])
 
-  const save = (key: string, value: string) => localStorage.setItem(key, value)
 
   const handleSaveCfg = async () => {
     setSaving(true); setMsg('')
@@ -83,40 +79,8 @@ export default function SettingsTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Card>
-        <CardHeader title="基本设置（仅本机浏览器）" />
-        <div style={row}>
-          <div>
-            <div style={label}>日志级别</div>
-            <div style={hint}>控制前端控制台日志详细程度</div>
-          </div>
-          <select
-            value={logLevel}
-            onChange={(e) => { setLogLevel(e.target.value); save('logLevel', e.target.value) }}
-            style={select}
-          >
-            <option value="debug">Debug</option>
-            <option value="info">Info</option>
-            <option value="warn">Warn</option>
-            <option value="error">Error</option>
-          </select>
-        </div>
-        <div style={row}>
-          <div>
-            <div style={label}>错误通知</div>
-            <div style={hint}>请求失败时在页面顶部显示通知</div>
-          </div>
-          <Toggle checked={notifyError} onChange={(v) => { setNotifyError(v); save('notifyError', String(v)) }} />
-        </div>
-        <div style={row}>
-          <div>
-            <div style={label}>自动收起侧栏</div>
-            <div style={hint}>进入对话后自动收起工具栏侧栏</div>
-          </div>
-          <Toggle checked={autoCollapse} onChange={(v) => { setAutoCollapse(v); save('autoCollapse', String(v)) }} />
-        </div>
-      </Card>
-
+      {/* 2026-10-19 清理：日志级别/错误通知/自动收起侧栏三个开关全项目无
+          消费方（仅写 localStorage）——移除误导性控件 */}
       <Card>
         <CardHeader title="助手设定" />
         <div style={{ padding: '4px 20px', fontSize: 11, color: 'var(--text-muted)' }}>模型的自我认知与聊天提示词——问它「你是什么模型/能做什么」时按这里的设定回答</div>

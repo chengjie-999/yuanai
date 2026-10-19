@@ -387,7 +387,7 @@ class Orchestrator:
         # ---- Tier 1.5: 低置信度降级到 mini LLM 分类 ----
         if intent_clf.needs_fallback_llm(intent) and latest_msg:
             try:
-                from agent.intent_classifier import LLM_CLASSIFIER_PROMPT
+                from agent.intent_classifier import LLM_CLASSIFIER_PROMPT, INTENT_TOOL_GROUPS
                 fallback_llm = get_llm(AGENT_MODEL_MAP["orchestrator"],
                                        temperature=0, verbose=False, streaming=False)
                 resp = fallback_llm.invoke([
@@ -403,7 +403,9 @@ class Orchestrator:
                         logger.info("LLM 降级分类 → %s", group)
                         break
             except Exception as e:
-                logger.debug("LLM 降级分类失败: %s", e)
+                # 2026-10-19：此前 NameError（INTENT_TOOL_GROUPS 未导入）被 debug 吞掉，
+                # 降级分类永久哑火——修复导入后用 warning 记录真实失败
+                logger.warning("LLM 降级分类失败: %s", e)
 
         # ---- Tier 2: 直接命令（绕过 LLM）----
         if intent.is_direct:

@@ -329,7 +329,11 @@ def dsml_saw_block(filters: Dict[str, Any], run_id: str) -> bool:
 
 def limited_tools(tools: List[BaseTool], max_calls_per_tool: int = 3) -> List[BaseTool]:
     """同名工具单轮调用上限：超限不执行、返回引导语（防模型对失败/不存在的工具
-    死循环重试——曾出现同一工具被连续调用 20+ 次）。包一层计数，工具本身不改。"""
+    死循环重试——曾出现同一工具被连续调用 20+ 次）。包一层计数，工具本身不改。
+
+    2026-10-19 修复：原实现只包 sync func——async-only 工具（delegate_to_claude_agent
+    等）被 Agent 以 ainvoke 调用时走 sync 包装直接 NotImplementedError，Claude 委派
+    整条链断。同时提供 func/coroutine 双路径，按调用方式正确转发。"""
     from langchain_core.tools import StructuredTool
 
     counts: Dict[str, int] = {}
@@ -338,20 +342,35 @@ def limited_tools(tools: List[BaseTool], max_calls_per_tool: int = 3) -> List[Ba
         name = t.name
         counts[name] = 0
 
+        def _guard(tname):
+            if counts[tname] >= max_calls_per_tool:
+                return (f"工具「{tname}」本轮已调用 {max_calls_per_tool} 次，"
+                        "请停止重复调用，基于已有结果继续回答，或直接告诉用户结果。")
+            counts[tname] += 1
+            return None
+
         def make_run(inner, tname):
             def _run_tool(**kwargs):
-                if counts[tname] >= max_calls_per_tool:
-                    return (f"工具「{tname}」本轮已调用 {max_calls_per_tool} 次，"
-                            "请停止重复调用，基于已有结果继续回答，或直接告诉用户结果。")
-                counts[tname] += 1
+                g = _guard(tname)
+                if g is not None:
+                    return g
                 return inner.invoke(kwargs)
             return _run_tool
+
+        def make_arun(inner, tname):
+            async def _arun_tool(**kwargs):
+                g = _guard(tname)
+                if g is not None:
+                    return g
+                return await inner.ainvoke(kwargs)
+            return _arun_tool
 
         wrapped.append(StructuredTool(
             name=t.name,
             description=t.description,
             args_schema=t.args_schema,
             func=make_run(t, name),
+            coroutine=make_arun(t, name),
         ))
     return wrapped
 

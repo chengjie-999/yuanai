@@ -34,7 +34,7 @@ PROGRESS_MIN_INTERVAL_S = 3  # 进度上报节流
 # 成功结果（步骤标 done 但内容是崩溃日志）——失败前缀必须覆盖这些输出。
 _NON_RETRYABLE_PREFIXES = ("无法处理", "参数校验失败", "未知脚本", "无法解析意图",
                            "未知内置操作", "脚本执行失败", "分析失败", "读取失败",
-                           "转换失败", "执行失败")
+                           "转换失败", "执行失败", "已停止")
 
 
 class PlanExecutor:
@@ -181,9 +181,17 @@ class PlanExecutor:
                 return state, raw
 
         err = str(raw or "").strip()
+        # 2026-10-19 修复：registry 失败带 __ERROR__: 前缀，此前未剥离导致
+        # 前缀匹配全miss → 失败步骤被剥掉标记后当 done 上报（数据正确性 bug）
+        is_protocol_error = err.startswith("__ERROR__:")
+        if is_protocol_error:
+            err = err[len("__ERROR__:"):].strip()
         for prefix in _NON_RETRYABLE_PREFIXES:
             if err.startswith(prefix):
                 return "failed_noretry", err[:500]
+        if is_protocol_error:
+            # 协议错误其余类型（脚本执行异常/超时等）按可重试失败处理
+            return "failed", err[:500]
         parsed = parse_step_output(raw)
         if not parsed["text"].strip() and not parsed["blocks"]:
             return "failed", "执行无有效输出"

@@ -549,7 +549,11 @@ class AgentTray:
                     enabled_skills=enabled_skills,
                     enable_claude=bool(self.toggles.get("claude", True)),
                 )
-                claude_handler = ClaudeBridgeHandler()
+                # 2026-10-19 修复：补传 server_url/agent_id/token——
+                # 此前【记住】记忆写入因 _server_url 为空永远 no-op
+                claude_handler = ClaudeBridgeHandler(server_url=self.server_url,
+                                                     agent_id=str(self.agent_id),
+                                                     agent_token=self.agent_token)
 
                 # 三路分派：mode=claude → Claude 桥接；@指定子智能体 → 直接调
                 # 对应 skill Agent（确定性路由，跳过统筹 LLM）；其余 → 统筹

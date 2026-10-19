@@ -148,6 +148,8 @@ export default function ChatPage({ user }: { user?: any }) {
   loadingRef.current = loading
   // 在途流（P1-1 停止生成/会话切换守卫）：sid + AbortController
   const streamRef = useRef<{ sid: string; controller: AbortController } | null>(null)
+  // 会话加载序号（2026-10-19）：快速切换会话时丢弃迟到响应
+  const loadSeqRef = useRef(0)
   // 轻提示（handleSend 静默 return 反馈，2s 自动消失）
   const [notice, setNotice] = useState('')
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -162,16 +164,18 @@ export default function ChatPage({ user }: { user?: any }) {
     if (!s) return
     streamRef.current = null
     try { s.controller.abort() } catch { /* 忽略 */ }
-    setMessages((prev) => {
-      const last = [...prev]
+    // 2026-10-19 修复：此前 setMessages 后用 messagesRef 落库——ref 仍是旧快照，
+    // stopped 标记从未持久化。先算好数组同时用于渲染与保存。
+    const stoppedMsgs = (() => {
+      const last = [...messagesRef.current]
       const i = last.length - 1
       if (i >= 0) last[i] = { ...last[i], stopped: true }
       return last
-    })
+    })()
+    setMessages(stoppedMsgs)
     setLoading(false)
     // 立即保存已生成内容（encodeMsg 会带上 stopped 短键）
-    const cur = messagesRef.current
-    const finalMsgs = flushVoiceTranscripts(cur)
+    const finalMsgs = flushVoiceTranscripts(stoppedMsgs)
     saveMessages(s.sid, finalMsgs.map(encodeMsg))
     refreshSessions()
   }
@@ -331,6 +335,9 @@ export default function ChatPage({ user }: { user?: any }) {
   const openDirectChat = async (target: string) => {
     const cfg = AGENT_CONFIG[target]
     if (!cfg) return
+    // 2026-10-19 修复：流式生成中开小窗会把 messagesRef 切走，旧流 onDone 用旧 sid
+    // 保存小窗问候语，覆盖原会话全量消息——先走忙碌守卫
+    if (!guardBusySession()) return
     const sid = await createSession(`${cfg.label} 私聊`)
     saveDmTarget(sid, target)
     setTargetAgent(target)
@@ -343,11 +350,18 @@ export default function ChatPage({ user }: { user?: any }) {
     if (sid === currentSid) return
     if (!guardBusySession()) return
     setCurrentSid(sid)
+    // 2026-10-19 修复①：切换会话清掉上一会话的审批卡——残留时点「同意」会把
+    // 决议发给新会话（错会话审批）
+    setPendingApproval(null)
     // 小窗会话：恢复持久定向；普通会话：不动（@ 定向单次生效机制不变）
     const dm = dmTargetsRef.current[sid]
     if (dm) setTargetAgent(dm)
+    // 2026-10-19 修复②：请求序号守卫——快速 A→B 切换时先发的 loadMessages(A)/
+    // loadFeedback(A) 可后到并覆盖 B 的消息与点赞态
+    const seq = ++loadSeqRef.current
     const history = await loadMessages(sid)
     const feedbackData = await loadFeedback(sid)
+    if (seq !== loadSeqRef.current) return  // 已切到别的会话：丢弃迟到响应
     setFeedbackState(feedbackData)
     setEditingIndex(null)
     setMessages(history.length === 0
@@ -518,13 +532,21 @@ export default function ChatPage({ user }: { user?: any }) {
     }
     const onError = (msg?: string) => {
       const errText = msg || '网络异常，请检查连接'
-      setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content || errText, error: errText }; return last })
+      // 2026-10-19 修复：与 stopStream 同病——setMessages 后读 messagesRef 是旧
+      // 快照，error 文案从未持久化；先算好数组再渲染+保存
+      const errMsgs = (() => {
+        const last = [...messagesRef.current]
+        const i = last.length - 1
+        if (i >= 0) last[i] = { ...last[i], content: last[i].content || errText, error: errText }
+        return last
+      })()
+      setMessages(errMsgs)
       setLoading(false)
       // P1-1：断流也落库（此前 onError 不保存，刷新后部分输出丢失）
       const s = streamRef.current
       streamRef.current = null
       if (s) {
-        const finalMsgs = flushVoiceTranscripts(messagesRef.current)
+        const finalMsgs = flushVoiceTranscripts(errMsgs)
         saveMessages(s.sid, finalMsgs.map(encodeMsg)).finally(() => refreshSessions())
       }
     }

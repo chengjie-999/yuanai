@@ -342,7 +342,14 @@ async def run_sdk_loop(
     与 claude_bridge 的事件映射对齐：token/reasoning/tool_start/tool_end 数据形状一致。
     api_key=None 时 SDK 自动解析凭证（ANTHROPIC_API_KEY/AUTH_TOKEN/ant 配置）。
     """
-    import anthropic
+    try:
+        import anthropic
+    except ImportError:
+        # 2026-10-19 修复：import 在 try 外——SDK 依赖缺失时 ImportError 直接冒到
+        # WS 层不降级；改为产出 error 事件（桥接层见 error 且无产出 → 自动降级 CLI）
+        logger.warning("anthropic SDK 未安装（pip install anthropic），SDK 模式不可用")
+        yield {"type": "error", "data": "anthropic SDK 未安装，已降级 CLI 模式"}
+        return
 
     client = anthropic.AsyncAnthropic(api_key=api_key) if api_key else anthropic.AsyncAnthropic()
     pending_messages = [m for m in messages]

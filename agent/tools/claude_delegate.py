@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
 
 CLAUDE_CLI = "claude"
 PROJECT_ROOT = root_path()
+
+# 冻结版仓库目录解析（2026-10-19）：exe 内 root_path() 指向数据目录而非真实仓库，
+# 其中没有 scripts/hooks 与 .claude/settings.json → guard_ready 永远 fail-closed、
+# Claude 委派不可用。发布版可设 CC_PROJECT_DIR 指向真实仓库目录；未设置保持
+# fail-closed（安全默认不变）。
+_CC_DIR = os.getenv("CC_PROJECT_DIR", "")
+if _CC_DIR and os.path.isdir(_CC_DIR):
+    PROJECT_ROOT = os.path.abspath(_CC_DIR)
 SUBPROCESS_TIMEOUT = 600       # 单次任务最长 10 分钟
 HEARTBEAT_SECONDS = 30         # 心跳间隔（重置云端 SSE 300s 超时）
 MAX_OUTPUT_CHARS = 8000        # tool_end 输出上限（进入 LLM 上下文与聊天记录）
@@ -137,7 +145,18 @@ async def run_claude_once(
                 if emit and request_id:
                     emit(progress(0, 0, f"Claude Code 执行中（{elapsed}s）...", request_id))
 
+    async def _drain_stderr():
+        # 2026-10-19 修复：stderr=PIPE 从不排水——verbose 模式输出多时管道写满，
+        # 子进程阻塞直到超时才被 kill；并发排空（内容丢弃，审计由钩子/audit 落盘）
+        assert proc.stderr is not None
+        try:
+            async for _chunk in proc.stderr:
+                pass
+        except Exception:
+            pass
+
     read_task = asyncio.create_task(_read_stdout())
+    err_task = asyncio.create_task(_drain_stderr())
     hb_task = asyncio.create_task(_heartbeat())
     try:
         try:
@@ -149,6 +168,7 @@ async def run_claude_once(
         await read_task  # 排空剩余输出
     finally:
         hb_task.cancel()
+        err_task.cancel()
 
     if error_text:
         _audit(prompt, proc.returncode, len(final_text), "error")

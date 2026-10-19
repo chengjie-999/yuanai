@@ -567,6 +567,7 @@ export function streamChat(
 
       const decoder = new TextDecoder()
       let buffer = ''
+      let gotDone = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -581,6 +582,7 @@ export function streamChat(
             try {
               const event = JSON.parse(line.slice(6))
               if (event.type === 'done') {
+                gotDone = true
                 onDone()
               } else {
                 onEvent(event)
@@ -588,6 +590,11 @@ export function streamChat(
             } catch { /* skip malformed SSE data */ }
           }
         }
+      }
+      // 2026-10-19 修复：服务端 EOF/断流且无 done 帧时循环直接结束，loading 永久
+      // 卡住——按「异常中断」走 onError 落库（有已收内容则保存），有 done 帧则跳过
+      if (!gotDone) {
+        onError('响应中断：服务端提前结束（未收到完成信号）')
       }
     })
     .catch((err) => {

@@ -46,6 +46,12 @@ from agent.bridge_policy import build_allowed_tools, guard_ready
 logger = logging.getLogger("claude_bridge")
 
 PROJECT_ROOT = root_path()
+# 冻结版仓库目录解析（2026-10-19，同 claude_delegate）：exe 内 root_path() 指向
+# 数据目录而非真实仓库 → guard_ready 永远 fail-closed。发布版可设 CC_PROJECT_DIR
+# 指向真实仓库；未设置保持 fail-closed（安全默认不变）。
+_CC_DIR = os.getenv("CC_PROJECT_DIR", "")
+if _CC_DIR and os.path.isdir(_CC_DIR):
+    PROJECT_ROOT = os.path.abspath(_CC_DIR)
 SESSIONS_FILE = os.path.join(PROJECT_ROOT, "data", "claude_sessions.json")
 HEARTBEAT_SECONDS = 30
 MAX_TOOL_OUTPUT = 2000
@@ -172,6 +178,10 @@ class ClaudeBridgeHandler:
                  agent_token: str = "", sdk_mode: bool | None = None):
         self._ws_send = ws_send  # callable(event) fire-and-forget（心跳等旁路事件）
         self._server_url = server_url  # 记忆上传用（【记住】标记 → 云端 REST）
+        # 2026-10-19 修复：agent_id/token 此前未保存（getattr 永远为空）——
+        # 二合一进程又没传 server_url，【记住】记忆写入实际永远 no-op
+        self._agent_id = agent_id
+        self._agent_token = agent_token
         self._sessions = SessionStore(SESSIONS_FILE)
         self._sessions.load()
         self._locks = {}  # cloud session_id -> asyncio.Lock（防并发 query）
@@ -361,15 +371,30 @@ class ClaudeBridgeHandler:
         is_error = False
         result_obj = None  # 收到的 result 消息（未收到 = 进程异常退出）
 
+        async def _drain_stderr():
+            # 2026-10-19 修复：stderr=PIPE 从不排水——管道写满后子进程阻塞、
+            # 与等待 stdout EOF 互相死锁；并发排空（内容丢弃，审计由钩子落盘）
+            assert proc.stderr is not None
+            try:
+                async for _chunk in proc.stderr:
+                    pass
+            except Exception:
+                pass
+
         async def _heartbeat():
             elapsed = 0
             while proc.returncode is None:
                 await asyncio.sleep(HEARTBEAT_SECONDS)
                 if proc.returncode is None:
                     elapsed += HEARTBEAT_SECONDS
+                    # 总超时（BRIDGE_TIMEOUT 此前定义未用——子进程可能永久挂住占死并发槽）
+                    if elapsed >= BRIDGE_TIMEOUT:
+                        proc.kill()
+                        break
                     if self._ws_send:
                         self._ws_send(progress(0, 0, f"Claude Code 思考中（{elapsed}s）...", rid))
 
+        err_task = asyncio.create_task(_drain_stderr())
         hb_task = asyncio.create_task(_heartbeat())
         try:
             assert proc.stdout is not None
@@ -432,6 +457,7 @@ class ClaudeBridgeHandler:
                         final_result = obj.get("result") or obj.get("subtype", "error")
         finally:
             hb_task.cancel()
+            err_task.cancel()
 
         # 未收到 result 消息 = 进程异常退出
         if result_obj is None:

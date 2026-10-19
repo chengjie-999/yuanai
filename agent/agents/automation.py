@@ -34,6 +34,11 @@ class AutomationAgent(AgentBase):
                 self.name = "automation"
                 self.model_name = "doubao-seed-2-0-pro"
                 self._system_prompt = ""
+        # 能力边界身份卡（docs/agents/automation.md，单一事实源，随包分发）
+        from yuanai_core.agent_docs import agent_doc
+        _doc = agent_doc("automation")
+        if _doc:
+            self._system_prompt = f"{self._system_prompt}\n\n{_doc}"
         self._tools = None
 
     @property

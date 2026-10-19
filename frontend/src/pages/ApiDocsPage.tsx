@@ -150,6 +150,21 @@ export default function ApiDocsPage() {
       .catch(() => setReadmeErr(true))
   }, [])
 
+  // 图片点击放大（README 里的架构图/ER 图等；小徽章图不放大）
+  const [zoomSrc, setZoomSrc] = useState('')
+  useEffect(() => {
+    if (!zoomSrc) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setZoomSrc('') }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [zoomSrc])
+  const onReadmeClick = (e: React.MouseEvent) => {
+    const t = e.target as HTMLElement
+    if (t.tagName === 'IMG' && (t as HTMLImageElement).naturalWidth > 120) {
+      setZoomSrc((t as HTMLImageElement).src)
+    }
+  }
+
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
       <LandingHeader />
@@ -171,7 +186,7 @@ export default function ApiDocsPage() {
             项目文档（与 README.md 实时同步）
           </h2>
           {readme ? (
-            <div className="markdown-body" style={{
+            <div className="markdown-body readme-body" onClick={onReadmeClick} style={{
               background: 'var(--bg-input)', border: '1px solid var(--border)',
               borderRadius: 10, padding: '20px 22px', fontSize: 14, lineHeight: 1.7,
             }}>
@@ -224,6 +239,24 @@ export default function ApiDocsPage() {
           <Link to="/chat" style={{ color: 'var(--accent)' }}>进入对话</Link> 直接体验对话即执行。
         </div>
       </main>
+
+      {/* 图片放大浮层：点击背景/Esc 关闭 */}
+      {zoomSrc && (
+        <div onClick={() => setZoomSrc('')} role="presentation" style={{
+          position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.75)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'zoom-out', padding: 24,
+        }}>
+          <img src={zoomSrc} alt="放大预览" style={{
+            maxWidth: '100%', maxHeight: '92vh', borderRadius: 8,
+            background: '#fff', boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
+          }} />
+        </div>
+      )}
+
+      <style>{`
+        .readme-body img { cursor: zoom-in; }
+      `}</style>
     </div>
   )
 }

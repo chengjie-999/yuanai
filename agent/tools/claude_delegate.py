@@ -28,6 +28,13 @@ MAX_OUTPUT_CHARS = 8000        # tool_end 输出上限（进入 LLM 上下文与
 
 _DISALLOWED_TOOLS = "WebFetch,WebSearch"
 
+# 能力边界身份卡（docs/agents/claude_code.md，单一事实源）：CLI 与 SDK 共用
+try:
+    from yuanai_core.agent_docs import agent_doc as _agent_doc
+    _CC_DOC = _agent_doc("claude_code")
+except Exception:
+    _CC_DOC = ""
+
 _BRIDGE_SYSTEM_PROMPT = (
     "你在以无头模式（非交互）为小元AI平台执行委派任务，无法与用户实时交互，"
     "遇到需要人工确认的操作时选择安全做法或说明原因。"
@@ -43,7 +50,7 @@ _BRIDGE_SYSTEM_PROMPT = (
     "不要反复尝试这些被禁途径；需要深度检索或用户要求交互式搜索时，"
     "说明搜索结果可在小元AI对话里用联网搜索获取。"
     "完成后用简洁中文总结：做了什么、改了哪些文件、如何验证。"
-)
+) + (("\n\n" + _CC_DOC) if _CC_DOC else "")
 
 # 第三方网关模式（ANTHROPIC_BASE_URL 指向非官方地址，如 deepseek 网关）下
 # Claude Code hooks 不注册，命令级拦截降级为提示词约束 + 进程级白名单

@@ -438,6 +438,12 @@ class Orchestrator:
         from yuanai_core.core.lc import resolve_model_id
         from config.settings import self_report_text
         self_report = "\n\n" + self_report_text(resolve_model_id(orch_model))
+        # 能力边界身份卡（docs/agents/orchestrator.md，单一事实源）：让统筹知道自己
+        # 能做什么（脚本直调/搜索/计划/委派）与不能做什么（边界），同处追加
+        from yuanai_core.agent_docs import agent_doc
+        _doc = agent_doc("orchestrator")
+        if _doc:
+            self_report += "\n\n" + _doc
         if input_messages and input_messages[0].get("role") == "system":
             input_messages[0]["content"] = (input_messages[0].get("content") or "") + self_report
         else:

@@ -18,6 +18,8 @@ a = Analysis(
         (str(ROOT / 'agent' / 'datanalysis' / 'tools'), 'agent/datanalysis/tools'),
         # 报告模板（export.py 用 FileSystemLoader 按 __file__ 定位，frozen 下需随包分发）
         (str(ROOT / 'yuanai_core' / 'pure' / 'report_template.html'), 'yuanai_core/pure'),
+        # 智能体能力边界身份卡（agent_docs 加载器 frozen 下从 _MEIPASS 读）
+        (str(ROOT / 'docs' / 'agents'), 'docs/agents'),
     ],
     hiddenimports=[
         'yuanai_core', 'yuanai_core.core', 'yuanai_core.core.lc', 'yuanai_core.core.chat', 'yuanai_core.core.schemas',

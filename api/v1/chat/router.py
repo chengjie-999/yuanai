@@ -51,6 +51,16 @@ _OFFLINE_SYSTEM_PROMPT = (
     "任务完成或对话结束时，用表格总结本次完成了什么。"
 )
 
+# 能力边界身份卡（docs/agents/cloud_fallback.md，单一事实源）：
+# 云端回退智能体知道自己没有委派/脚本能力，不去发起注定失败的工具调用
+try:
+    from yuanai_core.agent_docs import agent_doc as _agent_doc
+    _CC = _agent_doc("cloud_fallback")
+    if _CC:
+        _OFFLINE_SYSTEM_PROMPT += "\n\n" + _CC
+except Exception:
+    pass
+
 
 def _save_chat_image(session_id: str, data_url: str) -> str:
     """将 base64 data URL 保存为文件，返回访问 URL。非 base64 原样返回。"""

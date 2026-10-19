@@ -424,7 +424,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 )}
               </details>
             ) : null}
-            <MarkdownContent content={msg.content} />
+            <MarkdownContent content={msg.content} onImageExpand={setExpandedImage} />
             {msg.error && (
               <div style={{
                 marginTop: 8, padding: '8px 12px', borderRadius: 8,

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import LandingHeader from '../components/LandingHeader'
 import MarkdownContent from '../components/MarkdownContent'
-import { XIcon, MinusIcon, PlusIcon } from '../components/icons'
+import ZoomableImage from '../components/chat/ZoomableImage'
 import { API_BASE } from '../api'
 import { Link } from 'react-router-dom'
 
@@ -139,14 +139,6 @@ const METHOD_COLORS: Record<string, string> = {
   GET: '#2e7d32', POST: '#1976d2', PUT: '#e65100', DELETE: '#c62828',
 }
 
-/* 图片预览弹层内的按钮统一样式（缩放/1:1/关闭） */
-const zoomBtnStyle: React.CSSProperties = {
-  width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
-  background: 'var(--bg-secondary)', color: 'var(--text-secondary)',
-  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  fontSize: 13, lineHeight: 1, flexShrink: 0,
-}
-
 export default function ApiDocsPage() {
   // 项目文档：与仓库 README.md 同一文件（后端 /docs/readme 每次请求读文件，
   // 改 README 即改本页；生产环境 git pull 后自动同步）
@@ -159,23 +151,8 @@ export default function ApiDocsPage() {
       .catch(() => setReadmeErr(true))
   }, [])
 
-  // 图片点击放大（README 里的架构图/ER 图等；小徽章图不放大）；
-  // 预览弹层与文件管理同款：面板 + 缩放控制（25%–400%），Esc/点背景关闭
+  // 图片查看：与对话图片同款（ZoomableImage——滚轮缩放/拖拽平移/双击/触摸捏合）
   const [zoomSrc, setZoomSrc] = useState('')
-  const [zoom, setZoom] = useState(1)
-  useEffect(() => {
-    if (!zoomSrc) return
-    setZoom(1)
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setZoomSrc('') }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [zoomSrc])
-  const onReadmeClick = (e: React.MouseEvent) => {
-    const t = e.target as HTMLElement
-    if (t.tagName === 'IMG' && (t as HTMLImageElement).naturalWidth > 120) {
-      setZoomSrc((t as HTMLImageElement).src)
-    }
-  }
 
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
@@ -198,11 +175,11 @@ export default function ApiDocsPage() {
             项目文档（与 README.md 实时同步）
           </h2>
           {readme ? (
-            <div className="markdown-body readme-body" onClick={onReadmeClick} style={{
+            <div className="markdown-body" style={{
               background: 'var(--bg-input)', border: '1px solid var(--border)',
               borderRadius: 10, padding: '20px 22px', fontSize: 14, lineHeight: 1.7,
             }}>
-              <MarkdownContent content={readme} />
+              <MarkdownContent content={readme} onImageExpand={setZoomSrc} />
             </div>
           ) : (
             <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '14px 2px' }}>
@@ -252,45 +229,8 @@ export default function ApiDocsPage() {
         </div>
       </main>
 
-      {/* 图片放大浮层（文件管理同款弹层 + 缩放控制）：点背景/Esc 关闭 */}
-      {zoomSrc && (
-        <div onClick={() => setZoomSrc('')} role="presentation" style={{
-          position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-        }}>
-          <div onClick={(e) => e.stopPropagation()} style={{
-            width: '86%', maxWidth: 1100, height: '86%',
-            background: 'var(--bg-primary)', borderRadius: 12, overflow: 'hidden',
-            boxShadow: '0 8px 40px var(--shadow-md)', display: 'flex', flexDirection: 'column',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {zoomSrc.split('/').pop()}
-              </span>
-              <button onClick={() => setZoom((z) => Math.max(0.25, +(z / 1.25).toFixed(2)))}
-                title="缩小" aria-label="缩小" style={zoomBtnStyle}><MinusIcon size={13} /></button>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 42, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
-              <button onClick={() => setZoom((z) => Math.min(4, +(z * 1.25).toFixed(2)))}
-                title="放大" aria-label="放大" style={zoomBtnStyle}><PlusIcon size={13} /></button>
-              <button onClick={() => setZoom(1)} title="恢复原始大小" aria-label="恢复原始大小"
-                style={{ ...zoomBtnStyle, fontSize: 11, fontWeight: 600, width: 'auto', padding: '0 8px', color: zoom === 1 ? 'var(--text-muted)' : 'var(--accent)' }}>
-                1:1
-              </button>
-              <button onClick={() => setZoomSrc('')} title="关闭" aria-label="关闭" style={zoomBtnStyle}><XIcon size={16} /></button>
-            </div>
-            <div style={{ flex: 1, overflow: 'auto', padding: 16, background: 'var(--bg-tertiary)' }}>
-              <img src={zoomSrc} alt="放大预览" style={{
-                width: `${zoom * 100}%`, maxWidth: 'none', borderRadius: 6,
-                background: '#fff', display: 'block', margin: '0 auto',
-              }} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style>{`
-        .readme-body img { cursor: zoom-in; }
-      `}</style>
+      {/* 图片查看浮层：对话同款（滚轮缩放/拖拽/双击/捏合/Esc 关闭） */}
+      {zoomSrc && <ZoomableImage src={zoomSrc} onClose={() => setZoomSrc('')} />}
     </div>
   )
 }

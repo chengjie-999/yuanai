@@ -12,7 +12,9 @@ function withAssetToken(src?: string): string | undefined {
   return src
 }
 
-function MarkdownContentInner({ content, indent }: { content: string; indent?: boolean }) {
+function MarkdownContentInner({ content, indent, onImageExpand }: {
+  content: string; indent?: boolean; onImageExpand?: (src: string) => void
+}) {
   if (!content) return null
   return (
     <ReactMarkdown
@@ -25,7 +27,11 @@ function MarkdownContentInner({ content, indent }: { content: string; indent?: b
         ),
         img: ({ src, alt }) => (
           <img src={withAssetToken(src)} alt={alt || ''} loading="lazy"
-            style={{ maxWidth: '100%', borderRadius: 8, margin: '6px 0', border: '1px solid var(--border)' }} />
+            onClick={onImageExpand && src ? () => onImageExpand(withAssetToken(src) || '') : undefined}
+            style={{
+              maxWidth: '100%', borderRadius: 8, margin: '6px 0', border: '1px solid var(--border)',
+              ...(onImageExpand ? { cursor: 'zoom-in' } : {}),
+            }} />
         ),
         h1: ({ children }) => <h1 style={{ fontSize: 22, fontWeight: 700, margin: '18px 0 8px', color: 'var(--text-primary)' }}>{children}</h1>,
         h2: ({ children }) => <h2 style={{ fontSize: 18, fontWeight: 700, margin: '16px 0 6px', color: 'var(--text-primary)' }}>{children}</h2>,

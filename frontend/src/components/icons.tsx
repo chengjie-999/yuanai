@@ -42,6 +42,9 @@ export const PanelLeftIcon = (p: IconProps) => <Svg {...p}><rect width="18" heig
 /* 加号（新建） */
 export const PlusIcon = (p: IconProps) => <Svg {...p}><path d="M5 12h14" /><path d="M12 5v14" /></Svg>
 
+/* 减号（缩小） */
+export const MinusIcon = (p: IconProps) => <Svg {...p}><path d="M5 12h14" /></Svg>
+
 /* 垃圾桶（删除） */
 export const TrashIcon = (p: IconProps) => <Svg {...p}><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></Svg>
 

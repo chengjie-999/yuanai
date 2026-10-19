@@ -66,6 +66,9 @@ def _save_chat_image(session_id: str, data_url: str) -> str:
     """将 base64 data URL 保存为文件，返回访问 URL。非 base64 原样返回。"""
     if not data_url.startswith("data:"):
         return data_url  # 已经是文件 URL，跳过重复保存
+    # 路径穿越防护（2026-10-19）：session_id 必须是 UUID 形态，否则不落盘
+    if not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}", session_id or ""):
+        return data_url
     try:
         header, b64 = data_url.split(",", 1)
         ext = "png"
@@ -586,6 +589,9 @@ async def delete_session(session_id: str, request: Request):
         user_id = _get_user_id(request)
         _verify_session_owner(db, session_id, user_id)
         db.delete_session(session_id)
+        # 清除消息缓存（2026-10-19：此前 TTL 内仍可读已删除对话）
+        from db.cache import clear_chat_cache
+        clear_chat_cache(session_id)
         return {"deleted": session_id}
     except HTTPException:
         raise
@@ -595,17 +601,20 @@ async def delete_session(session_id: str, request: Request):
 
 
 @router.post("/messages")
-async def get_messages(req: MessagesRequest):
+async def get_messages(req: MessagesRequest, request: Request):
     """获取指定会话的消息"""
     try:
         session_id = req.session_id
+        # 会话归属校验（2026-10-19 安全收口：此前已知 session_id 即可读他人对话）
+        db = _get_db()
+        user_id = _get_user_id(request)
+        _verify_session_owner(db, session_id, user_id)
         # 先查 Redis 缓存
         from db.cache import get_cached_chat_messages
         cached = get_cached_chat_messages(session_id)
         if cached is not None:
             return cached
         # 缓存未命中，查数据库
-        db = _get_db()
         messages = db.get_chats(session_id)
         # 写入缓存（包括空列表，避免反复查库）
         from db.cache import cache_chat_messages

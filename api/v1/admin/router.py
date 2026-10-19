@@ -18,6 +18,9 @@ router.include_router(resources_router)
 
 @router.get("/dashboard")
 async def admin_dashboard(request: Request):
+    # 2026-10-19 安全收口：此前任意登录用户可取全站统计
+    from api.v1.middleware import require_admin
+    require_admin(request)
     db = get_db()
     sess = db.Session()
     try:

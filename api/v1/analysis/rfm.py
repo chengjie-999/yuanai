@@ -1,5 +1,6 @@
 """分析结果 API — 大屏数据 + 图表服务"""
 import os
+import re
 import json as _json
 import numpy as np
 import pandas as pd
@@ -33,6 +34,11 @@ async def rfm_analysis(request: Request):
         ds = db.get_dataset(int(dataset_id))
         if not ds:
             raise HTTPException(status_code=404, detail="dataset not found")
+        # 归属校验（2026-10-19 安全收口）：此前传任意 id 即可读他人数据集做 RFM
+        from api.v1.middleware import get_user_id
+        owner = ds.get("user_id")
+        if owner and int(owner) != int(get_user_id(request) or 0):
+            raise HTTPException(status_code=403, detail="dataset not owned")
         path = ds["file_path"]
     else:
         from utils.data_path import root_path
@@ -123,8 +129,15 @@ def _make_rfm_3d(rfm, ds_id: int) -> str:
 
 
 @router.get("/rfm-chart/{filename}")
-async def serve_rfm_chart(filename: str):
+async def serve_rfm_chart(filename: str, request: Request):
+    """RFM 图表。文件名含用户编号，2026-10-19 起要求登录（不再公开免鉴权枚举）"""
+    from api.v1.middleware import get_user_id
+    if not get_user_id(request):
+        raise HTTPException(status_code=401, detail="登录后访问")
     from utils.data_path import root_path
+    # 文件名白名单形态（rfm_3d_{id or default}），防路径穿越
+    if not re.fullmatch(r"rfm_3d_[0-9A-Za-z_\-]+", filename):
+        raise HTTPException(status_code=404, detail="not found")
     fpath = os.path.join(root_path(), "data", "analysis", "rfm", f"{filename}.html")
     if not os.path.isfile(fpath):
         raise HTTPException(status_code=404, detail="not found")

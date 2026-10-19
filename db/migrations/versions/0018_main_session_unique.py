@@ -25,10 +25,10 @@ def upgrade() -> None:
     cols = [c["name"] for c in inspector.get_columns("chat_session")]
 
     if "main_uid" not in cols:
-        # 1) 计算列（is_main=1 时 = user_id，否则 NULL）
+        # 1) 计算列（is_main=1 时 = user_id，否则 NULL；CASE WHEN 兼容 MySQL/SQLite）
         op.add_column("chat_session",
                       sa.Column("main_uid", sa.BigInteger(),
-                                sa.Computed("IF(is_main = 1, user_id, NULL)", persisted=True)))
+                                sa.Computed("CASE WHEN is_main = 1 THEN user_id END", persisted=True)))
         # 2) 存量重复去重：每用户保留 update_time 最新（同秒取最小 id）的主对话，其余降级普通会话
         op.execute("""
             UPDATE chat_session c

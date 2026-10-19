@@ -44,8 +44,11 @@ def save_crawl_data(url: str, data: str, data_type: str = "text") -> str:
         with open(file_path, 'wb') as f:
             f.write(raw)
         preview = raw.decode('utf-8', errors='replace')[:2000]
+        from yuanai_core.rag import current_user_id
         db = get_db()
-        r = db.save_crawl_record(url, data_type, file_path, preview, len(raw))
+        # 归属（2026-10-19 安全收口）：此前不传 user_id，爬取历史跨用户可见
+        r = db.save_crawl_record(url, data_type, file_path, preview, len(raw),
+                                 user_id=current_user_id.get() or None)
         return f"已保存 (id={r['id']}) 文件: {file_path}"
     except Exception as e:
         return f"保存失败: {e}"
@@ -56,8 +59,10 @@ def list_crawl_data(page: int = 1, limit: int = 10) -> str:
     """List crawl history. page: page number, limit: items per page."""
     try:
         from db.session import get_db
+        from yuanai_core.rag import current_user_id
         db = get_db()
-        records, total = db.get_crawl_records(page=page, limit=limit)
+        records, total = db.get_crawl_records(user_id=current_user_id.get() or None,
+                                              page=page, limit=limit)
         if not records:
             return "暂无爬取记录"
         lines = [f"爬取记录 (共 {total} 条, 第 {page} 页)"]
@@ -74,10 +79,15 @@ def get_crawl_detail(record_id: int) -> str:
     try:
         import os
         from db.session import get_db
+        from yuanai_core.rag import current_user_id
         db = get_db()
         record = db.get_crawl_record(record_id)
         if not record:
             return "记录不存在"
+        # 归属校验（2026-10-19）：跨用户读取爬取正文防护
+        owner = record.get("user_id") if "user_id" in record else None
+        if owner and int(owner) != int(current_user_id.get() or 0):
+            return "记录不存在或不属于当前用户"
         file_path = record.get("file_path", "")
         if not file_path or not os.path.isfile(file_path):
             return "原始文件已丢失"

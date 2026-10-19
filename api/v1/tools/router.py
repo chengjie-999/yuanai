@@ -67,6 +67,12 @@ async def execute_tool(req: ToolRequest, request: Request):
     if req.name in ADMIN_TOOLS:
         require_admin(request)
 
+    # 用户上下文（2026-10-19 安全收口）：此前未设置——list_datasets 以 uid=0
+    # 返回全部用户数据集，preview/analyze_dataset 可越权取任意 id
+    from api.v1.middleware import get_user_id
+    from yuanai_core.rag import current_user_id
+    current_user_id.set(get_user_id(request) or 0)
+
     t0 = time.time()
     try:
         result = tool.invoke(req.args)

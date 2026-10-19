@@ -1,7 +1,7 @@
 export const API_BASE = '/api/v1'
 
 export function getToken(): string {
-  return localStorage.getItem('token') || ''
+  return localStorage.getItem('token') || sessionStorage.getItem('token') || ''
 }
 
 const MODEL_KEY = 'selectedModel'
@@ -62,7 +62,7 @@ function authHeaders(): Record<string, string> {
 
 export function headers(): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' }
-  const t = localStorage.getItem('token')
+  const t = localStorage.getItem('token') || sessionStorage.getItem('token')
   if (t) h['Authorization'] = `Bearer ${t}`
   return h
 }

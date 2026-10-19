@@ -10,7 +10,7 @@ export default function AutomationPanel({ agentOnline }: { agentOnline: boolean 
   useEffect(() => {
     if (!agentOnline) return
     const poll = () => {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token')
       if (!token) return
       fetch(`${API_BASE}/admin/agent-status`, {
         headers: { Authorization: `Bearer ${token}` },

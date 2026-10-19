@@ -61,14 +61,28 @@ def list_datasets() -> str:
     return "\n".join(lines)
 
 
+def _get_own_dataset(ds_id: int):
+    """归属校验（2026-10-19 安全收口）：取数据集并确认属于当前用户。
+    无主数据集视为共享；uid=0（上下文缺失）只能访问无主数据集。"""
+    from db.session import get_db
+    from yuanai_core.rag import current_user_id
+    ds = get_db().get_dataset(ds_id)
+    if not ds:
+        return None, f"数据集 #{ds_id} 不存在"
+    owner = ds.get("user_id")
+    if owner and int(owner) != int(current_user_id.get() or 0):
+        return None, f"数据集 #{ds_id} 不属于当前用户"
+    return ds, ""
+
+
 @tool
 def preview_dataset(dataset_id: int) -> str:
     """Preview first rows of a dataset. dataset_id: integer dataset ID."""
+    ds, err = _get_own_dataset(dataset_id)
+    if err:
+        return err
     from db.session import get_db
     db = get_db()
-    ds = db.get_dataset(dataset_id)
-    if not ds:
-        return f"数据集 #{dataset_id} 不存在"
     names = _col_names(ds.get("columns", []))
     lines = [
         f"## {ds['name']}",
@@ -88,12 +102,10 @@ def preview_dataset(dataset_id: int) -> str:
 def analyze_dataset(dataset_id: int) -> str:
     """Full statistical analysis of a dataset. dataset_id: integer."""
     import json as _json, os as _os
-    from db.session import get_db
     from concurrent.futures import ProcessPoolExecutor
-    db = get_db()
-    ds = db.get_dataset(dataset_id)
-    if not ds:
-        return f"数据集 #{dataset_id} 不存在"
+    ds, err = _get_own_dataset(dataset_id)
+    if err:
+        return err
     # check cache
     try:
         from db.redis_client import get_redis
@@ -177,11 +189,11 @@ def transform_dataset(dataset_id: int, operation: str, params: str) -> str:
     import pandas as pd
     import os, json as _json
 
+    ds, err = _get_own_dataset(dataset_id)
+    if err:
+        return err
     from db.session import get_db
     db = get_db()
-    ds = db.get_dataset(dataset_id)
-    if not ds:
-        return f"数据集 #{dataset_id} 不存在"
 
     ft = ds["file_type"]
     path = ds["file_path"]
@@ -246,11 +258,11 @@ def transform_dataset(dataset_id: int, operation: str, params: str) -> str:
 def describe_column(dataset_id: int, column: str) -> str:
     """Stats for one column. dataset_id: int, column: column name. Returns count/mean/std/min/max/quartiles/null/outliers."""
     import pandas as pd, os, json as _json
+    ds, err = _get_own_dataset(dataset_id)
+    if err:
+        return err
     from db.session import get_db
     db = get_db()
-    ds = db.get_dataset(dataset_id)
-    if not ds:
-        return f"数据集 #{dataset_id} 不存在"
     try:
         ft, path = ds["file_type"], ds["file_path"]
         df = pd.read_csv(path) if ft == "csv" else (pd.read_excel(path) if ft in ("xlsx","xls") else pd.read_json(path))
@@ -291,11 +303,11 @@ def describe_column(dataset_id: int, column: str) -> str:
 def correlate_columns(dataset_id: int, col1: str, col2: str) -> str:
     """Correlation between two columns. dataset_id: int, col1/col2: column names. Returns Pearson/Spearman/Kendall."""
     import pandas as pd, os
+    ds, err = _get_own_dataset(dataset_id)
+    if err:
+        return err
     from db.session import get_db
     db = get_db()
-    ds = db.get_dataset(dataset_id)
-    if not ds:
-        return f"数据集 #{dataset_id} 不存在"
     try:
         ft, path = ds["file_type"], ds["file_path"]
         df = pd.read_csv(path) if ft == "csv" else (pd.read_excel(path) if ft in ("xlsx","xls") else pd.read_json(path))

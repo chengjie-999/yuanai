@@ -53,7 +53,7 @@ export default function AnalysisPanel() {
     setExporting(true)
     setTip('')
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token')
       const h: Record<string, string> = {}
       if (token) h['Authorization'] = `Bearer ${token}`
       const res = await fetch(`${API_BASE}/data/export/${selectedId}?format=excel`, { headers: h })

@@ -31,7 +31,7 @@ class ChatSession(Base):
     is_main = Column(Integer, default=0)  # 1 = 豆包式置顶主对话（每用户一条）
     # 主对话唯一性（迁移 0018）：is_main=1 时等于 user_id，否则 NULL——唯一索引在
     # NULL 上不冲突，相当于 MySQL 版的部分唯一索引（MySQL 不支持 WHERE 过滤索引）
-    main_uid = Column(BigInteger, Computed("IF(is_main = 1, user_id, NULL)", persisted=True))
+    main_uid = Column(BigInteger, Computed("CASE WHEN is_main = 1 THEN user_id END", persisted=True))
     create_time = Column(TIMESTAMP, server_default=func.now())
     update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
@@ -1421,6 +1421,7 @@ class AgentDatabase:
             return {"id": r.id, "url": r.url, "retype": r.retype, "file_path": r.file_path,
                     "preview": r.preview, "result_length": r.result_length,
                     "parsed_title": r.parsed_title, "parsed_text": r.parsed_text, "parsed_links": r.parsed_links,
+                    "user_id": r.user_id,
                     "create_time": str(r.create_time)[:19] if r.create_time else ""}
         finally:
             sess.close()

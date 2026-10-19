@@ -7,7 +7,7 @@
 const API_BASE = '/api/v1'
 
 function getToken(): string {
-  return localStorage.getItem('token') || ''
+  return localStorage.getItem('token') || sessionStorage.getItem('token') || ''
 }
 
 function authHeaders(): Record<string, string> {

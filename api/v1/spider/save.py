@@ -183,7 +183,14 @@ async def get_record(rid: int, request: Request):
         record = db.get_crawl_record(rid)
         if not record:
             raise HTTPException(status_code=404, detail="记录不存在")
+        # 归属校验（2026-10-19 安全收口）：此前任意用户可读他人记录（含完整正文）
+        owner = record.get("user_id")
+        uid = getattr(request.state, "user_id", 0) or 0
+        if owner and int(owner) != int(uid):
+            raise HTTPException(status_code=404, detail="记录不存在")
         return record
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -194,10 +201,20 @@ async def delete_record(rid: int, request: Request):
     try:
         from db.session import get_db
         db = get_db()
+        record = db.get_crawl_record(rid)
+        if not record:
+            raise HTTPException(status_code=404, detail="记录不存在")
+        # 归属校验（2026-10-19 安全收口）：此前任意用户可删他人记录
+        owner = record.get("user_id")
+        uid = getattr(request.state, "user_id", 0) or 0
+        if owner and int(owner) != int(uid):
+            raise HTTPException(status_code=404, detail="记录不存在")
         ok = db.delete_crawl_record(rid)
         if not ok:
             raise HTTPException(status_code=404, detail="记录不存在")
         return {"status": "ok"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -211,6 +228,11 @@ async def read_record_file(rid: int, request: Request):
         db = get_db()
         record = db.get_crawl_record(rid)
         if not record or not record.get("file_path"):
+            raise HTTPException(status_code=404, detail="文件不存在")
+        # 归属校验（2026-10-19 安全收口）：此前任意用户可读他人原始文件
+        owner = record.get("user_id")
+        uid = getattr(request.state, "user_id", 0) or 0
+        if owner and int(owner) != int(uid):
             raise HTTPException(status_code=404, detail="文件不存在")
         path = record["file_path"]
         # 验证文件路径在允许的数据目录内

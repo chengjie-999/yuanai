@@ -161,7 +161,7 @@ export default function FilesTab() {
     try {
       const form = new FormData()
       form.append('file', f)
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token')
       const res = await fetch(`${API_BASE}/admin/file/upload?path=${encodeURIComponent(currentPath)}`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},

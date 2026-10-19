@@ -11,7 +11,7 @@ from api.v1.exceptions import Unauthorized, Forbidden
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register", "/api/v1/knowledge/img", "/api/v1/analysis/rfm-chart", "/api/v1/chat/image", "/api/v1/agent/register", "/api/v1/stats/visit", "/api/v1/docs/readme", "/api/v1/docs/asset"]
+PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register", "/api/v1/knowledge/img", "/api/v1/chat/image", "/api/v1/agent/register", "/api/v1/stats/visit", "/api/v1/docs/readme", "/api/v1/docs/asset"]
 
 
 def is_public(path: str) -> bool:
@@ -35,6 +35,7 @@ def _extract_token(request: Request) -> str:
             or path.startswith("/api/v1/data/analysis-html") \
             or path.startswith("/api/v1/data/dashboard-html") \
             or path.startswith("/api/v1/planet/asset") \
+            or path.startswith("/api/v1/analysis/rfm-chart") \
             or path.startswith("/api/v1/admin/file-html") \
             or path.startswith("/api/v1/admin/file-media") \
             or (path.startswith("/api/v1/planet/maps") and path.endswith("/origin")):

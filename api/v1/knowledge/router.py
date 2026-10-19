@@ -288,10 +288,15 @@ async def rebuild(request: Request):
 
 @router.get("/img/{source}/{filename:path}")
 async def serve_kb_image(source: str, filename: str):
-    """提供知识库图片（公开访问；realpath 归一化防路径穿越）"""
+    """提供知识库图片（公开访问；realpath 归一化防路径穿越）
+    2026-10-19 加固：source 也校验在知识库根内 + 带分隔符前缀校验
+    （原无分隔符 startswith 可越权读同前缀目录）"""
+    kb_root = os.path.realpath(AIPROMPT_DIR)
     base = os.path.realpath(os.path.join(AIPROMPT_DIR, source, ""))
-    img_path = os.path.normpath(os.path.join(base, filename))
-    if not img_path.startswith(base) or not os.path.isfile(img_path):
+    if not (base == kb_root or base.startswith(kb_root + os.sep)):
+        raise HTTPException(status_code=404, detail="图片不存在")
+    img_path = os.path.realpath(os.path.join(base, filename))
+    if not (img_path == base or img_path.startswith(base + os.sep)) or not os.path.isfile(img_path):
         raise HTTPException(status_code=404, detail="图片不存在")
     return FileResponse(img_path)
 

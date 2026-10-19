@@ -17,7 +17,7 @@ export default function KnowledgePanel() {
     if (!query.trim()) return
     setSearching(true); setError('')
     try {
-      const token = localStorage.getItem('token') || ''
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token') || ''
       const res = await fetch(`${API_BASE}/knowledge/search?q=${encodeURIComponent(query.trim())}`, {
         headers: { Authorization: `Bearer ${token}` },
       })

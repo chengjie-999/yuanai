@@ -40,8 +40,7 @@ async def mint_agent_token(req: AgentTokenRequest, request: Request):
         raise HTTPException(status_code=400, detail="expires_days 必须在 1-90 天之间")
     from db.session import User
     db = get_db()
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         user = sess.query(User).filter_by(id=req.user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -49,10 +48,6 @@ async def mint_agent_token(req: AgentTokenRequest, request: Request):
         token = create_token(user.id, user.role or "user", user.username or "",
                              expires_days=req.expires_days)
         return {"token": token, "user_id": user.id, "expires_days": req.expires_days}
-    finally:
-        sess.close()
-
-
 @router.post("/agent-exe-upload")
 async def upload_agent_exe(request: Request, version: str = Form(""), file: UploadFile = File(...)):
     """上传本地 Agent 安装包（仅 admin）：写入 downloads/yuanai-agent.exe 并更新 version.json。
@@ -116,8 +111,7 @@ async def gen_agent_codes(req: AgentCodeGen, request: Request):
     import secrets as _secrets
     from db.session import AgentDevice
     db = get_db()
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         codes = []
         for _ in range(req.count):
             code = "YUAN-" + "-".join(_secrets.token_hex(2).upper() for _ in range(3))
@@ -125,10 +119,6 @@ async def gen_agent_codes(req: AgentCodeGen, request: Request):
             codes.append(code)
         sess.commit()
         return {"codes": codes}
-    finally:
-        sess.close()
-
-
 @router.get("/agent-devices")
 async def list_agent_devices(request: Request):
     """设备列表：注册状态、绑定用户、在线状态、最后在线时间"""
@@ -136,8 +126,7 @@ async def list_agent_devices(request: Request):
     from db.session import AgentDevice, User
     from api.v1.agent.router import _agents
     db = get_db()
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         devices = sess.query(AgentDevice).order_by(AgentDevice.id.desc()).all()
         users = {u.id: u.username for u in sess.query(User).all()}
         result = []
@@ -155,18 +144,13 @@ async def list_agent_devices(request: Request):
                 "create_time": str(d.create_time)[:19] if d.create_time else "",
             })
         return result
-    finally:
-        sess.close()
-
-
 @router.post("/agent-bind")
 async def bind_agent_device(req: AgentBindRequest, request: Request):
     """一对一绑定：设备 ↔ 云端用户（admin 操作；双方均不能已绑定）"""
     require_admin(request)
     from db.session import AgentDevice, User
     db = get_db()
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         dev = sess.query(AgentDevice).filter_by(id=req.agent_id).first()
         if not dev:
             raise HTTPException(status_code=404, detail="设备不存在")
@@ -184,18 +168,13 @@ async def bind_agent_device(req: AgentBindRequest, request: Request):
         from api.v1.agent.router import invalidate_bind_cache
         invalidate_bind_cache(req.user_id)
         return {"ok": True, "agent_id": dev.id, "user_id": req.user_id}
-    finally:
-        sess.close()
-
-
 @router.post("/agent-unbind")
 async def unbind_agent_device(req: AgentBindRequest, request: Request):
     """解绑设备（仅传 agent_id 即可，user_id 忽略）"""
     require_admin(request)
     from db.session import AgentDevice
     db = get_db()
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         dev = sess.query(AgentDevice).filter_by(id=req.agent_id).first()
         if not dev:
             raise HTTPException(status_code=404, detail="设备不存在")
@@ -206,23 +185,16 @@ async def unbind_agent_device(req: AgentBindRequest, request: Request):
             from api.v1.agent.router import invalidate_bind_cache
             invalidate_bind_cache(old_user)
         return {"ok": True, "agent_id": dev.id}
-    finally:
-        sess.close()
-
-
 @router.post("/agent-freeze")
 async def freeze_agent_device(req: AgentFreezeRequest, request: Request):
     """冻结/解冻设备（冻结后 WS 连接被拒绝）"""
     require_admin(request)
     from db.session import AgentDevice
     db = get_db()
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         dev = sess.query(AgentDevice).filter_by(id=req.agent_id).first()
         if not dev:
             raise HTTPException(status_code=404, detail="设备不存在")
         dev.enabled = 1 if req.enabled else 0
         sess.commit()
         return {"ok": True, "agent_id": dev.id, "enabled": dev.enabled == 1}
-    finally:
-        sess.close()

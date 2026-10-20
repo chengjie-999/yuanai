@@ -49,42 +49,40 @@ def generate_title(session_id: str, messages: list) -> bool:
 
     from db.session import get_db, ChatSession
     db = get_db()
-    sess = db.Session()
     try:
-        row = sess.query(ChatSession).filter_by(session_id=session_id).first()
-        if not row or not _is_auto_title(row.title, first_msg):
-            return False
-        # 已生成过且标题已非自动 → 跳过（上面的判断已覆盖；此处双保险）
-        from config.settings import MEMORY_MODEL
-        from yuanai_core.core.lc import get_llm
-        llm = get_llm(MEMORY_MODEL, reasoning=False, temperature=0.3, timeout=10)
-        pool = ThreadPoolExecutor(max_workers=1)
-        try:
-            future = pool.submit(llm.invoke, [
-                ("system", TITLE_PROMPT),
-                ("user", f"第一条消息：{first_msg[:200]}\n\n最近一条用户消息：{last_user[:200]}"),
-            ])
-            resp = future.result(timeout=10)
-            title = (resp.content if hasattr(resp, "content") else str(resp)).strip()
-        finally:
-            pool.shutdown(wait=False)
-        title = title.replace("「", "").replace("」", "").replace('"', "").replace("'", "")[:30]
-        if not title or title == "闲聊":
-            return False
-        row.title = title
-        sess.commit()
-        try:
-            from db.cache import clear_chat_cache
-            clear_chat_cache(session_id)
-        except Exception:
-            pass
-        logger.info("会话标题生成: %s → %s", session_id[:8], title)
-        return True
+        with db.session() as sess:
+            row = sess.query(ChatSession).filter_by(session_id=session_id).first()
+            if not row or not _is_auto_title(row.title, first_msg):
+                return False
+            # 已生成过且标题已非自动 → 跳过（上面的判断已覆盖；此处双保险）
+            from config.settings import MEMORY_MODEL
+            from yuanai_core.core.lc import get_llm
+            llm = get_llm(MEMORY_MODEL, reasoning=False, temperature=0.3, timeout=10)
+            pool = ThreadPoolExecutor(max_workers=1)
+            try:
+                future = pool.submit(llm.invoke, [
+                    ("system", TITLE_PROMPT),
+                    ("user", f"第一条消息：{first_msg[:200]}\n\n最近一条用户消息：{last_user[:200]}"),
+                ])
+                resp = future.result(timeout=10)
+                title = (resp.content if hasattr(resp, "content") else str(resp)).strip()
+            finally:
+                pool.shutdown(wait=False)
+            title = title.replace("「", "").replace("」", "").replace('"', "").replace("'", "")[:30]
+            if not title or title == "闲聊":
+                return False
+            row.title = title
+            sess.commit()
+            try:
+                from db.cache import clear_chat_cache
+                clear_chat_cache(session_id)
+            except Exception:
+                pass
+            logger.info("会话标题生成: %s → %s", session_id[:8], title)
+            return True
     except Exception:
         logger.warning("标题生成失败: sid=%s", session_id, exc_info=True)
         return False
-    finally:
-        sess.close()
 
 
 def maybe_generate_title(session_id: str, messages: list) -> bool:

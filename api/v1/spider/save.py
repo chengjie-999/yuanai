@@ -146,8 +146,7 @@ async def check_record(request: Request, url: str = ""):
         from db.session import get_db, CrawlRecord
         db = get_db()
         user_id = getattr(request.state, "user_id", None)
-        sess = db.Session()
-        try:
+        with db.session() as sess:
             q = sess.query(CrawlRecord).filter_by(url=url)
             if user_id is not None:
                 q = q.filter(CrawlRecord.user_id == user_id)
@@ -155,8 +154,6 @@ async def check_record(request: Request, url: str = ""):
             if existing:
                 return {"exists": True, "id": existing.id, "create_time": str(existing.create_time)[:19] if existing.create_time else ""}
             return {"exists": False}
-        finally:
-            sess.close()
     except Exception as e:
         return {"exists": False, "error": str(e)}
 

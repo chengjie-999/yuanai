@@ -22,8 +22,7 @@ async def admin_dashboard(request: Request):
     from api.v1.middleware import require_admin
     require_admin(request)
     db = get_db()
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         from db.session import User, ChatSession, AIChat
         from sqlalchemy import func
 
@@ -99,10 +98,6 @@ async def admin_dashboard(request: Request):
             "daily_messages": daily_messages,
             "visits": visits,
         }
-    finally:
-        sess.close()
-
-
 # ===================== Agent 状态摘要 =====================
 
 

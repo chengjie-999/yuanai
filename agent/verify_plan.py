@@ -180,16 +180,11 @@ def online_state_machine():
               all(e in runs for e in ("created", "queued", "claimed", "step_done", "plan_done")))
         db.delete_plan_cascade(pid, uid)
     finally:
-        sess = db.Session()
-        try:
+        with db.session() as sess:
             x = sess.query(User).filter_by(id=uid).first()
             if x:
                 sess.delete(x)
             sess.commit()
-        finally:
-            sess.close()
-
-
 def online_smoke():
     print("=== 在线冒烟 ===")
     import urllib.request

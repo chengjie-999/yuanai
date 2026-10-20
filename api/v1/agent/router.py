@@ -104,8 +104,7 @@ async def register_agent(req: AgentRegisterRequest):
     try:
         from db.session import get_db, AgentDevice
         db = get_db()
-        sess = db.Session()
-        try:
+        with db.session() as sess:
             dev = sess.query(AgentDevice).filter_by(install_code=code).first()
             # S3.5：两种失败统一文案与状态码（防安装码枚举 oracle 区分「不存在」与「已使用」）
             if not dev or dev.agent_secret:
@@ -117,8 +116,6 @@ async def register_agent(req: AgentRegisterRequest):
             logger.info("Agent 设备注册: id=%s machine=%s", dev.id, dev.machine_name)
             return {"agent_id": dev.id, "agent_secret": dev.agent_secret,
                     "machine_name": dev.machine_name}
-        finally:
-            sess.close()
     except HTTPException:
         raise
     except Exception as e:
@@ -160,12 +157,9 @@ def _get_bound_agent_id(user_id: int) -> str | None:
     try:
         from db.session import get_db, AgentDevice
         db = get_db()
-        sess = db.Session()
-        try:
+        with db.session() as sess:
             dev = sess.query(AgentDevice).filter_by(user_id=user_id, enabled=1).first()
             result = str(dev.id) if dev else None
-        finally:
-            sess.close()
         _bind_cache[user_id] = (result, now)
         return result
     except Exception as e:
@@ -185,13 +179,10 @@ def _verify_agent_secret(agent_id: str, secret: str) -> bool:
     try:
         from db.session import get_db, AgentDevice
         db = get_db()
-        sess = db.Session()
-        try:
+        with db.session() as sess:
             dev = sess.query(AgentDevice).filter_by(id=int(agent_id), enabled=1).first()
             return bool(dev) and bool(dev.agent_secret) and \
                 secrets.compare_digest(dev.agent_secret, secret)
-        finally:
-            sess.close()
     except Exception as e:
         logger.warning("设备鉴权查询失败: %s", e)
         return False
@@ -204,12 +195,9 @@ def resolve_agent_uid(agent_id: str) -> int:
     try:
         from db.session import get_db, AgentDevice
         db = get_db()
-        sess = db.Session()
-        try:
+        with db.session() as sess:
             dev = sess.query(AgentDevice).filter_by(id=int(agent_id), enabled=1).first()
             return (dev.user_id or 0) if dev else 0
-        finally:
-            sess.close()
     except Exception as e:
         logger.warning("设备绑定查询失败: %s", e)
         return 0
@@ -277,14 +265,11 @@ async def agent_ws(websocket: WebSocket, agent_id: str):
         try:
             from db.session import get_db, AgentDevice
             db = get_db()
-            sess = db.Session()
-            try:
+            with db.session() as sess:
                 dev = sess.query(AgentDevice).filter_by(id=int(agent_id)).first()
                 if dev:
                     dev.last_seen = datetime.utcnow()
                     sess.commit()
-            finally:
-                sess.close()
         except Exception:
             pass
 

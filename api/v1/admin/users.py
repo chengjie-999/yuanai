@@ -25,8 +25,7 @@ async def list_users(request: Request):
     require_admin(request)
     db = get_db()
     from db.session import User
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         users = sess.query(User).order_by(User.id).all()
         now = datetime.utcnow()
         return [{
@@ -36,18 +35,13 @@ async def list_users(request: Request):
             "frozen_until": str(u.frozen_until)[:19] if u.frozen_until else None,
             "create_time": str(u.create_time)[:19] if u.create_time else "",
         } for u in users]
-    finally:
-        sess.close()
-
-
 @router.post("/users/revoke-tokens")
 async def revoke_user_tokens(req: FreezeRequest, request: Request):
     """吊销用户全部 JWT（token_version +1，旧 token 立即失效；S3.4 M7）"""
     require_admin(request)
     db = get_db()
     from db.session import User
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         user = sess.query(User).filter_by(id=req.user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -55,10 +49,6 @@ async def revoke_user_tokens(req: FreezeRequest, request: Request):
         sess.commit()
         return {"ok": True, "token_version": user.token_version,
                 "message": f"用户 {user.username} 的全部登录令牌已失效"}
-    finally:
-        sess.close()
-
-
 @router.post("/users/freeze")
 async def freeze_user(req: FreezeRequest, request: Request):
     require_admin(request)
@@ -66,8 +56,7 @@ async def freeze_user(req: FreezeRequest, request: Request):
         raise HTTPException(status_code=400, detail="天数不能为负数")
     db = get_db()
     from db.session import User
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         user = sess.query(User).filter_by(id=req.user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -81,10 +70,6 @@ async def freeze_user(req: FreezeRequest, request: Request):
             msg = f"已冻结用户 {user.username} {req.days} 天"
         sess.commit()
         return {"ok": True, "message": msg}
-    finally:
-        sess.close()
-
-
 @router.post("/users/create")
 async def admin_create_user(req: AdminCreateUser, request: Request):
     """管理员创建新用户"""
@@ -104,8 +89,7 @@ async def admin_delete_user(user_id: int, request: Request):
         raise HTTPException(status_code=400, detail="不能删除自己")
     from db.session import User
     db = get_db()
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         user = sess.query(User).filter_by(id=user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -114,5 +98,3 @@ async def admin_delete_user(user_id: int, request: Request):
         sess.delete(user)
         sess.commit()
         return {"ok": True, "deleted": user.username}
-    finally:
-        sess.close()

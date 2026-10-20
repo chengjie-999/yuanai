@@ -105,14 +105,11 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)):
 
     # dedup: same name + same size → update existing
     from db.session import Dataset
-    sess = db.Session()
     existing = None
-    try:
+    with db.session() as sess:
         existing = sess.query(Dataset).filter_by(
             name=file.filename, file_size=file_size, user_id=user_id,
         ).first()
-    finally:
-        sess.close()
 
     if existing:
         ds_id = existing.id
@@ -121,14 +118,11 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)):
             f.write(content)
         # update create_time
         from sqlalchemy.sql import func
-        sess2 = db.Session()
-        try:
+        with db.session() as sess2:
             r = sess2.query(Dataset).filter_by(id=ds_id).first()
             if r:
                 r.create_time = func.now()
                 sess2.commit()
-        finally:
-            sess2.close()
         # clear stale analysis cache
         try:
             from db.redis_client import get_redis
@@ -201,8 +195,7 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)):
             pass
 
     from db.session import Dataset
-    sess = db.Session()
-    try:
+    with db.session() as sess:
         ds = sess.query(Dataset).filter_by(id=ds_id).first()
         if ds:
             ds.file_path = fpath
@@ -211,9 +204,6 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)):
             ds.columns_info = json.dumps(columns_info, ensure_ascii=False)
             ds.preview_rows = json.dumps(preview_rows, ensure_ascii=False)
             sess.commit()
-    finally:
-        sess.close()
-
     return {"id": ds_id, "name": file.filename, "file_type": ext.lstrip("."),
             "file_size": file_size, "row_count": row_count,
             "columns": columns_info, "preview_rows": preview_rows}

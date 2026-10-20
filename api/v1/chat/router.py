@@ -575,8 +575,7 @@ async def list_sessions(request: Request, own: bool = False):
         if is_admin and not own:
             from db.session import User, ChatSession, AIChat
             from sqlalchemy import func
-            sess = db.Session()
-            try:
+            with db.session() as sess:
                 sids = [s["session_id"] for s in sessions]
                 # 消息数
                 msg_counts = dict(
@@ -600,8 +599,6 @@ async def list_sessions(request: Request, own: bool = False):
                     s["message_count"] = msg_counts.get(s["session_id"], 0)
                     uid = uid_map.get(s["session_id"])
                     s["username"] = user_map.get(uid, "-") if uid else "-"
-            finally:
-                sess.close()
         return sessions
     except HTTPException:
         raise
@@ -664,64 +661,61 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
         user_id = _get_user_id(request)
         _verify_session_owner(db, req.session_id, user_id)
 
-        sess = db.Session()
         from db.session import AIChat, AIChatFeedback
-        try:
-            # 先删除该会话的全部旧消息，避免重复累积
-            sess.query(AIChat).filter_by(session_id=req.session_id).delete()
-            # 同步清理孤儿点赞：消息被截断后，下标超出新消息范围的反馈行一并删除
-            sess.query(AIChatFeedback).filter(
-                AIChatFeedback.session_id == req.session_id,
-                AIChatFeedback.message_index >= len(req.messages),
-            ).delete(synchronize_session=False)
-            # 信封落列：turn 兜底补齐（旧客户端无信封时按 user 计数推导）
-            from yuanai_core.core.message import assign_turns
-            assign_turns(req.messages)
-            count = 0
-            for msg in req.messages:
-                record = AIChat(
-                    session_id=req.session_id, role=msg["role"], content=msg["content"],
-                    sender=msg.get("sender") or ("user" if msg["role"] == "user" else "orchestrator"),
-                    recipient=msg.get("recipient") or "",
-                    turn=msg.get("turn") or 0,
-                    type=msg.get("type") or "chat",
-                )
-                if msg.get("images"):
-                    # data: URL 是新的需要保存；/api/v1/chat/image/ 是已保存的跳过
-                    saved = []
-                    for img in msg["images"]:
-                        if isinstance(img, str) and img.startswith("/api/v1/"):
-                            saved.append(img)  # 已经是文件 URL
-                        else:
-                            saved.append(_save_chat_image(req.session_id, img))
-                    record.images = json.dumps(saved, ensure_ascii=False)
-                sess.add(record)
-                count += 1
-            # 更新会话：标题按需、update_time 每次必刷（会话列表按最后活跃排序依赖此字段）
-            from db.session import ChatSession
-            from sqlalchemy.sql import func
-            chat_update = {"update_time": func.now()}
-            # C AI 会话标题：仅当现标题仍是自动标题（空/新对话/首条截断）才覆盖，
-            # AI 已生成的标题不被后续消息的自动标题压掉
-            if req.title:
-                from api.v1.chat.title_gen import _is_auto_title
-                from yuanai_core.core.message import text_of
-                cur = sess.query(ChatSession).filter_by(session_id=req.session_id).first()
-                first_user = ""
-                for m in req.messages or []:
-                    if m.get("role") == "user":
-                        first_user = text_of(m.get("content")).strip()
-                        break
-                if cur and _is_auto_title(cur.title, first_user):
-                    chat_update["title"] = req.title
-            sess.query(ChatSession).filter_by(session_id=req.session_id).update(chat_update)
-            sess.commit()
-        except Exception:
-            sess.rollback()
-            raise
-        finally:
-            sess.close()
-
+        with db.session() as sess:
+            try:
+                # 先删除该会话的全部旧消息，避免重复累积
+                sess.query(AIChat).filter_by(session_id=req.session_id).delete()
+                # 同步清理孤儿点赞：消息被截断后，下标超出新消息范围的反馈行一并删除
+                sess.query(AIChatFeedback).filter(
+                    AIChatFeedback.session_id == req.session_id,
+                    AIChatFeedback.message_index >= len(req.messages),
+                ).delete(synchronize_session=False)
+                # 信封落列：turn 兜底补齐（旧客户端无信封时按 user 计数推导）
+                from yuanai_core.core.message import assign_turns
+                assign_turns(req.messages)
+                count = 0
+                for msg in req.messages:
+                    record = AIChat(
+                        session_id=req.session_id, role=msg["role"], content=msg["content"],
+                        sender=msg.get("sender") or ("user" if msg["role"] == "user" else "orchestrator"),
+                        recipient=msg.get("recipient") or "",
+                        turn=msg.get("turn") or 0,
+                        type=msg.get("type") or "chat",
+                    )
+                    if msg.get("images"):
+                        # data: URL 是新的需要保存；/api/v1/chat/image/ 是已保存的跳过
+                        saved = []
+                        for img in msg["images"]:
+                            if isinstance(img, str) and img.startswith("/api/v1/"):
+                                saved.append(img)  # 已经是文件 URL
+                            else:
+                                saved.append(_save_chat_image(req.session_id, img))
+                        record.images = json.dumps(saved, ensure_ascii=False)
+                    sess.add(record)
+                    count += 1
+                # 更新会话：标题按需、update_time 每次必刷（会话列表按最后活跃排序依赖此字段）
+                from db.session import ChatSession
+                from sqlalchemy.sql import func
+                chat_update = {"update_time": func.now()}
+                # C AI 会话标题：仅当现标题仍是自动标题（空/新对话/首条截断）才覆盖，
+                # AI 已生成的标题不被后续消息的自动标题压掉
+                if req.title:
+                    from api.v1.chat.title_gen import _is_auto_title
+                    from yuanai_core.core.message import text_of
+                    cur = sess.query(ChatSession).filter_by(session_id=req.session_id).first()
+                    first_user = ""
+                    for m in req.messages or []:
+                        if m.get("role") == "user":
+                            first_user = text_of(m.get("content")).strip()
+                            break
+                    if cur and _is_auto_title(cur.title, first_user):
+                        chat_update["title"] = req.title
+                sess.query(ChatSession).filter_by(session_id=req.session_id).update(chat_update)
+                sess.commit()
+            except Exception:
+                sess.rollback()
+                raise
         from db.cache import clear_chat_cache
         clear_chat_cache(req.session_id)
 
@@ -767,29 +761,27 @@ async def set_message_feedback(req: FeedbackRequest, request: Request):
         disliked = 1 if (req.disliked is True and not liked) else 0
 
         from db.session import AIChatFeedback
-        sess = db.Session()
-        try:
-            row = sess.query(AIChatFeedback).filter_by(
-                session_id=req.session_id, message_index=req.message_index,
-            ).first()
-            if row:
-                row.liked = liked
-                row.disliked = disliked
-                row.user_id = user_id
-            else:
-                sess.add(AIChatFeedback(
-                    session_id=req.session_id,
-                    message_index=req.message_index,
-                    liked=liked,
-                    disliked=disliked,
-                    user_id=user_id,
-                ))
-            sess.commit()
-        except Exception:
-            sess.rollback()
-            raise
-        finally:
-            sess.close()
+        with db.session() as sess:
+            try:
+                row = sess.query(AIChatFeedback).filter_by(
+                    session_id=req.session_id, message_index=req.message_index,
+                ).first()
+                if row:
+                    row.liked = liked
+                    row.disliked = disliked
+                    row.user_id = user_id
+                else:
+                    sess.add(AIChatFeedback(
+                        session_id=req.session_id,
+                        message_index=req.message_index,
+                        liked=liked,
+                        disliked=disliked,
+                        user_id=user_id,
+                    ))
+                sess.commit()
+            except Exception:
+                sess.rollback()
+                raise
         return {"ok": True, "liked": bool(liked), "disliked": bool(disliked)}
     except HTTPException:
         raise
@@ -807,13 +799,10 @@ async def get_message_feedback(request: Request, session_id: str = Query(..., mi
         _verify_session_owner(db, session_id, user_id)
 
         from db.session import AIChatFeedback
-        sess = db.Session()
-        try:
+        with db.session() as sess:
             rows = sess.query(AIChatFeedback).filter_by(session_id=session_id).all()
             return {str(r.message_index): {"liked": bool(r.liked), "disliked": bool(r.disliked)}
                     for r in rows if r.liked or r.disliked}
-        finally:
-            sess.close()
     except HTTPException:
         raise
     except Exception as e:

@@ -84,24 +84,20 @@ async def auth_middleware(request: Request, call_next):
     # S3.4：JWT 吊销——payload.tv 快照落后于用户 token_version 即 401
     #（老 token 无 tv 视作 0；sse 短期令牌跳过该检查）
     from db.session import get_db, User
-    sess = None
     try:
         db = get_db()
-        sess = db.Session()
-        user = sess.query(User).filter_by(id=request.state.user_id).first()
-        if user and user.frozen_until and user.frozen_until > datetime.utcnow():
-            return JSONResponse(status_code=403, content={"detail": "账号已被冻结"})
-        if payload and user and user.token_version and int(payload.get("tv") or 0) < user.token_version:
-            return JSONResponse(status_code=401, content={"detail": "token 已失效，请重新登录"})
-        # 2026-10-19 修复：admin 删除用户后 user 为 None 仍放行——JWT 过期前
-        # 可以已删用户身份继续工作；补 401 收口
-        if payload and not user:
-            return JSONResponse(status_code=401, content={"detail": "账号不存在，请重新登录"})
+        with db.session() as sess:
+            user = sess.query(User).filter_by(id=request.state.user_id).first()
+            if user and user.frozen_until and user.frozen_until > datetime.utcnow():
+                return JSONResponse(status_code=403, content={"detail": "账号已被冻结"})
+            if payload and user and user.token_version and int(payload.get("tv") or 0) < user.token_version:
+                return JSONResponse(status_code=401, content={"detail": "token 已失效，请重新登录"})
+            # 2026-10-19 修复：admin 删除用户后 user 为 None 仍放行——JWT 过期前
+            # 可以已删用户身份继续工作；补 401 收口
+            if payload and not user:
+                return JSONResponse(status_code=401, content={"detail": "账号不存在，请重新登录"})
     except Exception:
         logger.exception("冻结检查时数据库异常")
-    finally:
-        if sess:
-            sess.close()
 
     return await call_next(request)
 

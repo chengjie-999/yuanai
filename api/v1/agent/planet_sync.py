@@ -16,23 +16,12 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from api.v1.agent.router import require_agent_uid
+
 router = APIRouter(prefix="/api/v1/agent/planet", tags=["agent-planet"])
 
 MAX_BATCH_IDS = 50
 MAX_NOTE_CHARS = 200_000  # 单笔记上行上限（MEDIUMTEXT 16MB，防御性收口）
-
-
-def _agent_uid(request: Request) -> int:
-    from api.v1.agent.router import _verify_agent_secret, resolve_agent_uid
-
-    agent_id = request.headers.get("X-Agent-Id", "")
-    secret = request.headers.get("X-Agent-Secret", "")
-    if not _verify_agent_secret(agent_id, secret):
-        raise HTTPException(status_code=401, detail="Agent 凭据无效")
-    uid = resolve_agent_uid(agent_id)
-    if not uid:
-        raise HTTPException(status_code=403, detail="设备未绑定账号")
-    return uid
 
 
 class UpsertBody(BaseModel):
@@ -49,13 +38,13 @@ class DeleteBody(BaseModel):
 @router.get("/pull/index")
 def pull_index(request: Request):
     from db.session import get_db
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     return {"notes": get_db().list_notes_index(uid)}
 
 
 @router.get("/pull/content")
 def pull_content(request: Request, ids: str = Query(..., description="逗号分隔的笔记 id")):
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     try:
         nids = [int(x) for x in ids.split(",") if x.strip()][:MAX_BATCH_IDS]
     except ValueError:
@@ -67,7 +56,7 @@ def pull_content(request: Request, ids: str = Query(..., description="逗号分�
 @router.post("/push/upsert")
 def push_upsert(request: Request, body: UpsertBody):
     """幂等覆盖写入：map_id>0 时按 map_id 定位（存在覆盖/不存在新建）"""
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     if len(body.content) > MAX_NOTE_CHARS:
         raise HTTPException(status_code=400, detail="笔记内容过大")
     from db.session import get_db
@@ -91,7 +80,7 @@ def push_upsert(request: Request, body: UpsertBody):
 
 @router.post("/push/delete")
 def push_delete(request: Request, body: DeleteBody):
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     from db.session import get_db
     from api.v1.planet import store
 
@@ -105,7 +94,7 @@ def get_asset(request: Request, mid: int, name: str):
     """导图资产下载（vault 图片落盘用）。归属校验：设备绑定用户拥有该导图。"""
     from fastapi.responses import FileResponse
 
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     from api.v1.planet import store
 
     m = store.owned_map(mid, uid)

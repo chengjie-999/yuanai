@@ -215,6 +215,26 @@ def resolve_agent_uid(agent_id: str) -> int:
         return 0
 
 
+def require_agent_device(request: Request) -> str:
+    """设备凭据校验统一入口（2026-10-21 清洁3）：X-Agent-Id + X-Agent-Secret 头
+    → _verify_agent_secret；通过返回 agent_id，失败 401。
+    四份重复校验（bridge-memory/memory/planet_sync/plan_sync）合一本。"""
+    agent_id = request.headers.get("X-Agent-Id", "")
+    secret = request.headers.get("X-Agent-Secret", "")
+    if not _verify_agent_secret(agent_id, secret):
+        raise HTTPException(status_code=401, detail="Agent 凭据无效")
+    return agent_id
+
+
+def require_agent_uid(request: Request) -> int:
+    """设备凭据 + 一对一绑定映射 → 用户 ID（planet/plan 同步端点用）；未绑定 403"""
+    agent_id = require_agent_device(request)
+    uid = resolve_agent_uid(agent_id)
+    if not uid:
+        raise HTTPException(status_code=403, detail="设备未绑定账号")
+    return uid
+
+
 def get_pending_queue(request_id: str) -> asyncio.Queue:
     """为指定 request_id 获取或创建等待队列"""
     if request_id not in _pending:
@@ -421,10 +441,7 @@ def bridge_memory(request: Request, body: BridgeMemoryBody):
     安全边界：持有设备 secret 即持有写权限（桥接设备属于站主），
     调用方（claude_bridge）只传 chat_request 里的真实 user_id。
     """
-    agent_id = request.headers.get("X-Agent-Id", "")
-    secret = request.headers.get("X-Agent-Secret", "")
-    if not _verify_agent_secret(agent_id, secret):
-        raise HTTPException(status_code=401, detail="Agent 凭据无效")
+    require_agent_device(request)
     if not body.user_id or not body.facts:
         return {"ok": True, "added": 0}
 
@@ -444,19 +461,10 @@ class AgentMemoryBody(BaseModel):
     facts: list = []
 
 
-def _agent_memory_auth(request: Request) -> int:
-    """Agent 凭据校验（与 bridge-memory 同款：X-Agent-Id/X-Agent-Secret）"""
-    agent_id = request.headers.get("X-Agent-Id", "")
-    secret = request.headers.get("X-Agent-Secret", "")
-    if not _verify_agent_secret(agent_id, secret):
-        raise HTTPException(status_code=401, detail="Agent 凭据无效")
-    return agent_id
-
-
 @router.get("/memory")
 def agent_get_memory(request: Request, user_id: int = 0):
     """本地 Agent 记忆读取（get_user_memory 工具走 HTTP；data/.yuan/ 文件存储）"""
-    _agent_memory_auth(request)
+    require_agent_device(request)
     if not user_id:
         raise HTTPException(status_code=400, detail="缺少 user_id")
     from db.session import get_db
@@ -467,7 +475,7 @@ def agent_get_memory(request: Request, user_id: int = 0):
 @router.post("/memory")
 def agent_add_memory(request: Request, body: AgentMemoryBody):
     """本地 Agent 记忆写入（remember_user_info 工具走 HTTP；合并语义同折叠）"""
-    _agent_memory_auth(request)
+    require_agent_device(request)
     if not body.user_id or not body.facts:
         return {"ok": True, "added": 0}
     facts = [str(f)[:200] for f in body.facts[:20] if str(f).strip()]
@@ -488,7 +496,7 @@ class AgentOrganizeBody(BaseModel):
 @router.post("/memory/organize")
 def agent_organize_memory(request: Request, body: AgentOrganizeBody):
     """本地 Agent 记忆自整理（organize_user_memory 工具走 HTTP；删除护栏在 db 层）"""
-    _agent_memory_auth(request)
+    require_agent_device(request)
     if not body.user_id:
         raise HTTPException(status_code=400, detail="缺少 user_id")
     from db.session import get_db
@@ -501,7 +509,7 @@ def agent_organize_memory(request: Request, body: AgentOrganizeBody):
 @router.delete("/memory")
 def agent_delete_memory(request: Request, body: AgentMemoryBody):
     """本地 Agent 记忆删除（forget_user_info 工具走 HTTP；多条命中不误删）"""
-    _agent_memory_auth(request)
+    require_agent_device(request)
     if not body.user_id or not body.line.strip():
         raise HTTPException(status_code=400, detail="缺少 user_id 或 line")
     from db.session import get_db

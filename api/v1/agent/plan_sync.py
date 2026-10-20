@@ -20,7 +20,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from api.v1.agent.planet_sync import _agent_uid
+from api.v1.agent.router import require_agent_uid
 from api.v1.plan import store
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ def _step_or_404(step_id: int, uid: int) -> dict:
 @router.post("/create")
 def agent_create_plan(request: Request, body: CreateBody):
     """对话建计划（create_plan 工具 HTTP 通道；校验失败 400 不落库）"""
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     return store.create_plan_for_user(uid, body.title, body.goal, body.steps,
                                       body.session_id)
 
@@ -94,7 +94,7 @@ def agent_create_plan(request: Request, body: CreateBody):
 @router.post("/execute")
 def agent_execute_plan(request: Request, body: ExecuteBody):
     """execute_plan 工具 HTTP 通道；plan_id=0 → 最近一个草稿（云端解析）"""
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     pid = store.resolve_plan_id(body.plan_id, uid)
     return store.execute_plan(pid, uid)
 
@@ -106,14 +106,14 @@ class StatusBody(BaseModel):
 @router.post("/status")
 def agent_plan_status(request: Request, body: StatusBody):
     """get_plan_status 工具 HTTP 通道"""
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     return {"ok": True, "plan": store.format_plan_status(uid, int(body.plan_id or 0))}
 
 
 @router.post("/pull")
 def agent_pull(request: Request, body: PullBody):
     """拉取认领下一步（执行器 10s 空转轮询）。先重置本设备超时认领（断点续跑）。"""
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     device_id = request.headers.get("X-Agent-Id", "")
     db = _db()
     db.reset_stale_plan_claims(uid, device_id=device_id, timeout_s=900)
@@ -125,7 +125,7 @@ def agent_pull(request: Request, body: PullBody):
 
 @router.post("/progress")
 def agent_progress(request: Request, body: ProgressBody):
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     if not body.step_id:
         raise HTTPException(status_code=400, detail="缺少 step_id")
     s = _step_or_404(body.step_id, uid)
@@ -177,7 +177,7 @@ def _plan_progress(db, plan_id: int, uid: int) -> int:
 
 @router.post("/step-done")
 def agent_step_done(request: Request, body: StepDoneBody):
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     if not body.step_id:
         raise HTTPException(status_code=400, detail="缺少 step_id")
     s = _step_or_404(body.step_id, uid)
@@ -204,7 +204,7 @@ def agent_step_done(request: Request, body: StepDoneBody):
 
 @router.post("/step-failed")
 def agent_step_failed(request: Request, body: StepFailedBody):
-    uid = _agent_uid(request)
+    uid = require_agent_uid(request)
     if not body.step_id:
         raise HTTPException(status_code=400, detail="缺少 step_id")
     s = _step_or_404(body.step_id, uid)

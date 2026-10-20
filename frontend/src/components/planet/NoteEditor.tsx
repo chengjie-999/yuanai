@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import MarkdownContent from '../MarkdownContent'
+import ZoomableImage from '../chat/ZoomableImage'
 
 /* 笔记编辑器：textarea 直接编辑 + 预览切换（项目无 markdown 编辑器，textarea 足够） */
 export default function NoteEditor({ initial, onSave, onCancel }: {
@@ -10,8 +11,11 @@ export default function NoteEditor({ initial, onSave, onCancel }: {
   const [content, setContent] = useState(initial)
   const [preview, setPreview] = useState(false)
   const [saving, setSaving] = useState(false)
+  // 预览图片点击放大（统一 ZoomableImage，2026-10-21 清洁2）
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null)
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button onClick={() => setPreview(!preview)} className="btn btn-outline btn-sm">{preview ? '编辑' : '预览'}</button>
@@ -24,7 +28,7 @@ export default function NoteEditor({ initial, onSave, onCancel }: {
       </div>
       {preview ? (
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px', background: 'var(--bg-primary)' }}>
-          <MarkdownContent content={content} indent />
+          <MarkdownContent content={content} indent onImageExpand={setZoomSrc} />
         </div>
       ) : (
         <textarea value={content} onChange={(e) => setContent(e.target.value)} autoFocus
@@ -36,5 +40,7 @@ export default function NoteEditor({ initial, onSave, onCancel }: {
           }} />
       )}
     </div>
+    {zoomSrc && <ZoomableImage src={zoomSrc} onClose={() => setZoomSrc(null)} />}
+    </>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getMapTree, mapOriginUrl } from '../../api/planet'
 import { useSecuredUrl } from '../chat/helpers'
 import MarkdownContent from '../MarkdownContent'
+import ZoomableImage from '../chat/ZoomableImage'
 import { WandIcon, NoteIcon, ChevronRightIcon, LoaderIcon, EditIcon } from '../icons'
 import PlanetOutline from './PlanetOutline'
 import PlanetMapView from './PlanetMapView'
@@ -29,6 +30,8 @@ export default function PlanetReader({ map, note, job, onConvert, onSaveNote, on
   const [tree, setTree] = useState<any>(null)
   const [editing, setEditing] = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
+  // 笔记图片点击放大（统一 ZoomableImage，2026-10-21 清洁2）
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null)
   // 导图原始文件 URL（5 秒 sse token；沙箱化防用户上传 html 读本站存储）
   const originUrl = useSecuredUrl(map.source_format === 'html' ? mapOriginUrl(map.id) : '')
 
@@ -113,7 +116,7 @@ export default function PlanetReader({ map, note, job, onConvert, onSaveNote, on
             <div>
               {savedMsg && <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 6 }}>{savedMsg}</div>}
               <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', background: 'var(--bg-primary)' }}>
-                <MarkdownContent content={note.content} indent />
+                <MarkdownContent content={note.content} indent onImageExpand={setZoomSrc} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                 <button onClick={() => setEditing(true)}
@@ -167,6 +170,7 @@ export default function PlanetReader({ map, note, job, onConvert, onSaveNote, on
           {map.warnings.map((w, i) => <div key={i}>· {w}</div>)}
         </div>
       )}
+      {zoomSrc && <ZoomableImage src={zoomSrc} onClose={() => setZoomSrc(null)} />}
     </div>
   )
 }

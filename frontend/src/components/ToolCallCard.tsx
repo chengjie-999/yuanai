@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ToolCall } from '../types'
 import { SCRIPT_LABELS } from '../config/agents'
 import MarkdownContent from './MarkdownContent'
+import ZoomableImage from './chat/ZoomableImage'
 import { ChevronDownIcon, ChevronUpIcon } from './icons'
 
 function AnimatedDot() {
@@ -71,12 +72,15 @@ function ToolCallCard({ call }: { call: ToolCall }) {
   const agent = toolLabel(call.name)
   const displayName = agent ? agent.label : call.name
   const [expanded, setExpanded] = useState(false)
+  // 结果区图片点击放大（统一 ZoomableImage，2026-10-21 清洁2）
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null)
   const raw = call.result || ''
   const showBody = call.status === 'done' && !!raw
   const expandable = showBody && raw.length > 160
   const preview = expandable && !expanded ? raw.slice(0, 160).trim() + '…' : raw
 
   return (
+    <>
     <div style={{
       marginTop: 8, marginBottom: 4, borderRadius: 10,
       border: agent ? `1px solid ${agent.color}44` : '1px solid var(--border)',
@@ -128,7 +132,7 @@ function ToolCallCard({ call }: { call: ToolCall }) {
           color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.6,
           maxHeight: expanded ? 240 : 64, overflow: expanded ? 'auto' : 'hidden',
         }}>
-          <MarkdownContent content={preview} />
+          <MarkdownContent content={preview} onImageExpand={setZoomSrc} />
         </div>
       )}
       {call.status === 'error' && (
@@ -140,6 +144,8 @@ function ToolCallCard({ call }: { call: ToolCall }) {
         </div>
       )}
     </div>
+    {zoomSrc && <ZoomableImage src={zoomSrc} onClose={() => setZoomSrc(null)} />}
+    </>
   )
 }
 

@@ -3,6 +3,7 @@ import { Spinner, Empty, ErrorMsg, Card, safeJson, headers, API_BASE } from './s
 import { FolderIcon, FileIcon, XIcon } from '../icons'
 import { useSecuredUrl, fetchSseToken } from '../chat/helpers'
 import MarkdownContent from '../MarkdownContent'
+import ZoomableImage from '../chat/ZoomableImage'
 
 /* HTML 渲染预览：沙箱 iframe（sse token）+ 源码切换 */
 function HtmlPreview({ path, content, name }: { path: string; content: string; name: string }) {
@@ -26,9 +27,11 @@ function HtmlPreview({ path, content, name }: { path: string; content: string; n
   )
 }
 
-/* Markdown 渲染预览：复用聊天页渲染器（表格/代码/图片）+ 源码切换 */
+/* Markdown 渲染预览：复用聊天页渲染器（表格/代码/图片）+ 源码切换；
+   图片点击接统一 ZoomableImage（对话同款，2026-10-21 清洁2） */
 function MarkdownPreview({ content }: { content: string }) {
   const [showSource, setShowSource] = useState(false)
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null)
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
@@ -41,9 +44,10 @@ function MarkdownPreview({ content }: { content: string }) {
         <pre style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, overflow: 'auto', maxHeight: '65vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>{content}</pre>
       ) : (
         <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '14px 20px', maxHeight: '70vh', overflow: 'auto' }}>
-          <MarkdownContent content={content} />
+          <MarkdownContent content={content} onImageExpand={setZoomSrc} />
         </div>
       )}
+      {zoomSrc && <ZoomableImage src={zoomSrc} onClose={() => setZoomSrc(null)} />}
     </div>
   )
 }

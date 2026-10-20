@@ -3,7 +3,7 @@ from typing import List, Optional
 
 
 class ChatRequest(BaseModel):
-    model: str = Field("doubao-seed-2-0-pro-260628", description="模型名称")
+    model: str = Field("doubao-seed-2-0-pro-260215", description="模型名称")
     temperature: float = Field(0.7, ge=0.0, le=1.0, description="生成温度")
     prompt: str = Field(..., description="用户输入文本")
     images: List[str] = Field(default_factory=list, description="Base64 图片列表")
@@ -14,6 +14,7 @@ class ChatRequest(BaseModel):
     force_cloud: bool = Field(False, description="强制走云端 LLM，跳过本地 Agent WebSocket 桥接")
     reasoning_effort: str = Field("low", description="推理强度：low 快答 / medium 标准 / high 深思（聊天框滑块）")
     target_agent: str = Field("", description="@指定智能体：analysis/collection/automation/claude/orchestrator；空=统筹自行路由")
+    chat_mode: str = Field("work", description="产品模式：work=工作（云+本地Agent）/ entertainment=娱乐（纯云端，强制跳过本地 Agent 桥接）")
 
 
 class ToolRequest(BaseModel):

@@ -207,6 +207,15 @@ data/                   数据目录
 
 消息气泡操作（气泡内部图标行，常显）：用户气泡 = 复制/修改（修改后截断其后所有消息并重发，复用 SSE 发送链路）；AI 气泡 = 复制（**markdown 原文**）/点赞/点踩/**重新生成**（点踩后；截断本条及后续 → 重发它前面最后一条用户消息，同修改重发链路；`handleRegenerate` 同步清理被截断消息的反馈态）。点赞后端持久化：`ai_chat_feedback` 表（会话内消息下标定位，Alembic 0004 迁移），`POST/GET /api/v1/chat/feedback` 读写，`/chat/save` 全量替换时清理下标越界的孤儿行。图标均为内联 SVG stroke（项目零图标库）。已知限制：Claude 桥接模式修改重发/重新生成 = 续接对话（claude 会话无法回退）；消息无 id，点赞/修改按数组下标定位；语音转录（/voice/message append）与文字保存（/chat/save 全量替换）两条持久化路径并存无幂等键——根治需消息引入 id（架构债，见审查基线 6c154fd 之后再做）。
 
+## 娱乐模式（双模式产品，E1 基建 2026-10-21）
+
+- **双模式**：工作模式=现状（云+本地 Agent：数据分析/计划/自动化）；娱乐模式=**纯云端智能体**（不走本地 Agent），C 端陪伴式对话。入口：输入区工具行右侧「工作/娱乐」分段开关（localStorage `entertainmentMode` 持久化）。
+- **协议**：ChatRequest 新增 `chat_mode: "work" | "entertainment"`（api/v1/models.py；frontend streamChat 透传）；云端 /stream 里 entertainment 强制跳过 Agent 桥接、忽略 @定向（不委派、hist_limit 不因 target 放宽）、专属娱乐人设提示 `_ENTERTAINMENT_SYSTEM_PROMPT` + 身份卡 `docs/agents/entertainment.md`（agent_docs 加载，单一事实源，改文档即改人设）。
+- **前端联动**：娱乐模式下 @ 按钮隐藏、聊天模式强制 cloud（退出恢复原模式，prevChatModeRef）、欢迎页模式下拉替换为「娱乐模式 · 云端直达」徽章；发送链路（sendMessages/sendWithNewSession）entMode 时忽略 target/dmTarget、isClaude 恒 false、placeholderSender=orchestrator。
+- **记忆复用**：娱乐对话走同一 /chat/save 落库 → 折叠 worker 同样沉淀记忆；system 注入与云端直连分支同一段代码。
+- **路线图**（plans/entertainment-mode-2026-10.md）：E2 火山生图（**执行前确认方舟账号开通与模型**）→ E3 生视频（异步任务制）→ E4 搜索联动 → E5 C 端打磨。限额护栏必须与生图/生视频工具同日上线，不允许裸奔。
+- **验证**：test/test_entertainment_mode.py（娱乐跳过桥接+人设生效+@定向忽略 / 工作模式对照）；真机 SSE 双模式均实测通过。conftest 登录密码改 test1234（批次3 起密码最少 8 位，test123 只有 7 位导致所有鉴权测试静默跳过）。
+
 ## 开发经验教训（2026-09-04 全量代码审查沉淀）
 
 1. **跨文件复制私有 helper 必漏 import**：照抄 `_get_db/_verify_session_owner` 用法却不带定义 → 运行时 NameError，py_compile 查不出。复制后立即 grep 验证每个名字在本模块可解析，或提共享模块。

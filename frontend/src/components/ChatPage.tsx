@@ -106,6 +106,24 @@ export default function ChatPage({ user }: { user?: any }) {
   // 聊天模式（内部自动切换，不再暴露下拉框——微信式群聊由 @指定接管）：
   // local=本地统筹 Agent（默认）→ 本地离线时自动落 cloud；claude 模式已并入 @Claude Code
   const [chatMode, setChatMode] = useState<'local' | 'cloud' | 'claude'>('local')
+  // 娱乐模式（E1）：work 现状 / entertainment 纯云端陪伴式对话——localStorage 持久化；
+  // 开启时强制云端（chat_mode=entertainment 后端跳过 Agent 桥接），@指定与聊天模式不可用
+  const [entMode, setEntMode] = useState(() => {
+    try { return localStorage.getItem('entertainmentMode') === '1' } catch { return false }
+  })
+  const prevChatModeRef = useRef<'local' | 'cloud' | 'claude'>('local')
+  const toggleEntMode = () => {
+    const next = !entMode
+    setEntMode(next)
+    try { localStorage.setItem('entertainmentMode', next ? '1' : '0') } catch { /* 忽略 */ }
+    if (next) {
+      prevChatModeRef.current = chatMode
+      setChatMode('cloud')
+      setTargetAgent('')  // 娱乐模式不委派，清掉残留定向
+    } else {
+      setChatMode(prevChatModeRef.current || 'local')
+    }
+  }
   // @指定智能体（群聊式定向委派；空 = 统筹自行路由；发送后自动复位）
   const [targetAgent, setTargetAgent] = useState('')
   const targetAgentRef = useRef('')
@@ -564,10 +582,11 @@ export default function ChatPage({ user }: { user?: any }) {
     setPendingApproval(null)
     // @指定智能体：发送时捕获并复位（单次生效，下一条恢复统筹自行路由）；
     // 小窗会话（dmTargets）持久定向不复位；@Claude Code = 原 ⌘ 桥接模式
-    const dmTarget = dmTargetsRef.current[sid] || ''
-    const target = targetAgentRef.current || dmTarget
+    // 娱乐模式（E1）：不委派——忽略 @定向与小窗持久定向，纯云端小元AI 回答
+    const dmTarget = entMode ? '' : (dmTargetsRef.current[sid] || '')
+    const target = entMode ? '' : (targetAgentRef.current || dmTarget)
     if (target && !dmTarget) setTargetAgent('')
-    const isClaude = target === 'claude' || chatMode === 'claude'
+    const isClaude = !entMode && (target === 'claude' || chatMode === 'claude')
     // 信封协议：最后一条 user 消息打 recipient（定向 @target）；说话人身份
     // 走信封字段，【xx】前缀渲染由后端 views.py 视图滤波负责
     const taggedMsgs = msgs.map((m, i) => (
@@ -576,15 +595,17 @@ export default function ChatPage({ user }: { user?: any }) {
         : m
     ))
     const history = buildHistoryWithToolContext(taggedMsgs)
-    const placeholderSender = target && AGENT_CONFIG[target]
-      ? target
-      : chatMode === 'cloud' ? 'orchestrator' : 'local'
+    const placeholderSender = entMode ? 'orchestrator'
+      : target && AGENT_CONFIG[target]
+        ? target
+        : chatMode === 'cloud' ? 'orchestrator' : 'local'
     setMessages([...msgs, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
-    const { onEvent, onError } = makeStreamHandlers(isClaude || !!dmTarget)
+    const { onEvent, onError } = makeStreamHandlers(isClaude || (!entMode && !!dmTarget))
     const controller = streamChat(
       { model, temperature: 0.7, prompt, images: sentImages, history, system_prompt: sysPrompt,
-        session_id: sid, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
+        session_id: sid, claude: isClaude, force_cloud: !isClaude && (chatMode === 'cloud' || entMode),
+        reasoning_effort: effort, target_agent: target || undefined, chat_mode: entMode ? 'entertainment' : 'work' },
       onEvent, onError,
       () => {
         const s = streamRef.current
@@ -702,22 +723,25 @@ export default function ChatPage({ user }: { user?: any }) {
     const sid = await createSession()
     setCurrentSid(sid); refreshSessions()
     setInput(''); setQuickInput('')
-    // @指定智能体：发送时捕获并复位（欢迎页新建会话入口同规则）
-    const target = targetAgentRef.current
+    // @指定智能体：发送时捕获并复位（欢迎页新建会话入口同规则）；
+    // 娱乐模式不委派（同 sendMessages）
+    const target = entMode ? '' : targetAgentRef.current
     if (target) setTargetAgent('')
-    const isClaude = target === 'claude' || chatMode === 'claude'
+    const isClaude = !entMode && (target === 'claude' || chatMode === 'claude')
     const sentImages = [...images]; setImages([])
     setMessages([{ role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }])
     setSendTick((t) => t + 1)
-    const placeholderSender = target && AGENT_CONFIG[target]
-      ? target
-      : chatMode === 'cloud' ? 'orchestrator' : 'local'
+    const placeholderSender = entMode ? 'orchestrator'
+      : target && AGENT_CONFIG[target]
+        ? target
+        : chatMode === 'cloud' ? 'orchestrator' : 'local'
     setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
 
     const { onEvent, onError } = makeStreamHandlers(isClaude)
     const controller = streamChat(
       { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: sysPrompt,
-        session_id: sid, claude: isClaude, force_cloud: !isClaude && chatMode === 'cloud', reasoning_effort: effort, target_agent: target || undefined },
+        session_id: sid, claude: isClaude, force_cloud: !isClaude && (chatMode === 'cloud' || entMode),
+        reasoning_effort: effort, target_agent: target || undefined, chat_mode: entMode ? 'entertainment' : 'work' },
       onEvent, onError,
       () => {
         const s = streamRef.current
@@ -817,6 +841,7 @@ export default function ChatPage({ user }: { user?: any }) {
             sendWithNewSession={sendWithNewSession}
             sessions={sessions} onSelectSession={handleSelectSession}
             chatMode={chatMode} setChatMode={setChatMode}
+            entMode={entMode}
             localOnline={localOnline} claudeOnline={claudeOnline}
             effort={effort} setEffort={setEffort}
             onStartVoiceCall={startVoiceCallWithPermission}
@@ -839,6 +864,7 @@ export default function ChatPage({ user }: { user?: any }) {
             onEditMessage={handleEditMessage} onFeedback={handleFeedback}
             onRegenerate={handleRegenerate}
             onStartVoiceCall={startVoiceCallWithPermission}
+            entMode={entMode} toggleEntMode={toggleEntMode}
             targetAgent={targetAgent} setTargetAgent={setTargetAgent}
             onOpenDirectChat={openDirectChat}
             onStop={stopStream} notice={notice}

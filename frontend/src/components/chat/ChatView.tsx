@@ -8,7 +8,7 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onRegenerate, onStartVoiceCall, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice, onSuggest, sendTick, onOpenPanel }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onRegenerate, onStartVoiceCall, entMode, toggleEntMode, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice, onSuggest, sendTick, onOpenPanel }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
@@ -28,6 +28,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   onFeedback: (index: number, kind: 'like' | 'dislike') => void
   onRegenerate: (index: number) => void
   onStartVoiceCall: () => void
+  entMode: boolean
+  toggleEntMode: () => void
   targetAgent: string
   setTargetAgent: (v: string) => void
   onOpenDirectChat: (target: string) => void
@@ -175,6 +177,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         model={model} setModel={setModel}
         effort={effort} setEffort={setEffort}
         onStartVoiceCall={onStartVoiceCall}
+        entMode={entMode} toggleEntMode={toggleEntMode}
         targetAgent={targetAgent} setTargetAgent={setTargetAgent}
         onOpenDirectChat={onOpenDirectChat}
         onStop={onStop} notice={notice} />

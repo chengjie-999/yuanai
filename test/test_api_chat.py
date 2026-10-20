@@ -77,11 +77,10 @@ class TestChatSave:
         assert create_resp.status_code == 200
         session_id = create_resp.json()["session_id"]
 
-        # 保存消息
+        # 保存消息（现行协议：messages 数组全量替换；旧 role/content 单条协议已废弃）
         resp = client.post("/api/v1/chat/save", json={
             "session_id": session_id,
-            "role": "user",
-            "content": "你好，这是一条测试消息",
+            "messages": [{"role": "user", "content": "你好，这是一条测试消息"}],
         }, headers=auth_headers)
         assert resp.status_code == 200
 

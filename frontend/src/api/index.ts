@@ -540,6 +540,7 @@ export function streamChat(
     force_cloud?: boolean
     reasoning_effort?: 'low' | 'medium' | 'high'
     target_agent?: string
+    chat_mode?: 'work' | 'entertainment'
   },
   onEvent: (event: any) => void,
   onError: (error: string) => void,

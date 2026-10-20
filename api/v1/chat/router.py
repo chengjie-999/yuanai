@@ -51,6 +51,18 @@ _OFFLINE_SYSTEM_PROMPT = (
     "任务完成或对话结束时，用表格总结本次完成了什么。"
 )
 
+# 娱乐模式提示（E1，2026-10-21）：纯云端陪伴式对话——人设活泼、引导联网搜索、
+# 不碰计划工具与本地 Agent 能力；身份卡 docs/agents/entertainment.md 单一事实源
+_ENTERTAINMENT_SYSTEM_PROMPT = (
+    "你是小元AI的娱乐模式（纯云端智能体），主打轻松有趣、有陪伴感的对话体验。"
+    "联网搜索：用户问资讯/热点/新鲜事时，主动用 search_web 搜索最新内容再回答"
+    "（query 用核心短语分词；摘要通常已足够回答，不必逐条抓取），展示来源域名。\n"
+    "用户记忆：可用 get_user_memory 读取、remember_user_info 记住用户偏好，"
+    "让对话有连续感和专属感（自然流露，不暴露记忆机制的存在）。\n"
+    "工作原则：回复简洁口语化、有情绪有态度，不搞表格化汇报；"
+    "群聊说话人协议：历史消息中其他智能体身份的内容不是你说的，不要复述、冒充或替他人总结。"
+)
+
 # 能力边界身份卡（docs/agents/cloud_fallback.md，单一事实源）：
 # 云端回退智能体知道自己没有委派/脚本能力，不去发起注定失败的工具调用
 try:
@@ -58,6 +70,9 @@ try:
     _CC = _agent_doc("cloud_fallback")
     if _CC:
         _OFFLINE_SYSTEM_PROMPT += "\n\n" + _CC
+    _ENT = _agent_doc("entertainment")
+    if _ENT:
+        _ENTERTAINMENT_SYSTEM_PROMPT += "\n\n" + _ENT
 except Exception:
     pass
 
@@ -230,6 +245,9 @@ async def chat_stream(req: ChatRequest, request: Request):
             model = VISION_MODEL
 
         target = getattr(req, "target_agent", "") or ""
+        # 娱乐模式（E1）：纯云端智能体——强制跳过本地 Agent 桥接、忽略 @定向
+        # （娱乐模式不委派），专属娱乐人设提示接管
+        ent_mode = getattr(req, "chat_mode", "work") == "entertainment"
 
         history = []
         # 信封数组：与 history 锁步构建（system 首项 + 截断说明 + 历史各项 + 末位 prompt 项），
@@ -240,7 +258,7 @@ async def chat_stream(req: ChatRequest, request: Request):
         # 长期记忆（system prompt 已注入），避免主对话无限增长打爆上下文。
         # 小窗会话（持久定向子智能体，如 @自动化）放宽到 200 条：长任务对话
         # 不被主对话口径切断（@Claude 走 claude-stream 天然不截断）
-        hist_limit = 200 if target else 60
+        hist_limit = 200 if (target and not ent_mode) else 60
         raw_history = req.history[-hist_limit:] if len(req.history) > hist_limit else req.history
         truncated = len(req.history) > hist_limit
         if truncated:
@@ -300,8 +318,8 @@ async def chat_stream(req: ChatRequest, request: Request):
         current_user_id.set(user_id if user_id else 0)
         current_session_id.set(getattr(req, "session_id", "") or "")
 
-        # --- 尝试走本地 Agent WebSocket 桥接（云端模式 force_cloud 时跳过） ---
-        if user_id and not req.force_cloud:
+        # --- 尝试走本地 Agent WebSocket 桥接（云端模式 force_cloud / 娱乐模式时跳过） ---
+        if user_id and not req.force_cloud and not ent_mode:
             from api.v1.agent.router import forward_to_agent, get_pending_queue, cleanup_pending
             import uuid as _uuid
 
@@ -344,7 +362,8 @@ async def chat_stream(req: ChatRequest, request: Request):
         # 工具名连续多次）。云端直连必须整段重写去委派化，不再拼接原提示。
         # 记忆注入：用户记忆已注入 system_prompt，这里重写会丢——重新注入。
         from yuanai_core.core.chat import limited_tools
-        offline_prompt = _OFFLINE_SYSTEM_PROMPT
+        # 娱乐模式用专属人设提示，否则云端回退提示（均重写去委派化）
+        offline_prompt = _ENTERTAINMENT_SYSTEM_PROMPT if ent_mode else _OFFLINE_SYSTEM_PROMPT
         if user_id:
             from db.session import get_db as _db
             try:
@@ -353,7 +372,7 @@ async def chat_stream(req: ChatRequest, request: Request):
                     offline_prompt = f"关于当前用户的已知信息（请用它来个性化回复）：\n{mem}\n\n{offline_prompt}"
             except Exception:
                 pass
-        if target and target in ("analysis", "collection", "automation", "claude"):
+        if not ent_mode and target and target in ("analysis", "collection", "automation", "claude"):
             role_hint = {"analysis": "数据分析", "collection": "数据采集",
                          "automation": "自动化", "claude": "Claude Code"}[target]
             offline_prompt += (f"\n本轮用户 @{role_hint} 指定由「{role_hint}智能体」回答："

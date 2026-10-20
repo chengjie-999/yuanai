@@ -17,7 +17,7 @@ const TARGET_AGENTS = [
   { key: 'claude', desc: '本机代码、终端、Git 任务' },
 ]
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, entMode, toggleEntMode, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice }: {
   input: string; setInput: (v: string | ((p: string) => string)) => void; loading: boolean; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
@@ -26,6 +26,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   localOnline: boolean; claudeOnline: boolean
   onStartVoiceCall: () => void
+  entMode: boolean; toggleEntMode: () => void
   targetAgent: string; setTargetAgent: (v: string) => void
   onOpenDirectChat: (target: string) => void
   onStop: () => void
@@ -199,7 +200,9 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   e.target.value = ''
                 }}
               />
-              {/* @ 面板与按钮为兄弟节点：面板点击不冒泡回按钮（曾因冒泡 toggle 导致面板关不掉） */}
+              {/* @ 面板与按钮为兄弟节点：面板点击不冒泡回按钮（曾因冒泡 toggle 导致面板关不掉）；
+                  娱乐模式不委派——隐藏 @ 入口 */}
+              {!entMode && (
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <button onClick={() => setPickerOpen((o) => !o)} className="yuan-tip"
                   data-tip={targetAgent ? `已指定：${AGENT_CONFIG[targetAgent]?.label || ''}` : '指定智能体回答'} aria-label="指定智能体"
@@ -267,6 +270,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   </>
                 )}
               </div>
+              )}
               <button onClick={() => fileRef.current?.click()} className="yuan-tip" data-tip="上传图片或数据集" aria-label="上传图片或数据集"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
@@ -357,6 +361,21 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              {/* E1 娱乐模式开关：工作=现状（云+本地Agent）/ 娱乐=纯云端陪伴式对话 */}
+              <div className="yuan-tip" data-tip={entMode ? '娱乐模式：纯云端陪伴式对话（不走本地 Agent）' : '切换娱乐模式：纯云端陪伴式对话'}
+                aria-label="工作/娱乐模式切换"
+                style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden', fontSize: 12, flexShrink: 0 }}>
+                <button onClick={() => { if (entMode) toggleEntMode() }} aria-label="工作模式"
+                  style={{ border: 'none', cursor: entMode ? 'pointer' : 'default', padding: '3px 10px', fontWeight: 600,
+                    background: entMode ? 'transparent' : 'var(--accent-light)', color: entMode ? 'var(--text-secondary)' : 'var(--accent)', transition: 'all 0.15s' }}>
+                  工作
+                </button>
+                <button onClick={() => { if (!entMode) toggleEntMode() }} aria-label="娱乐模式"
+                  style={{ border: 'none', cursor: entMode ? 'default' : 'pointer', padding: '3px 10px', fontWeight: 600,
+                    background: entMode ? 'var(--accent-light)' : 'transparent', color: entMode ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
+                  娱乐
+                </button>
+              </div>
               <ModelSelector model={model} onChange={setModel} />
               <ReasoningSelector effort={effort} setEffort={setEffort} />
             </div>

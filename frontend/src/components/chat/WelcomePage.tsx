@@ -10,12 +10,13 @@ import ReasoningSelector from './ReasoningSelector'
 import { compressImage } from './imageUtils'
 import { PaperclipIcon, XIcon } from '../icons'
 
-export default function WelcomePage({ images, setImages, quickInput, setQuickInput, sendWithNewSession, sessions, onSelectSession, chatMode, setChatMode, localOnline, claudeOnline, effort, setEffort, onStartVoiceCall }: {
+export default function WelcomePage({ images, setImages, quickInput, setQuickInput, sendWithNewSession, sessions, onSelectSession, chatMode, setChatMode, entMode, localOnline, claudeOnline, effort, setEffort, onStartVoiceCall }: {
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   quickInput: string; setQuickInput: (v: string | ((p: string) => string)) => void
   sendWithNewSession: (text: string) => void
   sessions: SessionInfo[]; onSelectSession: (sid: string) => void
   chatMode: ChatMode; setChatMode: (v: ChatMode) => void
+  entMode: boolean
   localOnline: boolean; claudeOnline: boolean
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   onStartVoiceCall: () => void
@@ -116,8 +117,15 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
                 style={{ padding: '10px 24px', fontSize: 14, fontWeight: 600, opacity: !quickInput.trim() ? 0.5 : 1, borderRadius: 10 }}>发送</button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px 10px' }}>
-              <ChatModeSelector chatMode={chatMode} setChatMode={setChatMode}
-                localOnline={localOnline} claudeOnline={claudeOnline} />
+              {entMode ? (
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', padding: '4px 12px',
+                  borderRadius: 20, background: 'var(--accent-light)' }}>
+                  娱乐模式 · 云端直达
+                </span>
+              ) : (
+                <ChatModeSelector chatMode={chatMode} setChatMode={setChatMode}
+                  localOnline={localOnline} claudeOnline={claudeOnline} />
+              )}
               <ReasoningSelector effort={effort} setEffort={setEffort} />
             </div>
           </div>

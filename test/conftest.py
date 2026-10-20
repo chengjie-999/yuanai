@@ -67,15 +67,16 @@ def auth_headers(client):
 
     只用自建测试账号（__test_api_user__），绝不撞 admin/admin123——
     本地 admin 密码不一致时，连跑 5 轮测试会把真实 admin 账号锁死 15 分钟。
+    密码须 ≥8 字符（批次3 起登录校验最低长度，test123 只有 7 位会 422）。
     """
     from db.session import get_db
 
     db = get_db()
-    r = db.register_user("__test_api_user__", "test123")
+    r = db.register_user("__test_api_user__", "test1234")
     username = r.get("username", "__test_api_user__")
     resp = client.post("/api/v1/auth/login", json={
         "username": username,
-        "password": "test123",
+        "password": "test1234",
     })
     if resp.status_code == 200:
         token = resp.json()["token"]

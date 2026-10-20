@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { SUGGESTIONS } from '../../config/agents'
+import { SUGGESTIONS, ENT_SUGGESTIONS } from '../../config/agents'
 import { uploadDataset } from '../../api'
 import Mascot from '../Mascot'
 import type { SessionInfo } from './helpers'
@@ -37,7 +37,10 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: 560 }}>
         <Mascot size={80} />
         <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, letterSpacing: -0.5 }}>小元AI</h1>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 28, fontWeight: 400, letterSpacing: 0.3 }}>手机定计划 · 电脑执行 / 分析·采集·医学一问直调 / 浏览器自动化</p>
+        <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 28, fontWeight: 400, letterSpacing: 0.3 }}>
+          {entMode ? '你的云端聊天搭子 · 陪聊吃瓜 / 脑洞创作 / 新鲜资讯'
+            : '手机定计划 · 电脑执行 / 分析·采集·医学一问直调 / 浏览器自动化'}
+        </p>
 
         <div style={{ maxWidth: 560, width: '100%', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
           {uploading && (
@@ -134,7 +137,7 @@ export default function WelcomePage({ images, setImages, quickInput, setQuickInp
 
       <div style={{ marginTop: 20, width: '100%', maxWidth: 520 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>
-        {SUGGESTIONS.map((s) => (
+        {(entMode ? ENT_SUGGESTIONS : SUGGESTIONS).map((s) => (
           <button key={s.text} onClick={() => sendWithNewSession(s.text)}
             style={{
               padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)',

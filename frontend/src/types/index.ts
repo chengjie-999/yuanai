@@ -27,7 +27,9 @@ export interface ToolCall {
   result?: string
   duration?: number
   reasoning?: string  // 本次调用前的思考片段（时序交叉渲染）
-  args?: string      // 工具参数（JSON 串，展示「它执行了什么」）
+  // 工具参数（展示「它执行了什么」）：后端 tool_start 事件直接发 dict，
+  // 旧链路/部分路径发 JSON 串——两种形态都兼容（2026-10-21 修复对象渲染崩溃）
+  args?: string | Record<string, unknown>
 }
 
 

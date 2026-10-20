@@ -881,6 +881,7 @@ export default function ChatPage({ user }: { user?: any }) {
           ensureSession={ensureVoiceSession}
           onTranscript={handleVoiceTranscript}
           lastAssistantText={lastAssistantText}
+          entMode={entMode}
         />
       )}
 

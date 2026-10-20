@@ -214,7 +214,9 @@ data/                   数据目录
 - **前端联动**：娱乐模式下 @ 按钮隐藏、聊天模式强制 cloud（退出恢复原模式，prevChatModeRef）、欢迎页模式下拉替换为「娱乐模式 · 云端直达」徽章；发送链路（sendMessages/sendWithNewSession）entMode 时忽略 target/dmTarget、isClaude 恒 false、placeholderSender=orchestrator。
 - **记忆复用**：娱乐对话走同一 /chat/save 落库 → 折叠 worker 同样沉淀记忆；system 注入与云端直连分支同一段代码。
 - **E4 搜索联动已完成（3602f15）**：云端直连分支注入当前日期（娱乐/回退通用）——模型知识截止滞后会把资讯 query 写成旧年份；身份卡加强「聊到时效话题主动搜索」。
-- **路线图**（plans/entertainment-mode-2026-10.md）：E2 火山生图 / E3 生视频挂账（**用户先跳过，执行前确认方舟账号开通与模型**）→ E5 C 端打磨。限额护栏必须与生图/生视频工具同日上线，不允许裸奔。
+- **E5 C 端打磨已完成（2026-10-21）**：娱乐版开场话题 ENT_SUGGESTIONS（欢迎页/空状态按模式切换）、欢迎页副标题换「云端聊天搭子」、输入框 placeholder 换娱乐引导（@ 已隐藏不再引导 @）；**语音通话人设联动**——/voice/start 透传 chat_mode，同通道换娱乐 SystemMessages（api/v1/voice/router.py `_ENTERTAINMENT_SYSTEM_PROMPT`；气泡朗读本就不分模式）。测试 +2（语音人设切换/请求体接受 chat_mode）。
+- **修复（2026-10-21）**：ToolCallCard fmtArgs 崩溃——后端 tool_start 的 args 是 dict（如 search_web 的 {query,max_results}），fmtArgs 只收字符串，对象原样渲染触发 React「Objects are not valid as a React child」；fmtArgs 兼容两种形态（对象 JSON.stringify），ToolCall 类型放宽。
+- **路线图**（plans/entertainment-mode-2026-10.md）：E2 火山生图 / E3 生视频挂账（执行前确认方舟账号开通与模型）。限额护栏必须与生图/生视频工具同日上线，不允许裸奔。
 - **验证**：test/test_entertainment_mode.py（娱乐跳过桥接+人设生效+@定向忽略 / 工作模式对照）；真机 SSE 双模式均实测通过。conftest 登录密码改 test1234（批次3 起密码最少 8 位，test123 只有 7 位导致所有鉴权测试静默跳过）。
 
 ## 开发经验教训（2026-09-04 全量代码审查沉淀）

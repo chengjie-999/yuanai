@@ -47,18 +47,23 @@ function toolLabel(name: string): { label: string; color: string } | null {
   return null
 }
 
-/* 参数展示：bash 命令/文件路径直接显示原文，其他 JSON 原样（schemas 已截断 500） */
-function fmtArgs(args: string): string {
+/* 参数展示：bash 命令/文件路径直接显示原文，其他 JSON 原样（schemas 已截断 500）。
+   兼容两种形态：字符串（旧链路）与对象（后端 tool_start 直接发 dict，如 search_web 的
+   {query, max_results}）——对象原样渲染会触发 React "Objects are not valid as a
+   React child" 崩溃（2026-10-21 修复） */
+function fmtArgs(args: unknown): string {
+  const text = typeof args === 'string' ? args : JSON.stringify(args)
+  if (typeof text !== 'string') return ''
   try {
-    const o = JSON.parse(args)
+    const o = JSON.parse(text)
     if (o && typeof o === 'object' && typeof o.command === 'string' && Object.keys(o).length <= 2) {
       return o.command
     }
     if (o && typeof o === 'object' && typeof o.file_path === 'string' && Object.keys(o).length <= 2) {
       return o.file_path
     }
-    return args
-  } catch { return args }
+    return text
+  } catch { return text }
 }
 
 function ToolCallCard({ call }: { call: ToolCall }) {

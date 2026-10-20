@@ -145,7 +145,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                 }
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (loading) { onStop() } else { handleSend() } }
               }}
-              placeholder="输入消息，@ 可指定智能体..."
+              placeholder={entMode ? '想聊点什么？八卦、脑洞、安利都行~' : '输入消息，@ 可指定智能体...'}
               rows={1}
               style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflow: 'hidden', color: 'var(--text-primary)' }}
             />

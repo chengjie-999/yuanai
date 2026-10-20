@@ -45,11 +45,12 @@ function string2tlv(str: string, type: string): ArrayBuffer {
 // 语音通话悬浮卡片：桌面居中卡片，手机全屏；挂断/关闭时自动 StopVoiceChat + 退房 + 销毁引擎。
 // 机器人通过 RTC 数据流实时推送字幕（subv）与状态（conv），最终字幕落入聊天会话。
 // 「朗读文字回复」开启时，通话期间聊天产生的 AI 文字回复会经 ctrl 命令让机器人朗读。
-export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAssistantText }: {
+export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAssistantText, entMode }: {
   onClose: () => void
   ensureSession: () => Promise<string>
   onTranscript: (role: 'user' | 'assistant', content: string) => void
   lastAssistantText: string
+  entMode: boolean
 }) {
   const [status, setStatus] = useState<CallStatus>('connecting')
   const [errorMsg, setErrorMsg] = useState('')
@@ -66,8 +67,8 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAs
   // 记录已朗读过的文字（初始化为挂载时的最新值，避免重播历史回复）
   const lastSpokenRef = useRef(lastAssistantText)
   // 始终指向最新 props（mount effect 内闭包不冻结首帧值）
-  const propsRef = useRef({ ensureSession, onTranscript })
-  propsRef.current = { ensureSession, onTranscript }
+  const propsRef = useRef({ ensureSession, onTranscript, entMode })
+  propsRef.current = { ensureSession, onTranscript, entMode }
 
   useEffect(() => {
     let disposed = false
@@ -98,7 +99,8 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAs
       // 通话开始即解析会话（欢迎页自动新建并切进聊天页），后续转录由父级锚定该会话
       propsRef.current.ensureSession().catch(() => { /* 会话解析失败仅影响转录落库 */ })
       try {
-        const creds = await voiceStart()
+        // E5：娱乐模式通话走娱乐人设（后端同通道换 SystemMessages）
+        const creds = await voiceStart(propsRef.current.entMode ? 'entertainment' : 'work')
         credsRef.current = { room_id: creds.room_id, task_id: creds.task_id, user_id: creds.user_id }
         // connecting 阶段挂断：此时 teardown 已跑过但 credsRef 为空，重跑一次停掉机器人任务
         if (disposed) { await teardown(); return }

@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from 'react'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
 import type { ReasoningEffort } from './ReasoningSelector'
-import { SUGGESTIONS } from '../../config/agents'
+import { SUGGESTIONS, ENT_SUGGESTIONS } from '../../config/agents'
 import { ArrowDownIcon } from '../icons'
 import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
@@ -113,12 +113,13 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
               
               onOpenPanel={onOpenPanel} />
           ))}
-          {/* 空对话推荐问题（豆包式：欢迎页已退场，登录直接落主对话，此处承接快捷入口） */}
+          {/* 空对话推荐问题（豆包式：欢迎页已退场，登录直接落主对话，此处承接快捷入口）；
+              E5：娱乐模式换娱乐话题卡 */}
           {messages.length <= 1 && !loading && (
             <div className="chat-suggest-row" style={{
               display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4,
             }}>
-              {SUGGESTIONS.slice(0, 5).map((s) => (
+              {(entMode ? ENT_SUGGESTIONS : SUGGESTIONS).slice(0, 5).map((s) => (
                 <button key={s.text} onClick={() => onSuggest(s.text)}
                   style={{
                     padding: '5px 10px', borderRadius: 999, border: '1px solid var(--border)',

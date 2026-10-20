@@ -74,3 +74,29 @@ class TestEntertainmentMode:
         assert resp.status_code == 200
         assert called.get("yes") is True  # 工作模式走桥接尝试
         assert "本地智能体离线" in captured["system"]  # 回退提示（旧行为不变）
+
+
+class TestEntertainmentVoice:
+    """E5 语音联动：娱乐模式通话人设（同通道仅换 SystemMessages，不碰 RTC 网络）"""
+
+    def test_voice_persona_switches_by_mode(self, monkeypatch):
+        from config import settings
+        monkeypatch.setattr(settings, "VOICE_LLM_ENDPOINT_ID", "ep-test-123")
+        from api.v1.voice.router import _build_start_body
+
+        ent = _build_start_body("app", "room", "task", "user1", chat_mode="entertainment")
+        work = _build_start_body("app", "room", "task", "user1", chat_mode="work")
+
+        # LLMConfig 嵌套在 body["Config"] 下
+        ent_msgs = ent["Config"].get("LLMConfig", {}).get("SystemMessages") or []
+        work_msgs = work["Config"].get("LLMConfig", {}).get("SystemMessages") or []
+        assert ent_msgs and "娱乐" in ent_msgs[0]
+        assert work_msgs and "娱乐" not in work_msgs[0] and "语音助手" in work_msgs[0]
+
+    def test_voice_start_accepts_chat_mode(self, client, auth_headers):
+        """请求体带 chat_mode 不被 422 拒绝（本地无火山凭据时 503/502 属预期）"""
+        if not auth_headers:
+            pytest.skip("需要有效登录凭据")
+        resp = client.post("/api/v1/voice/start", json={"chat_mode": "entertainment"},
+                           headers=auth_headers)
+        assert resp.status_code != 422

@@ -423,11 +423,12 @@ export interface VoiceCreds {
   app_id: string; room_id: string; user_id: string; rtc_token: string; task_id: string
 }
 
-export async function voiceStart(): Promise<VoiceCreds> {
+export async function voiceStart(chatMode?: 'work' | 'entertainment'): Promise<VoiceCreds> {
   const res = await fetch(`${API_BASE}/voice/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: '{}',
+    // E5：娱乐模式通话人设（后端同通道换 SystemMessages）
+    body: JSON.stringify({ chat_mode: chatMode || 'work' }),
   })
   if (!res.ok) {
     // 透出后端错误信息（503 未配置 / 502 RTC 调用失败）

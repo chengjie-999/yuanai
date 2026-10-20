@@ -38,6 +38,16 @@ _SYSTEM_PROMPT = (
     "采集网页或自动化操作的任务时，说明你会在文字对话中继续处理。"
 )
 
+# 娱乐模式语音人设（E5，2026-10-21）：云端聊天搭子——陪聊/吃瓜/安利/脑洞，
+# 与工作模式同一语音通道，仅人设不同（chat_mode 由 /voice/start 透传）
+_ENTERTAINMENT_SYSTEM_PROMPT = (
+    "你是小元的娱乐模式语音版，用户的云端聊天搭子：热情、有梗、自然，"
+    "像朋友一样闲聊。回答尽量简短口语化，一句话能说清的不说两句；"
+    "可以聊八卦热点、影视音乐游戏推荐、陪聊解闷、开脑洞；"
+    "遇到需要分析数据、采集网页或自动化操作的任务时，"
+    "说明这些能力要在文字对话的普通模式里使用。"
+)
+
 
 def _voice_configured() -> bool:
     from config.settings import (
@@ -82,9 +92,10 @@ def _call_rtc_api(action: str, body: dict) -> dict:
     return data
 
 
-def _build_start_body(app_id: str, room_id: str, task_id: str, rtc_user_id: str) -> dict:
+def _build_start_body(app_id: str, room_id: str, task_id: str, rtc_user_id: str, chat_mode: str = "work") -> dict:
     """构造 StartVoiceChat 请求体（对齐官方 rtc-server-demo-open 1201 大模型模板）
-    调参项统一在 config/settings.py（.env 可覆盖）。"""
+    调参项统一在 config/settings.py（.env 可覆盖）。
+    chat_mode=entertainment 时换娱乐人设 SystemMessages（E5）。"""
     from config.settings import (
         VOICE_LLM_ENDPOINT_ID,
         VOICE_ASR_APP_ID, VOICE_ASR_ACCESS_TOKEN, VOICE_ASR_RESOURCE_ID,
@@ -129,8 +140,8 @@ def _build_start_body(app_id: str, room_id: str, task_id: str, rtc_user_id: str)
             "Temperature": VOICE_LLM_TEMPERATURE,
             "TopP": VOICE_LLM_TOP_P,
             "Prefill": VOICE_LLM_PREFILL,
-            # 实测为字符串数组 []string
-            "SystemMessages": [_SYSTEM_PROMPT],
+            # 实测为字符串数组 []string；娱乐模式换娱乐人设（E5）
+            "SystemMessages": [_ENTERTAINMENT_SYSTEM_PROMPT if chat_mode == "entertainment" else _SYSTEM_PROMPT],
             "HistoryLength": VOICE_LLM_HISTORY_LENGTH,
         }
     return {
@@ -150,7 +161,8 @@ def _build_start_body(app_id: str, room_id: str, task_id: str, rtc_user_id: str)
 
 
 class VoiceStartRequest(BaseModel):
-    pass
+    # 产品模式（E5）：work=工作人设 / entertainment=娱乐人设（同一语音通道仅换 SystemMessages）
+    chat_mode: str = Field("work", description="产品模式：work / entertainment")
 
 
 class VoiceStartResponse(BaseModel):
@@ -196,7 +208,8 @@ def start_voice_chat(req: VoiceStartRequest, request: Request):
         # user_id 作为流 ID 的一部分需稳定字符串
         rtc_user_id = f"user{user_id}"
 
-        _call_rtc_api("StartVoiceChat", _build_start_body(app_id, room_id, task_id, rtc_user_id))
+        _call_rtc_api("StartVoiceChat",
+                      _build_start_body(app_id, room_id, task_id, rtc_user_id, getattr(req, "chat_mode", "work")))
         token = generate_rtc_token(
             app_id=app_id,
             app_key=VOLCANO_RTC_APP_KEY,

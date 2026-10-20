@@ -59,3 +59,13 @@ export const SUGGESTIONS: { text: string; desc: string }[] = [
   { text: '帮我审核小猿众包题目', desc: '自动化 · 浏览器操控' },
   { text: '搜索知识库中的技术文档', desc: '知识库 · 可打开独立面板' },
 ]
+
+// 娱乐模式开场话题（E5）：C 端陪伴导向——吃瓜/安利/脑洞，搜索与记忆驱动
+export const ENT_SUGGESTIONS: { text: string; desc: string }[] = [
+  { text: '最近娱乐圈有什么瓜？', desc: '联网搜索 · 最新热点' },
+  { text: '最近有什么好看的电影和剧？', desc: '联网搜索 · 追剧安利' },
+  { text: '给我讲个有趣的段子', desc: '脑洞创作 · 陪聊解闷' },
+  { text: '推荐几首适合通勤听的歌', desc: '音乐推荐 · 陪伴' },
+  { text: '帮我起个有意思的游戏ID', desc: '脑洞创作 · 玩梗' },
+  { text: '今天有什么值得关注的新闻？', desc: '联网搜索 · 新鲜资讯' },
+]

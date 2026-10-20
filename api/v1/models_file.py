@@ -73,6 +73,35 @@ def write_models_file(data: dict):
     os.replace(tmp, _MODELS_PATH)
 
 
+# ---- API Key 端点共享逻辑（2026-10-21 清洁5：auth 与 admin 双实现合一；
+# admin GET 原样返回明文 key，一并收口为脱敏） ----
+
+def masked_apikeys() -> dict:
+    """API Key 脱敏列表（provider → xxxx****xxxx）"""
+    keys = read_models_file().get("_apikeys", {})
+    return {k: v[:4] + "****" + v[-4:] if len(v) > 8 else "****"
+            for k, v in keys.items() if isinstance(v, str)}
+
+
+def upsert_apikey(provider: str, key: str) -> None:
+    data = read_models_file()
+    keys = data.get("_apikeys", {})
+    keys[provider] = key
+    data["_apikeys"] = keys
+    write_models_file(data)
+
+
+def remove_apikey(provider: str) -> None:
+    data = read_models_file()
+    keys = data.get("_apikeys", {})
+    keys.pop(provider, None)
+    if keys:
+        data["_apikeys"] = keys
+    else:
+        data.pop("_apikeys", None)
+    write_models_file(data)
+
+
 def _migrate(action: str) -> None:
     """一次性迁移 CLI：--migrate（当前密码加密）/ --decrypt-to-plain（当前密码解出明文）
 

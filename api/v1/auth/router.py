@@ -342,12 +342,8 @@ class ApiKeyBody(BaseModel):
 @router.get("/apikeys")
 def get_apikeys(request: Request):
     """获取已配置的 API Key（密钥脱敏，登录即可看）"""
-    data = _read_models_file()
-    keys = data.get("_apikeys", {})
-    masked = {}
-    for k, v in keys.items():
-        masked[k] = v[:4] + "****" + v[-4:] if len(v) > 8 else "****"
-    return {"keys": masked}
+    from api.v1.models_file import masked_apikeys
+    return {"keys": masked_apikeys()}
 
 
 @router.post("/apikeys")
@@ -355,11 +351,8 @@ def save_apikey(req: ApiKeyBody, request: Request):
     """保存 API Key（全局生效 → 仅 admin；否则任何登录用户可覆写全站模型密钥）"""
     from api.v1.middleware import require_admin
     require_admin(request)
-    data = _read_models_file()
-    keys = data.get("_apikeys", {})
-    keys[req.provider] = req.key
-    data["_apikeys"] = keys
-    _write_models_file(data)
+    from api.v1.models_file import upsert_apikey
+    upsert_apikey(req.provider, req.key)
     return {"ok": True, "provider": req.provider}
 
 
@@ -368,14 +361,8 @@ def delete_apikey(req: ApiKeyBody, request: Request):
     """删除 API Key（仅 admin）"""
     from api.v1.middleware import require_admin
     require_admin(request)
-    data = _read_models_file()
-    keys = data.get("_apikeys", {})
-    keys.pop(req.provider, None)
-    if keys:
-        data["_apikeys"] = keys
-    else:
-        data.pop("_apikeys", None)
-    _write_models_file(data)
+    from api.v1.models_file import remove_apikey
+    remove_apikey(req.provider)
     return {"ok": True}
 
 

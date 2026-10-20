@@ -631,29 +631,22 @@ class ApiKeyUpsert(BaseModel):
 @router.get("/apikeys")
 async def list_apikeys(request: Request):
     require_admin(request)
-    return _read_models_file().get("_apikeys", {})
+    # 2026-10-21 清洁5：原样返回明文 key 的泄露面收口为脱敏（与 /auth/apikeys 同款）
+    from api.v1.models_file import masked_apikeys
+    return {"keys": masked_apikeys()}
 
 
 @router.post("/apikeys")
 async def save_apikey(req: ApiKeyUpsert, request: Request):
     require_admin(request)
-    data = _read_models_file()
-    keys = data.get("_apikeys", {})
-    keys[req.provider] = req.key
-    data["_apikeys"] = keys
-    _write_models_file(data)
+    from api.v1.models_file import upsert_apikey
+    upsert_apikey(req.provider, req.key)
     return {"ok": True}
 
 
 @router.delete("/apikeys")
 async def delete_apikey(req: ApiKeyUpsert, request: Request):
     require_admin(request)
-    data = _read_models_file()
-    keys = data.get("_apikeys", {})
-    keys.pop(req.provider, None)
-    if keys:
-        data["_apikeys"] = keys
-    else:
-        data.pop("_apikeys", None)
-    _write_models_file(data)
+    from api.v1.models_file import remove_apikey
+    remove_apikey(req.provider)
     return {"ok": True}

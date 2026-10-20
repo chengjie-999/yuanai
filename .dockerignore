@@ -53,3 +53,10 @@ test/
 # 杂项
 .DS_Store
 *.log
+
+# 文档豁免（2026-10-20）：README 与 docs/ 需进镜像——
+# /api-docs 页实时读 README.md、云端回退提示注入 docs/agents/*.md、
+# 架构图资产走 /api/v1/docs/asset/
+!README.md
+!docs/
+!docs/**

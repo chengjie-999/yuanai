@@ -219,18 +219,6 @@ input, textarea, select {
   background: var(--accent);
   color: #fff;
 }
-.btn-danger {
-  background: var(--danger);
-  color: #fff;
-}
-.btn-success {
-  background: var(--success);
-  color: #fff;
-}
-.btn-warning {
-  background: #f59e0b;
-  color: #1c1917;
-}
 .btn-outline {
   background: #fff;
   border: 1px solid var(--border);
@@ -240,19 +228,9 @@ input, textarea, select {
   border-color: var(--text-muted);
   background: var(--bg-secondary);
 }
-.btn-outline-danger {
-  background: #fff;
-  border: 1px solid var(--danger);
-  color: var(--danger);
-}
-.btn-outline-danger:hover {
-  background: rgba(220,38,38,0.06);
-}
 
-/* 暗色：accent/danger/success 变量为浅色调（作文字色用），按钮底需换回深色调保证白字对比度 */
+/* 暗色：accent 变量为浅色调（作文字色用），按钮底需换回深色调保证白字对比度 */
 [data-theme="dark"] .btn-primary { background: #2563eb; }
-[data-theme="dark"] .btn-danger { background: #e53935; }
-[data-theme="dark"] .btn-success { background: #4caf50; }
 
 /* 语义实底（inline 样式无 class 场景）：白字 + 暗色自动换深色调 */
 .bg-success-solid { background: var(--success); color: #fff; }
@@ -267,82 +245,10 @@ input, textarea, select {
   border-color: #515151;
   background: var(--bg-input);
 }
-[data-theme="dark"] .btn-outline-danger {
-  background: var(--bg-tertiary);
-  border-color: #bc3f3c;
-  color: #bc3f3c;
-}
-[data-theme="dark"] .btn-outline-danger:hover {
-  background: rgba(188,63,60,0.1);
-}
 
 .btn-sm {
   padding: 6px 12px;
   font-size: 12px;
-}
-.btn-block {
-  width: 100%;
-  padding: 8px 0;
-  font-size: 13px;
-}
-
-/* Loading spinner */
-.btn-loading {
-  position: relative;
-  color: transparent !important;
-  pointer-events: none;
-}
-.btn-loading::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255,255,255,0.6);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin .6s linear infinite;
-}
-
-/* Legacy alias used by Step1Content */
-.btn-click {
-  cursor: pointer;
-  border-radius: 6px;
-  border: none;
-  font-size: 13px;
-  transition: all 0.12s;
-  user-select: none;
-}
-.btn-click:hover {
-  filter: brightness(0.94);
-}
-.btn-click:active {
-  transform: scale(0.97);
-}
-.btn-click:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none;
-  filter: none;
-}
-.btn-click.btn-loading {
-  position: relative;
-  color: transparent !important;
-  pointer-events: none;
-  opacity: 1 !important;
-}
-.btn-click.btn-loading::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255,255,255,0.6);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin .6s linear infinite;
 }
 
 /* Task list items */

@@ -54,11 +54,6 @@ export function setStoredEffort(effort: 'low' | 'medium' | 'high') {
 
 const USER_KEY = 'currentUser'
 
-export function getStoredUser(): any {
-  try { return JSON.parse(_safeGet(USER_KEY) || 'null') }
-  catch { return null }
-}
-
 export function setStoredUser(user: any) {
   if (user) localStorage.setItem(USER_KEY, JSON.stringify(user))
   else localStorage.removeItem(USER_KEY)
@@ -303,13 +298,6 @@ export async function checkToken(): Promise<{ valid: boolean; user?: any; detail
     }
     return await res.json()
   } catch { return { valid: false } }
-}
-
-// ---- Tools ----
-export async function fetchTools() {
-  const res = await fetch(`${API_BASE}/tools/`, { headers: authHeaders() })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }
 
 // ---- Sessions ----
@@ -617,15 +605,6 @@ export function streamChat(
   return controller
 }
 
-// ---- Stats ----
-export async function fetchStats(): Promise<any> {
-  try {
-    const res = await fetch(`${API_BASE}/stats/all`, { headers: authHeaders() })
-    if (!res.ok) return null
-    return await res.json()
-  } catch { return null }
-}
-
 // ---- Admin ----
 export async function fetchWebsites(): Promise<any[]> {
   try {
@@ -650,14 +629,6 @@ export async function deleteWebsite(id: number): Promise<boolean> {
   } catch { return false }
 }
 
-export async function fetchFiles(path: string = ''): Promise<{ path: string; items: { name: string; path: string; is_dir: boolean; size_kb: number }[] }> {
-  try {
-    const res = await fetch(`${API_BASE}/admin/files?path=${encodeURIComponent(path)}`, { headers: authHeaders() })
-    if (!res.ok) return { path, items: [] }
-    return await res.json()
-  } catch { return { path, items: [] } }
-}
-
 export async function freezeUser(userId: number, days: number): Promise<any> {
   const res = await fetch(`${API_BASE}/admin/users/freeze`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -666,32 +637,7 @@ export async function freezeUser(userId: number, days: number): Promise<any> {
   return res.json()
 }
 
-export async function readFile(filePath: string): Promise<{ type: string; content?: string; data?: string; ext?: string; detail?: string }> {
-  try {
-    const res = await fetch(`${API_BASE}/admin/file/read?path=${encodeURIComponent(filePath)}`, { headers: authHeaders() })
-    if (!res.ok) return { type: 'error', detail: '读取失败' }
-    return await res.json()
-  } catch { return { type: 'error', detail: '网络错误' } }
-}
-
 // ---- Crawl Records ----
-export async function checkCrawlRecord(url: string): Promise<{ exists: boolean; id?: number; create_time?: string }> {
-  try {
-    const res = await fetch(`${API_BASE}/spider/save/check?url=${encodeURIComponent(url)}`, { headers: authHeaders() })
-    return await res.json()
-  } catch { return { exists: false } }
-}
-
-export async function saveCrawlRecord(url: string, retype: string, result: string): Promise<any> {
-  try {
-    const res = await fetch(`${API_BASE}/spider/save/record`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ url, retype, result }),
-    })
-    return await res.json()
-  } catch { return { status: 'error' } }
-}
-
 export async function fetchCrawlRecords(page: number = 1, limit: number = 20): Promise<{ records: any[]; total: number; page: number }> {
   try {
     const res = await fetch(`${API_BASE}/spider/save/records?page=${page}&limit=${limit}`, { headers: authHeaders() })
@@ -750,13 +696,6 @@ export async function fetchDatasetPreview(id: number): Promise<any> {
     if (!res.ok) return null
     return await res.json()
   } catch { return null }
-}
-
-export async function deleteDataset(id: number): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/data/dataset/${id}`, { method: 'DELETE', headers: authHeaders() })
-    return res.ok
-  } catch { return false }
 }
 
 // ---- Code Monitor ----

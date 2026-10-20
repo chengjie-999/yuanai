@@ -9,28 +9,28 @@
 """
 from __future__ import annotations
 import os
-import re
 import time
 import json
 import hashlib
 import threading
 from contextvars import ContextVar
-import numpy as np
 from openai import OpenAI
 from pymilvus import MilvusClient
 from utils.data_path import root_path
 from utils.sensitive_data import get_api_key
+from yuanai_core.rag_base import (
+    SPEC_FILE_PATH, STEPS_FILE_PATH, chunk_text, get_all_specs,
+    split_spec_sections, search_spec_sections, get_all_raw_text,
+    make_retrieve_specification,
+)
 
 # ====================== 配置 ======================
 AIPROMPT_DIR = os.path.join(root_path(), "data", "aiprompt")
-SPEC_FILE_PATH = os.path.join(AIPROMPT_DIR, "annotation_spec.txt")
-STEPS_FILE_PATH = os.path.join(AIPROMPT_DIR, "audit_steps.txt")
+# SPEC_FILE_PATH/STEPS_FILE_PATH 由 yuanai_core.rag_base 统一提供
 MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
 MILVUS_PORT = os.getenv("MILVUS_PORT", "19530")
 # MILVUS_HOST 以 .db 结尾时走 milvus-lite 嵌入式本地文件模式（单机测试/免部署）
 COLLECTION_NAME = "knowledge_base"
-CHUNK_SIZE = 300
-CHUNK_OVERLAP = 50
 TOP_K = 10
 # Milvus query/删除 单次上限：知识星球累计 chunk 可超 1.6 万，旧值会导致 ID 冲突与删不净
 MILVUS_QUERY_LIMIT = 65536
@@ -212,28 +212,6 @@ def _scan_mindmap_folders() -> dict[str, list[dict]]:
     return sources
 
 
-# ====================== 文本切分 ======================
-def _chunk_text(text: str, source: str) -> list[dict]:
-    chunks = []
-    sections = re.split(r'\n(?=[一二三四五六七八九十]、)', text)
-    for section in sections:
-        section = section.strip()
-        if not section:
-            continue
-        lines = section.split('\n')
-        title = lines[0].strip()
-        body = '\n'.join(lines)
-        base = {"source": source, "path": f"{source} > {title}", "level": 2, "images": "[]", "user_id": 0}
-        if len(body) > CHUNK_SIZE:
-            for i in range(0, len(body), CHUNK_SIZE - CHUNK_OVERLAP):
-                chunk = body[i:i + CHUNK_SIZE]
-                if chunk.strip():
-                    chunks.append({"text": chunk, "title": title, **base})
-        else:
-            chunks.append({"text": body, "title": title, **base})
-    return chunks
-
-
 # ====================== 知识库构建 ======================
 def build_knowledge_base(force_rebuild: bool = False) -> bool:
     db = _get_db()
@@ -249,15 +227,15 @@ def build_knowledge_base(force_rebuild: bool = False) -> bool:
 
     all_chunks: list[dict] = []
 
-    # 1. 纯文本文档
+    # 1. 纯文本文档（分块逻辑来自 yuanai_core.rag_base）
     if os.path.exists(SPEC_FILE_PATH):
         with open(SPEC_FILE_PATH, "r", encoding="utf-8") as f:
-            all_chunks.extend(_chunk_text(f.read(), "annotation_spec"))
+            all_chunks.extend(chunk_text(f.read(), "annotation_spec", path_prefix="annotation_spec", level=2))
         print(f"  📝 annotation_spec.txt")
 
     if os.path.exists(STEPS_FILE_PATH):
         with open(STEPS_FILE_PATH, "r", encoding="utf-8") as f:
-            all_chunks.extend(_chunk_text(f.read(), "audit_steps"))
+            all_chunks.extend(chunk_text(f.read(), "audit_steps", path_prefix="audit_steps", level=2))
         print(f"  📝 audit_steps.txt")
 
     # 2. 思维导图 Markdown 文件夹
@@ -550,12 +528,12 @@ def search_knowledge(query: str, top_k: int = TOP_K, source: str | None = None,
         return "知识库服务响应超时，请稍后重试"
     if not has_coll:
         if not build_knowledge_base():
-            return _get_all_raw_text()
+            return get_all_raw_text()
 
     hits = search_knowledge_hits(query, top_k=top_k, sources=[source] if source else None,
                                  user_id=user_id)
     if not hits:
-        return _get_all_raw_text()[:2000]
+        return get_all_raw_text()[:2000]
 
     chunks = []
     for h in hits:
@@ -572,17 +550,6 @@ def search_spec(query: str) -> str:
 
 def search_steps(query: str) -> str:
     return search_knowledge(query, source="audit_steps")
-
-
-def _get_all_raw_text() -> str:
-    parts = []
-    if os.path.exists(SPEC_FILE_PATH):
-        with open(SPEC_FILE_PATH, "r", encoding="utf-8") as f:
-            parts.append(f.read())
-    if os.path.exists(STEPS_FILE_PATH):
-        with open(STEPS_FILE_PATH, "r", encoding="utf-8") as f:
-            parts.append(f.read())
-    return "\n\n".join(parts)
 
 
 def list_knowledge_sources() -> list[str]:
@@ -608,40 +575,9 @@ def list_knowledge_sources() -> list[str]:
     return sorted(sources)
 
 
-# ====================== 兼容旧接口 ======================
-def get_all_specs() -> str:
-    if os.path.exists(SPEC_FILE_PATH):
-        with open(SPEC_FILE_PATH, "r", encoding="utf-8") as f:
-            return f.read()
-    return ""
-
-
+# ====================== 兼容旧接口（规范接口来自 yuanai_core.rag_base） ======================
 def search_annotation_spec(query: str) -> str:
     return search_spec(query)
-
-
-def split_spec_sections() -> list:
-    text = get_all_specs()
-    if not text:
-        return []
-    chunks = re.split(r'\n(?=[一二三四五六七八九十]、)', text)
-    result = []
-    for c in chunks:
-        lines = c.strip().split('\n')
-        title = lines[0].strip() if lines else ""
-        result.append((title, c.strip()))
-    return result
-
-
-def search_spec_sections(keyword: str = "") -> str:
-    sections = split_spec_sections()
-    if not sections:
-        return ""
-    if not keyword:
-        return "\n\n".join(c for _, c in sections)
-    keyword_lower = keyword.lower()
-    matched = [c for t, c in sections if keyword_lower in c.lower()]
-    return "\n\n".join(matched) if matched else (sections[0][1] if sections else "")
 
 
 def rebuild_vector_store():
@@ -649,33 +585,14 @@ def rebuild_vector_store():
 
 
 # ====================== LangChain Tool ======================
-try:
-    from langchain_core.tools import tool
-
-    @tool
-    def retrieve_specification(query: str = "") -> str:
-        """
-        检索数据标注规范，需要判断内容是否合规时调用。
-        输入：待审核的内容关键词（必填，如 '独立批改' '黄框' '举报'）
-        输出：相关规范段落
-        """
-        if not query:
-            return get_all_specs()
-        return search_spec(query)
-
-    __all__ = [
-        "retrieve_specification",
-        "search_knowledge", "search_knowledge_hits", "search_spec", "search_steps",
-        "search_annotation_spec", "get_all_specs", "search_spec_sections",
-        "split_spec_sections", "get_embeddings",
-        "build_knowledge_base", "rebuild_vector_store", "list_knowledge_sources",
-        "add_source_chunks", "remove_source", "get_source_stats",
-    ]
-except ImportError:
-    __all__ = [
-        "search_knowledge", "search_knowledge_hits", "search_spec", "search_steps",
-        "search_annotation_spec", "get_all_specs", "search_spec_sections",
-        "split_spec_sections", "get_embeddings",
-        "build_knowledge_base", "rebuild_vector_store", "list_knowledge_sources",
-        "add_source_chunks", "remove_source", "get_source_stats",
-    ]
+_ALL = [
+    "search_knowledge", "search_knowledge_hits", "search_spec", "search_steps",
+    "search_annotation_spec", "get_all_specs", "search_spec_sections",
+    "split_spec_sections", "get_embeddings",
+    "build_knowledge_base", "rebuild_vector_store", "list_knowledge_sources",
+    "add_source_chunks", "remove_source", "get_source_stats",
+]
+retrieve_specification = make_retrieve_specification(get_all_specs, search_spec)
+if retrieve_specification is not None:
+    _ALL.insert(0, "retrieve_specification")
+__all__ = _ALL

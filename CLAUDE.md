@@ -98,7 +98,7 @@ agent/                  本地 Agent 运行时 ★
 │   │   └── bio_analysis.py    基因表达 + 火山图
 │   └── crawl/             网页采集脚本
 ├── audit/               AI 审核系统（题目判定 + 结果解析）
-└── rag.py               Milvus Lite 向量知识库
+└── rag.py               审核知识库（Milvus Lite 本地集合；分块/规范兼容接口共享 yuanai_core/rag_base.py）
 yuanai_core/            公共核心库（云边共用）
 ├── core/
 │   ├── lc.py            LLM 工厂（DeepSeek / 豆包）
@@ -106,6 +106,8 @@ yuanai_core/            公共核心库（云边共用）
 │   └── schemas.py       消息协议（WebSocket / SSE）
 ├── pure/                纯函数（无框架依赖）
 │   ├── mindmap_parser.py   思维导图多格式解析器（html高保真/mm/xmind/opml/emmx/md→统一树）
+├── rag.py              通用知识库（远程 Milvus + 用户隔离）
+├── rag_base.py         向量库公共基建（分块/规范兼容接口/工具工厂，云边共用）
 └── tools/               通用工具（19 个，自动发现）
 spiderlx/               浏览器自动化引擎（CDP/Selenium）
 skills/                  Skill 配置中心（Agent 能力定义，YAML 驱动自动发现）

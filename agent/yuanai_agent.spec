@@ -32,7 +32,7 @@ a = Analysis(
         # 工具模块：由 _registry 静态字面量导入自动打包（新增工具改 _registry 即可，
         # 无需再逐个登记本清单）
         'yuanai_core.tools', 'yuanai_core.tools._registry',
-        'yuanai_core.usage', 'yuanai_core.planet_convert',
+        'yuanai_core.usage', 'yuanai_core.planet_convert', 'yuanai_core.rag_base',
         'yuanai_core.utils', 'yuanai_core.utils.image',
         'skills',
         'agent', 'agent.main', 'agent.ws_client', 'agent.orchestrator', 'agent.intent_classifier',

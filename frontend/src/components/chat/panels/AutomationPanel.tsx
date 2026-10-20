@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { API_BASE } from '../../../api'
+import { API_BASE, authHeaders, getToken } from '../../../api'
 import { MonitorOffIcon, BotIcon } from '../../icons'
 
 export default function AutomationPanel({ agentOnline }: { agentOnline: boolean }) {
@@ -10,10 +10,9 @@ export default function AutomationPanel({ agentOnline }: { agentOnline: boolean 
   useEffect(() => {
     if (!agentOnline) return
     const poll = () => {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token')
-      if (!token) return
+      if (!getToken()) return
       fetch(`${API_BASE}/admin/agent-status`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeaders(),
       })
         .then((r) => r.json())
         .then((data) => {

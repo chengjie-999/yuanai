@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, CardHeader, btnPrimary, inputStyle, badge, headers, safeJson, API_BASE } from './shared'
+import { authHeaders } from '../../api'
 
 export default function KnowledgeTab() {
   const [sources, setSources] = useState<any[]>([])
@@ -25,7 +26,7 @@ export default function KnowledgeTab() {
     const file = e.target.files?.[0]; if (!file) return
     setError('')
     const form = new FormData(); form.append('file', file); form.append('visibility', 'shared')
-    const res = await fetch(`${API_BASE}/knowledge/upload`, { method: 'POST', headers: { Authorization: headers()['Authorization'] }, body: form })
+    const res = await fetch(`${API_BASE}/knowledge/upload`, { method: 'POST', headers: authHeaders(), body: form })
     if (!res.ok) { const d = await safeJson(res); setError(d?.detail || '上传失败'); return }
     load()
   }

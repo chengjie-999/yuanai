@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { ChatMessage } from '../../types'
-import { API_BASE, getToken } from '../../api'
+import { API_BASE, authHeaders, getToken } from '../../api'
 
 export type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean }
 
@@ -16,7 +16,7 @@ export function addToken(url: string): string {
 export async function fetchSseToken(): Promise<string> {
   try {
     const res = await fetch(`${API_BASE}/auth/sse-token`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: authHeaders(),
     })
     if (!res.ok) return ''
     return ((await res.json()) as { token?: string }).token || ''

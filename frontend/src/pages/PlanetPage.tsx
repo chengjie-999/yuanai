@@ -8,7 +8,7 @@ import PlanetTree from '../components/planet/PlanetTree'
 import PlanetReader from '../components/planet/PlanetReader'
 import ImportDialog from '../components/planet/ImportDialog'
 import Starfield from '../components/planet/Starfield'
-import { API_BASE, getToken } from '../api'
+import { API_BASE, authHeaders } from '../api'
 import { usePlanetJob } from '../components/planet/ConvertProgress'
 import { ArrowLeftIcon, GalaxyIcon } from '../components/icons'
 
@@ -25,7 +25,7 @@ export default function PlanetPage({ onClose, hideBack }: { onClose?: () => void
     const poll = async () => {
       try {
         const res = await fetch(`${API_BASE}/admin/agent-status`, {
-          headers: { Authorization: `Bearer ${getToken()}` },
+          headers: authHeaders(),
         })
         if (!res.ok || !alive) return
         const agents = await res.json()

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { fetchDatasets, fetchDatasetAnalysis, uploadDataset, API_BASE } from '../../../api'
+import { fetchDatasets, fetchDatasetAnalysis, uploadDataset, API_BASE, authHeaders } from '../../../api'
 import AnalysisResultView from '../../AnalysisResultView'
 import { UploadIcon, DownloadIcon } from '../../icons'
 
@@ -61,10 +61,7 @@ export default function AnalysisPanel() {
     setExporting(true)
     setTip('')
     try {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token')
-      const h: Record<string, string> = {}
-      if (token) h['Authorization'] = `Bearer ${token}`
-      const res = await fetch(`${API_BASE}/data/export/${selectedId}?format=excel`, { headers: h })
+      const res = await fetch(`${API_BASE}/data/export/${selectedId}?format=excel`, { headers: authHeaders() })
       if (!res.ok) {
         let detail = ''
         try { detail = (await res.json())?.detail || '' } catch { /* 非 JSON 错误响应 */ }

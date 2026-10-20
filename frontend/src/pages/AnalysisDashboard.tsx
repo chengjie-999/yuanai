@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { API_BASE, getToken } from '../api'
+import { API_BASE, authHeaders } from '../api'
 import { useSecuredUrl } from '../components/chat/helpers'
 import { ArrowLeftIcon, BarChartIcon } from '../components/icons'
 import { renderBody } from '../components/analysis/ResultBlocks'
@@ -29,7 +29,7 @@ export default function AnalysisDashboard({ sessionId: propSid, onClose, hideBac
     if (!sessionId) return
     // 数据优先 Redis 缓存；过期后后端自动从 analysis_history 恢复
     fetch(API_BASE + '/analysis/dashboard/' + sessionId, {
-      headers: { Authorization: 'Bearer ' + getToken() },
+      headers: authHeaders(),
     })
       .then((r) => {
         if (!r.ok) throw new Error(r.status === 404 ? 'NOT_FOUND' : 'HTTP ' + r.status)
@@ -52,7 +52,7 @@ export default function AnalysisDashboard({ sessionId: propSid, onClose, hideBac
   useEffect(() => {
     if (!sessionId) return
     fetch(API_BASE + '/analysis/history?session_id=' + sessionId, {
-      headers: { Authorization: 'Bearer ' + getToken() },
+      headers: authHeaders(),
     })
       .then((r) => (r.ok ? r.json() : { history: [] }))
       .then((d) => setHistory(Array.isArray(d.history) ? d.history : []))

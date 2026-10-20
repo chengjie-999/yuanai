@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { API_BASE, getToken } from '../api'
+import { API_BASE, authHeaders } from '../api'
 import { MonitorIcon, MonitorOffIcon } from './icons'
 
 interface AgentInfo {
@@ -18,7 +18,7 @@ export default function AgentStatus({ userId }: { userId?: number }) {
     const fetchStatus = async () => {
       try {
         const res = await fetch(`${API_BASE}/admin/agent-status`, {
-          headers: { Authorization: `Bearer ${getToken()}` },
+          headers: authHeaders(),
         })
         if (res.ok) {
           const text = await res.text()

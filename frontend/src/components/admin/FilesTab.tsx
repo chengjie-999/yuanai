@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, safeJson, headers, API_BASE } from './shared'
+import { authHeaders } from '../../api'
 import { FolderIcon, FileIcon, XIcon } from '../icons'
 import { useSecuredUrl, fetchSseToken } from '../chat/helpers'
 import MarkdownContent from '../MarkdownContent'
@@ -166,10 +167,9 @@ export default function FilesTab() {
     try {
       const form = new FormData()
       form.append('file', f)
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token')
       const res = await fetch(`${API_BASE}/admin/file/upload?path=${encodeURIComponent(currentPath)}`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: authHeaders(),
         body: form,
       })
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).detail || '上传失败') }

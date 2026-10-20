@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
-import { API_BASE, fetchDatasets, getToken } from '../api'
+import { API_BASE, fetchDatasets, authHeaders } from '../api'
 import { ArrowLeftIcon } from '../components/icons'
 import { useSecuredUrl } from '../components/chat/helpers'
 
@@ -23,7 +23,7 @@ export default function RFMDashboard({ onClose, hideBack }: { onClose?: () => vo
     try {
       const body = id ? JSON.stringify({ dataset_id: Number(id) }) : '{}'
       const res = await fetch(`${API_BASE}/analysis/rfm`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body,
       })
       if (!res.ok) { const t = await res.text(); setError(t); setLoading(false); return }

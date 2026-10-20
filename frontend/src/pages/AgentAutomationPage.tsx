@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import AutomationPanel from '../components/chat/panels/AutomationPanel'
 import { AGENT_CONFIG } from '../config/agents'
-import { API_BASE } from '../api'
+import { API_BASE, authHeaders, getToken } from '../api'
 import { ArrowLeftIcon, BotIcon } from '../components/icons'
 
 export default function AgentAutomationPage({ onClose, hideBack }: { onClose?: () => void; hideBack?: boolean } = {}) {
@@ -11,10 +11,9 @@ export default function AgentAutomationPage({ onClose, hideBack }: { onClose?: (
 
   useEffect(() => {
     const poll = () => {
-      const token = localStorage.getItem('token')
-      if (!token) return
+      if (!getToken()) return
       fetch(`${API_BASE}/admin/agent-status`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeaders(),
       })
         .then((r) => r.json())
         .then((data) => {

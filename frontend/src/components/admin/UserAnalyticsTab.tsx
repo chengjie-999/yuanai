@@ -8,23 +8,13 @@
 */
 import { useState, useEffect, useMemo } from 'react'
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
-import { Spinner, ErrorMsg, Card, headers, API_BASE } from './shared'
+import { Spinner, ErrorMsg, Card, StatCard, headers, API_BASE } from './shared'
 
 const C_HIGH = '#4caf50'
 const C_MID = '#42a5f5'
 const C_LOW = '#ffa726'
 const C_CHURN = '#9e9e9e'
 const C_LOGIN = '#7b1fa2'
-
-function StatCard({ label, value, color, sub }: { label: string; value: string | number; color: string; sub?: string }) {
-  return (
-    <div style={{ background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', padding: '14px 12px', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div style={{ fontSize: 22, fontWeight: 700, color, lineHeight: 1.3 }}>{value}</div>
-      <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{label}</div>
-      {sub && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{sub}</div>}
-    </div>
-  )
-}
 
 export default function UserAnalyticsTab() {
   const [data, setData] = useState<any>(null)

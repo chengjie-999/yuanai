@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { headers } from '../../api'
+import { TrendingUpIcon, TrendingDownIcon } from '../icons'
 
 export { ErrorBoundary } from '../ErrorBoundary'
 
@@ -44,5 +45,35 @@ export const btnPrimary: React.CSSProperties = { background: 'var(--accent)', co
 export const btnDangerSm: React.CSSProperties = { fontSize: 12, padding: '4px 10px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer' }
 export const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--bg-input)', color: 'var(--text-primary)' }
 export const badge = (text: string, color: string) => <span style={{ fontSize: 11, color, background: `color-mix(in srgb, ${color} 10%, transparent)`, padding: '2px 6px', borderRadius: 4, marginLeft: 6 }}>{text}</span>
+
+/* KPI 统计卡（2026-10-21 清洁9：AnalyticsTabs/DashboardTab/UserAnalyticsTab
+   三份本地拷贝合一；trend 环比徽标用语义色变量） */
+export const StatCard = ({ label, value, color, sub, trend }: {
+  label: string; value: string | number; color: string; sub?: string
+  trend?: { text: string; up: boolean }
+}) => (
+  <div style={{
+    background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)',
+    padding: '14px 12px', textAlign: 'center', transition: 'box-shadow 0.2s',
+    display: 'flex', flexDirection: 'column', gap: 4,
+  }}
+    onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 2px 12px var(--shadow-sm)')}
+    onMouseLeave={(e) => (e.currentTarget.style.boxShadow = '')}>
+    <div style={{ fontSize: 24, fontWeight: 700, color, lineHeight: 1.3 }}>{value}</div>
+    <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{label}</div>
+    {trend && (
+      <div style={{
+        fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8,
+        background: trend.up ? 'var(--success-soft)' : 'var(--danger-soft)',
+        color: trend.up ? 'var(--success)' : 'var(--danger)', alignSelf: 'center',
+        display: 'flex', alignItems: 'center', gap: 3, lineHeight: 1,
+      }}>
+        {trend.up ? <TrendingUpIcon size={11} /> : <TrendingDownIcon size={11} />}
+        {trend.text}
+      </div>
+    )}
+    {sub && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{sub}</div>}
+  </div>
+)
 
 export { headers, safeJson, API_BASE } from '../../api'

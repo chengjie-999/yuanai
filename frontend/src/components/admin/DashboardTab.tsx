@@ -2,42 +2,13 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { Spinner, ErrorMsg, Card, CardHeader, headers, API_BASE } from './shared'
-import { TrendingUpIcon, TrendingDownIcon } from '../icons'
+import { Spinner, ErrorMsg, Card, CardHeader, StatCard, headers, API_BASE } from './shared'
 
 const CHART_BLUE = '#42a5f5'
 const CHART_GREEN = '#4caf50'
 const CHART_RED = '#ef5350'
 
 /* KPI 卡片（可带环比趋势：↑绿 / ↓红） */
-function StatCard({ label, value, color, trend }: {
-  label: string; value: string | number; color: string; trend?: { text: string; up: boolean }
-}) {
-  return (
-    <div className="stat-card" style={{
-      background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)',
-      padding: '14px 12px', textAlign: 'center', transition: 'box-shadow 0.2s',
-      display: 'flex', flexDirection: 'column', gap: 4,
-    }}
-      onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 2px 12px var(--shadow-sm)')}
-      onMouseLeave={(e) => (e.currentTarget.style.boxShadow = '')}>
-      <div style={{ fontSize: 24, fontWeight: 700, color, lineHeight: 1.3 }}>{value}</div>
-      <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{label}</div>
-      {trend && (
-        <div style={{
-          fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8,
-          background: trend.up ? `${CHART_GREEN}18` : `${CHART_RED}18`,
-          color: trend.up ? CHART_GREEN : CHART_RED, alignSelf: 'center',
-          display: 'flex', alignItems: 'center', gap: 3, lineHeight: 1,
-        }}>
-          {trend.up ? <TrendingUpIcon size={11} /> : <TrendingDownIcon size={11} />}
-          {trend.text}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
   const [data, setData] = useState<any>(null)
   const [agents, setAgents] = useState<any[]>([])

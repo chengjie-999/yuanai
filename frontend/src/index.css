@@ -150,6 +150,12 @@ input, textarea, select {
   to { transform: rotate(360deg); }
 }
 
+/* 右侧抽屉滑入（共享 Modal mode=right；原 MemoryCard 组件内联 style 收敛至此） */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
 /* ---- Tooltip 悬浮提示 ---- */
 /* 统一风格替代原生 title：主题色反相气泡 + 阴影，随明暗主题自适应。
    用法：className="yuan-tip" data-tip="提示文字"（配 aria-label）。

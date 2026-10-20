@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import { getStoredModel, setStoredModel, fetchModels } from '../api'
 import { fetchAgentModels, updateAgentModel, fetchApiKeys, saveApiKey, deleteApiKey } from '../api'
 import { fetchAgentVoices, updateAgentVoice } from '../api'
-import { XIcon } from './icons'
 import { useAuth } from '../contexts/AuthContext'
 import MemoryCard from './MemoryCard'
+import Modal from './Modal'
 import { useAutoRead, toggleAutoRead } from '../hooks/useAutoRead'
 
 const C = {
@@ -107,57 +107,45 @@ export default function SettingsPage() {
     provider: v.provider,
   }))
 
-  // ---- 添加 API Key 侧边面板 ----
-  const addKeyPanel = showAddKey && (
-    <>
-      <div onClick={() => { setShowAddKey(false); setNewProvider(''); setNewKey(''); setKeyMsg('') }}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 200 }} />
-      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 420, maxWidth: '90vw', background: 'var(--bg-primary)', zIndex: 201, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', animation: 'slide-in-right 0.25s ease' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
-          <h2 style={{ fontSize: 17, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>添加 API Key</h2>
-          <button onClick={() => { setShowAddKey(false); setNewProvider(''); setNewKey(''); setKeyMsg('') }}
-            title="关闭" aria-label="关闭"
-            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', lineHeight: 1, display: 'flex' }}><XIcon size={16} /></button>
-        </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>供应商</div>
-            <input value={newProvider} onChange={e => setNewProvider(e.target.value)}
-              style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
-              placeholder="如 DeepSeek、Doubao、OpenAI" autoFocus />
-            <div style={C.hint}>API 提供商名称，用于匹配模型</div>
-          </div>
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>密钥</div>
-            <input type="password" value={newKey} onChange={e => setNewKey(e.target.value)}
-              style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
-              placeholder="sk-... 或 API Key"
-              onKeyDown={async e => {
-                if (e.key === 'Enter') {
-                  if (!newProvider.trim() || !newKey.trim()) { setKeyMsg('请填写供应商和密钥'); setKeyErr(true); return }
-                  await saveApiKey(newProvider.trim(), newKey.trim())
-                  setNewProvider(''); setNewKey(''); setShowAddKey(false); refreshKeys()
-                }
-              }} />
-            <div style={C.hint}>密钥仅存储于服务器，前端不会明文展示</div>
-          </div>
-          {keyMsg && (
-            <div style={{ fontSize: 13, color: keyErr ? 'var(--danger)' : 'var(--success)', marginBottom: 16, padding: '8px 12px', borderRadius: 6, background: keyErr ? 'rgba(244,71,71,0.08)' : 'rgba(106,153,85,0.08)' }}>{keyMsg}</div>
-          )}
-        </div>
-        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={() => { setShowAddKey(false); setNewProvider(''); setNewKey(''); setKeyMsg('') }}
-            style={{ padding: '10px 24px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>取消</button>
-          <button onClick={async () => {
-            setKeyErr(false); setKeyMsg('')
-            if (!newProvider.trim() || !newKey.trim()) { setKeyMsg('请填写供应商和密钥'); setKeyErr(true); return }
-            await saveApiKey(newProvider.trim(), newKey.trim())
-            setNewProvider(''); setNewKey(''); setShowAddKey(false); refreshKeys()
-          }} style={{ ...C.btn, fontSize: 14, padding: '10px 24px' }}>确认添加</button>
-        </div>
+  // ---- 添加 API Key 侧边面板（共享 Modal mode=right） ----
+  const closeAddKey = () => { setShowAddKey(false); setNewProvider(''); setNewKey(''); setKeyMsg('') }
+  const addKeyPanel = (
+    <Modal open={showAddKey} mode="right" title="添加 API Key" onClose={closeAddKey}
+      footer={<>
+        <button onClick={closeAddKey}
+          style={{ padding: '10px 24px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>取消</button>
+        <button onClick={async () => {
+          setKeyErr(false); setKeyMsg('')
+          if (!newProvider.trim() || !newKey.trim()) { setKeyMsg('请填写供应商和密钥'); setKeyErr(true); return }
+          await saveApiKey(newProvider.trim(), newKey.trim())
+          closeAddKey(); refreshKeys()
+        }} style={{ ...C.btn, fontSize: 14, padding: '10px 24px' }}>确认添加</button>
+      </>}>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>供应商</div>
+        <input value={newProvider} onChange={e => setNewProvider(e.target.value)}
+          style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
+          placeholder="如 DeepSeek、Doubao、OpenAI" autoFocus />
+        <div style={C.hint}>API 提供商名称，用于匹配模型</div>
       </div>
-      <style>{`@keyframes slide-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
-    </>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>密钥</div>
+        <input type="password" value={newKey} onChange={e => setNewKey(e.target.value)}
+          style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
+          placeholder="sk-... 或 API Key"
+          onKeyDown={async e => {
+            if (e.key === 'Enter') {
+              if (!newProvider.trim() || !newKey.trim()) { setKeyMsg('请填写供应商和密钥'); setKeyErr(true); return }
+              await saveApiKey(newProvider.trim(), newKey.trim())
+              closeAddKey(); refreshKeys()
+            }
+          }} />
+        <div style={C.hint}>密钥仅存储于服务器，前端不会明文展示</div>
+      </div>
+      {keyMsg && (
+        <div style={{ fontSize: 13, color: keyErr ? 'var(--danger)' : 'var(--success)', marginBottom: 16, padding: '8px 12px', borderRadius: 6, background: keyErr ? 'rgba(244,71,71,0.08)' : 'rgba(106,153,85,0.08)' }}>{keyMsg}</div>
+      )}
+    </Modal>
   )
 
   return (

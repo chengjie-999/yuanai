@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { fetchMemory, saveMemory, deleteMemoryLine } from '../api'
-import { XIcon, EditIcon, TrashIcon } from './icons'
+import { EditIcon, TrashIcon } from './icons'
+import Modal from './Modal'
 
 /* 设置页「我的记忆」卡 — 透明可编辑的长期记忆（每行一条事实，随时可改可删） */
 
@@ -83,36 +84,25 @@ export default function MemoryCard() {
 
   const lines = memory ? memory.split('\n').filter(l => l.trim()) : []
 
-  const editPanel = editing && (
-    <>
-      <div onClick={() => !saving && setEditing(false)}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 200 }} />
-      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 420, maxWidth: '90vw', background: 'var(--bg-primary)', zIndex: 201, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', animation: 'slide-in-right 0.25s ease' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
-          <h2 style={{ fontSize: 17, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>编辑我的记忆</h2>
-          <button onClick={() => !saving && setEditing(false)} title="关闭" aria-label="关闭"
-            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', lineHeight: 1, display: 'flex' }}><XIcon size={16} /></button>
-        </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
-          <textarea value={draft} onChange={e => setDraft(e.target.value)}
-            style={{ width: '100%', minHeight: 320, boxSizing: 'border-box', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13.5, lineHeight: 1.7, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)', resize: 'vertical', fontFamily: 'inherit' }}
-            placeholder={'每行一条事实，例如：\n用户是数据分析师，常用 pandas\n用户怕辣，不吃香菜\n在做一个关于跨境电商的项目'} />
-          <div style={C.hint}>
-            删除某一行 = 让小元忘记这条；共 {draft ? draft.split('\n').filter(l => l.trim()).length : 0} 条 · {draft.length}/{maxChars} 字（上限 {maxItems} 条 / {maxChars} 字）
-          </div>
-          {msg && (
-            <div style={{ fontSize: 13, color: msgErr ? 'var(--danger)' : 'var(--success)', marginTop: 12, padding: '8px 12px', borderRadius: 6, background: msgErr ? 'rgba(244,71,71,0.08)' : 'rgba(106,153,85,0.08)' }}>{msg}</div>
-          )}
-        </div>
-        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={() => !saving && setEditing(false)}
-            style={{ padding: '10px 24px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>取消</button>
-          <button onClick={() => doSave(draft)} disabled={saving}
-            style={{ ...C.btnPrimary, fontSize: 14, padding: '10px 24px', opacity: saving ? 0.6 : 1 }}>保存</button>
-        </div>
+  const editPanel = (
+    <Modal open={editing} mode="right" title="编辑我的记忆"
+      onClose={() => !saving && setEditing(false)}
+      footer={<>
+        <button onClick={() => !saving && setEditing(false)}
+          style={{ padding: '10px 24px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>取消</button>
+        <button onClick={() => doSave(draft)} disabled={saving}
+          style={{ ...C.btnPrimary, fontSize: 14, padding: '10px 24px', opacity: saving ? 0.6 : 1 }}>保存</button>
+      </>}>
+      <textarea value={draft} onChange={e => setDraft(e.target.value)}
+        style={{ width: '100%', minHeight: 320, boxSizing: 'border-box', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13.5, lineHeight: 1.7, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)', resize: 'vertical', fontFamily: 'inherit' }}
+        placeholder={'每行一条事实，例如：\n用户是数据分析师，常用 pandas\n用户怕辣，不吃香菜\n在做一个关于跨境电商的项目'} />
+      <div style={C.hint}>
+        删除某一行 = 让小元忘记这条；共 {draft ? draft.split('\n').filter(l => l.trim()).length : 0} 条 · {draft.length}/{maxChars} 字（上限 {maxItems} 条 / {maxChars} 字）
       </div>
-      <style>{`@keyframes slide-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
-    </>
+      {msg && (
+        <div style={{ fontSize: 13, color: msgErr ? 'var(--danger)' : 'var(--success)', marginTop: 12, padding: '8px 12px', borderRadius: 6, background: msgErr ? 'rgba(244,71,71,0.08)' : 'rgba(106,153,85,0.08)' }}>{msg}</div>
+      )}
+    </Modal>
   )
 
   return (

@@ -3,6 +3,7 @@ import { API_BASE, headers, safeJson } from '../api'
 import { SUB_AGENTS } from '../config/agents'
 import { ErrorBoundary } from './ErrorBoundary'
 import { XIcon } from './icons'
+import Modal from './Modal'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function AgentPage({ userId }: { userId?: number }) {
@@ -197,22 +198,17 @@ function ModelsCard() {
           )})}
         </tbody>
       </table>
-      {showModal && (
-        <div onClick={() => setShowModal(false)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 24, minWidth: 360, boxShadow: '0 8px 40px var(--shadow-md)' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>添加模型</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="模型 ID (如 doubao-seed-2-1-lite-260915)" style={{ ...inputStyle, fontFamily: 'monospace' }} />
-              <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)} placeholder="供应商 (如 Doubao/DeepSeek)" style={inputStyle} />
-              <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="API Key (可选)" style={inputStyle} />
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowModal(false)} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)' }}>取消</button>
-              <button onClick={handleAdd} style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: 13 }}>确认添加</button>
-            </div>
-          </div>
+      <Modal open={showModal} onClose={() => setShowModal(false)} title="添加模型"
+        footer={<>
+          <button onClick={() => setShowModal(false)} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)' }}>取消</button>
+          <button onClick={handleAdd} style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: 13 }}>确认添加</button>
+        </>}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="模型 ID (如 doubao-seed-2-1-lite-260915)" style={{ ...inputStyle, fontFamily: 'monospace' }} />
+          <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)} placeholder="供应商 (如 Doubao/DeepSeek)" style={inputStyle} />
+          <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="API Key (可选)" style={inputStyle} />
         </div>
-      )}
+      </Modal>
     </div>
   )
 }

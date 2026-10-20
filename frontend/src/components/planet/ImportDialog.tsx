@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { importMaps } from '../../api/planet'
 import { UploadIcon, XIcon, LoaderIcon } from '../icons'
+import Modal from '../Modal'
 import { usePlanetJob } from './ConvertProgress'
 import JobProgress from './ConvertProgress'
 
@@ -93,23 +94,14 @@ export default function ImportDialog({ pid, onClose, onImported }: {
   }
 
   return (
-    <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 300 }} />
-      <div style={{
-        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-        width: 480, maxWidth: '92vw', maxHeight: '82vh', overflow: 'auto',
-        background: 'var(--bg-primary)', borderRadius: 14, zIndex: 301,
-        boxShadow: '0 12px 40px var(--shadow-md)', padding: '20px 22px',
-        display: 'flex', flexDirection: 'column', gap: 12,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>导入思维导图</h2>
-          <button onClick={onClose} className="yuan-tip" data-tip="关闭" aria-label="关闭"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', lineHeight: 1 }}>
-            <XIcon size={15} />
-          </button>
-        </div>
-
+    <Modal open onClose={onClose} title="导入思维导图"
+      footer={<>
+        <button onClick={onClose} className="btn btn-outline btn-sm">取消</button>
+        <button onClick={submit} disabled={!items.length || submitting || job?.status === 'running'} className="btn btn-primary btn-sm">
+          {submitting || job?.status === 'running' ? <LoaderIcon size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : '开始导入'}
+        </button>
+      </>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {/* 拖拽区 */}
         <div
           onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
@@ -164,14 +156,7 @@ export default function ImportDialog({ pid, onClose, onImported }: {
 
         {error && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</div>}
         <JobProgress job={job} />
-
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} className="btn btn-outline btn-sm">取消</button>
-          <button onClick={submit} disabled={!items.length || submitting || job?.status === 'running'} className="btn btn-primary btn-sm">
-            {submitting || job?.status === 'running' ? <LoaderIcon size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : '开始导入'}
-          </button>
-        </div>
       </div>
-    </>
+    </Modal>
   )
 }

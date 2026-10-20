@@ -4,6 +4,7 @@ import { FolderIcon, FileIcon, XIcon } from '../icons'
 import { useSecuredUrl, fetchSseToken } from '../chat/helpers'
 import MarkdownContent from '../MarkdownContent'
 import ZoomableImage from '../chat/ZoomableImage'
+import Modal from '../Modal'
 
 /* HTML 渲染预览：沙箱 iframe（sse token）+ 源码切换 */
 function HtmlPreview({ path, content, name }: { path: string; content: string; name: string }) {
@@ -275,39 +276,30 @@ export default function FilesTab() {
           </table>
         </Card>
       )}
-      {renameTarget && (
-        <div onClick={() => setRenameTarget(null)} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 20, minWidth: 320, boxShadow: '0 8px 40px var(--shadow-md)' }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>重命名 {renameTarget.name}</div>
-            <input value={renameDraft} onChange={(e) => setRenameDraft(e.target.value)} autoFocus
-              onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameTarget(null) }}
-              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }} />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-              <button onClick={() => setRenameTarget(null)} style={{ padding: '7px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>取消</button>
-              <button onClick={handleRename} style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: 13 }}>确定</button>
-            </div>
-          </div>
+      <Modal open={!!renameTarget} onClose={() => setRenameTarget(null)} title={`重命名 ${renameTarget?.name || ''}`}
+        footer={<>
+          <button onClick={() => setRenameTarget(null)} style={{ padding: '7px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>取消</button>
+          <button onClick={handleRename} style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: 13 }}>确定</button>
+        </>}>
+        <input value={renameDraft} onChange={(e) => setRenameDraft(e.target.value)} autoFocus
+          onKeyDown={(e) => { if (e.key === 'Enter') handleRename() }}
+          style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }} />
+      </Modal>
+      <Modal open={!!preview} onClose={() => setPreview(null)}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{preview?.name}</span>
+          <span onClick={() => setPreview(null)} title="关闭" aria-label="关闭" style={{ cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><XIcon size={18} /></span>
         </div>
-      )}
-      {preview && (
-        <div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: '80%', maxWidth: '80%', maxHeight: '85%', background: 'var(--bg-primary)', borderRadius: 12, padding: 24, overflow: 'auto', minWidth: 360, boxShadow: '0 8px 40px var(--shadow-md)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{preview.name}</span>
-              <span onClick={() => setPreview(null)} title="关闭" aria-label="关闭" style={{ cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><XIcon size={18} /></span>
-            </div>
-            {preview.type === 'image' && <img src={`data:image/${preview.ext?.replace('.', '')};base64,${preview.data}`} style={{ maxWidth: '100%', borderRadius: 8 }} />}
-            {preview.type === 'html' && <HtmlPreview path={preview.path} content={preview.content} name={preview.name} />}
-            {preview.type === 'markdown' && <MarkdownPreview content={preview.content} />}
-            {preview.type === 'csv' && <CsvPreview content={preview.content} />}
-            {preview.type === 'json' && <JsonPreview content={preview.content} />}
-            {preview.type === 'media' && <MediaPreview path={preview.path} ext={preview.ext} />}
-            {preview.type === 'pdf' && <PdfPreview path={preview.path} />}
-            {preview.type === 'text' && <pre style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, overflow: 'auto', maxHeight: '65vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>{preview.content}</pre>}
-            {!preview.type && <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{preview.detail || '无法预览'}</div>}
-          </div>
-        </div>
-      )}
+        {preview?.type === 'image' && <img src={`data:image/${preview.ext?.replace('.', '')};base64,${preview.data}`} style={{ maxWidth: '100%', borderRadius: 8 }} />}
+        {preview?.type === 'html' && <HtmlPreview path={preview.path} content={preview.content} name={preview.name} />}
+        {preview?.type === 'markdown' && <MarkdownPreview content={preview.content} />}
+        {preview?.type === 'csv' && <CsvPreview content={preview.content} />}
+        {preview?.type === 'json' && <JsonPreview content={preview.content} />}
+        {preview?.type === 'media' && <MediaPreview path={preview.path} ext={preview.ext} />}
+        {preview?.type === 'pdf' && <PdfPreview path={preview.path} />}
+        {preview?.type === 'text' && <pre style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.6, overflow: 'auto', maxHeight: '65vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>{preview.content}</pre>}
+        {preview && !preview.type && <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{preview.detail || '无法预览'}</div>}
+      </Modal>
     </div>
   )
 }

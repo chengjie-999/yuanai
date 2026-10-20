@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { updateProfile, changePassword } from '../api'
-import { XIcon } from './icons'
+import Modal from './Modal'
 
 const C = {
   card: { background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' } as const,
@@ -128,83 +128,67 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
         }}>退出登录</button>
       </div>
 
-      {/* ---- 修改密码侧边抽屉 ---- */}
-      {showPw && (
-        <>
-          <div onClick={resetPw} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 200 }} />
-          <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 420, maxWidth: '90vw', background: 'var(--bg-primary)', zIndex: 201, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', animation: 'slide-in-right 0.25s ease' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
-              <h2 style={{ fontSize: 17, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                {pwStep === 2 ? '修改完成' : pwStep === 1 ? '设置新密码' : '修改密码'}
-              </h2>
-              <button onClick={resetPw} title="关闭" aria-label="关闭" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', lineHeight: 1, display: 'flex' }}><XIcon size={16} /></button>
+      {/* ---- 修改密码侧边抽屉（共享 Modal mode=right） ---- */}
+      <Modal open={showPw} mode="right" onClose={resetPw}
+        title={pwStep === 2 ? '修改完成' : pwStep === 1 ? '设置新密码' : '修改密码'}
+        footer={pwStep !== 2 ? (
+          <>
+            <button onClick={pwStep === 0 ? resetPw : () => { setPwStep(0); setPwMsg('') }}
+              style={{ padding: '10px 24px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
+              {pwStep === 0 ? '取消' : '上一步'}
+            </button>
+            <button onClick={pwStep === 0 ? handlePwNext : handlePwSubmit}
+              style={{ ...C.btn, fontSize: 14, padding: '10px 24px' }}>
+              {pwStep === 0 ? '下一步' : '确认修改'}
+            </button>
+          </>
+        ) : (
+          <button onClick={resetPw} style={{ ...C.btn, fontSize: 14, padding: '10px 32px' }}>完成</button>
+        )}>
+        {pwStep === 0 && (
+          <div>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 20px' }}>为确保账号安全，请先验证原密码</p>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>原密码</div>
+              <input type="password" value={oldPw} onChange={e => setOldPw(e.target.value)}
+                style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
+                placeholder="输入当前密码" autoFocus
+                onKeyDown={e => e.key === 'Enter' && handlePwNext()} />
             </div>
-            <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
-              {pwStep === 0 && (
-                <div>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 20px' }}>为确保账号安全，请先验证原密码</p>
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>原密码</div>
-                    <input type="password" value={oldPw} onChange={e => setOldPw(e.target.value)}
-                      style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
-                      placeholder="输入当前密码" autoFocus
-                      onKeyDown={e => e.key === 'Enter' && handlePwNext()} />
-                  </div>
-                  {pwMsg && <div style={{ fontSize: 13, color: pwErr ? 'var(--danger)' : 'var(--success)', marginBottom: 16, padding: '8px 12px', borderRadius: 6, background: pwErr ? 'rgba(244,71,71,0.08)' : 'rgba(106,153,85,0.08)' }}>{pwMsg}</div>}
-                </div>
-              )}
-              {pwStep === 1 && (
-                <div>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 20px' }}>请输入新密码，至少 8 个字符</p>
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>新密码</div>
-                    <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
-                      style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
-                      placeholder="至少 8 个字符" autoFocus />
-                  </div>
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>确认新密码</div>
-                    <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
-                      style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
-                      placeholder="再次输入新密码"
-                      onKeyDown={e => e.key === 'Enter' && handlePwSubmit()} />
-                  </div>
-                  {pwMsg && <div style={{ fontSize: 13, color: pwErr ? 'var(--danger)' : 'var(--success)', marginBottom: 16, padding: '8px 12px', borderRadius: 6, background: pwErr ? 'rgba(244,71,71,0.08)' : 'rgba(106,153,85,0.08)' }}>{pwMsg}</div>}
-                </div>
-              )}
-              {pwStep === 2 && (
-                <div style={{ textAlign: 'center', paddingTop: 20 }}>
-                  <div style={{ marginBottom: 12, color: 'var(--success)' }}>
-                    <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-                    </svg>
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>密码修改成功</div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>下次登录请使用新密码</div>
-                </div>
-              )}
-            </div>
-            {pwStep !== 2 && (
-              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button onClick={pwStep === 0 ? resetPw : () => { setPwStep(0); setPwMsg('') }}
-                  style={{ padding: '10px 24px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
-                  {pwStep === 0 ? '取消' : '上一步'}
-                </button>
-                <button onClick={pwStep === 0 ? handlePwNext : handlePwSubmit}
-                  style={{ ...C.btn, fontSize: 14, padding: '10px 24px' }}>
-                  {pwStep === 0 ? '下一步' : '确认修改'}
-                </button>
-              </div>
-            )}
-            {pwStep === 2 && (
-              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
-                <button onClick={resetPw} style={{ ...C.btn, fontSize: 14, padding: '10px 32px' }}>完成</button>
-              </div>
-            )}
+            {pwMsg && <div style={{ fontSize: 13, color: pwErr ? 'var(--danger)' : 'var(--success)', marginBottom: 16, padding: '8px 12px', borderRadius: 6, background: pwErr ? 'rgba(244,71,71,0.08)' : 'rgba(106,153,85,0.08)' }}>{pwMsg}</div>}
           </div>
-          <style>{`@keyframes slide-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
-        </>
-      )}
+        )}
+        {pwStep === 1 && (
+          <div>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 20px' }}>请输入新密码，至少 8 个字符</p>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>新密码</div>
+              <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
+                style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
+                placeholder="至少 8 个字符" autoFocus />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>确认新密码</div>
+              <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
+                style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
+                placeholder="再次输入新密码"
+                onKeyDown={e => e.key === 'Enter' && handlePwSubmit()} />
+            </div>
+            {pwMsg && <div style={{ fontSize: 13, color: pwErr ? 'var(--danger)' : 'var(--success)', marginBottom: 16, padding: '8px 12px', borderRadius: 6, background: pwErr ? 'rgba(244,71,71,0.08)' : 'rgba(106,153,85,0.08)' }}>{pwMsg}</div>}
+          </div>
+        )}
+        {pwStep === 2 && (
+          <div style={{ textAlign: 'center', paddingTop: 20 }}>
+            <div style={{ marginBottom: 12, color: 'var(--success)' }}>
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>密码修改成功</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>下次登录请使用新密码</div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

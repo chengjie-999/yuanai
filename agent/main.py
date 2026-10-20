@@ -181,19 +181,10 @@ async def main():
     # 因 _server_url 为空永远 no-op
     claude_handler = ClaudeBridgeHandler(server_url=server_url,
                                          agent_id=agent_id, agent_token=agent_token)
-    TARGET_SKILLS = ("automation",)  # 融合后仅 automation 保留 @定向（脚本类已工具化）
 
-    async def route(req):
-        target = getattr(req, "target_agent", "") or ""
-        if req.mode == "claude" or target == "claude":
-            async for ev in claude_handler.stream(req):
-                yield ev
-        elif target in TARGET_SKILLS:
-            async for ev in orchestrator.stream_target(req, target):
-                yield ev
-        else:
-            async for ev in orchestrator.stream(req):
-                yield ev
+    # 三路分派与托盘模式共用 agent/route.py（2026-10-21 清洁8）
+    from agent.route import make_route
+    route = make_route(orchestrator, claude_handler)
 
     client.on_chat_request(route)
     # B1-12 停止联动：云端 stop 事件 → 终止该请求的脚本子进程

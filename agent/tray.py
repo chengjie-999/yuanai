@@ -585,24 +585,12 @@ class AgentTray:
                                                      agent_token=self.agent_token)
 
                 # 三路分派：mode=claude → Claude 桥接；@指定子智能体 → 直接调
-                # 对应 skill Agent（确定性路由，跳过统筹 LLM）；其余 → 统筹
-                async def route(req):
-                    target = getattr(req, "target_agent", "") or ""
-                    if getattr(req, "mode", "") == "claude" or target == "claude":
-                        # 2026-10-19 修复：托盘开关关闭 Claude Code 时桥接分支
-                        # 仍无条件生效——开关失效；关闭时回统筹并如实说明
-                        if not self.toggles.get("claude", True):
-                            from yuanai_core.core.schemas import done as _ev_done
-                            yield _ev_done("Claude Code 已在托盘菜单中停用。如需使用，请在托盘「Agent 开关」里启用后重试。", "", req.request_id)
-                            return
-                        async for ev in claude_handler.stream(req):
-                            yield ev
-                    elif target == "automation":  # 融合后仅 automation 保留 @定向
-                        async for ev in orchestrator.stream_target(req, target):
-                            yield ev
-                    else:
-                        async for ev in orchestrator.stream(req):
-                            yield ev
+                # 对应 skill Agent（确定性路由，跳过统筹 LLM）；其余 → 统筹。
+                # 与命令行模式共用 agent/route.py（2026-10-21 清洁8）；
+                # claude 开关实时读托盘 toggles，关闭时回统筹并如实说明
+                from agent.route import make_route
+                route = make_route(orchestrator, claude_handler,
+                                   claude_enabled=lambda: self.toggles.get("claude", True))
 
                 self._client = AgentWSClient(
                     server_url=self.server_url,

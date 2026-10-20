@@ -364,6 +364,13 @@ async def chat_stream(req: ChatRequest, request: Request):
         from yuanai_core.core.chat import limited_tools
         # 娱乐模式用专属人设提示，否则云端回退提示（均重写去委派化）
         offline_prompt = _ENTERTAINMENT_SYSTEM_PROMPT if ent_mode else _OFFLINE_SYSTEM_PROMPT
+        # E4 搜索联动：注入当前日期——模型知识截止滞后，资讯类搜索会拿旧年份
+        # （如 2025）构造 query，热点结果全是陈年旧闻
+        from datetime import datetime as _dt
+        _now = _dt.now()
+        _week = ("一", "二", "三", "四", "五", "六", "日")[_now.weekday()]
+        offline_prompt += (f"\n\n今天是 {_now.strftime('%Y年%m月%d日')} 星期{_week}。"
+                           f"搜索资讯时用当前年份（{_now.year}）构造 query。")
         if user_id:
             from db.session import get_db as _db
             try:

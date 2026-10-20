@@ -119,7 +119,7 @@ skills/
 
 当统筹委派子 Agent 时，消息中会出现 **打开面板 →** 按钮，点击在新标签页打开该 Agent 的**独立全屏操作页面**（`/chat/agent/analysis`、`/chat/agent/automation`、`/chat/agent/knowledge`），提供完整的数据分析、浏览器自动化、知识库检索功能。
 
-**娱乐模式（双模式，2026-10-21）**：输入区工具行「工作 / 娱乐」一键切换（localStorage 持久化）。工作模式 = 现状（云+本地 Agent：数据分析/计划/自动化）；娱乐模式 = **纯云端陪伴式智能体**——不走本地 Agent，人设活泼（陪聊/玩梗/吃瓜），资讯类问题主动联网搜索附来源，结合用户长期记忆个性化对话；@指定与本地能力入口在娱乐模式下隐藏。接口侧 `ChatRequest.chat_mode: "work" | "entertainment"`，entertainment 强制跳过本地 Agent 桥接。
+**娱乐模式（双模式，2026-10-21）**：输入区工具行「工作 / 娱乐」一键切换（localStorage 持久化）。工作模式 = 现状（云+本地 Agent：数据分析/计划/自动化）；娱乐模式 = **纯云端陪伴式智能体**——不走本地 Agent，人设活泼（陪聊/玩梗/吃瓜），资讯/时效话题**主动联网搜索最新内容**并附来源，结合用户长期记忆个性化对话；@指定与本地能力入口在娱乐模式下隐藏。接口侧 `ChatRequest.chat_mode: "work" | "entertainment"`，entertainment 强制跳过本地 Agent 桥接。
 
 ### 前端路由
 

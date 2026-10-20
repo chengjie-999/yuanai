@@ -213,7 +213,8 @@ data/                   数据目录
 - **协议**：ChatRequest 新增 `chat_mode: "work" | "entertainment"`（api/v1/models.py；frontend streamChat 透传）；云端 /stream 里 entertainment 强制跳过 Agent 桥接、忽略 @定向（不委派、hist_limit 不因 target 放宽）、专属娱乐人设提示 `_ENTERTAINMENT_SYSTEM_PROMPT` + 身份卡 `docs/agents/entertainment.md`（agent_docs 加载，单一事实源，改文档即改人设）。
 - **前端联动**：娱乐模式下 @ 按钮隐藏、聊天模式强制 cloud（退出恢复原模式，prevChatModeRef）、欢迎页模式下拉替换为「娱乐模式 · 云端直达」徽章；发送链路（sendMessages/sendWithNewSession）entMode 时忽略 target/dmTarget、isClaude 恒 false、placeholderSender=orchestrator。
 - **记忆复用**：娱乐对话走同一 /chat/save 落库 → 折叠 worker 同样沉淀记忆；system 注入与云端直连分支同一段代码。
-- **路线图**（plans/entertainment-mode-2026-10.md）：E2 火山生图（**执行前确认方舟账号开通与模型**）→ E3 生视频（异步任务制）→ E4 搜索联动 → E5 C 端打磨。限额护栏必须与生图/生视频工具同日上线，不允许裸奔。
+- **E4 搜索联动已完成（3602f15）**：云端直连分支注入当前日期（娱乐/回退通用）——模型知识截止滞后会把资讯 query 写成旧年份；身份卡加强「聊到时效话题主动搜索」。
+- **路线图**（plans/entertainment-mode-2026-10.md）：E2 火山生图 / E3 生视频挂账（**用户先跳过，执行前确认方舟账号开通与模型**）→ E5 C 端打磨。限额护栏必须与生图/生视频工具同日上线，不允许裸奔。
 - **验证**：test/test_entertainment_mode.py（娱乐跳过桥接+人设生效+@定向忽略 / 工作模式对照）；真机 SSE 双模式均实测通过。conftest 登录密码改 test1234（批次3 起密码最少 8 位，test123 只有 7 位导致所有鉴权测试静默跳过）。
 
 ## 开发经验教训（2026-09-04 全量代码审查沉淀）

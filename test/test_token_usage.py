@@ -62,6 +62,46 @@ def test_handler_never_raises(monkeypatch):
 
 # ---------------- 缓冲与落库（MySQL skip） ----------------
 
+def test_drain_buffer_preserves_rows():
+    """回归（2026-10-22 修复）：`rows, _buffer[:] = _buffer, []` 中 rows 与 _buffer
+    是同一 list 对象，切片赋值把 rows 也清空 → `if rows` 永远 False，
+    用量数据自诞生起全部静默丢弃。_drain_buffer 必须 copy 后 clear。"""
+    from yuanai_core import usage as u
+
+    with u._buffer_lock:
+        u._buffer.append({"model": "drain-test"})
+        rows = u._drain_buffer()
+    assert rows == [{"model": "drain-test"}]
+    assert u._buffer == []
+
+
+def test_record_usage_flushes_via_buffer(db):
+    """record_usage → flush_now 走真实缓冲链路落库（曾整条链路静默丢数据）"""
+    from yuanai_core.usage import record_usage, flush_now
+    from db.session import TokenUsage
+
+    uid = 999991
+    record_usage(uid, "drain-test-model", "chat", 111, 22)
+    try:
+        flush_now()
+        sess = db.Session()
+        try:
+            rows = (sess.query(TokenUsage)
+                    .filter(TokenUsage.model == "drain-test-model",
+                            TokenUsage.user_id == uid).all())
+            assert len(rows) == 1
+            assert rows[0].total_tokens == 133
+        finally:
+            sess.close()
+    finally:
+        sess = db.Session()
+        try:
+            sess.query(TokenUsage).filter(TokenUsage.model == "drain-test-model").delete()
+            sess.commit()
+        finally:
+            sess.close()
+
+
 def _db_or_skip():
     try:
         from db.session import get_db

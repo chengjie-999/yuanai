@@ -2303,11 +2303,15 @@ class AgentDatabase:
 
     def query_token_usage(self, days: int = 7, group_by: str = "day",
                           user_id: int = None) -> list:
-        """聚合用量：group_by = day / model / user（近 N 天）"""
-        from sqlalchemy import func as _func
+        """聚合用量：group_by = day / model / user（近 N 天）。
+
+        曾漏日期过滤——days 参数无效，仪表盘「近30天」实际查全量（2026-10-22 修复）。
+        """
+        from sqlalchemy import func as _func, text as _text
         sess = self.Session()
         try:
-            q = sess.query(TokenUsage)
+            since = _text(f"DATE_SUB(CURDATE(), INTERVAL {int(days) - 1} DAY)")
+            q = sess.query(TokenUsage).filter(TokenUsage.create_time >= since)
             if user_id is not None:
                 q = q.filter(TokenUsage.user_id == user_id)
             if group_by == "model":

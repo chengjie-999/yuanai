@@ -79,6 +79,11 @@ def resolve_model_id(model: str) -> str:
 def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[str] = None, **kwargs):
     """LLM 工厂。reasoning_effort 优先级：显式参数 > 请求上下文（聊天框开关）> settings。"""
     model = resolve_model_id(model)
+    # 流式调用自动开启 stream_usage：不开则响应无 usage，用量记账（token_usage 表）
+    # 永远拿不到数据。DeepSeek/豆包 Ark 均已实测支持 stream_options.include_usage；
+    # 调用方显式传 stream_usage 时以调用方为准。
+    if kwargs.get("streaming") and "stream_usage" not in kwargs:
+        kwargs["stream_usage"] = True
     if model in dsllm:
         ds_api_key = _get_stored_key("DeepSeek") or get_api_key('dsllm')
         extra_params = {}
@@ -95,7 +100,7 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
             api_key=ds_api_key,
             base_url="https://api.deepseek.com/beta",
             model=model,
-            callbacks=kwargs.pop("callbacks", None) or [_usage_cb()],
+            callbacks=kwargs.pop("callbacks", None) or [_usage_cb(model)],
             **kwargs,
             **extra_params,
         )
@@ -105,7 +110,7 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
             api_key=seed_api_key,
             base_url="https://ark.cn-beijing.volces.com/api/v3",
             model=model,
-            callbacks=kwargs.pop("callbacks", None) or [_usage_cb()],
+            callbacks=kwargs.pop("callbacks", None) or [_usage_cb(model)],
             **kwargs,
         )
     else:
@@ -121,16 +126,17 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
                 api_key=custom_key,
                 base_url=kwargs.pop("base_url", "https://api.openai.com/v1"),
                 model=model,
-                callbacks=kwargs.pop("callbacks", None) or [_usage_cb()],
+                callbacks=kwargs.pop("callbacks", None) or [_usage_cb(model)],
                 **kwargs,
             )
         raise ValueError(f"未找到模型 {model} 的 API Key，请在 Agent 页面配置")
 
 
-def _usage_cb():
-    """用量统计回调单例（惰性 import：usage 依赖 rag.contextvar，无循环）"""
+def _usage_cb(model: str):
+    """用量统计回调（惰性 import：usage 依赖 rag.contextvar，无循环）。
+    绑定 model——流式链路 invocation_params 拿不到模型名，构造时兜底。"""
     from yuanai_core.usage import get_usage_handler
-    return get_usage_handler()
+    return get_usage_handler(model)
 
 
 def get_langgraph_agent(llm, tools):

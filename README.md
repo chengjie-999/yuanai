@@ -119,6 +119,8 @@ skills/
 
 当统筹委派子 Agent 时，消息中会出现 **打开面板 →** 按钮，点击在新标签页打开该 Agent 的**独立全屏操作页面**（`/chat/agent/analysis`、`/chat/agent/automation`、`/chat/agent/knowledge`），提供完整的数据分析、浏览器自动化、知识库检索功能。
 
+**桌宠联动（2026-10-22）**：与开源桌宠 [dsh-pet-indesktop](https://github.com/MerZlin/dsh-pet-indesktop)（MIT）本地事件总线联动——小元 AI 干活时桌宠自动切换动作与气泡汇报（思考/干活/完成/报错）；一键配置 `python -m agent.pet_events --setup` 后在桌宠右键「Agent 联动」勾选「小元AI」。
+
 **娱乐模式（双模式，2026-10-21）**：输入区工具行「工作 / 娱乐」一键切换（localStorage 持久化）。工作模式 = 现状（云+本地 Agent：数据分析/计划/自动化）；娱乐模式 = **纯云端陪伴式智能体**——不走本地 Agent，人设活泼（陪聊/玩梗/吃瓜），资讯/时效话题**主动联网搜索最新内容**并附来源，结合用户长期记忆个性化对话；娱乐版开场话题、语音通话同步娱乐人设；@指定与本地能力入口在娱乐模式下隐藏。接口侧 `ChatRequest.chat_mode: "work" | "entertainment"`，entertainment 强制跳过本地 Agent 桥接。
 
 ### 前端路由

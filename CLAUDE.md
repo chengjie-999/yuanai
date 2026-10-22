@@ -342,6 +342,16 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **执行器安全**：skill 白名单 + 托盘开关 callable 实时读 toggles + ScriptRegistry 参数校验；结果三层截断（文本 20K/blocks 200KB/事件 5KB）
 - **验证**：`python -m agent.verify_plan [--online]`；pytest test_plan_*.py 五件套；P0 教训：`ScriptRegistry.run` 曾不接受 progress_cb 致委派路径 TypeError（061381a 修复 + test_plan_pure 回归断言锁死）
 
+## 桌宠联动（dsh-pet-indesktop，2026-10-22）
+
+愿景 P4「PC 桌面悬浮宠物」从 pywebview 自研改为**直接整合开源桌宠 dsh-pet-indesktop**（MIT，PySide6；用户原则：不重复造轮子，先联动可用、换皮挂账）。
+
+- **协议**：本地 JSONL 文件事件总线（docs/AGENT_LINK_PROTOCOL.md）——桌宠 ByteOffsetTailer 只读监听 `agent-events/xiaoyuan.jsonl`；六态 thinking/working/attention/error/idle/sleeping + Claude hooks 兼容事件名；零改桌宠代码
+- **写方**：`agent/pet_events.py`（追加写 / 连续同状态去重 / ~1MB 轮转 / 失败静默 / **只写元数据**）；orchestrator 四时机挂事件：思考→thinking、工具调用→working+工具名、工具结束→thinking、完成→idle、报错→error
+- **配置**：`python -m agent.pet_events --setup` 一键探测 %APPDATA% 桌宠配置目录并合并写入 custom_agents「小元AI」（改前备份 .bak）；`PET_EVENTS_PATH` 可覆盖路径；`--test` 发演示事件
+- **验证**：setup 后重启桌宠 → 右键「Agent 联动」勾选「小元AI」→ 聊天派活观察动作/气泡
+- **挂账**：换皮小元球素材（assets/characters manifest + WebM 帧动画）；tray 集成入口；stream_target/CC 桥接 approval→attention 扩展
+
 ## 语音对话
 
 火山引擎「AI 音视频互动方案」实时语音（豆包 App 同款：RTC + 豆包 ASR/TTS + 方舟 LLM）：

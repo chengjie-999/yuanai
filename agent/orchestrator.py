@@ -17,6 +17,16 @@ from skills import skill_registry
 
 logger = logging.getLogger(__name__)
 
+
+def _pet_emit(state: str = None, event: str = None, tool: str = None) -> None:
+    """桌宠联动事件（dsh-pet-indesktop 文件总线；失败静默，绝不阻塞主流程）"""
+    try:
+        from agent.pet_events import emit
+        emit(state=state, event=event, tool=tool)
+    except Exception:
+        pass
+
+
 def _tool_sender(name: str) -> str:
     """工具归属推断（信封协议）：delegate_to_xxx_agent → xxx；其余（含计划工具）→ orchestrator。
 
@@ -339,6 +349,7 @@ class Orchestrator:
     async def stream(self, req: ChatRequest) -> AsyncGenerator[AgentEvent, None]:
         """两级路由：意图分类 → 动态加载工具子集 → 流式执行"""
         rid = req.request_id
+        _pet_emit(state="thinking")
 
         # 构建消息列表：视图滤波（统筹视角）——别人的话摘要/前缀、自己的话原样；
         # 信封全空时 view_for 退化直通（= 旧行为）。输出只取 role/content/tool_calls，
@@ -397,6 +408,7 @@ class Orchestrator:
             try:
                 result = self._handle_direct_command(intent, latest_msg)
                 logger.info("直接命令执行结果: %s", result[:100])
+                _pet_emit(state="idle")
                 yield done(result, "", rid)
                 return
             except Exception as e:
@@ -482,11 +494,13 @@ class Orchestrator:
                 elif kind == "on_tool_start":
                     saw_tool = True
                     name = event.get("name", "未知工具")
+                    _pet_emit(state="working", tool=name)
                     yield ev_tool_start(name, rid, sender=_tool_sender(name),
                                         args=(event.get("data") or {}).get("input"))
 
                 elif kind == "on_tool_end":
                     name = event.get("name", "未知工具")
+                    _pet_emit(state="thinking")  # 工具结束回到模型思考
                     from yuanai_core.core.chat import _tool_output_str
                     output = _tool_output_str(event["data"].get("output", ""))
                     # B0：脚本失败协议（__ERROR__: 前缀）→ tool_end 数据带 error 标记
@@ -505,7 +519,9 @@ class Orchestrator:
             if not saw_tool and any(dsml_saw_block(filters, r) for r in filters):
                 yield error_event("模型把工具调用写成了文本（已抑制）。请重试或换种问法", rid)
                 return
+            _pet_emit(state="idle")
             yield done(full_response, full_reasoning, rid)
         except Exception as e:
             logger.error("统筹 Agent 异常: %s", e, exc_info=True)
+            _pet_emit(state="error")
             yield error_event(str(e), rid)

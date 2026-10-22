@@ -38,7 +38,7 @@ a = Analysis(
         'agent', 'agent.main', 'agent.ws_client', 'agent.orchestrator', 'agent.intent_classifier',
         'agent.claude_bridge', 'agent.claude_loop', 'agent.bootstrap', 'agent.bridge_policy',
         'agent.vault_sync',
-        'agent.plan_executor',
+        'agent.plan_executor', 'agent.pet_events',
         'agent.scripts', 'agent.scripts.registry', 'agent.scripts.tools',
         'agent.agents', 'agent.agents.base', 'agent.agents.automation',
         'agent.tools', 'agent.tools._registry', 'agent.tools.errors',

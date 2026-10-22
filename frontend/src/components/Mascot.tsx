@@ -74,12 +74,11 @@ export default function Mascot({ size = 80 }: { size?: number }) {
           {/* 主体 — 单一渐变球（无拟人五官） */}
           <circle cx="50" cy="52" r="32" fill="url(#mascot-grad-d)" />
           <circle cx="50" cy="52" r="32" fill="none" stroke="#ffffff" strokeOpacity="0.15" strokeWidth="1.5" />
-          {/* 中央核心 — 「元」字标识（品牌识别元素，favicon 尺寸也可辨认） */}
-          <text x="50" y="54" textAnchor="middle" dominantBaseline="central"
-            fontSize="32" fontWeight="700" fill="#ffffff" opacity="0.96"
-            fontFamily="system-ui, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif">
-            元
-          </text>
+          {/* 中央核心 — 呼吸光点 */}
+          <circle cx="50" cy="52" r="9" fill="#ffffff" opacity="0.35">
+            <animate attributeName="r" values="8;11;8" dur="3.2s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.25;0.45;0.25" dur="3.2s" repeatCount="indefinite" />
+          </circle>
           {/* 环绕轨道点 */}
           {[[14,32],[86,32],[22,74],[78,74]].map(([x,y],i)=>(
             <g key={i}>
@@ -103,12 +102,11 @@ export default function Mascot({ size = 80 }: { size?: number }) {
           {/* 主体 — 单一渐变球（无拟人五官） */}
           <circle cx="50" cy="52" r="32" fill="url(#mascot-grad-l)" />
           <circle cx="50" cy="52" r="32" fill="none" stroke="#ffffff" strokeOpacity="0.18" strokeWidth="1.5" />
-          {/* 中央核心 — 「元」字标识（品牌识别元素，favicon 尺寸也可辨认） */}
-          <text x="50" y="54" textAnchor="middle" dominantBaseline="central"
-            fontSize="32" fontWeight="700" fill="#ffffff" opacity="0.96"
-            fontFamily="system-ui, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif">
-            元
-          </text>
+          {/* 中央核心 — 呼吸光点 */}
+          <circle cx="50" cy="52" r="9" fill="#ffffff" opacity="0.30">
+            <animate attributeName="r" values="8;11;8" dur="3.2s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.20;0.40;0.20" dur="3.2s" repeatCount="indefinite" />
+          </circle>
           {/* 环绕轨道点 */}
           {[[12,30],[88,30],[20,76],[80,76]].map(([x,y],i)=>(
             <g key={i}>

@@ -30,16 +30,25 @@ _last: tuple | None = None  # (state/event, tool) 连续去重
 
 
 def _config_dir() -> str:
-    """桌宠配置目录（按协议 §2.1；Windows 下扫描 %APPDATA% 的 dsh-pet-standalone* 变体）"""
+    """桌宠配置目录（按协议 §2.1；Windows 下扫描 %APPDATA% 的 dsh-pet-standalone* 变体）。
+
+    优先含 config.json 的目录（桌宠首启生成的真实配置目录）——防止早于安装
+    运行 --setup 时创建的裸目录抢先被选中（webm-chat 等变体后缀目录才是真的）；
+    多个命中时取最长名（最具体变体）。"""
     if sys.platform == "darwin":
         return os.path.expanduser("~/Library/Application Support/dsh-pet-standalone")
     if sys.platform.startswith("linux"):
         return os.path.expanduser("~/.config/dsh-pet-standalone")
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    hits = []
     if os.path.isdir(base):
-        for name in sorted(os.listdir(base)):
-            if name.startswith("dsh-pet-standalone") and os.path.isdir(os.path.join(base, name)):
-                return os.path.join(base, name)
+        for name in os.listdir(base):
+            p = os.path.join(base, name)
+            if name.startswith("dsh-pet-standalone") and os.path.isdir(p):
+                hits.append(p)
+    if hits:
+        with_cfg = [p for p in hits if os.path.exists(os.path.join(p, "config.json"))]
+        return sorted(with_cfg or hits, key=len, reverse=True)[0]
     return os.path.join(base, "dsh-pet-standalone")
 
 

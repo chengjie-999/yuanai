@@ -441,6 +441,41 @@ def agent_knowledge_search(request: Request, body: KnowledgeSearchBody):
     return {"ok": True, "text": text}
 
 
+class UsageUploadBody(BaseModel):
+    rows: list = []
+
+
+@router.post("/usage")
+def agent_usage_upload(request: Request, body: UsageUploadBody):
+    """部署 Agent 的用量上传（本地 Agent 无 MySQL，统筹/自动化/审核等 LLM 用量
+    经 HTTP 由云端落库 token_usage；2026-10-22 补——此前部署 Agent 用量全部丢失）。
+
+    行校验：model/purpose/source 截断，token 非负整数，单批 ≤200 行防滥用。
+    """
+    require_agent_device(request)
+    from db.session import get_db
+    rows = []
+    for r in (body.rows or [])[:200]:
+        if not isinstance(r, dict):
+            continue
+        try:
+            rows.append({
+                "user_id": max(int(r.get("user_id") or 0), 0),
+                "model": str(r.get("model") or "")[:64],
+                "purpose": str(r.get("purpose") or "chat")[:32],
+                "prompt_tokens": max(int(r.get("prompt_tokens") or 0), 0),
+                "completion_tokens": max(int(r.get("completion_tokens") or 0), 0),
+                "total_tokens": max(int(r.get("total_tokens") or 0), 0),
+                "cache_hit_tokens": max(int(r.get("cache_hit_tokens") or 0), 0),
+                "source": str(r.get("source") or "agent")[:16],
+            })
+        except (TypeError, ValueError):
+            continue
+    if rows:
+        get_db().add_token_usage_rows(rows)
+    return {"ok": True, "added": len(rows)}
+
+
 @router.post("/bridge-memory")
 def bridge_memory(request: Request, body: BridgeMemoryBody):
     """CC 桥接记忆写入：Agent 凭据校验 → 对 user_id 合并事实进长期记忆。

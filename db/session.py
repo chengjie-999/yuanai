@@ -74,6 +74,7 @@ class TokenUsage(Base):
     prompt_tokens = Column(Integer, default=0)
     completion_tokens = Column(Integer, default=0)
     total_tokens = Column(Integer, default=0)
+    cache_hit_tokens = Column(Integer, default=0)  # 前缀缓存命中 token（迁移 0019）
     source = Column(String(16), default='cloud')
     create_time = Column(TIMESTAMP, server_default=func.now())
 
@@ -2248,36 +2249,101 @@ class AgentDatabase:
             sess.close()
 
     def query_cost_analytics(self, days: int = 30) -> dict:
-        """成本维度分析：每模型成本 / 成本效率（每用户成本待明细拆分后补充）"""
+        """成本维度指标体系 v2（2026-10-22）：总成本/单条成本/缓存命中率 + 日趋势
+        + 用途拆分 + 每模型效率 + 用户 TopN。多维度成本按「细粒度 SQL 聚合 +
+        Python 折算」——成本依赖模型定价，先按 (维度, model) 聚合再逐行折算。"""
         from sqlalchemy import func as _func, text as _text
         from yuanai_core.usage import model_cost
         sess = self.Session()
         try:
             since = _text(f"DATE_SUB(CURDATE(), INTERVAL {int(days) - 1} DAY)")
 
-            model_rows = (sess.query(TokenUsage.model.label("m"),
-                                     _func.sum(TokenUsage.prompt_tokens).label("p"),
-                                     _func.sum(TokenUsage.completion_tokens).label("c"),
-                                     _func.count(TokenUsage.id).label("n"))
-                          .filter(TokenUsage.create_time >= since)
-                          .group_by(TokenUsage.model).all())
-            models = []
-            total_cost = 0.0
-            for r in model_rows:
-                cost = model_cost(r.m, int(r.p or 0), int(r.c or 0))
-                total_cost += cost
-                models.append({"model": r.m, "prompt_tokens": int(r.p or 0),
-                               "completion_tokens": int(r.c or 0), "calls": int(r.n or 0),
-                               # 4 位小数：起步期小金额 round 2 位全变 ¥0（2026-10-22 修复）
-                               "cost": round(cost, 4)})
-            models.sort(key=lambda x: -x["cost"])
+            def _cost(rows):
+                return round(sum(model_cost(r[0], int(r[1] or 0), int(r[2] or 0),
+                                            calls=int(r[3] or 1)) for r in rows), 4)
 
+            base = sess.query(TokenUsage).filter(TokenUsage.create_time >= since)
+
+            # 模型维度
+            model_rows = (base.with_entities(TokenUsage.model, _func.sum(TokenUsage.prompt_tokens),
+                                             _func.sum(TokenUsage.completion_tokens), _func.count(TokenUsage.id))
+                          .group_by(TokenUsage.model).all())
+            models = [{"model": r[0], "prompt_tokens": int(r[1] or 0),
+                       "completion_tokens": int(r[2] or 0), "calls": int(r[3] or 0),
+                       "cost": _cost([r])} for r in model_rows]
+            models.sort(key=lambda x: -x["cost"])
+            total_cost = round(sum(m["cost"] for m in models), 4)
+            for m in models:
+                m["share"] = round(m["cost"] / total_cost * 100, 1) if total_cost else 0.0
+
+            # 日维度（按 (日, model) 聚合后折算）
+            daily_rows = (base.with_entities(_func.date(TokenUsage.create_time), TokenUsage.model,
+                                             _func.sum(TokenUsage.prompt_tokens),
+                                             _func.sum(TokenUsage.completion_tokens),
+                                             _func.count(TokenUsage.id),
+                                             _func.sum(TokenUsage.total_tokens))
+                          .group_by(_func.date(TokenUsage.create_time), TokenUsage.model).all())
+            by_day = {}
+            for r in daily_rows:
+                d = str(r[0])
+                e = by_day.setdefault(d, {"cost": 0.0, "tokens": 0, "calls": 0})
+                e["cost"] += model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
+                e["tokens"] += int(r[5] or 0)
+                e["calls"] += int(r[4] or 0)
+            daily = [{"date": d, "cost": round(v["cost"], 4), "tokens": v["tokens"],
+                      "calls": v["calls"]} for d, v in sorted(by_day.items())]
+
+            # 用途维度（按 (purpose, model) 聚合后折算）
+            purpose_rows = (base.with_entities(TokenUsage.purpose, TokenUsage.model,
+                                               _func.sum(TokenUsage.prompt_tokens),
+                                               _func.sum(TokenUsage.completion_tokens),
+                                               _func.count(TokenUsage.id))
+                            .group_by(TokenUsage.purpose, TokenUsage.model).all())
+            by_purpose = {}
+            for r in purpose_rows:
+                e = by_purpose.setdefault(r[0] or "chat", {"cost": 0.0, "calls": 0,
+                                                           "prompt_tokens": 0, "completion_tokens": 0})
+                e["cost"] += model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
+                e["calls"] += int(r[4] or 0)
+                e["prompt_tokens"] += int(r[2] or 0)
+                e["completion_tokens"] += int(r[3] or 0)
+            purposes = [{"purpose": k, "cost": round(v["cost"], 4), **{kk: v[kk] for kk in
+                        ("calls", "prompt_tokens", "completion_tokens")}}
+                        for k, v in sorted(by_purpose.items(), key=lambda x: -x[1]["cost"])]
+
+            # 用户维度 Top10（按 (user, model) 聚合后折算；用户名 JOIN）
+            user_rows = (base.with_entities(TokenUsage.user_id, TokenUsage.model,
+                                            _func.sum(TokenUsage.prompt_tokens),
+                                            _func.sum(TokenUsage.completion_tokens),
+                                            _func.count(TokenUsage.id))
+                         .group_by(TokenUsage.user_id, TokenUsage.model).all())
+            by_user = {}
+            for r in user_rows:
+                e = by_user.setdefault(int(r[0] or 0), {"cost": 0.0, "calls": 0})
+                e["cost"] += model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
+                e["calls"] += int(r[4] or 0)
+            names = {}
+            if by_user:
+                uids = list(by_user.keys())
+                for u in sess.query(User.id, User.username).filter(User.id.in_(uids)).all():
+                    names[u[0]] = u[1]
+            users = [{"user_id": uid, "username": names.get(uid, f"用户#{uid}"),
+                      "cost": round(v["cost"], 4), "calls": v["calls"]}
+                     for uid, v in sorted(by_user.items(), key=lambda x: -x[1]["cost"])[:10]]
+
+            # 概览 + 缓存命中率（前缀缓存成效指标）
+            calls_total = sum(m["calls"] for m in models)
+            prompt_total = sum(m["prompt_tokens"] for m in models)
+            hit_total = int(base.with_entities(_func.sum(TokenUsage.cache_hit_tokens)).scalar() or 0)
             msgs = sess.query(_func.count(AIChat.id)).filter(AIChat.create_time >= since).scalar() or 0
-            return {"models": models,
-                    "overview": {"total_cost": round(total_cost, 4),
-                                 "cost_per_message": round(total_cost / max(int(msgs), 1), 6),
-                                 "messages": int(msgs)},
-                    "days": days}
+            return {
+                "overview": {"total_cost": total_cost,
+                             "cost_per_message": round(total_cost / max(int(msgs), 1), 6),
+                             "messages": int(msgs), "calls": calls_total,
+                             "cache_hit_rate": round(hit_total / prompt_total * 100, 1) if prompt_total else 0.0},
+                "daily": daily, "purposes": purposes, "models": models, "users": users,
+                "days": days,
+            }
         finally:
             sess.close()
 
@@ -2293,6 +2359,7 @@ class AgentDatabase:
                     prompt_tokens=r.get("prompt_tokens") or 0,
                     completion_tokens=r.get("completion_tokens") or 0,
                     total_tokens=r.get("total_tokens") or 0,
+                    cache_hit_tokens=r.get("cache_hit_tokens") or 0,
                     source=(r.get("source") or "cloud")[:16],
                 ))
             sess.commit()

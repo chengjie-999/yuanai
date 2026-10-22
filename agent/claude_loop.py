@@ -364,10 +364,20 @@ async def run_sdk_loop(
             content_blocks: Dict[str, Dict] = {}   # idx → {name, input, id}
             text_parts: List[str] = []
             current_block_idx = -1
+            # 用量记账（2026-10-22）：anthropic 流式 usage 分散在 message_start
+            # （input_tokens/cache_read_input_tokens）与 message_delta（output_tokens）
+            usage_in = usage_out = usage_cache_hit = 0
 
             async for event in stream:
                 kind = getattr(event, "type", "")
-                if kind == "content_block_start":
+                if kind == "message_start":
+                    u = getattr(getattr(event, "message", None), "usage", None) or {}
+                    usage_in = int(getattr(u, "input_tokens", 0) or 0)
+                    usage_cache_hit = int(getattr(u, "cache_read_input_tokens", 0) or 0)
+                elif kind == "message_delta":
+                    u = getattr(event, "usage", None) or {}
+                    usage_out = int(getattr(u, "output_tokens", 0) or 0)
+                elif kind == "content_block_start":
                     blk = event.content_block
                     current_block_idx = getattr(event, "index", -1)
                     if getattr(blk, "type", "") == "tool_use":
@@ -389,6 +399,7 @@ async def run_sdk_loop(
                             blk["input"] += delta.partial_json
                 elif kind == "message_stop":
                     break
+            _record_sdk_usage(model, usage_in, usage_out, usage_cache_hit)
 
             # 组装 assistant 消息（回复模型）
             assistant_content = []
@@ -461,6 +472,22 @@ async def run_sdk_loop(
     except Exception as e:
         logger.warning("SDK loop 异常: %s", e)
         yield {"type": "error", "data": f"Claude Code 执行失败: {str(e)[:500]}"}
+
+
+def _record_sdk_usage(model: str, input_tokens: int, output_tokens: int, cache_hit: int) -> None:
+    """CC 桥接用量记账（2026-10-22）：此前 SDK 链路消耗完全不可见。
+    部署 Agent 无 MySQL——record_usage 入缓冲后由 usage._flush_rows 经
+    /agent/usage HTTP 上传云端落库。"""
+    if not input_tokens and not output_tokens:
+        return
+    try:
+        from yuanai_core.rag import current_user_id
+        from yuanai_core.usage import record_usage
+        record_usage(current_user_id.get() or 0, model, "claude_bridge",
+                     input_tokens, output_tokens, source="agent",
+                     cache_hit_tokens=cache_hit)
+    except Exception:
+        pass
 
 
 def _safe_json(raw: str) -> dict:

@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.stdout.reconfigure(encoding='utf-8')
 
 from yuanai_core.tools import user_memory as um
-from yuanai_core.tools import _agent_remote as ar  # 身份判定/HTTP 桥接已收敛到共享模块
+from yuanai_core.pure import agent_remote as ar  # 身份判定/HTTP 桥接已收敛到 pure.agent_remote（tools._agent_remote 仅 re-export）
 
 
 @pytest.fixture(autouse=True)

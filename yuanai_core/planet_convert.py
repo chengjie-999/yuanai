@@ -211,7 +211,7 @@ def _invoke_llm(model: str, user_text: str, system: str = ARTICLE_PROMPT) -> str
     from langchain_core.messages import HumanMessage, SystemMessage
     from yuanai_core.core.lc import get_llm
 
-    llm = get_llm(model, reasoning=False, temperature=0.3, timeout=LLM_TIMEOUT_S)
+    llm = get_llm(model, reasoning=False, temperature=0.3, timeout=LLM_TIMEOUT_S, usage_purpose="planet_article")
     last_err: Exception | None = None
     for attempt in range(2):
         try:

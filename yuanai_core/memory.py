@@ -226,7 +226,7 @@ def _call_fold_llm(system: str, user_text: str) -> str:
     from config.settings import MEMORY_MODEL, MEMORY_FOLD_TIMEOUT_S
     from yuanai_core.core.lc import get_llm
 
-    llm = get_llm(MEMORY_MODEL, reasoning=False, temperature=0.3, timeout=MEMORY_FOLD_TIMEOUT_S)
+    llm = get_llm(MEMORY_MODEL, reasoning=False, temperature=0.3, timeout=MEMORY_FOLD_TIMEOUT_S, usage_purpose="memory_fold")
     pool = ThreadPoolExecutor(max_workers=1)
     try:
         future = pool.submit(llm.invoke, [("system", system), ("user", user_text)])

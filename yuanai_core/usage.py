@@ -39,15 +39,20 @@ def _drain_buffer() -> list:
 
 def record_usage(user_id: int, model: str, purpose: str,
                  prompt_tokens: int, completion_tokens: int,
-                 source: str = "cloud") -> None:
+                 source: str = "cloud", cache_hit_tokens: int = 0) -> None:
     """入缓冲；满 50 条或超 10 秒由后台线程批量落库"""
     if not prompt_tokens and not completion_tokens:
-        return  # 无用量数据（如旧模型响应缺 usage）不记账
+        # 按次计费（per_call 定价）零 token 也记账（如 DeepSeek 官方搜索 5 元/千次）
+        from config.settings import MODEL_PRICING
+        price = MODEL_PRICING.get(model or "")
+        if not (price and "per_call" in price):
+            return  # 无用量数据（如旧模型响应缺 usage）不记账
     with _buffer_lock:
         _buffer.append({
             "user_id": user_id or 0, "model": model, "purpose": purpose,
             "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens, "source": source,
+            "cache_hit_tokens": int(cache_hit_tokens or 0),
         })
         if len(_buffer) >= MAX_BUFFER:
             _submit_flush(_drain_buffer())
@@ -65,14 +70,18 @@ def _maybe_interval_flush() -> None:
 _last_flush_time = time.time()
 
 
-def model_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
-    """单次调用成本（元）：模型定价 × token 数；未定价模型返回 0"""
+def model_cost(model: str, prompt_tokens: int, completion_tokens: int,
+               calls: int = 1) -> float:
+    """成本（元）：token 计价（in/out 每百万）+ 按次计价（per_call，如 DeepSeek
+    官方搜索 5 元/千次）；未定价模型返回 0"""
     from config.settings import MODEL_PRICING
     price = MODEL_PRICING.get(model or "")
     if not price:
         return 0.0
-    return round(prompt_tokens / 1_000_000 * price.get("in", 0)
-                 + completion_tokens / 1_000_000 * price.get("out", 0), 6)
+    return round(
+        (price.get("per_call", 0) if "per_call" in price else 0) * max(int(calls), 1)
+        + prompt_tokens / 1_000_000 * price.get("in", 0)
+        + completion_tokens / 1_000_000 * price.get("out", 0), 6)
 
 
 def _submit_flush(rows: list) -> None:
@@ -83,6 +92,15 @@ def _submit_flush(rows: list) -> None:
 
 
 def _flush_rows(rows: list) -> None:
+    """缓冲冲刷：云端进程直连 DB；部署 Agent（无 MySQL）经 /agent/usage HTTP
+    由云端落库（2026-10-22 补——此前部署 Agent 的统筹/自动化/审核用量全部静默丢失）"""
+    try:
+        from yuanai_core.pure.agent_remote import is_remote_agent, agent_http
+        if is_remote_agent():
+            agent_http("/usage", "POST", {"rows": rows}, timeout=15)
+            return
+    except Exception as e:
+        logger.warning("usage 远端上传路径判定失败，回落直连: %s", e)
     try:
         from db.session import get_db
         get_db().add_token_usage_rows(rows)
@@ -95,6 +113,15 @@ def flush_now() -> None:
     rows = _drain_buffer()
     if rows:
         _flush_rows(rows)
+
+
+def _cache_hit_tokens(usage: dict) -> int:
+    """前缀缓存命中 token：DeepSeek=prompt_cache_hit_tokens；langchain 归一化=
+    input_token_details.cache_read；Ark=input_token_details.cached_tokens（无自动缓存恒 0）"""
+    if usage.get("prompt_cache_hit_tokens"):
+        return int(usage["prompt_cache_hit_tokens"])
+    details = usage.get("input_token_details") or usage.get("prompt_tokens_details") or {}
+    return int(details.get("cache_read") or details.get("cached_tokens") or 0)
 
 
 def _extract_usage(response) -> dict:
@@ -128,11 +155,12 @@ class UsageTrackingHandler(BaseCallbackHandler):
     由 lc.get_llm 挂在每个 LLM 实例上；provider 无关（langchain_openai
     对 DeepSeek/豆包都把用量放 response.usage_metadata / response_metadata，
     流式聚合放 generations 消息上——多路径提取）。
-    流式链路 invocation_params 拿不到 model，故构造时绑定 default_model 兜底。
+    流式链路 invocation_params 拿不到 model，故构造时绑定 default_model/purpose 兜底。
     """
 
-    def __init__(self, default_model: str = ""):
+    def __init__(self, default_model: str = "", default_purpose: str = "chat"):
         self.default_model = default_model or ""
+        self.default_purpose = default_purpose or "chat"
 
     def on_llm_end(self, response, **kwargs) -> None:
         try:
@@ -146,8 +174,9 @@ class UsageTrackingHandler(BaseCallbackHandler):
             if isinstance(params, dict):
                 model = str(params.get("model", "") or params.get("model_name", "") or model)
             user_id = current_user_id.get() or 0
-            record_usage(user_id, model, "chat", prompt_tokens, completion_tokens,
-                         source="cloud")
+            record_usage(user_id, model, self.default_purpose,
+                         prompt_tokens, completion_tokens,
+                         source="cloud", cache_hit_tokens=_cache_hit_tokens(usage))
         except Exception:
             # 统计回调绝不抛出（langchain 会吞，但双保险）
             pass
@@ -156,8 +185,8 @@ class UsageTrackingHandler(BaseCallbackHandler):
 _handler = UsageTrackingHandler()
 
 
-def get_usage_handler(model: str = "") -> UsageTrackingHandler:
-    """lc.py 挂载用：带 model 时返回绑定该模型的独立 handler（无状态，按 LLM 实例创建）；否则返回单例"""
-    if model:
-        return UsageTrackingHandler(default_model=model)
+def get_usage_handler(model: str = "", purpose: str = "chat") -> UsageTrackingHandler:
+    """lc.py 挂载用：带 model/purpose 时返回独立绑定 handler（无状态，按 LLM 实例创建）"""
+    if model or purpose != "chat":
+        return UsageTrackingHandler(default_model=model, default_purpose=purpose)
     return _handler

@@ -54,7 +54,7 @@ def _llm_judge(text: str) -> str | None:
         from config.settings import CHAT_MODE_ROUTER_MODEL
         from yuanai_core.core.lc import get_llm
 
-        llm = get_llm(CHAT_MODE_ROUTER_MODEL, reasoning=False, temperature=0, max_tokens=8)
+        llm = get_llm(CHAT_MODE_ROUTER_MODEL, reasoning=False, temperature=0, max_tokens=8, usage_purpose="mode_router")
         # 静态前缀放前面——上下文缓存友好（DeepSeek/豆包前缀缓存命中）
         resp = llm.invoke([("system", (
             "你是对话模式路由器。判断这条用户消息属于哪种对话模式，只回复一个词：\n"

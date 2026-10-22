@@ -1,6 +1,6 @@
 /* 多维度经营分析 — 对话 / 功能 / 留存 / 成本（盈利决策数据底座） */
 import { useState, useEffect } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Cell } from 'recharts'
 import { Spinner, ErrorMsg, Card, StatCard, headers, API_BASE } from './shared'
 
 const C_BLUE = '#42a5f5'
@@ -217,26 +217,82 @@ export function RetentionAnalyticsTab() {
 }
 
 /* ---------------- 成本分析 ---------------- */
+const PURPOSE_LABELS: Record<string, string> = {
+  chat: '对话', title_gen: '标题生成', memory_fold: '记忆折叠', planet_article: '星球文章',
+  audit: '审核', embedding: '向量化', search: '联网搜索', mode_router: '模式路由',
+  claude_bridge: 'Claude桥接', bind_tools: '计划绑定',
+}
+const PURPOSE_COLORS = ['#42a5f5', '#7e57c2', '#26a69a', '#ffa726', '#ef5350', '#9ccc65', '#5c6bc0', '#ab47bc', '#8d6e63', '#66bb6a', '#ff7043']
+
 export function CostAnalyticsTab() {
   const [days, setDays] = useState(30)
   const { data, loading, error } = useAnalytics('cost', days)
   if (loading) return <Spinner />
   if (error) return <ErrorMsg msg={error} />
   const ov = data?.overview || {}
+  const purposes = (data?.purposes || []).map((p: any, i: number) => ({
+    ...p, name: PURPOSE_LABELS[p.purpose] || p.purpose, fill: PURPOSE_COLORS[i % PURPOSE_COLORS.length],
+  }))
   return (
     <div>
       <DaysSwitch days={days} setDays={setDays} />
+      {/* 指标体系：总成本 / 单条消息成本 / 缓存命中率 / 调用次数 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <StatCard label={`近${days}天总成本`} value={`¥${ov.total_cost ?? 0}`} color={C_RED} />
+        <StatCard label={`近${days}天总成本`} value={`¥${ov.total_cost ?? 0}`} color={C_RED} sub="各模型定价折算" />
         <StatCard label="单条消息成本" value={`¥${ov.cost_per_message ?? 0}`} color={C_ORANGE}
           sub={`共 ${ov.messages ?? 0} 条消息`} />
+        <StatCard label="缓存命中率" value={`${ov.cache_hit_rate ?? 0}%`} color={C_GREEN}
+          sub="前缀缓存命中/输入总量（DeepSeek 自动缓存）" />
+        <StatCard label="LLM 调用次数" value={(ov.calls ?? 0).toLocaleString()} color={C_BLUE}
+          sub="含对话/辅助任务/向量化/搜索" />
       </div>
-      <Card style={{ padding: '20px 24px' }}>
+
+      {/* 日成本趋势 */}
+      <Card style={{ marginBottom: 16, padding: '20px 24px' }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px', color: 'var(--text-primary)' }}>日成本趋势（近{days}天，¥）</h3>
+        <ResponsiveContainer width="100%" height={180}>
+          <AreaChart data={data?.daily || []} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <defs>
+              <linearGradient id="costGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={C_RED} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={C_RED} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="date" fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} tickFormatter={(v) => String(v).slice(5)} />
+            <YAxis fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [`¥${v}`, n === 'cost' ? '成本' : n]} />
+            <Area type="monotone" dataKey="cost" name="成本" stroke={C_RED} strokeWidth={2} fill="url(#costGrad)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </Card>
+
+      {/* 用途成本占比 */}
+      <Card style={{ marginBottom: 16, padding: '20px 24px' }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px', color: 'var(--text-primary)' }}>用途成本拆分（近{days}天）</h3>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={purposes} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="name" fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} interval={0} angle={-15} height={40} textAnchor="end" />
+            <YAxis fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [`¥${v}（${n}）`, '成本']} />
+            <Bar dataKey="cost" name="成本(¥)" radius={[4, 4, 0, 0]}>
+              {purposes.map((p: any, i: number) => <Cell key={i} fill={p.fill} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        {purposes.length === 0 && (
+          <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>暂无用途数据（部署 Agent 用量上传后可见）</div>
+        )}
+      </Card>
+
+      {/* 每模型成本明细（效率：均入/均出 tokens + 成本占比） */}
+      <Card style={{ marginBottom: 16, padding: '20px 24px' }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 12px', color: 'var(--text-primary)' }}>每模型成本（近{days}天）</h3>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
             <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
-              {['模型', '调用次数', '输入 Token', '输出 Token', '成本(¥)'].map((h) => (
+              {['模型', '调用', '均入 Token', '均出 Token', '成本(¥)', '占比'].map((h) => (
                 <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{h}</th>
               ))}
             </tr>
@@ -246,13 +302,41 @@ export function CostAnalyticsTab() {
               <tr key={m.model} style={{ color: 'var(--text-primary)' }}>
                 <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontFamily: 'monospace', fontSize: 11 }}>{m.model}</td>
                 <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.calls}</td>
-                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.prompt_tokens.toLocaleString()}</td>
-                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.completion_tokens.toLocaleString()}</td>
+                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{Math.round(m.prompt_tokens / Math.max(m.calls, 1)).toLocaleString()}</td>
+                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{Math.round(m.completion_tokens / Math.max(m.calls, 1)).toLocaleString()}</td>
                 <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{m.cost}</td>
+                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.share ?? 0}%</td>
               </tr>
             ))}
             {(data?.models || []).length === 0 && (
-              <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>暂无用量数据</td></tr>
+              <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>暂无用量数据</td></tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+
+      {/* 用户成本 Top 10 */}
+      <Card style={{ padding: '20px 24px' }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 12px', color: 'var(--text-primary)' }}>用户成本 Top 10（近{days}天）</h3>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+              {['用户', 'ID', '调用次数', '成本(¥)'].map((h) => (
+                <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(data?.users || []).map((u: any) => (
+              <tr key={u.user_id} style={{ color: 'var(--text-primary)' }}>
+                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.username}</td>
+                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>{u.user_id}</td>
+                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.calls}</td>
+                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{u.cost}</td>
+              </tr>
+            ))}
+            {(data?.users || []).length === 0 && (
+              <tr><td colSpan={4} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>暂无用量数据</td></tr>
             )}
           </tbody>
         </table>

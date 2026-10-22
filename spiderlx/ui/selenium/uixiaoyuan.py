@@ -143,7 +143,7 @@ def render_ai_audit_chat(qa_images, sa):
             placeholder = st.empty()
             placeholder.markdown("⏳ AI 正在审核中...")
 
-            llm = get_llm(AUDIT_MODEL, temperature=0.1, verbose=False, streaming=True)
+            llm = get_llm(AUDIT_MODEL, temperature=0.1, verbose=False, streaming=True, usage_purpose="audit")
             normalize_images = []
             for item in qa_images:
                 if isinstance(item, bytes):

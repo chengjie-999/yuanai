@@ -152,7 +152,7 @@ def call_audit_llm(images: List[str], model: str = AGENT_MODEL_MAP["audit"]) -> 
     :return: AI 返回文本
     """
     messages = build_multimodal_message(images)
-    llm = get_llm(model, temperature=0.1, verbose=False)
+    llm = get_llm(model, temperature=0.1, verbose=False, usage_purpose="audit")
 
     try:
         response = llm.invoke(messages)
@@ -174,7 +174,7 @@ def call_audit_agent(images: List[str], model: str = AGENT_MODEL_MAP["audit"]) -
     from agent.tools import load_agent_tools
     
     agent_tools = load_agent_tools()
-    llm = get_llm(model, temperature=0.1, verbose=False)
+    llm = get_llm(model, temperature=0.1, verbose=False, usage_purpose="audit")
     agent = get_langgraph_agent(llm, agent_tools)
     
     prompt_text = "请分析这些题目截图，根据标注规范判断标注是否正确。"

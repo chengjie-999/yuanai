@@ -153,6 +153,14 @@ def _search_deepseek(q: str, max_results: int) -> List[Dict]:
     with urllib.request.urlopen(req, timeout=10) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     results = data.get("results") or []
+    # 搜索调用记账（2026-10-22）：免费过渡期后 5 元/千次成功计费（per_call 定价）
+    try:
+        from yuanai_core.usage import record_usage
+        from yuanai_core.rag import current_user_id
+        record_usage(current_user_id.get() or 0, "deepseek-search", "search",
+                     0, 0, source="cloud")
+    except Exception:
+        pass
     out = []
     for r in results:
         title = (r.get("title") or "").strip()

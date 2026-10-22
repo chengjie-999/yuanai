@@ -36,7 +36,7 @@ def test_handler_extracts_usage_and_records(monkeypatch):
         current_user_id.reset(tok)
 
     assert recorded == [((42, "deepseek-v4-pro", "chat", 120, 30),
-                         {"source": "cloud"})]
+                         {"source": "cloud", "cache_hit_tokens": 0})]
 
 
 def test_handler_no_usage_skips(monkeypatch):
@@ -194,6 +194,112 @@ def test_usage_admin_endpoint(client):
 
 if __name__ == "__main__":
     print("测试入口：pytest test/test_token_usage.py -v")
+
+
+# ===================== Agent 用量上传端点（2026-10-22） =====================
+
+def test_agent_usage_upload_endpoint(client, db):
+    """部署 Agent 经 /agent/usage HTTP 上传用量（设备凭据 + 行清洗 + 落库）"""
+    from db.session import AgentDevice, TokenUsage, User
+    import uuid as _uuid
+
+    uid = db.register_user("__usage_agent__", "test123")["id"]
+    secret = "ua-secret-" + _uuid.uuid4().hex[:8]
+    sess = db.Session()
+    try:
+        dev = AgentDevice(install_code="UA-" + _uuid.uuid4().hex[:8],
+                          agent_secret=secret, machine_name="ua", user_id=uid)
+        sess.add(dev)
+        sess.commit()
+        dev_id = dev.id
+    finally:
+        sess.close()
+    h = {"X-Agent-Id": str(dev_id), "X-Agent-Secret": secret}
+    try:
+        # 坏凭据 401
+        r = client.post("/api/v1/agent/usage", json={"rows": []},
+                        headers={"X-Agent-Id": str(dev_id), "X-Agent-Secret": "bad"})
+        assert r.status_code == 401
+        # 正常上传（含脏行清洗：非 dict/负数/超长）
+        r = client.post("/api/v1/agent/usage", headers=h, json={"rows": [
+            {"user_id": uid, "model": "deepseek-flash", "purpose": "chat",
+             "prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150,
+             "cache_hit_tokens": 80, "source": "agent"},
+            {"user_id": uid, "model": "deepseek-search", "purpose": "search",
+             "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "not-a-dict",
+            {"user_id": uid, "model": "x" * 100, "prompt_tokens": -5},
+        ]})
+        assert r.status_code == 200
+        assert r.json()["added"] == 3
+        sess = db.Session()
+        try:
+            rows = (sess.query(TokenUsage)
+                    .filter(TokenUsage.model.in_(["deepseek-flash", "deepseek-search", "x" * 64]))
+                    .all())
+            assert len(rows) == 3
+            flash = [x for x in rows if x.model == "deepseek-flash"][0]
+            assert flash.cache_hit_tokens == 80 and flash.source == "agent"
+            long_model = [x for x in rows if len(x.model) == 64][0]
+            assert long_model.prompt_tokens == 0  # 负数归零
+        finally:
+            sess.close()
+    finally:
+        sess = db.Session()
+        try:
+            sess.query(TokenUsage).filter(TokenUsage.source == "agent").delete()
+            sess.query(AgentDevice).filter_by(id=dev_id).delete()
+            u = sess.query(User).filter_by(id=uid).first()
+            if u:
+                sess.delete(u)
+            sess.commit()
+        finally:
+            sess.close()
+
+
+def test_cost_analytics_v2_shape(db):
+    """成本指标体系 v2：overview 五指标 + daily/purposes/models/users + 缓存命中率"""
+    uid = db.register_user("__cost_v2__", "test123")["id"]
+    baseline_calls = db.query_cost_analytics(days=7)["overview"]["calls"]
+    try:
+        db.add_token_usage_rows([
+            {"user_id": uid, "model": "deepseek-flash", "purpose": "chat",
+             "prompt_tokens": 1000, "completion_tokens": 200, "total_tokens": 1200,
+             "cache_hit_tokens": 600, "source": "cloud"},
+            {"user_id": uid, "model": "deepseek-flash", "purpose": "memory_fold",
+             "prompt_tokens": 500, "completion_tokens": 100, "total_tokens": 600,
+             "cache_hit_tokens": 0, "source": "cloud"},
+            {"user_id": 0, "model": "deepseek-search", "purpose": "search",
+             "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
+             "cache_hit_tokens": 0, "source": "cloud"},
+        ])
+        data = db.query_cost_analytics(days=7)
+        ov = data["overview"]
+        assert set(ov) >= {"total_cost", "cost_per_message", "messages", "calls", "cache_hit_rate"}
+        assert ov["calls"] == baseline_calls + 3  # 本测试新增 3 行（库里可能有真实消息残留）
+        # 缓存命中率只受本测试新行影响？真实消息的缓存命中也参与——改为区间断言
+        assert 0 < ov["cache_hit_rate"] < 100
+        assert ov["total_cost"] > 0  # 含 per_call 搜索 0.005
+        assert data["daily"] and data["daily"][0]["cost"] > 0
+        purposes = {p["purpose"]: p for p in data["purposes"]}
+        assert set(purposes) >= {"chat", "memory_fold", "search"}
+        assert purposes["chat"]["cost"] > purposes["memory_fold"]["cost"]
+        user_ids = [u["user_id"] for u in data["users"]]
+        assert uid in user_ids and data["users"][0]["username"]  # Top 榜含本测试用户（榜首可能是真实账号）
+        assert data["models"][0]["share"] > 0
+    finally:
+        sess = db.Session()
+        try:
+            from db.session import TokenUsage, User
+            sess.query(TokenUsage).filter(TokenUsage.user_id == uid).delete()
+            sess.query(TokenUsage).filter(TokenUsage.model == "deepseek-search",
+                                          TokenUsage.user_id == 0).delete()
+            u = sess.query(User).filter_by(id=uid).first()
+            if u:
+                sess.delete(u)
+            sess.commit()
+        finally:
+            sess.close()
 
 
 # ===================== 文件管理 HTML 渲染预览 =====================

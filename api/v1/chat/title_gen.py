@@ -57,7 +57,7 @@ def generate_title(session_id: str, messages: list) -> bool:
             # 已生成过且标题已非自动 → 跳过（上面的判断已覆盖；此处双保险）
             from config.settings import MEMORY_MODEL
             from yuanai_core.core.lc import get_llm
-            llm = get_llm(MEMORY_MODEL, reasoning=False, temperature=0.3, timeout=10)
+            llm = get_llm(MEMORY_MODEL, reasoning=False, temperature=0.3, timeout=10, usage_purpose="title_gen")
             pool = ThreadPoolExecutor(max_workers=1)
             try:
                 future = pool.submit(llm.invoke, [

@@ -192,6 +192,8 @@ _MODEL_PRICING_DEFAULTS = {
     _DEEPSEEK_PRO: {"in": 2.0, "out": 8.0},
     _DOUBAO_LITE: {"in": 0.3, "out": 0.6},      # Seed 2.1 占位价，以官方为准
     _DOUBAO_PRO: {"in": 0.8, "out": 2.0},
+    # 按次计费（非 token 计价）：DeepSeek 官方搜索 5 元/千次成功（2026-11-01 免费期后生效）
+    "deepseek-search": {"per_call": 0.005},
 }
 MODEL_PRICING = _MODEL_PRICING_DEFAULTS
 try:

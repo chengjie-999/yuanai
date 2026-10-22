@@ -85,10 +85,19 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
     try:
         all_embeddings = []
         batch_size = 256
+        total_tokens = 0
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
             resp = client.embeddings.create(model=model, input=batch, timeout=30.0)
             all_embeddings.extend([d.embedding for d in resp.data])
+            total_tokens += int(getattr(resp.usage, "total_tokens", 0) or 0)
+        # Embedding 用量记账（2026-10-22）：此前向量化成本完全不可见
+        try:
+            from yuanai_core.usage import record_usage
+            record_usage(current_user_id.get() or 0, model, "embedding",
+                         total_tokens, 0, source="cloud")
+        except Exception:
+            pass
         return all_embeddings
     except Exception as e:
         print(f"⚠️ API embedding 失败: {e}，fallback 到本地模型")

@@ -147,7 +147,8 @@ async def token_usage_stats(request: Request, days: int = 7, group_by: str = "da
     from yuanai_core.usage import model_cost
     for r in rows:
         if group_by == "model":
-            r["cost"] = model_cost(r["key"], r["prompt_tokens"], r["completion_tokens"])
+            r["cost"] = model_cost(r["key"], r["prompt_tokens"], r["completion_tokens"],
+                                   calls=r.get("calls", 1))
     totals = {
         "total_tokens": sum(r["total_tokens"] for r in rows),
         "prompt_tokens": sum(r["prompt_tokens"] for r in rows),
@@ -158,7 +159,8 @@ async def token_usage_stats(request: Request, days: int = 7, group_by: str = "da
     # 1 分钱时 round 2 位会显示 ¥0（2026-10-22 用户反馈「没数据」根因之一）
     model_rows = get_db().query_token_usage(days=max(1, min(days, 90)), group_by="model")
     totals["cost"] = round(sum(
-        model_cost(mr["key"], mr["prompt_tokens"], mr["completion_tokens"])
+        model_cost(mr["key"], mr["prompt_tokens"], mr["completion_tokens"],
+                   calls=mr.get("calls", 1))
         for mr in model_rows), 4)
     return {"rows": rows, "totals": totals}
 

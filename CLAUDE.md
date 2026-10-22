@@ -217,6 +217,7 @@ data/                   数据目录
 - **记忆复用**：娱乐对话走同一 /chat/save 落库 → 折叠 worker 同样沉淀记忆；system 注入与云端直连分支同一段代码。
 - **E4 搜索联动已完成（3602f15）**：云端直连分支注入当前日期（娱乐/回退通用）——模型知识截止滞后会把资讯 query 写成旧年份；身份卡加强「聊到时效话题主动搜索」。
 - **E5 C 端打磨已完成（2026-10-21）**：娱乐版开场话题 ENT_SUGGESTIONS（欢迎页/空状态按模式切换）、欢迎页副标题换「云端聊天搭子」、输入框 placeholder 换娱乐引导（@ 已隐藏不再引导 @）；**语音通话人设联动**——/voice/start 透传 chat_mode，同通道换娱乐 SystemMessages（api/v1/voice/router.py `_ENTERTAINMENT_SYSTEM_PROMPT`；气泡朗读本就不分模式）。测试 +2（语音人设切换/请求体接受 chat_mode）。
+- **E6 模式自主路由 + 主题自主切换（2026-10-22）**：① 每轮消息判定娱乐/工作——`yuanai_core/pure/chat_mode_router.py` 关键词打分（零成本，work/ent 信号抵消保持现状、单向切换防横跳）+ 无信号长消息豆包 lite 兜底（`CHAT_MODE_ROUTER_LLM=0` 可关）；/stream 判定后切换桥接/人设并发 `mode_event`（@定向尊重用户不路由），前端分段开关跟随（entMode/localStorage 联动）。② `set_theme` 工具（ui_tools，general 类别，云边同款）——模型可自主切换明暗主题：后端拦截 tool_start 发 `theme_event`（/stream 双分支 + _bridge_sse 转发 Agent 工具事件），前端 ThemeContext.setTheme 应用并持久化。测试 test_chat_mode_router.py 11 项。
 - **修复（2026-10-21）**：ToolCallCard fmtArgs 崩溃——后端 tool_start 的 args 是 dict（如 search_web 的 {query,max_results}），fmtArgs 只收字符串，对象原样渲染触发 React「Objects are not valid as a React child」；fmtArgs 兼容两种形态（对象 JSON.stringify），ToolCall 类型放宽。
 - **路线图**（plans/entertainment-mode-2026-10.md）：E2 火山生图 / E3 生视频挂账（执行前确认方舟账号开通与模型）。限额护栏必须与生图/生视频工具同日上线，不允许裸奔。
 - **验证**：test/test_entertainment_mode.py（娱乐跳过桥接+人设生效+@定向忽略 / 工作模式对照）；真机 SSE 双模式均实测通过。conftest 登录密码改 test1234（批次3 起密码最少 8 位，test123 只有 7 位导致所有鉴权测试静默跳过）。

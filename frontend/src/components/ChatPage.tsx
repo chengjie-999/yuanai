@@ -10,6 +10,7 @@ import VoiceCall from './chat/VoiceCall'
 import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
 import { useAutoRead } from '../hooks/useAutoRead'
+import { useTheme } from '../contexts/ThemeContext'
 import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, LinkIcon } from './icons'
 
 // 子页面懒加载（对话内浮窗/浮层宿主，统一入口形态 2026-10-17）
@@ -153,6 +154,8 @@ export default function ChatPage({ user }: { user?: any }) {
   const [feedback, setFeedbackState] = useState<Record<number, { liked: boolean; disliked: boolean }>>({})
   // 自动朗读（默认开启，与顶部栏喇叭/设置页开关共享 useAutoRead 同步）
   const autoRead = useAutoRead()
+  // 模型自主界面联动（2026-10-22）：set_theme 工具 → 后端 theme_event → 主题切换
+  const { setTheme: applyTheme } = useTheme()
   const [autoReadTick, setAutoReadTick] = useState(0)
   const feedbackPendingRef = useRef<Set<number>>(new Set())
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -435,6 +438,29 @@ export default function ChatPage({ user }: { user?: any }) {
       // 旁路守卫（P1-1）：流式期间会话已切换/停止 → 丢弃迟到事件，防跨会话写入
       const s = streamRef.current
       if (!s || s.sid !== sidRef.current) return
+      if (event.type === 'mode_event') {
+        // 模式自主路由（2026-10-22）：后端模型判定切换娱乐/工作 → 分段开关跟随
+        const m = event.data?.mode
+        if (m === 'entertainment' || m === 'work') {
+          const next = m === 'entertainment'
+          setEntMode(next)
+          try { localStorage.setItem('entertainmentMode', next ? '1' : '0') } catch { /* 忽略 */ }
+          if (next) {
+            prevChatModeRef.current = chatMode
+            setChatMode('cloud')
+            setTargetAgent('')
+          } else {
+            setChatMode(prevChatModeRef.current || 'local')
+          }
+        }
+        return
+      }
+      if (event.type === 'theme_event') {
+        // set_theme 工具 → 模型自主切换明暗主题（ThemeContext 负责 DOM/localStorage/服务端）
+        const t = event.data?.theme
+        if (t === 'dark' || t === 'light') applyTheme(t)
+        return
+      }
       if (event.type === 'token') {
         // 时序交叉渲染：首个 token 时把累积思考快照为「最终思考」（回答前展示），
         // 之后 reasoning 字段复位（下一阶段重新累积）

@@ -146,11 +146,15 @@ from api.v1.db_helpers import get_db as _get_db, verify_session_owner as _verify
 from api.v1.middleware import get_user_id as _get_user_id
 
 
-async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0):
+async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0,
+                      prefix_event: dict = None):
     """Agent 事件队列 → SSE 流（300s 超时按每次事件重置；done/error 终止）
-    B1-12：客户端中断（停止生成/关页）→ 通知本地 Agent 终止脚本子进程"""
+    B1-12：客户端中断（停止生成/关页）→ 通知本地 Agent 终止脚本子进程
+    prefix_event：首个 SSE 事件前插入（模式自主路由的 mode_event）"""
     from api.v1.agent.router import cleanup_pending
     try:
+        if prefix_event:
+            yield f"data: {json.dumps(prefix_event, ensure_ascii=False)}\n\n"
         while True:
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=300)
@@ -162,6 +166,8 @@ async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
                 break
 
+            for ui in _ui_events(event):
+                yield f"data: {json.dumps(ui, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
     except asyncio.CancelledError:
         # B1-12 停止联动：SSE 被 abort（停止生成）→ 通知 Agent 杀脚本子进程
@@ -172,6 +178,17 @@ async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0):
             logger.warning("停止通知发送失败（不影响主流程）", exc_info=True)
     finally:
         cleanup_pending(request_id)
+
+
+def _ui_events(event: dict) -> list:
+    """set_theme 工具调用 → theme_event（前端切换明暗主题；工具自身继续正常执行返回）"""
+    if event.get("type") == "tool_start":
+        data = event.get("data") or {}
+        args = data.get("args") or {}
+        if data.get("name") == "set_theme" and isinstance(args, dict) \
+                and args.get("theme") in ("dark", "light"):
+            return [{"type": "theme_event", "data": {"theme": args["theme"]}}]
+    return []
 
 
 # 信封四字段（视图滤波在 views.py；此处保证扁平化时不丢身份）
@@ -248,6 +265,16 @@ async def chat_stream(req: ChatRequest, request: Request):
         # 娱乐模式（E1）：纯云端智能体——强制跳过本地 Agent 桥接、忽略 @定向
         # （娱乐模式不委派），专属娱乐人设提示接管
         ent_mode = getattr(req, "chat_mode", "work") == "entertainment"
+        # 模式自主路由（2026-10-22）：每轮消息判定娱乐/工作（单向切换：关键词零成本
+        # + 无信号时豆包 lite 兜底）——模型自主识别意图并切换，前端分段开关跟随
+        # mode_event。@定向尊重用户显式指定，不路由。
+        mode_event = None
+        if not target:
+            from yuanai_core.pure.chat_mode_router import route_chat_mode
+            decided = route_chat_mode(req.prompt or "", "entertainment" if ent_mode else "work")
+            if decided != ("entertainment" if ent_mode else "work"):
+                ent_mode = decided == "entertainment"
+                mode_event = {"type": "mode_event", "data": {"mode": decided}}
 
         history = []
         # 信封数组：与 history 锁步构建（system 首项 + 截断说明 + 历史各项 + 末位 prompt 项），
@@ -343,7 +370,7 @@ async def chat_stream(req: ChatRequest, request: Request):
             if bridged_request_id:
                 logger.info("chat/stream → Agent 桥接 (user=%s, req=%s)", user_id, bridged_request_id[:8])
                 queue = get_pending_queue(bridged_request_id)
-                return StreamingResponse(_bridge_sse(queue, bridged_request_id, user_id), media_type="text/event-stream")
+                return StreamingResponse(_bridge_sse(queue, bridged_request_id, user_id, mode_event), media_type="text/event-stream")
 
         # --- 回退：云端直接调用 LLM ---
         logger.info("chat/stream → 云端直接调用 (user=%s, agent offline)", user_id)
@@ -397,8 +424,12 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         async def event_stream():
             try:
+                if mode_event:
+                    yield f"data: {json.dumps(mode_event, ensure_ascii=False)}\n\n"
                 # 同名工具单轮最多调 3 次（防重复调用死循环）+ LangGraph 轮数上限
                 async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
+                    for ui in _ui_events(event):
+                        yield f"data: {json.dumps(ui, ensure_ascii=False)}\n\n"
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             except Exception as e:
                 # exc_info：异常来自哪一行一眼可见（曾出现「string indices must be integers」
@@ -512,6 +543,8 @@ async def claude_stream(req: ChatRequest, request: Request):
             try:
                 from yuanai_core.core.chat import limited_tools
                 async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
+                    for ui in _ui_events(event):
+                        yield f"data: {json.dumps(ui, ensure_ascii=False)}\n\n"
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             except Exception as e:
                 logger.error("claude-stream 云端回退异常: %s", e)

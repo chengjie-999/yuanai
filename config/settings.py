@@ -289,6 +289,10 @@ MEMORY_FOLD_TIMEOUT_S = int(_syscfg("memory_fold_timeout_s"))
 MEMORY_FOLD_DAILY_MAX = int(_syscfg("memory_fold_daily_max"))             # 每用户每日折叠次数上限
 MEMORY_ORGANIZE_DELETE_DAILY_MAX = int(_syscfg("memory_organize_delete_daily_max"))  # 自整理删除：每用户每日删条数上限（安全事故教训后设的硬护栏）
 
+# 聊天模式自主路由（2026-10-22）：每轮消息判定娱乐/工作，模型自主切换
+CHAT_MODE_ROUTER_LLM = os.getenv("CHAT_MODE_ROUTER_LLM", "1") == "1"   # 关键词无信号时豆包 lite 兜底判定（0=纯关键词零成本）
+CHAT_MODE_ROUTER_MODEL = os.getenv("CHAT_MODE_ROUTER_MODEL", _DOUBAO_LITE)  # 判定模型（轻量即可）
+
 # Agent 音色分配 — 气泡朗读按消息归属 Agent 选音色（均实测有效；须为 2.0 系列配 seed-tts-2.0）
 _DEFAULT_AGENT_VOICE_MAP = {
     "orchestrator": "zh_male_shaonianzixin_uranus_bigtts",   # 小元：少年梓辛（小男孩）

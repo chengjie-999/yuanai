@@ -8,6 +8,7 @@
   - data/aiprompt/**/*.md       思维导图 Markdown 导出（支持嵌套文件夹）
 """
 from __future__ import annotations
+import concurrent.futures
 import os
 import time
 import json
@@ -102,12 +103,17 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
 
 # ====================== Milvus ======================
 MILVUS_OP_TIMEOUT = 15  # 单次 Milvus 操作超时（秒）
+MILVUS_FAIL_COOLDOWN_S = 60  # 连接失败后的快速失败冷却期（秒）
 
 
 def _get_db() -> MilvusClient | None:
-    global _db
+    """Milvus 客户端（进程级缓存）。连接失败进入冷却期快速返回 None——
+    曾每轮工具调用都重试连接、挂死对话（部署 Agent 无 Milvus，卡 120s）。"""
+    global _db, _db_fail_until
     if _db is not None:
         return _db
+    if time.time() < _db_fail_until:
+        return None
     if MILVUS_HOST.endswith(".db"):
         uri = MILVUS_HOST  # milvus-lite 嵌入式本地文件
     else:
@@ -116,16 +122,22 @@ def _get_db() -> MilvusClient | None:
         _db = MilvusClient(uri=uri, timeout=5)
         return _db
     except Exception:
+        _db_fail_until = time.time() + MILVUS_FAIL_COOLDOWN_S
         return None
+
+
+_db_fail_until = 0.0
+
+# 模块级守护线程池：_safe_milvus 曾每次新建 with ThreadPoolExecutor——超时后
+# with 退出仍等挂死线程收尾，15s 保护形同虚设。守护池不阻塞调用方与进程退出。
+_safe_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="milvus-safe")
 
 
 def _safe_milvus(op_name: str, fn, *args, **kwargs):
     """带超时保护执行 Milvus 操作，失败返回 None 而非挂死"""
     try:
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(fn, *args, **kwargs)
-            return future.result(timeout=MILVUS_OP_TIMEOUT)
+        future = _safe_pool.submit(fn, *args, **kwargs)
+        return future.result(timeout=MILVUS_OP_TIMEOUT)
     except concurrent.futures.TimeoutError:
         print(f"⚠️ Milvus {op_name} 超时（>{MILVUS_OP_TIMEOUT}s）")
         return None

@@ -13,70 +13,19 @@ TOOL_CATEGORY = "memory"
   必须带 user_id）；指向 localhost（本地开发联调）→ 直连本机库（与本地
   API 同库，一致）
 """
-import json
 import logging
-import urllib.request
 
 from langchain_core.tools import tool
 from yuanai_core.rag import current_user_id, current_session_id
+from yuanai_core.tools._agent_remote import is_remote_agent, agent_http as _agent_http
 
 logger = logging.getLogger(__name__)
 
-_LOCALHOST = ("ws://localhost", "ws://127.0.0.1",
-              "http://localhost", "http://127.0.0.1")
-
-
-def _read_identity() -> dict:
-    """读本机 Agent 身份（data/agent_identity.json）；无文件/解析失败返回 {}"""
-    import os
-
-    from utils.data_path import root_path
-
-    try:
-        with open(os.path.join(root_path(), "data", "agent_identity.json"), encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
-
 
 def _memory_path() -> str:
-    """记忆读写路径判定：'direct'（云端进程直连）或 'http'（本地 Agent 经云端）"""
-    import os
-
-    if os.getenv("APP_HOME") or os.getenv("APP_ENV") == "production":
-        return "direct"
-    server = str(_read_identity().get("server_url") or "").lower()
-    if server and not server.startswith(_LOCALHOST):
-        return "http"
-    return "direct"
-
-
-def _agent_http(path: str, method: str = "GET", payload: dict = None) -> dict:
-    """本地 Agent → 云端 /agent/memory 调用（凭据来自 data/agent_identity.json）"""
-    identity = _read_identity()
-    server = (identity.get("server_url") or "http://localhost:8000").replace("ws://", "http://").replace("wss://", "https://")
-    url = server.rstrip("/") + "/api/v1/agent" + path
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
-    req = urllib.request.Request(url, data=data, method=method,
-                                 headers={
-                                     "Content-Type": "application/json",
-                                     "X-Agent-Id": str(identity.get("agent_id", "")),
-                                     "X-Agent-Secret": str(identity.get("agent_secret", "")),
-                                 })
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        detail = ""
-        try:
-            detail = json.loads(e.read().decode("utf-8", errors="replace")).get("detail", "")
-        except Exception:
-            pass
-        logger.warning("agent memory HTTP %s %s 失败(%s): %s", method, url, e.code, detail)
-        return {"ok": False, "detail": detail or f"HTTP {e.code}（{server}）"}
-    except Exception as e:
-        logger.warning("agent memory HTTP %s 异常: %s", method, e)
-        return {"ok": False, "detail": f"{e}（{server}）"}
+    """记忆读写路径判定：'direct'（云端进程直连）或 'http'（本地 Agent 经云端）。
+    保留原名供 plan_tools 复用；身份判定实现已收敛到 _agent_remote。"""
+    return "http" if is_remote_agent() else "direct"
 
 
 def _memory_ops():

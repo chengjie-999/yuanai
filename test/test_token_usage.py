@@ -77,10 +77,14 @@ def test_drain_buffer_preserves_rows():
 
 def test_record_usage_flushes_via_buffer(db):
     """record_usage → flush_now 走真实缓冲链路落库（曾整条链路静默丢数据）"""
+    import time as _time
+    from yuanai_core import usage as u
     from yuanai_core.usage import record_usage, flush_now
     from db.session import TokenUsage
 
     uid = 999991
+    # 重置间隔冲刷计时，防 record_usage 触发异步 executor 落库（与断言竞态）
+    u._last_flush_time = _time.time()
     record_usage(uid, "drain-test-model", "chat", 111, 22)
     try:
         flush_now()

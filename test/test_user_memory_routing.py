@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.stdout.reconfigure(encoding='utf-8')
 
 from yuanai_core.tools import user_memory as um
+from yuanai_core.tools import _agent_remote as ar  # 身份判定/HTTP 桥接已收敛到共享模块
 
 
 @pytest.fixture(autouse=True)
@@ -48,7 +49,7 @@ def _fake_http(monkeypatch):
         return _Resp({"ok": True, "memory": "", "added": 0,
                       "deleted": 0, "asked_more": False})
 
-    monkeypatch.setattr(um.urllib.request, "urlopen", fake_open)
+    monkeypatch.setattr(ar.urllib.request, "urlopen", fake_open)
     return calls
 
 
@@ -57,30 +58,30 @@ def _fake_http(monkeypatch):
 def test_cloud_container_direct_even_with_remote_identity(monkeypatch):
     """云端容器（APP_HOME）→ 直连，不受 identity 影响（容器卷残留旧身份曾致 401）"""
     monkeypatch.setenv("APP_HOME", "/app")
-    monkeypatch.setattr(um, "_read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
+    monkeypatch.setattr(ar, "read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
     assert um._memory_path() == "direct"
 
 
 def test_production_env_direct(monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setattr(um, "_read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
+    monkeypatch.setattr(ar, "read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
     assert um._memory_path() == "direct"
 
 
 def test_remote_server_identity_http(monkeypatch):
     """本地 Agent 指向远程云端 → HTTP（本机 MySQL 是开发库，直连会把记忆写丢）"""
-    monkeypatch.setattr(um, "_read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
+    monkeypatch.setattr(ar, "read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
     assert um._memory_path() == "http"
 
 
 def test_localhost_identity_direct(monkeypatch):
     """本地开发联调（agent 连 localhost API）→ 直连本机库，与 API 同库一致"""
-    monkeypatch.setattr(um, "_read_identity", lambda: {"server_url": "ws://localhost:8000"})
+    monkeypatch.setattr(ar, "read_identity", lambda: {"server_url": "ws://localhost:8000"})
     assert um._memory_path() == "direct"
 
 
 def test_no_identity_direct(monkeypatch):
-    monkeypatch.setattr(um, "_read_identity", lambda: {})
+    monkeypatch.setattr(ar, "read_identity", lambda: {})
     assert um._memory_path() == "direct"
 
 
@@ -88,7 +89,7 @@ def test_no_identity_direct(monkeypatch):
 
 def test_http_get_carries_user_id(monkeypatch):
     """回归：GET /memory 丢 user_id → 云端 400「缺少 user_id」"""
-    monkeypatch.setattr(um, "_read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
+    monkeypatch.setattr(ar, "read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
     calls = _fake_http(monkeypatch)
     r = um._call_memory("/memory", "GET", uid=3)
     assert r["ok"] is True
@@ -98,7 +99,7 @@ def test_http_get_carries_user_id(monkeypatch):
 
 
 def test_http_post_carries_user_id(monkeypatch):
-    monkeypatch.setattr(um, "_read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
+    monkeypatch.setattr(ar, "read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
     calls = _fake_http(monkeypatch)
     r = um._call_memory("/memory", "POST", {"facts": ["用户怕辣"]}, uid=3)
     assert r["ok"] is True
@@ -110,7 +111,7 @@ def test_http_post_carries_user_id(monkeypatch):
 
 def test_http_delete_carries_user_id(monkeypatch):
     """回归：DELETE /memory body 丢 user_id → 云端 400「缺少 user_id 或 line」"""
-    monkeypatch.setattr(um, "_read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
+    monkeypatch.setattr(ar, "read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
     calls = _fake_http(monkeypatch)
     r = um._call_memory("/memory", "DELETE", {"line": "用户怕辣"}, uid=3)
     assert r["ok"] is True
@@ -122,7 +123,7 @@ def test_http_delete_carries_user_id(monkeypatch):
 
 def test_http_organize_maps_to_post_with_uid_and_session(monkeypatch):
     """ORGANIZE 落 HTTP POST，带 user_id/session_id/items（自整理工具走本地 Agent 的通道）"""
-    monkeypatch.setattr(um, "_read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
+    monkeypatch.setattr(ar, "read_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
     calls = _fake_http(monkeypatch)
     r = um._call_memory("/memory/organize", "ORGANIZE",
                         {"session_id": "s1", "items": ["a\nb"]}, uid=3)

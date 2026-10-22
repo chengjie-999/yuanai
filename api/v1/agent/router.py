@@ -419,6 +419,28 @@ class BridgeMemoryBody(BaseModel):
     facts: list = []
 
 
+class KnowledgeSearchBody(BaseModel):
+    query: str = ""
+    user_id: int = 0
+    top_k: int = 5
+
+
+@router.post("/knowledge/search")
+def agent_knowledge_search(request: Request, body: KnowledgeSearchBody):
+    """部署 Agent 的知识库检索（本地 Agent 无云端 Milvus，经 HTTP 由云端执行；
+    曾直连本机 Milvus 连接重试挂死卡对话 120s，2026-10-22 改云端执行）。
+    user_id 由设备绑定推导（同 plan_sync）；请求体 user_id 仅作冗余校验。"""
+    uid = require_agent_uid(request)
+    if body.user_id and body.user_id != uid:
+        raise HTTPException(status_code=403, detail="user_id 与设备绑定不符")
+    query = (body.query or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="缺少 query")
+    from yuanai_core.rag import search_knowledge
+    text = search_knowledge(query, top_k=max(1, min(int(body.top_k or 5), 20)), user_id=uid)
+    return {"ok": True, "text": text}
+
+
 @router.post("/bridge-memory")
 def bridge_memory(request: Request, body: BridgeMemoryBody):
     """CC 桥接记忆写入：Agent 凭据校验 → 对 user_id 合并事实进长期记忆。

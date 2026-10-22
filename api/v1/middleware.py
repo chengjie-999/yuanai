@@ -51,6 +51,7 @@ async def auth_middleware(request: Request, call_next):
     if (path.startswith("/api/v1/agent/ws") or path.startswith("/api/v1/agent/planet")
             or path.startswith("/api/v1/agent/plan")
             or path.startswith("/api/v1/agent/bridge-memory")
+            or path.startswith("/api/v1/agent/knowledge")
             or path.startswith("/api/v1/agent/memory")):
         return await call_next(request)
 

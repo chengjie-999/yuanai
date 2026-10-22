@@ -363,6 +363,13 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - 分析脚本：9 个，输出协议：`__IMAGES__` + `__HTML__` + `__RESULT__`
 - **联网搜索（2026-10-17 接入官方 API）**：`yuanai_core/pure/web_search.py` 三级兜底——DeepSeek 官方 Search（`POST /v1/tools/search`，结构化结果+权威评级+长摘要，免费过渡期至 11-01 后 5 元/千次成功计费）→ Bing 国内 → DDG 兜底；`_search_deepseek` 复用 DEEPSEEK_API_KEY 鉴权
 
+### 耗时工具约定（2026-10-22 用户拍板：耗时任务异步化）
+
+- **retrieve_knowledge 双路径**：部署 Agent 无云端 Milvus——曾直连本机 Milvus 连接重试挂死对话 120s，改经 `POST /api/v1/agent/knowledge/search` HTTP（agent 凭据，user_id 由设备绑定推导+冗余校验）由云端执行；云端进程/本地联调直连本机 Milvus。桥接公共模块 `yuanai_core/tools/_agent_remote.py`（`is_remote_agent`/`agent_http`，user_memory/plan_tools/knowledge_tool 三处共用，不再各自复制）
+- **Milvus 快速失败**：`rag._get_db` 连接失败进 60s 冷却期快速返回 None（不再每轮工具调用重试连接）；`_safe_milvus` 改模块级守护线程池（曾每次新建 `with ThreadPoolExecutor`——超时后 with 退出仍等挂死线程收尾，15s 保护形同虚设）
+- **异步原则**：新工具先问「最坏卡多久」——网络类一律 fail-fast 超时（现有工具 timeout 8–30s 全覆盖）；>30s 长任务走后台队列（plan_executor 轮询 + CAS 认领 + 事件回传；脚本 registry 10s 心跳 + 停止联动），绝不阻塞工具调用循环
+- **已知限制**：`retrieve_planet_knowledge` 部署 Agent 仍直连本机 DB/Milvus（MySQL 拒连快速报错，未走 HTTP，挂账）
+
 ### 本地 Claude Code 委派工具
 
 `agent/tools/claude_delegate.py` — 统筹 Agent 的 `delegate_to_claude_agent` 工具：以 `claude -p --output-format stream-json` 子进程在**本机仓库**执行代码/终端/Git 任务，30s `progress` 心跳防 SSE 300s 超时，输出截断 8000 字符。
@@ -427,6 +434,7 @@ skills/
 
 - 注册默认关闭：`REGISTER_OPEN`（.env，默认 false；用户由管理员后台创建，或开关打开后走 /auth/register 恢复注册逻辑）
 - 每日消息配额：`DAILY_MESSAGE_QUOTA`（默认 50 条/用户/天，admin 不限；/chat/stream 入口 Redis 计数 `quota:msg:{uid}:{date}`，Redis 故障降级放行）
+- **Token 用量记账（token_usage 表，2026-10-22 修复上线）**：lc.get_llm 挂 UsageTrackingHandler 回调记账（流式自动 `stream_usage=True`——DeepSeek/豆包 Ark 实测支持 include_usage；handler 构造绑定模型名——流式 invocation_params 拿不到 model；缓冲 50 条/10s 冲刷）。曾两个叠加 bug 致零数据：`_maybe_interval_flush` 赋值未声明 global 抛 UnboundLocalError 被吞 + `rows, _buffer[:] = _buffer, []` 切片赋值把同对象 rows 清空（`_drain_buffer` 修复，测试锁死）。仪表盘「本月 API 成本」与「成本分析」Tab 消费 MODEL_PRICING 折算
 - 语音总开关：`VOICE_ENABLED`（voice/start 与 voice/tts 检查，关闭返回 503）
 - 网站访问统计：`visit_log` 表（Alembic 0005）+ 公开 `POST /api/v1/stats/visit`（前端 LandingPage/AboutPage 埋点，全局限流保护）+ 后台仪表盘 PV/UV/7 天趋势
 

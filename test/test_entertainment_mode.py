@@ -4,6 +4,15 @@
 
 import pytest
 
+@pytest.fixture(autouse=True)
+def _bypass_quota(monkeypatch):
+    """测试绕开每日消息配额（真实会话已把测试账号打满 50 条/天）"""
+    try:
+        monkeypatch.setattr("api.v1.db_helpers.check_daily_quota", lambda *a, **kw: True)
+    except Exception:
+        pass
+
+
 
 def _fake_cloud_llm(monkeypatch, chat_router, agent_router, forward_fn):
     """公共 mock：截获 system prompt；forward_to_agent 行为由 forward_fn 决定"""

@@ -3,7 +3,10 @@ from typing import List, Optional
 
 
 class ChatRequest(BaseModel):
-    model: str = Field("doubao-seed-2-0-pro-260215", description="模型名称")
+    # 默认主模型 = deepseek-flash（与前端 DEFAULT_MODEL 一致，2026-10-22 修正——
+    # 曾默认豆包 pro：请求不带 model 字段时（API 直调/老客户端）全落豆包，
+    # 与「主模型永远 deepseek」的产品定位相悖）
+    model: str = Field("deepseek-flash", description="模型名称")
     temperature: float = Field(0.7, ge=0.0, le=1.0, description="生成温度")
     prompt: str = Field(..., description="用户输入文本")
     images: List[str] = Field(default_factory=list, description="Base64 图片列表")

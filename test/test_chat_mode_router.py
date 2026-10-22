@@ -10,6 +10,15 @@ import os
 
 import pytest
 
+@pytest.fixture(autouse=True)
+def _bypass_quota(monkeypatch):
+    """测试绕开每日消息配额（真实会话已把测试账号打满 50 条/天）"""
+    try:
+        monkeypatch.setattr("api.v1.db_helpers.check_daily_quota", lambda *a, **kw: True)
+    except Exception:
+        pass
+
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.stdout.reconfigure(encoding='utf-8')
 

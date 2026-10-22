@@ -235,7 +235,8 @@ def test_agent_usage_upload_endpoint(client, db):
         sess = db.Session()
         try:
             rows = (sess.query(TokenUsage)
-                    .filter(TokenUsage.model.in_(["deepseek-flash", "deepseek-search", "x" * 64]))
+                    .filter(TokenUsage.source == "agent",  # 只查本测试上传的行（真实 cloud 行不动）
+                            TokenUsage.model.in_(["deepseek-flash", "deepseek-search", "x" * 64]))
                     .all())
             assert len(rows) == 3
             flash = [x for x in rows if x.model == "deepseek-flash"][0]

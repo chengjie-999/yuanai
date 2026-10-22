@@ -145,7 +145,11 @@ async def _deepseek_agent_stream(
         for round_idx in range(5):
             extra_body = {"reasoning_effort": _effort}
 
-            # 流式调用，逐 token 输出思考过程
+            # 流式调用，逐 token 输出思考过程。
+            # stream_options：带回 usage（含前缀缓存命中数）——本通道用原生
+            # AsyncOpenAI 绕过 langchain 回调，on_llm_end 不触发，用量必须
+            # 在此显式记账（2026-10-22 修复：DeepSeek 主模型用量此前从未入账，
+            # 成本分析里只剩豆包的数据）
             stream = await client.chat.completions.create(
                 model=model_name,
                 messages=messages,
@@ -153,17 +157,21 @@ async def _deepseek_agent_stream(
                 temperature=temperature,
                 extra_body=extra_body,
                 stream=True,
+                stream_options={"include_usage": True},
             )
 
             assistant: dict = {"role": "assistant", "content": ""}
             round_reasoning = ""
             round_content = ""
             tool_call_chunks: list = []
+            round_usage = None  # 末块 usage（include_usage 时返回；记账用）
             # DSML 抑制：本轮 content/reasoning 各一路过滤器
             content_f = DsmlStreamFilter()
             reasoning_f = DsmlStreamFilter()
 
             async for chunk in stream:
+                if getattr(chunk, "usage", None):
+                    round_usage = chunk.usage
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if not delta:
                     continue
@@ -196,6 +204,20 @@ async def _deepseek_agent_stream(
                 round_reasoning += r_tail
                 full_reasoning += r_tail
                 yield {"type": "reasoning", "data": r_tail}
+
+            # 每轮一次 LLM 调用 → 记一条用量（langchain 回调在本通道不触发，
+            # 显式记账；多轮工具循环 = 多条记录，与 LangGraph 路径口径一致）
+            if round_usage is not None:
+                try:
+                    from yuanai_core.rag import current_user_id
+                    from yuanai_core.usage import record_usage
+                    record_usage(current_user_id.get() or 0, model_name, "chat",
+                                 int(getattr(round_usage, "prompt_tokens", 0) or 0),
+                                 int(getattr(round_usage, "completion_tokens", 0) or 0),
+                                 source="cloud",
+                                 cache_hit_tokens=int(getattr(round_usage, "prompt_cache_hit_tokens", 0) or 0))
+                except Exception:
+                    pass
 
             # 合并 tool_call chunks 为完整 tool_calls
             if tool_call_chunks:

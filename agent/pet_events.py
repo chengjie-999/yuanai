@@ -14,9 +14,11 @@ config.json 的 agent_link.custom_agents「小元AI」条目，改前备份 .bak
 事件路径可用环境变量 PET_EVENTS_PATH 覆盖（不用 --setup 时，桌宠
 custom_agents 指向同一路径即可）。演示：`--test` 发 thinking→working→idle。
 """
+import glob
 import json
 import os
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -130,6 +132,60 @@ def setup() -> None:
     print(f"   配置目录: {d}")
     print(f"   事件文件: {events_path()}")
     print("   下一步：重启 dsh-pet 桌宠 → 右键菜单「Agent 联动」勾选「小元AI」→ 小元干活时桌宠自动换动作")
+
+
+# ====================== 桌宠进程管理（托盘托管，2026-10-22） ======================
+
+def find_pet_exe() -> str | None:
+    """探测桌宠主程序：PET_EXE_PATH 环境变量 > %LOCALAPPDATA%\dsh-pet\* >
+    与 Agent exe 同目录的 dsh-pet\*（同包分发形态）。"""
+    env = os.environ.get("PET_EXE_PATH")
+    if env and os.path.exists(env):
+        return env
+    local = os.environ.get("LOCALAPPDATA") or ""
+    if local:
+        hits = sorted(glob.glob(os.path.join(local, "dsh-pet", "dsh-pet-standalone*.exe")))
+        if hits:
+            return hits[0]
+    exe_dir = os.path.dirname(sys.executable)
+    if exe_dir:
+        hits = sorted(glob.glob(os.path.join(exe_dir, "dsh-pet", "dsh-pet-standalone*.exe")))
+        if hits:
+            return hits[0]
+    return None
+
+
+def launch_pet() -> tuple:
+    """启动桌宠（独立进程，不随 Agent 退出）。返回 (ok: bool, 信息: str)"""
+    exe = find_pet_exe()
+    if not exe:
+        return False, "未找到桌宠程序（请安装到 %LOCALAPPDATA%\dsh-pet，或与小元 Agent 同目录的 dsh-pet\）"
+    try:
+        kwargs = {}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            kwargs["start_new_session"] = True
+        subprocess.Popen([exe], cwd=os.path.dirname(exe),
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, **kwargs)
+        return True, f"桌宠已启动：{exe}"
+    except Exception as e:
+        return False, f"启动失败：{e}"
+
+
+def stop_pet() -> tuple:
+    """关闭桌宠（按主程序进程名；找不到进程视为已关闭）。返回 (ok, 信息)"""
+    exe = find_pet_exe()
+    name = os.path.basename(exe) if exe else "dsh-pet-standalone-webm-chat.exe"
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/IM", name, "/F"], capture_output=True, timeout=15)
+        else:
+            subprocess.run(["pkill", "-f", name], capture_output=True, timeout=15)
+        return True, "桌宠已关闭"
+    except Exception as e:
+        return False, f"关闭失败：{e}"
 
 
 if __name__ == "__main__":

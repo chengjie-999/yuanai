@@ -99,5 +99,49 @@ def test_setup_merges_config(tmp_path, monkeypatch):
     assert len(saved2["agent_link"]["custom_agents"]) == 2
 
 
+
+# ---------------- 桌宠进程管理（托盘托管） ----------------
+
+def test_find_pet_exe_probes(tmp_path, monkeypatch):
+    monkeypatch.delenv("PET_EXE_PATH", raising=False)
+    # LOCALAPPDATA 探测
+    fake_local = tmp_path / "LocalAppData"
+    pet_dir = fake_local / "dsh-pet"
+    pet_dir.mkdir(parents=True)
+    (pet_dir / "dsh-pet-standalone-webm-chat.exe").write_bytes(b"x")
+    (pet_dir / "dsh-pet-standalone-webm.exe").write_bytes(b"x")
+    monkeypatch.setenv("LOCALAPPDATA", str(fake_local))
+    assert pe.find_pet_exe().endswith("dsh-pet-standalone-webm-chat.exe")  # 排序取第一个
+    # PET_EXE_PATH 优先
+    custom = tmp_path / "my-pet.exe"
+    custom.write_bytes(b"x")
+    monkeypatch.setenv("PET_EXE_PATH", str(custom))
+    assert pe.find_pet_exe() == str(custom)
+    # 都找不到 → None
+    monkeypatch.delenv("PET_EXE_PATH")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "empty"))
+    assert pe.find_pet_exe() is None
+
+
+def test_launch_pet_missing_returns_friendly(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "none"))
+    monkeypatch.delenv("PET_EXE_PATH", raising=False)
+    ok, msg = pe.launch_pet()
+    assert ok is False and "未找到" in msg
+
+
+def test_launch_and_stop_pet(monkeypatch, tmp_path):
+    calls = {}
+    monkeypatch.setattr(pe, "find_pet_exe", lambda: str(tmp_path / "pet.exe"))
+    monkeypatch.setattr(pe.subprocess, "Popen", lambda *a, **kw: calls.update(popen=(a, kw)) or object())
+    ok, msg = pe.launch_pet()
+    assert ok is True and "已启动" in msg
+    assert calls["popen"][0][0][0].endswith("pet.exe")
+    monkeypatch.setattr(pe.subprocess, "run", lambda *a, **kw: calls.update(run=a) or object())
+    ok, msg = pe.stop_pet()
+    assert ok is True
+    assert "pet.exe" in calls["run"][0][2]
+
+
 if __name__ == "__main__":
     print("测试入口：pytest test/test_pet_events.py -v")

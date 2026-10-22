@@ -350,7 +350,8 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **写方**：`agent/pet_events.py`（追加写 / 连续同状态去重 / ~1MB 轮转 / 失败静默 / **只写元数据**）；orchestrator 四时机挂事件：思考→thinking、工具调用→working+工具名、工具结束→thinking、完成→idle、报错→error
 - **配置**：`python -m agent.pet_events --setup` 一键探测 %APPDATA% 桌宠配置目录并合并写入 custom_agents「小元AI」（改前备份 .bak）；`PET_EVENTS_PATH` 可覆盖路径；`--test` 发演示事件
 - **验证**：setup 后重启桌宠 → 右键「Agent 联动」勾选「小元AI」→ 聊天派活观察动作/气泡
-- **挂账**：换皮小元球素材（assets/characters manifest + WebM 帧动画）；tray 集成入口；stream_target/CC 桥接 approval→attention 扩展
+- **托盘托管（2026-10-22 完成）**：托盘菜单「桌宠」子菜单——启动/关闭桌宠（`find_pet_exe` 探测 PET_EXE_PATH > %LOCALAPPDATA%\dsh-pet\* > Agent exe 同目录 dsh-pet\*）+ 一键联动设置（跑 setup()，未装桌宠时通知指引）；全部独立线程 + 失败只通知不崩托盘
+- **挂账**：换皮小元球素材（assets/characters manifest + WebM 帧动画）；stream_target/CC 桥接 approval→attention 扩展
 
 ## 语音对话
 

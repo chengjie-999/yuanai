@@ -410,6 +410,40 @@ class AgentTray:
         cfg = load_vault_config(str(_config_file()))
         return bool(cfg.get("enabled")) and bool((cfg.get("path") or "").strip())
 
+    # ==================== 桌宠（dsh-pet-indesktop 联动，2026-10-22） ====================
+
+    def _on_pet_launch(self, icon, item):
+        threading.Thread(target=self._pet_action, args=("launch",), daemon=True).start()
+
+    def _on_pet_stop(self, icon, item):
+        threading.Thread(target=self._pet_action, args=("stop",), daemon=True).start()
+
+    def _on_pet_setup(self, icon, item):
+        threading.Thread(target=self._pet_action, args=("setup",), daemon=True).start()
+
+    def _pet_action(self, action: str) -> None:
+        """桌宠菜单动作：启动/关闭/联动设置（独立线程；失败只通知不崩托盘）"""
+        try:
+            from agent.pet_events import launch_pet, stop_pet, setup, find_pet_exe
+            if action == "launch":
+                ok, msg = launch_pet()
+            elif action == "stop":
+                ok, msg = stop_pet()
+            else:
+                if not find_pet_exe():
+                    self._icon.notify("未找到桌宠程序——请先安装 dsh-pet-indesktop"
+                                      "（官网下载页有便携包，装到 %LOCALAPPDATA%/dsh-pet）",
+                                      "桌宠联动")
+                    return
+                setup()
+                self._icon.notify("桌宠联动已配置：重启桌宠后右键菜单「Agent 联动」勾选「小元AI」",
+                                  "桌宠联动")
+                return
+            self._icon.notify(msg, "桌宠")
+        except Exception as e:
+            logger.warning("桌宠菜单动作 %s 失败: %s", action, e)
+            self._icon.notify(f"桌宠操作失败：{e}", "桌宠")
+
     def _on_vault_toggle(self, icon, item):
         """菜单勾选开关：切换 vault 同步并持久化（下次启动生效）"""
         from agent.vault_sync import load_vault_config, save_vault_config
@@ -497,6 +531,11 @@ class AgentTray:
             MenuItem("开机自启", self._on_autostart_toggle, checked=lambda item: autostart_enabled()),
             MenuItem("vault 同步", self._on_vault_toggle, checked=lambda item: self._vault_enabled()),
             MenuItem("设置 vault 路径...", self._on_set_vault_path),
+            MenuItem("桌宠", TrayMenu(
+                MenuItem("启动桌宠", self._on_pet_launch),
+                MenuItem("关闭桌宠", self._on_pet_stop),
+                MenuItem("桌宠联动设置", self._on_pet_setup),
+            )),
             MenuItem("检查更新", lambda icon, item: threading.Thread(target=self._check_update_once, args=(True,), daemon=True).start()),
         ]
         # 发现新版时追加「立即更新」入口

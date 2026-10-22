@@ -327,12 +327,14 @@ async def chat_stream(req: ChatRequest, request: Request):
         # 获取当前用户 ID
         user_id = _get_user_id(request)
 
-        # 注入用户记忆到 system prompt
+        # 注入用户记忆到 system prompt（2026-10-22 移尾，缓存优化）：静态提示
+        # 在前构成稳定前缀（DeepSeek 自动前缀缓存跨会话/跨用户命中），
+        # 动态记忆收尾——记忆折叠变化不击穿整条 system 前缀缓存
         if user_id:
             from db.session import get_db
             memory = get_db().get_user_memory(user_id)
             if memory:
-                system_prompt = f"关于当前用户的已知信息（请用它来个性化回复）：\n{memory}\n\n{system_prompt}"
+                system_prompt = f"{system_prompt}\n\n关于当前用户的已知信息（请用它来个性化回复）：\n{memory}"
 
         input_messages = build_input_messages(
             prompt=req.prompt,
@@ -398,14 +400,6 @@ async def chat_stream(req: ChatRequest, request: Request):
         _week = ("一", "二", "三", "四", "五", "六", "日")[_now.weekday()]
         offline_prompt += (f"\n\n今天是 {_now.strftime('%Y年%m月%d日')} 星期{_week}。"
                            f"搜索资讯时用当前年份（{_now.year}）构造 query。")
-        if user_id:
-            from db.session import get_db as _db
-            try:
-                mem = _db().get_user_memory(user_id)
-                if mem:
-                    offline_prompt = f"关于当前用户的已知信息（请用它来个性化回复）：\n{mem}\n\n{offline_prompt}"
-            except Exception:
-                pass
         if not ent_mode and target and target in ("analysis", "collection", "automation", "claude"):
             role_hint = {"analysis": "数据分析", "collection": "数据采集",
                          "automation": "自动化", "claude": "Claude Code"}[target]
@@ -417,6 +411,18 @@ async def chat_stream(req: ChatRequest, request: Request):
         from yuanai_core.core.lc import resolve_model_id
         from config.settings import self_report_text
         offline_prompt += "\n\n" + self_report_text(resolve_model_id(model))
+        # 记忆注入放最尾（2026-10-22 移尾，缓存优化）：DeepSeek 自动前缀缓存——
+        # 静态提示在前构成稳定前缀（跨会话/跨用户命中），日期/自报/记忆等
+        # 动态内容全部收尾，变化只损失尾段，不击穿整条 system 缓存。
+        # 记忆注入：用户记忆已注入 system_prompt，这里重写会丢——重新注入。
+        if user_id:
+            from db.session import get_db as _db
+            try:
+                mem = _db().get_user_memory(user_id)
+                if mem:
+                    offline_prompt += (f"\n\n关于当前用户的已知信息（请用它来个性化回复）：\n{mem}")
+            except Exception:
+                pass
         input_messages[0]["content"] = offline_prompt
         effort = req.reasoning_effort if req.reasoning_effort in ("low", "medium", "high") else "low"
         llm = get_llm(model, temperature=req.temperature, verbose=False, streaming=True,

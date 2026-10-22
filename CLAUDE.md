@@ -436,6 +436,7 @@ skills/
 - 注册默认关闭：`REGISTER_OPEN`（.env，默认 false；用户由管理员后台创建，或开关打开后走 /auth/register 恢复注册逻辑）
 - 每日消息配额：`DAILY_MESSAGE_QUOTA`（默认 50 条/用户/天，admin 不限；/chat/stream 入口 Redis 计数 `quota:msg:{uid}:{date}`，Redis 故障降级放行）
 - **Token 用量记账（token_usage 表，2026-10-22 修复上线）**：lc.get_llm 挂 UsageTrackingHandler 回调记账（流式自动 `stream_usage=True`——DeepSeek/豆包 Ark 实测支持 include_usage；handler 构造绑定模型名——流式 invocation_params 拿不到 model；缓冲 50 条/10s 冲刷）。曾两个叠加 bug 致零数据：`_maybe_interval_flush` 赋值未声明 global 抛 UnboundLocalError 被吞 + `rows, _buffer[:] = _buffer, []` 切片赋值把同对象 rows 清空（`_drain_buffer` 修复，测试锁死）。仪表盘「本月 API 成本」与「成本分析」Tab 消费 MODEL_PRICING 折算
+- **前缀缓存策略（2026-10-22 探针实测）**：DeepSeek 官方端点**自动前缀缓存**（连续请求命中 `prompt_cache_hit_tokens`，命中价 0.1 元/1M ≈ 未命中 1/5）；豆包 Ark 无自动缓存（cached_tokens 恒 0，显式上下文缓存 API 挂账）。**Prompt 组装纪律：静态在前、动态收尾**——system = 静态人设提示 → 日期 → 自报 → 用户记忆（记忆已从最前移尾，折叠变化不击穿前缀缓存）；新增 prompt 组装先问「动态内容是否放在了静态前缀之前」
 - 语音总开关：`VOICE_ENABLED`（voice/start 与 voice/tts 检查，关闭返回 503）
 - 网站访问统计：`visit_log` 表（Alembic 0005）+ 公开 `POST /api/v1/stats/visit`（前端 LandingPage/AboutPage 埋点，全局限流保护）+ 后台仪表盘 PV/UV/7 天趋势
 

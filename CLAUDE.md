@@ -183,6 +183,7 @@ data/                   数据目录
 - **渐变只出现在**：主 CTA 按钮、统计数字文字、标题装饰线、营销页 Hero——不铺满应用界面
 - **主题切换**：一切颜色经变量自适应；Canvas 类组件（NeuralBackground 等）用 MutationObserver 监听 `data-theme` 换调色板
 - **豁免清单（2026-10-18 一致性清扫边界，新增色先对照本表）**：① 图表系列色板（recharts 多序列需多色区分，Dashboard/Analytics/Monitor/UserAnalytics 的 CHART_* 常量）② Agent/服务商身份色（agents.ts 各智能体识别色、ToolCallCard AGENT_LABELS、ModelSelector 服务商色）③ 吉祥物画作（Mascot）④ 营销公开页（Landing/Login/About 自含花哨样式）⑤ index.css 变量定义与暗色按钮深调覆盖本身
+- **吉祥物形象定版（2026-10-22 用户拍板）**：极简「渐变核心球」，无拟人五官，单一品牌蓝渐变（亮 #60a5fa→#1d4ed8 / 暗 #93c5fd→#3b82f6）+ 光晕底座 + 呼吸核心光点 + 环绕轨道点，**以后一律用此形象**；Mascot.tsx 为唯一事实源，应用点位 = LandingPage/WelcomePage/LoginPage/NotFoundPage/favicon（public/mascot.svg）/exe+托盘图标（agent/agent_icon.ico，PIL 生成 16-256 七档，spec 已指新路径）
 
 ## 对话界面
 

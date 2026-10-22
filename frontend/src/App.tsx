@@ -12,6 +12,7 @@ import { SpeakerIcon, SpeakerOffIcon } from './components/icons'
 const ChatPage = lazy(() => import('./components/ChatPage'))
 const LoginPage = lazy(() => import('./components/LoginPage'))
 const LandingPage = lazy(() => import('./components/LandingPage'))
+import NotFoundPage from './components/NotFoundPage'
 const AboutPage = lazy(() => import('./components/AboutPage'))
 const ApiDocsPage = lazy(() => import('./pages/ApiDocsPage'))
 const AdminPage = lazy(() => import('./components/AdminPage'))
@@ -195,6 +196,7 @@ function AppLayout() {
             <Route path="/admin/*" element={
               <AdminRoute><AdminPage isAdmin={isAdmin} /></AdminRoute>
             } />
+            <Route path="*" element={<NotFoundPage backTo="/chat" backText="返回对话" />} />
           </Routes>
           </Suspense>
         </ErrorBoundary>
@@ -252,7 +254,7 @@ function AppInner() {
         <Route path="/api-docs" element={<ApiDocsPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/chat/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
   )

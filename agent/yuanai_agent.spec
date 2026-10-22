@@ -84,5 +84,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(ROOT / 'data' / 'agent_icon.ico') if (ROOT / 'data' / 'agent_icon.ico').exists() else None,
+    icon=str(ROOT / 'agent' / 'agent_icon.ico') if (ROOT / 'agent' / 'agent_icon.ico').exists() else None,
 )

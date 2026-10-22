@@ -4,7 +4,6 @@ import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
 import Sidebar from './chat/Sidebar'
-import WelcomePage from './chat/WelcomePage'
 import ChatView from './chat/ChatView'
 import VoiceCall from './chat/VoiceCall'
 import ZoomableImage from './chat/ZoomableImage'
@@ -93,13 +92,14 @@ function parseHistory(history: any[]): ChatMessage[] {
 export default function ChatPage({ user }: { user?: any }) {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [currentSid, setCurrentSid] = useState<string>('')
+  // 挂载失败兜底（2026-10-22 欢迎页移除后：加载中不再闪欢迎页，接口异常给重试框）
+  const [initFailed, setInitFailed] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [model, setModel] = useState(getStoredModel)
   // 聊天页模型下拉（输入区工具行）：切换即持久化 localStorage
   const handleModelChange = (v: string) => { setModel(v); setStoredModel(v) }
-  const [quickInput, setQuickInput] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth > 768)
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
   const [images, setImages] = useState<string[]>([])
@@ -298,15 +298,19 @@ export default function ChatPage({ user }: { user?: any }) {
   // 登录即进主对话，欢迎页仅在接口异常时作兜底
   useEffect(() => {
     const init = async () => {
-      const main = await ensureMainSession()
-      await refreshSessions()
-      if (main && !sidRef.current) {
-        setCurrentSid(main.session_id)
-        const history = await loadMessages(main.session_id)
-        setMessages(history.length === 0
-          ? [{ role: 'assistant', content: '你好！有什么可以帮你的？' }]
-          : parseHistory(history))
-        scrollToLatest()
+      try {
+        const main = await ensureMainSession()
+        await refreshSessions()
+        if (main && !sidRef.current) {
+          setCurrentSid(main.session_id)
+          const history = await loadMessages(main.session_id)
+          setMessages(history.length === 0
+            ? [{ role: 'assistant', content: '你好！有什么可以帮你的？' }]
+            : parseHistory(history))
+          scrollToLatest()
+        }
+      } catch {
+        setInitFailed(true)  // 接口异常：重试框（不再闪欢迎页）
       }
     }
     init()
@@ -343,7 +347,6 @@ export default function ChatPage({ user }: { user?: any }) {
     const sid = await createSession()
     setCurrentSid(sid)
     setMessages([{ role: 'assistant', content: '你好！有什么可以帮你的？' }])
-    setQuickInput('')
     setInput('')
     setImages([])
     setFeedbackState({})
@@ -743,48 +746,6 @@ export default function ChatPage({ user }: { user?: any }) {
     )
   }
 
-  const sendWithNewSession = async (text: string) => {
-    if (!guardBusySession()) return
-    setLoading(true)
-    const sid = await createSession()
-    setCurrentSid(sid); refreshSessions()
-    setInput(''); setQuickInput('')
-    // @指定智能体：发送时捕获并复位（欢迎页新建会话入口同规则）；
-    // 娱乐模式不委派（同 sendMessages）
-    const target = entMode ? '' : targetAgentRef.current
-    if (target) setTargetAgent('')
-    const isClaude = !entMode && (target === 'claude' || chatMode === 'claude')
-    const sentImages = [...images]; setImages([])
-    setMessages([{ role: 'user', content: text, images: sentImages.length > 0 ? sentImages : undefined }])
-    setSendTick((t) => t + 1)
-    const placeholderSender = entMode ? 'orchestrator'
-      : target && AGENT_CONFIG[target]
-        ? target
-        : chatMode === 'cloud' ? 'orchestrator' : 'local'
-    setMessages((prev) => [...prev, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
-
-    const { onEvent, onError } = makeStreamHandlers(isClaude)
-    const controller = streamChat(
-      { model, temperature: 0.7, prompt: text, images: sentImages.length > 0 ? sentImages : undefined, history: [], system_prompt: sysPrompt,
-        session_id: sid, claude: isClaude, force_cloud: !isClaude && (chatMode === 'cloud' || entMode),
-        reasoning_effort: effort, target_agent: target || undefined, chat_mode: entMode ? 'entertainment' : 'work' },
-      onEvent, onError,
-      () => {
-        const s = streamRef.current
-        streamRef.current = null
-        if (s && s.sid !== sid) { setLoading(false); return }
-        setLoading(false)
-        if (autoRead) setAutoReadTick((t) => t + 1)
-        const finalMsgs = flushVoiceTranscripts(messagesRef.current)
-        const msgs = finalMsgs.map(encodeMsg)
-        saveMessages(sid, msgs, text.length > 50 ? text.slice(0, 50) + '...' : text)
-        noteLastAssistant(finalMsgs)
-        refreshSessions()
-      },
-    )
-    streamRef.current = { sid, controller }
-  }
-
   return (
     <>
     <style>{`
@@ -861,17 +822,19 @@ export default function ChatPage({ user }: { user?: any }) {
           </div>
         )}
         {!currentSid ? (
-          <WelcomePage
-            images={images} setImages={setImages}
-            quickInput={quickInput} setQuickInput={setQuickInput}
-            sendWithNewSession={sendWithNewSession}
-            sessions={sessions} onSelectSession={handleSelectSession}
-            chatMode={chatMode} setChatMode={setChatMode}
-            entMode={entMode}
-            localOnline={localOnline} claudeOnline={claudeOnline}
-            effort={effort} setEffort={setEffort}
-            onStartVoiceCall={startVoiceCallWithPermission}
-          />
+          initFailed ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+              <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>会话加载失败，请检查网络后重试</div>
+              <button onClick={() => { setInitFailed(false); window.location.reload() }}
+                style={{ padding: '6px 20px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer' }}>
+                重新加载
+              </button>
+            </div>
+          ) : (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              正在进入对话…
+            </div>
+          )
         ) : (
           <ChatView
             messages={messages} loading={loading} user={user}

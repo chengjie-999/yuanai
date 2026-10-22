@@ -2268,12 +2268,13 @@ class AgentDatabase:
                 total_cost += cost
                 models.append({"model": r.m, "prompt_tokens": int(r.p or 0),
                                "completion_tokens": int(r.c or 0), "calls": int(r.n or 0),
-                               "cost": round(cost, 2)})
+                               # 4 位小数：起步期小金额 round 2 位全变 ¥0（2026-10-22 修复）
+                               "cost": round(cost, 4)})
             models.sort(key=lambda x: -x["cost"])
 
             msgs = sess.query(_func.count(AIChat.id)).filter(AIChat.create_time >= since).scalar() or 0
             return {"models": models,
-                    "overview": {"total_cost": round(total_cost, 2),
+                    "overview": {"total_cost": round(total_cost, 4),
                                  "cost_per_message": round(total_cost / max(int(msgs), 1), 6),
                                  "messages": int(msgs)},
                     "days": days}

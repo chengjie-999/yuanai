@@ -155,7 +155,7 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.calls}</td>
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.total_tokens.toLocaleString()}</td>
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)', textAlign: 'right', fontWeight: 600 }}>
-                    {m.cost != null ? m.cost.toFixed(2) : '未定价'}
+                    {m.cost != null ? (m.cost < 0.01 ? m.cost.toFixed(4) : m.cost.toFixed(2)) : '未定价'}
                   </td>
                 </tr>
               ))}

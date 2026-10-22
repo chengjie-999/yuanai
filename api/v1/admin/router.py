@@ -154,11 +154,12 @@ async def token_usage_stats(request: Request, days: int = 7, group_by: str = "da
         "completion_tokens": sum(r["completion_tokens"] for r in rows),
         "calls": sum(r["calls"] for r in rows),
     }
-    # 成本总额始终以 model 口径计算（准确）
+    # 成本总额始终以 model 口径计算（准确）；4 位小数——起步期单日成本不足
+    # 1 分钱时 round 2 位会显示 ¥0（2026-10-22 用户反馈「没数据」根因之一）
     model_rows = get_db().query_token_usage(days=max(1, min(days, 90)), group_by="model")
     totals["cost"] = round(sum(
         model_cost(mr["key"], mr["prompt_tokens"], mr["completion_tokens"])
-        for mr in model_rows), 2)
+        for mr in model_rows), 4)
     return {"rows": rows, "totals": totals}
 
 

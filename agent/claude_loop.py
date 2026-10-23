@@ -40,12 +40,32 @@ SDK_MODEL = os.getenv("CLAUDE_BRIDGE_MODEL", "claude-opus-4-8")
 # 仍会以 reasoning 流回传
 SDK_THINKING = os.getenv("CLAUDE_BRIDGE_THINKING", "1") == "1"
 
+# 桥接系统提示（2026-10-23 从 claude_bridge 上移共享——终端 CLI 与云端桥接
+# 用同一份安全约束，改一处两端生效）
+BRIDGE_SYSTEM_PROMPT = (
+    "你正运行在用户本机（本地 Claude Code 模式），身份是 Claude Code 本机助手，"
+    "不是小元AI的统筹 Agent——自我介绍时说明你是本机 Claude Code。"
+    "你以无头模式（非交互）为小元AI平台执行任务，用户通过云端聊天与你对话。"
+    "复杂任务先用 TodoWrite 制定计划（分步骤），再逐步执行并更新完成状态。"
+    "当用户要求记住信息（如「记住我喜欢…」）时，在回复末尾单独加一行，格式："
+    "【记住】要记住的事实（每行一条，可多行）——系统会把它们写入用户的长期记忆。"
+    "严格遵守以下安全规则（违反即任务失败）："
+    "绝不执行 git push / git remote add/set-url / git reset --hard / git clean / rm -rf / rmdir /s / "
+    "curl / wget / ssh / scp / rsync 等外联命令；绝不读取 ~/.ssh、~/.aws 等凭据文件或导出环境变量；"
+    "绝不使用 sudo / runas 提权；绝不执行 npm install -g / pip install --user；"
+    "绝不执行 shutdown / format / diskpart / taskkill /f 等系统命令；"
+    "文件写入仅限本仓库目录内。git commit 可以做，但绝不推送。"
+    "完成后用简洁中文总结：做了什么、改了哪些文件、如何验证。"
+)
+
 # ——— SDK tool 定义 ———
-# bash 与 text editor 是 Anthropic 内置工具（schema-less，type+name 声明即可，
-# 不能自定义同名带 schema 工具）；Read/Glob/Grep 为自定义（bridge_policy 白名单照搬）
-_SDK_TOOLS = [
-    {"type": "bash_20250124", "name": "bash"},
-    {"type": "text_editor_20250728", "name": "str_replace_based_edit_tool"},
+# bash 与 text editor 在 Anthropic 官方端点是内置工具（schema-less，
+# type+name 声明即可，不能自定义同名带 schema 工具）；Read/Glob/Grep 为自定义。
+# 但 DeepSeek 官方 anthropic 兼容网关（ANTHROPIC_BASE_URL 含 deepseek）不认
+# 内置 type（422: unknown variant `bash_20250124`，只认 web_search_*）——
+# 对网关端点改发同名自定义 schema 工具（Bash/Edit），安全分类与执行器
+# 零变化（classify 本就兼容 Bash/Edit 别名）。
+_CUSTOM_TOOLS = [
     {"name": "Read", "description": "读取仓库内文本文件（行数截断 2000）",
      "input_schema": {"type": "object", "properties": {
          "file_path": {"type": "string", "description": "文件路径（仓库内）"},
@@ -63,6 +83,37 @@ _SDK_TOOLS = [
          "pattern": {"type": "string"}, "glob": {"type": "string"}},
          "required": ["pattern"]}},
 ]
+
+_ANTHROPIC_TOOLS = [
+    {"type": "bash_20250124", "name": "bash"},
+    {"type": "text_editor_20250728", "name": "str_replace_based_edit_tool"},
+    *_CUSTOM_TOOLS,
+]
+
+_GATEWAY_TOOLS = [
+    {"name": "Bash", "description": "在仓库根目录执行 shell 命令（git 状态查询/运行测试等；"
+     "危险命令会被安全策略拒绝）",
+     "input_schema": {"type": "object", "properties": {
+         "command": {"type": "string", "description": "要执行的命令"}},
+         "required": ["command"]}},
+    {"name": "Edit", "description": "精确替换仓库内文件的唯一匹配文本段",
+     "input_schema": {"type": "object", "properties": {
+         "file_path": {"type": "string"}, "old_string": {"type": "string"},
+         "new_string": {"type": "string"}, "replace_all": {"type": "boolean"}},
+         "required": ["file_path", "old_string", "new_string"]}},
+    *_CUSTOM_TOOLS,
+]
+
+
+def _is_gateway_endpoint() -> bool:
+    """第三方 anthropic 兼容网关判定（DeepSeek 官方端点等）——
+    SDK 客户端自动读 ANTHROPIC_BASE_URL，此处只做声明形态切换"""
+    base = os.getenv("ANTHROPIC_BASE_URL", "")
+    return "deepseek" in base.lower()
+
+
+def sdk_tools() -> List[Dict]:
+    return _GATEWAY_TOOLS if _is_gateway_endpoint() else _ANTHROPIC_TOOLS
 
 _IGNORE_DIRS = {".git", "node_modules", "venv", "dist", "build", "__pycache__",
                 ".claude", "data", ".idea", ".vscode"}
@@ -282,8 +333,9 @@ def _exec_text_editor(tool_input: dict) -> str:
 _EXECUTORS = {
     "Read": _exec_read, "Write": _exec_write,
     "Glob": _exec_glob, "Grep": _exec_grep,
-    "bash": _exec_bash,
+    "bash": _exec_bash, "Bash": _exec_bash,
     "str_replace_based_edit_tool": _exec_text_editor,
+    "Edit": _exec_edit,
 }
 
 
@@ -357,7 +409,7 @@ async def run_sdk_loop(
                 **({"thinking": {"type": "adaptive", "display": "summarized"}} if SDK_THINKING else {}),
                 system=system or None,
                 messages=pending_messages,
-                tools=_SDK_TOOLS,
+                tools=sdk_tools(),
                 stream=True,
             )
 

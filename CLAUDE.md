@@ -355,6 +355,18 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **托盘托管（2026-10-22 完成）**：托盘菜单「桌宠」子菜单——启动/关闭桌宠（`find_pet_exe` 探测 PET_EXE_PATH > %LOCALAPPDATA%\dsh-pet\* > Agent exe 同目录 dsh-pet\*）+ 一键联动设置（跑 setup()，未装桌宠时通知指引）；全部独立线程 + 失败只通知不崩托盘
 - **挂账**：换皮小元球素材（assets/characters manifest + WebM 帧动画）；stream_target/CC 桥接 approval→attention 扩展
 
+## 终端对话 CLI（P1 产品愿景，2026-10-23 落地）
+
+`python -m agent.terminal`——Windows 终端直接对话本机 Claude Code / 本地 LLM（终端=P4 桌宠的天然搭档，补桌面主动对话入口）。
+
+- **模式**：`/claude` 默认（复用 `claude_loop.run_sdk_loop`，与云端桥接同一条代码路径；审批流终端内 Y/N，fail-closed）/ `/chat` 本地 LLM 直连（`call_llm` deepseek-flash，`TERMINAL_CHAT_MODEL` 可配）；`/history` `/clear` `/quit`
+- **会话续接**：独立 `data/terminal_sessions.json`（不与云端桥接 claude_sessions.json 互串）；REPL 默认自动续接上次会话（--new 新开会话）；管道模式单轮不落盘
+- **安全**：cwd 锁仓库根（CC_PROJECT_DIR 可指真实仓库）；工具执行经 claude_loop.execute_tool 安全分类（deny/review 与桥接同口径）；`_BRIDGE_SYSTEM_PROMPT` 已上移至 claude_loop 共享（改一处两端生效）
+- **编码防护（真机踩坑）**：Windows 管道 GBK/UTF-8 错位与网关流脏字节会产生孤立 surrogate——stdin 按字节读 + utf-8/gbk 双解码兜底（`read_stdin_query`），token/结果/落盘全链路 `_clean_text` 清洗（anthropic SDK openapi_dumps 严格 utf-8 编码，带 surrogate 必崩）
+- **网关工具声明形态（2026-10-23 修复，云端桥接 SDK 模式同时受益）**：DeepSeek 官方 anthropic 兼容网关不认内置工具 type（422: unknown variant `bash_20250124`，只认 web_search_*）——`sdk_tools()` 按 ANTHROPIC_BASE_URL 含 deepseek 判定：网关端点发自定义 schema 工具（Bash/Edit 别名，classify/执行器零变化），Anthropic 官方端点保持内置声明
+- **桌宠联动**：thinking/working+工具名/attention(审批)/idle/error 挂 pet_events
+- **测试**：test/test_terminal.py 18 项（零网络 mock）+ test_claude_loop 3 项网关形态；真机实测管道 /claude /chat 与工具调用闭环全通
+
 ## 语音对话
 
 火山引擎「AI 音视频互动方案」实时语音（豆包 App 同款：RTC + 豆包 ASR/TTS + 方舟 LLM）：

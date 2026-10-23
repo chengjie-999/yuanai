@@ -52,6 +52,12 @@ python -m agent.main --agent-id 1
 python -m agent.main --agent-id 1 --tray
 ```
 
+**本地终端对话 CLI（2026-10-23，P1 产品愿景）**：在 Windows 终端里直接对话本机 Claude Code（默认 `/claude`，anthropic SDK loop + 工具 + 审批 Y/N）或本地 LLM（`/chat`）：
+```bash
+python -m agent.terminal                 # REPL 交互（自动续接上次会话）
+echo "看看项目结构" | python -m agent.terminal   # 管道单轮
+```
+
 ### 创建管理员
 
 启动后用 admin 账号登录后台管理页 → 用户管理 → **创建用户**，设置角色为 admin。

@@ -223,3 +223,41 @@ def test_credentials_fallback_env(monkeypatch):
 
 if __name__ == "__main__":
     print("测试入口：pytest test/test_claude_loop.py -v")
+
+
+# ---------------- 工具声明形态（DeepSeek 网关 422 修复） ----------------
+
+def test_sdk_tools_anthropic_default(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    tools = claude_loop.sdk_tools()
+    names = [t.get("name") for t in tools]
+    types = [t.get("type") for t in tools if t.get("type")]
+    assert "bash" in names and "str_replace_based_edit_tool" in names
+    assert "bash_20250124" in types
+
+
+def test_sdk_tools_deepseek_gateway(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://api.deepseek.com/anthropic")
+    tools = claude_loop.sdk_tools()
+    assert all(not t.get("type") for t in tools), "网关端点不允许内置 type 声明（422）"
+    names = [t.get("name") for t in tools]
+    assert "Bash" in names and "Edit" in names and "Read" in names
+    # 安全分类兼容自定义名（Bash/Edit 走白名单语义）
+    assert classify("Bash", {"command": "git status"}) == "allow"
+    assert classify("Bash", {"command": "rm -rf /"}) == "deny"
+    assert classify("Edit", {"file_path": "README.md"}) == "allow"
+
+
+def test_gateway_bash_edit_executors(tmp_path, monkeypatch):
+    monkeypatch.setattr(claude_loop, "POLICY_ROOT", tmp_path)
+    import agent.bridge_policy as bp
+    monkeypatch.setattr(bp, "PROJECT_ROOT", tmp_path)
+    out = claude_loop.execute_tool("Bash", {"command": "echo hi"})
+    assert "(exit=0)" in out
+    out2 = claude_loop.execute_tool("Edit", {"file_path": "x.txt",
+                                             "old_string": "a", "new_string": "b"})
+    assert "文件不存在" in out2  # 未创建文件 → 拒绝执行
+    (tmp_path / "x.txt").write_text("aaa", encoding="utf-8")
+    out3 = claude_loop.execute_tool("Edit", {"file_path": "x.txt",
+                                             "old_string": "a", "new_string": "b"})
+    assert "出现 3 次" in out3  # 恰好 1 次校验

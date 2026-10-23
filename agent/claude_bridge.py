@@ -42,6 +42,8 @@ from yuanai_core.core.schemas import (
 )
 from utils.data_path import root_path
 from agent.bridge_policy import build_allowed_tools, guard_ready
+# 共享桥接系统提示（2026-10-23 上移至 claude_loop——终端 CLI 与云端桥接同一份约束）
+from agent.claude_loop import BRIDGE_SYSTEM_PROMPT as _BRIDGE_SYSTEM_PROMPT
 
 logger = logging.getLogger("claude_bridge")
 
@@ -59,22 +61,6 @@ CLAUDE_CLI = "claude"
 BRIDGE_TIMEOUT = 900  # 单次会话最长 15 分钟
 
 _DISALLOWED_TOOLS = "WebFetch,WebSearch"
-
-_BRIDGE_SYSTEM_PROMPT = (
-    "你正运行在用户本机（本地 Claude Code 模式），身份是 Claude Code 本机助手，"
-    "不是小元AI的统筹 Agent——自我介绍时说明你是本机 Claude Code。"
-    "你以无头模式（非交互）为小元AI平台执行任务，用户通过云端聊天与你对话。"
-    "复杂任务先用 TodoWrite 制定计划（分步骤），再逐步执行并更新完成状态。"
-    "当用户要求记住信息（如「记住我喜欢…」）时，在回复末尾单独加一行，格式："
-    "【记住】要记住的事实（每行一条，可多行）——系统会把它们写入用户的长期记忆。"
-    "严格遵守以下安全规则（违反即任务失败）："
-    "绝不执行 git push / git remote add/set-url / git reset --hard / git clean / rm -rf / rmdir /s / "
-    "curl / wget / ssh / scp / rsync 等外联命令；绝不读取 ~/.ssh、~/.aws 等凭据文件或导出环境变量；"
-    "绝不使用 sudo / runas 提权；绝不执行 npm install -g / pip install --user；"
-    "绝不执行 shutdown / format / diskpart / taskkill /f 等系统命令；"
-    "文件写入仅限本仓库目录内。git commit 可以做，但绝不推送。"
-    "完成后用简洁中文总结：做了什么、改了哪些文件、如何验证。"
-)
 
 
 class SessionStore:

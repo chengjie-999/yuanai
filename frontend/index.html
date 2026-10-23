@@ -16,7 +16,15 @@
     <meta name="twitter:card" content="summary" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- JS 未到达前的纯 HTML 加载壳：差网络（移动流量）下不再纯白屏；React 挂载后自动替换 -->
+    <div id="root">
+      <div style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#f8fafc;color:#64748b;font-size:14px">
+        <div style="width:28px;height:28px;border:3px solid #e2e8f0;border-top-color:#2563eb;border-radius:50%;animation:xyload 0.8s linear infinite"></div>
+        <div>小元AI 加载中…</div>
+        <div style="font-size:12px;opacity:.7">如长时间无响应，请检查网络或稍后重试</div>
+      </div>
+      <style>@keyframes xyload{to{transform:rotate(360deg)}}@media (prefers-color-scheme:dark){#root>div{background:#0b1220!important;color:#64748b!important}}</style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

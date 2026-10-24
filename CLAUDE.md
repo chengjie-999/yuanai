@@ -384,6 +384,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 
 ## 工具系统
 
+- **北京时间权威来源（2026-10-23）**：云服务器时区是 UTC——LLM 可见时间（`get_current_time` 等 datetime 工具、/stream 日期注入）必须走 `yuanai_core/pure/beijing_time.py` 的 `beijing_now()`（UTC+8 固定偏移 naive 墙钟，零 zoneinfo 依赖，中国无夏令时），**禁止在 LLM 可见链路直接用 `datetime.now()`**（曾致对话报时差 8 小时）
 - 通用工具：`yuanai_core/tools/` 自动发现，39 个（8 个模块，7 个类别：general/crawl/data/file/memory/knowledge/stats）
 - 工具类别标签：每个模块顶部 `TOOL_CATEGORY`，`load_tools_for("crawl", "data")` 按需加载
 - Agent 专用工具：`agent/tools/` 递归扫描，38 个（浏览器/审核/Cookie/截图）

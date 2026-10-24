@@ -1,14 +1,16 @@
 TOOL_CATEGORY = "general"
 
-"""Date/time utilities"""
+"""Date/time utilities（北京时间权威来源：云端进程系统时区是 UTC，绝不用 datetime.now()）"""
 from datetime import datetime, timedelta
 from langchain_core.tools import tool
+
+from yuanai_core.pure.beijing_time import beijing_now
 
 
 @tool
 def get_current_time(format: str = "%Y-%m-%d %H:%M:%S") -> str:
-    """Get current datetime. format: strftime pattern (default YYYY-MM-DD HH:MM:SS)."""
-    return datetime.now().strftime(format)
+    """Get current datetime in Beijing time (UTC+8). format: strftime pattern (default YYYY-MM-DD HH:MM:SS)."""
+    return beijing_now().strftime(format)
 
 
 @tool
@@ -16,7 +18,7 @@ def calculate_date_diff(date1: str, date2: str = "", unit: str = "days") -> str:
     """Days between two dates. date1/date2: YYYY-MM-DD (default date2=today), unit: days/months/years."""
     try:
         d1 = datetime.strptime(date1.strip(), "%Y-%m-%d")
-        d2 = datetime.now() if not date2 else datetime.strptime(date2.strip(), "%Y-%m-%d")
+        d2 = beijing_now() if not date2 else datetime.strptime(date2.strip(), "%Y-%m-%d")
         diff = abs((d2 - d1).days)
         if unit == "months":
             months = (d2.year - d1.year) * 12 + (d2.month - d1.month)
@@ -41,6 +43,6 @@ def add_days(date: str, days: int) -> str:
 @tool
 def get_weekday(date: str = "") -> str:
     """Get day of week. date: YYYY-MM-DD (default today)."""
-    d = datetime.now() if not date else datetime.strptime(date.strip(), "%Y-%m-%d")
+    d = beijing_now() if not date else datetime.strptime(date.strip(), "%Y-%m-%d")
     wd = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
     return f"{d.strftime('%Y-%m-%d')} 是 {wd[d.weekday()]}"

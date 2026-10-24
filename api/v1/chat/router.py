@@ -395,8 +395,10 @@ async def chat_stream(req: ChatRequest, request: Request):
         offline_prompt = _ENTERTAINMENT_SYSTEM_PROMPT if ent_mode else _OFFLINE_SYSTEM_PROMPT
         # E4 搜索联动：注入当前日期——模型知识截止滞后，资讯类搜索会拿旧年份
         # （如 2025）构造 query，热点结果全是陈年旧闻
-        from datetime import datetime as _dt
-        _now = _dt.now()
+        # 2026-10-23 修复：服务器时区是 UTC，datetime.now() 曾差 8 小时——
+        # 统一走北京时间权威来源
+        from yuanai_core.pure.beijing_time import beijing_now
+        _now = beijing_now()
         _week = ("一", "二", "三", "四", "五", "六", "日")[_now.weekday()]
         offline_prompt += (f"\n\n今天是 {_now.strftime('%Y年%m月%d日')} 星期{_week}。"
                            f"搜索资讯时用当前年份（{_now.year}）构造 query。")

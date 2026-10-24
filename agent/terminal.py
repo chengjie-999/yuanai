@@ -36,6 +36,7 @@ import os
 import sys
 import time
 import uuid
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -171,6 +172,25 @@ def _clean_text(text: str) -> str:
     openapi_dumps 抛 UnicodeEncodeError 打断整轮对话；清洗后落盘/回传均安全。
     """
     return text.encode("utf-8", errors="replace").decode("utf-8")
+
+
+def find_terminal_launcher():
+    """探测可启动终端的 (python_exe, project_root)；不可用返回 None。
+
+    托盘「终端对话」入口用（三本地合一：Agent 常驻 + 桌宠 + 终端统一托盘托管）：
+    - 源码树运行（托盘由项目 venv python 跑）：复用当前解释器 + 仓库根
+    - 冻结 exe：向上探测仓库布局（venv\\Scripts\\python.exe + agent\\terminal.py）
+      ——开发机 dist\\ 下的 exe 能探到项目 venv；发布版无源码环境返回 None
+    """
+    if not getattr(sys, "frozen", False):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return (sys.executable, root) if os.path.isfile(os.path.join(root, "agent", "terminal.py")) else None
+    exe_dir = Path(sys.executable).resolve().parent
+    for base in (exe_dir, exe_dir.parent, exe_dir.parent.parent, exe_dir.parent.parent.parent):
+        venv_py = base / "venv" / "Scripts" / "python.exe"
+        if venv_py.is_file() and (base / "agent" / "terminal.py").is_file():
+            return (str(venv_py), str(base))
+    return None
 
 
 def read_stdin_query() -> str:

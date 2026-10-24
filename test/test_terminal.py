@@ -239,3 +239,34 @@ def test_read_stdin_query_invalid_bytes(monkeypatch):
     q = terminal.read_stdin_query()
     assert "abc" in q
     assert chr(0xdc80) not in q
+
+
+# ---------------- 托盘入口探测（三本地合一） ----------------
+
+def test_find_launcher_dev_mode(monkeypatch):
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    launcher = terminal.find_terminal_launcher()
+    assert launcher is not None
+    python_exe, root = launcher
+    assert os.path.isfile(os.path.join(root, "agent", "terminal.py"))
+    assert python_exe == sys.executable
+
+
+def test_find_launcher_frozen_probe(tmp_path, monkeypatch):
+    # 模拟 dist\exe 布局：tmp/dist/app.exe，tmp 下含 venv + agent/terminal.py
+    (tmp_path / "venv" / "Scripts").mkdir(parents=True)
+    (tmp_path / "venv" / "Scripts" / "python.exe").write_text("", encoding="utf-8")
+    (tmp_path / "agent").mkdir()
+    (tmp_path / "agent" / "terminal.py").write_text("#", encoding="utf-8")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "dist" / "app.exe"))
+    launcher = terminal.find_terminal_launcher()
+    assert launcher is not None
+    assert launcher[0].endswith(os.path.join("venv", "Scripts", "python.exe"))
+    assert launcher[1] == str(tmp_path)
+
+
+def test_find_launcher_frozen_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "app.exe"))
+    assert terminal.find_terminal_launcher() is None

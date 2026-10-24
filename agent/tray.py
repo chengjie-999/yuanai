@@ -421,6 +421,31 @@ class AgentTray:
     def _on_pet_setup(self, icon, item):
         threading.Thread(target=self._pet_action, args=("setup",), daemon=True).start()
 
+    def _on_terminal_open(self, icon, item):
+        threading.Thread(target=self._terminal_action, daemon=True).start()
+
+    def _terminal_action(self) -> None:
+        """终端对话入口（三本地合一 2026-10-23）：新控制台窗口跑 python -m agent.terminal。
+        源码树运行直接复用当前解释器；冻结 exe 向上探测仓库 venv；失败只通知。"""
+        try:
+            from agent.terminal import find_terminal_launcher
+            launcher = find_terminal_launcher()
+            if not launcher:
+                self._icon.notify("终端对话需源码环境（本机仓库 + venv）——"
+                                  "发布版 exe 不含控制台终端", "终端对话")
+                return
+            python_exe, root = launcher
+            kwargs = {}
+            if os.name == "nt":
+                kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+            else:
+                kwargs["start_new_session"] = True
+            subprocess.Popen([python_exe, "-m", "agent.terminal"], cwd=root,
+                             stdin=subprocess.DEVNULL, **kwargs)
+        except Exception as e:
+            logger.warning("打开终端对话失败: %s", e)
+            self._icon.notify(f"终端对话启动失败：{e}", "终端对话")
+
     def _pet_action(self, action: str) -> None:
         """桌宠菜单动作：启动/关闭/联动设置（独立线程；失败只通知不崩托盘）"""
         try:
@@ -536,6 +561,7 @@ class AgentTray:
                 MenuItem("关闭桌宠", self._on_pet_stop),
                 MenuItem("桌宠联动设置", self._on_pet_setup),
             )),
+            MenuItem("终端对话", self._on_terminal_open),
             MenuItem("检查更新", lambda icon, item: threading.Thread(target=self._check_update_once, args=(True,), daemon=True).start()),
         ]
         # 发现新版时追加「立即更新」入口

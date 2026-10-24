@@ -27,6 +27,8 @@
   CLAUDE_BRIDGE_THINKING 对 /claude 生效（复用 claude_loop 读取）
 """
 
+from __future__ import annotations  # 惰性注解：Python 3.8 下 `dict | None` 不再在定义时求值
+
 import argparse
 import asyncio
 import json
@@ -262,14 +264,30 @@ async def run_claude_query(messages: list, on_approval=None) -> str:
             _emit_pet("idle")
         elif kind == "error":
             render_error(_clean_text(ev["data"]))
+            if "SDK 未安装" in str(ev["data"]):
+                render_error("请用项目 venv 运行：venv\\Scripts\\python.exe -m agent.terminal")
             _emit_pet("error")
     return final
 
 
+async def _to_thread(fn, *args):
+    """asyncio.to_thread 兼容（Python 3.8 无该 API，退回 run_in_executor）"""
+    if hasattr(asyncio, "to_thread"):
+        return await asyncio.to_thread(fn, *args)
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: fn(*args))
+
+
 async def run_chat_query(messages: list) -> str:
     """本地 LLM 直连（/chat 模式）"""
-    from yuanai_core.core.lc import call_llm
-    from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+    try:
+        from yuanai_core.core.lc import call_llm
+        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+    except Exception as e:
+        render_error(f"本地 LLM 依赖不可用: {str(e)[:160]}——请用项目 venv 运行："
+                     "venv\\Scripts\\python.exe -m agent.terminal")
+        _emit_pet("error")
+        return ""
 
     llm_messages = [SystemMessage(content=_CHAT_SYSTEM_PROMPT)]
     for m in messages[-MAX_SENT_MSGS:]:
@@ -280,8 +298,7 @@ async def run_chat_query(messages: list) -> str:
                             else AIMessage(content=content))
     _emit_pet("thinking")
     try:
-        result = await asyncio.to_thread(
-            call_llm, llm_messages, DEFAULT_CHAT_MODEL)
+        result = await _to_thread(call_llm, llm_messages, DEFAULT_CHAT_MODEL)
     except Exception as e:
         render_error(f"本地 LLM 调用失败: {str(e)[:200]}")
         _emit_pet("error")

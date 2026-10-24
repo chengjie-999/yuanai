@@ -359,7 +359,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 
 `python -m agent.terminal`——Windows 终端直接对话本机 Claude Code / 本地 LLM（终端=P4 桌宠的天然搭档，补桌面主动对话入口）。
 
-- **模式**：`/claude` 默认（复用 `claude_loop.run_sdk_loop`，与云端桥接同一条代码路径；审批流终端内 Y/N，fail-closed）/ `/chat` 本地 LLM 直连（`call_llm` deepseek-flash，`TERMINAL_CHAT_MODEL` 可配）；`/history` `/clear` `/quit`
+- **模式**：`/claude` 默认（复用 `claude_loop.run_sdk_loop`，与云端桥接同一条代码路径；审批流终端内 Y/N，fail-closed）/ `/chat` 本地 LLM 直连（`call_llm` deepseek-flash，`TERMINAL_CHAT_MODEL` 可配）；`/history` `/clear` `/quit`；**运行必须用项目 venv**（`venv\Scripts\python.exe -m agent.terminal` 或双击根目录 `terminal.bat`——系统默认 python 可能是 anaconda 3.8，缺依赖时报错并提示 venv）
 - **会话续接**：独立 `data/terminal_sessions.json`（不与云端桥接 claude_sessions.json 互串）；REPL 默认自动续接上次会话（--new 新开会话）；管道模式单轮不落盘
 - **安全**：cwd 锁仓库根（CC_PROJECT_DIR 可指真实仓库）；工具执行经 claude_loop.execute_tool 安全分类（deny/review 与桥接同口径）；`_BRIDGE_SYSTEM_PROMPT` 已上移至 claude_loop 共享（改一处两端生效）
 - **编码防护（真机踩坑）**：Windows 管道 GBK/UTF-8 错位与网关流脏字节会产生孤立 surrogate——stdin 按字节读 + utf-8/gbk 双解码兜底（`read_stdin_query`），token/结果/落盘全链路 `_clean_text` 清洗（anthropic SDK openapi_dumps 严格 utf-8 编码，带 surrogate 必崩）

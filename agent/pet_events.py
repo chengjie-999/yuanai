@@ -14,6 +14,8 @@ config.json 的 agent_link.custom_agents「小元AI」条目，改前备份 .bak
 事件路径可用环境变量 PET_EVENTS_PATH 覆盖（不用 --setup 时，桌宠
 custom_agents 指向同一路径即可）。演示：`--test` 发 thinking→working→idle。
 """
+from __future__ import annotations  # 惰性注解：Python 3.8 兼容（tuple | None 等）
+
 import glob
 import json
 import os

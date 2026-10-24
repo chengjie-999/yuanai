@@ -18,7 +18,11 @@ const Svg = ({ size = 16, style, className, children }: IconProps & { children: 
     style={style} className={className} aria-hidden="true">{children}</svg>
 )
 
-/* 发送（纸飞机） */
+/* 终端（P2 对话内嵌终端面板） */
+export const TerminalIcon = (p: IconProps) => <Svg {...p}><polyline points="4 17 10 11 4 5" /><line x1="12" x2="20" y1="19" y2="19" /></Svg>
+
+/* 复制（终端命令复制按钮） */
+export const CopyIcon = (p: IconProps) => <Svg {...p}><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></Svg>
 
 /* @提及（群聊定向） */
 export const AtSignIcon = (p: IconProps) => <Svg {...p}><circle cx="12" cy="12" r="4" /><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" /></Svg>

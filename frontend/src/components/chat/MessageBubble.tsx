@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { ChatMessage } from '../../types'
 import ToolCallCard from '../ToolCallCard'
+import TerminalView, { isTerminalCall } from './TerminalView'
 import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { voiceTtsStream } from '../../api'
@@ -411,17 +412,44 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                     {msg.reasoning}
                   </div>
                 )}
-                {/* 时序交叉：每段思考紧跟其触发的工具调用卡 */}
-                {msg.toolCalls?.map((tc, j) => (
-                  <div key={j}>
-                    {tc.reasoning && (
-                      <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 160, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
-                        {tc.reasoning}
+                {/* 时序交叉：每段思考紧跟其触发的工具调用卡；命令类工具（Bash 等）
+                    合并为终端面板（P2 对话内嵌终端，2026-10-23） */}
+                {(() => {
+                  const segs: { kind: 'card' | 'terminal'; items: typeof msg.toolCalls }[] = []
+                  for (const tc of msg.toolCalls || []) {
+                    const last = segs[segs.length - 1]
+                    const isT = isTerminalCall(tc)
+                    if (isT && last?.kind === 'terminal') last.items!.push(tc)
+                    else if (isT) segs.push({ kind: 'terminal', items: [tc] })
+                    else if (last?.kind === 'card') last.items!.push(tc)
+                    else segs.push({ kind: 'card', items: [tc] })
+                  }
+                  return segs.map((seg, si) => {
+                    if (seg.kind === 'terminal') {
+                      const reasonings = seg.items!.filter((tc) => tc.reasoning).map((tc) => tc.reasoning!)
+                      return (
+                        <div key={`t${si}`}>
+                          {reasonings.map((r, ri) => (
+                            <div key={ri} style={{ marginTop: 6, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 160, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+                              {r}
+                            </div>
+                          ))}
+                          <TerminalView calls={seg.items!} />
+                        </div>
+                      )
+                    }
+                    return seg.items!.map((tc, j) => (
+                      <div key={`c${si}-${j}`}>
+                        {tc.reasoning && (
+                          <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 160, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+                            {tc.reasoning}
+                          </div>
+                        )}
+                        <ToolCallCard call={tc} />
                       </div>
-                    )}
-                    <ToolCallCard call={tc} />
-                  </div>
-                ))}
+                    ))
+                  })
+                })()}
                 {/* 最终思考：无后续工具调用时的收尾推理（回答前） */}
                 {msg.finalReasoning && (
                   <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 160, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>

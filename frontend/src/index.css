@@ -32,6 +32,11 @@
   --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 45%, #1d4ed8 100%);
   --accent-soft: rgba(59,130,246,0.12);
   --accent-glow: rgba(59,130,246,0.35);
+  /* 终端面板（P2 对话内嵌终端视图）——终端审美恒深色，明暗主题同款 */
+  --terminal-bg: #0d1526;
+  --terminal-border: #26344d;
+  --terminal-text: #cbd5e1;
+  --terminal-prompt: #4ade80;
 }
 
 [data-theme="dark"] {

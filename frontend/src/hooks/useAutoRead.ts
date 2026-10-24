@@ -10,13 +10,13 @@ const listeners = new Set<() => void>()
 const emit = () => listeners.forEach((l) => l())
 
 export function getAutoRead(): boolean {
-  return localStorage.getItem(KEY) !== '0'
+  try { return localStorage.getItem(KEY) !== '0' } catch { return true }  // 存储受限默认开启
 }
 
 /** 切换开关并广播；返回切换后的值 */
 export function toggleAutoRead(): boolean {
   const next = !getAutoRead()
-  localStorage.setItem(KEY, next ? '1' : '0')
+  try { localStorage.setItem(KEY, next ? '1' : '0') } catch { /* 不落盘仅本次会话 */ }
   emit()
   return next
 }

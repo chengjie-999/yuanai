@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { API_BASE } from '../../../api'
+import { API_BASE, getToken } from '../../../api'
 
 export default function KnowledgePanel() {
   const [query, setQuery] = useState('')
@@ -17,7 +17,7 @@ export default function KnowledgePanel() {
     if (!query.trim()) return
     setSearching(true); setError('')
     try {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token') || ''
+      const token = getToken()  // 安全读（存储被禁时不抛 SecurityError，P5 收敛）
       const res = await fetch(`${API_BASE}/knowledge/search?q=${encodeURIComponent(query.trim())}`, {
         headers: { Authorization: `Bearer ${token}` },
       })

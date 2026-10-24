@@ -138,7 +138,7 @@ export default function ChatPage({ user }: { user?: any }) {
   const saveDmTarget = (sid: string, target: string) => {
     setDmTargets((prev) => {
       const next = target ? { ...prev, [sid]: target } : { ...prev }
-      localStorage.setItem('dmTargets', JSON.stringify(next))
+      try { localStorage.setItem("dmTargets", JSON.stringify(next)) } catch { /* 存储受限，仅本次会话 */ }
       return next
     })
   }
@@ -407,7 +407,7 @@ export default function ChatPage({ user }: { user?: any }) {
       if (!(sid in prev)) return prev
       const next = { ...prev }
       delete next[sid]
-      localStorage.setItem('dmTargets', JSON.stringify(next))
+      try { localStorage.setItem("dmTargets", JSON.stringify(next)) } catch { /* 存储受限，仅本次会话 */ }
       return next
     })
     refreshSessions()

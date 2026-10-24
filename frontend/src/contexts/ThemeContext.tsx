@@ -16,8 +16,17 @@ const ThemeContext = createContext<ThemeState>({
 
 const STORAGE_KEY = 'theme'
 
+/* 存储受限环境（隐私模式/被禁 storage）裸读 localStorage 抛 SecurityError——
+   P5 收敛：全部读写包安全壳（2026-10-24） */
+function safeGet(key: string): string | null {
+  try { return localStorage.getItem(key) } catch { return null }
+}
+function safeSet(key: string, value: string): void {
+  try { localStorage.setItem(key, value) } catch { /* 主题不落盘仅本次生效 */ }
+}
+
 function getLocalTheme(): Theme | null {
-  const saved = localStorage.getItem(STORAGE_KEY)
+  const saved = safeGet(STORAGE_KEY)
   if (saved === 'dark' || saved === 'light') return saved
   return null
 }
@@ -31,12 +40,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // On mount, if user is logged in, fetch server theme (overrides local)
   useEffect(() => {
-    const token = localStorage.getItem('token')
+    const token = safeGet('token')
     if (!token) return
     fetchTheme().then((serverTheme) => {
       if (serverTheme === 'light' || serverTheme === 'dark') {
         setTheme(serverTheme)
-        localStorage.setItem(STORAGE_KEY, serverTheme)
+        safeSet(STORAGE_KEY, serverTheme)
       }
     })
   }, [])
@@ -44,13 +53,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Apply theme to DOM
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem(STORAGE_KEY, theme)
+    safeSet(STORAGE_KEY, theme)
   }, [theme])
 
   const toggle = useCallback(() => {
     setTheme((t) => {
       const next = t === 'light' ? 'dark' : 'light'
-      const token = localStorage.getItem('token')
+      const token = safeGet('token')
       if (token) saveThemeToServer(next)
       return next
     })
@@ -58,7 +67,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const set = useCallback((t: Theme) => {
     setTheme(t)
-    const token = localStorage.getItem('token')
+    const token = safeGet('token')
     if (token) saveThemeToServer(t)
   }, [])
 

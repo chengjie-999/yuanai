@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { updateProfile, changePassword } from '../api'
+import { useIsMobile } from '../hooks/useIsMobile'
 import Modal from './Modal'
 
 const C = {
@@ -15,6 +16,7 @@ const C = {
 }
 
 export default function UserPage({ user, onLogout }: { user: any; onLogout: () => void }) {
+  const isMobile = useIsMobile()
   const { refresh } = useAuth()
   const [name, setName] = useState(user?.display_name || '')
   const [nameMsg, setNameMsg] = useState('')
@@ -57,7 +59,7 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
   }
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', background: 'var(--bg-secondary)', padding: '40px 20px', display: 'flex', justifyContent: 'center' }}>
+    <div style={{ height: '100%', overflow: 'auto', background: 'var(--bg-secondary)', padding: isMobile ? '20px 14px' : '40px 20px', display: 'flex', justifyContent: 'center' }}>
       <div style={{ maxWidth: 480, width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* ---- 个人信息 ---- */}

@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import MemoryCard from './MemoryCard'
 import Modal from './Modal'
 import { useAutoRead, toggleAutoRead } from '../hooks/useAutoRead'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const C = {
   card: { background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' } as const,
@@ -61,6 +62,7 @@ const VOICE_OPTIONS = [
 ]
 
 export default function SettingsPage() {
+  const isMobile = useIsMobile()
   const { isAdmin } = useAuth()
   const [chatModel, setChatModel] = useState(getStoredModel())
   const [models, setModels] = useState<Record<string, { label: string; provider: string }>>({})
@@ -149,7 +151,7 @@ export default function SettingsPage() {
   )
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', background: 'var(--bg-secondary)', padding: '32px 24px' }}>
+    <div style={{ height: '100%', overflow: 'auto', background: 'var(--bg-secondary)', padding: isMobile ? '20px 16px' : '32px 24px' }}>
       <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px' }}>设置</h1>
 

@@ -96,6 +96,13 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, lastAs
     }
 
     const connect = async () => {
+      // P5 移动优化：HTTP 环境无麦克风权限（getUserMedia 仅安全上下文可用）——
+      // 提前失败并提示，而不是进了通话卡才报晦涩的 RTC 错误
+      if (typeof window !== 'undefined' && !window.isSecureContext) {
+        setStatus('error')
+        setErrorMsg('语音通话需要 HTTPS 环境（麦克风权限要求）——请通过 https:// 域名访问后再试')
+        return
+      }
       // 通话开始即解析会话（欢迎页自动新建并切进聊天页），后续转录由父级锚定该会话
       propsRef.current.ensureSession().catch(() => { /* 会话解析失败仅影响转录落库 */ })
       try {

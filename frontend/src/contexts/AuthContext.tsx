@@ -30,9 +30,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setToken(saved)
           setUser(data.user)
         } else {
-          if (data.detail) sessionStorage.setItem('loginError', data.detail)
-          localStorage.removeItem('token')
-          sessionStorage.removeItem('token')
+          if (data.detail) {
+            try { sessionStorage.setItem('loginError', data.detail) } catch { /* 存储受限 */ }
+          }
+          try { localStorage.removeItem('token') } catch { /* 存储受限 */ }
+          try { sessionStorage.removeItem('token') } catch { /* 存储受限 */ }
         }
         setLoading(false)
       })
@@ -43,12 +45,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback((newToken: string, newUser: any, rememberMe = true) => {
     if (!newToken) return
+    // 存储受限环境写不进去仅本次会话有效（token 在内存中照常工作）
     if (rememberMe) {
-      localStorage.setItem('token', newToken)
-      sessionStorage.removeItem('token')
+      try { localStorage.setItem('token', newToken) } catch { /* 存储受限 */ }
+      try { sessionStorage.removeItem('token') } catch { /* 存储受限 */ }
     } else {
-      sessionStorage.setItem('token', newToken)
-      localStorage.removeItem('token')
+      try { sessionStorage.setItem('token', newToken) } catch { /* 存储受限 */ }
+      try { localStorage.removeItem('token') } catch { /* 存储受限 */ }
     }
     setStoredUser(newUser)
     setToken(newToken)
@@ -56,8 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem('token')
-    sessionStorage.removeItem('token')
+    try { localStorage.removeItem('token') } catch { /* 存储受限 */ }
+    try { sessionStorage.removeItem('token') } catch { /* 存储受限 */ }
     setStoredUser(null)
     setToken(null)
     setUser(null)

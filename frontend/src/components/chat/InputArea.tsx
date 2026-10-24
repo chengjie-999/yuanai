@@ -190,6 +190,12 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                         const compressed = await compressImage(f)
                         setImages((p) => [...p, compressed])
                       } catch {
+                        // HEIC（iPhone 原片）：浏览器解不了码，原样回传会撞 nginx 20m 上限
+                        // （P5 移动优化 2026-10-24）——给出明确提示而不是静默塞超限原图
+                        if (/heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name)) {
+                          setUploadErr(`${f.name} 是 HEIC 格式，浏览器不支持——请在相册里转为 JPG 后发送`)
+                          continue
+                        }
                         const reader = new FileReader()
                         reader.onload = () => setImages((p) => [...p, reader.result as string])
                         reader.readAsDataURL(f)

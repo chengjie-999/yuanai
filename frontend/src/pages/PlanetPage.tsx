@@ -10,7 +10,8 @@ import ImportDialog from '../components/planet/ImportDialog'
 import Starfield from '../components/planet/Starfield'
 import { API_BASE, authHeaders } from '../api'
 import { usePlanetJob } from '../components/planet/ConvertProgress'
-import { ArrowLeftIcon, GalaxyIcon } from '../components/icons'
+import { ArrowLeftIcon, GalaxyIcon, MenuIcon } from '../components/icons'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 /* ============================================================
    知识星球 — /chat/planet（用户个人三级知识库）
@@ -55,6 +56,9 @@ export default function PlanetPage({ onClose, hideBack }: { onClose?: () => void
   const [importPid, setImportPid] = useState<number | null>(null)
   const [jobId, setJobId] = useState<number | null>(null)
   const [notice, setNotice] = useState('')
+  // P5 移动响应式：≤768px 侧栏抽屉化（ChatPage 侧栏同款交互）
+  const isMobile = useIsMobile()
+  const [treeOpen, setTreeOpen] = useState(false)
 
   const refreshPlanets = useCallback(async () => {
     try { setPlanets(await listPlanets()) } catch (e: any) { setNotice(e.message || '加载失败') }
@@ -77,6 +81,7 @@ export default function PlanetPage({ onClose, hideBack }: { onClose?: () => void
   const handleSelectPlanet = (pid: number) => {
     setSelectedPid(pid)
     setMap(null); setNote(null)
+    if (isMobile) setTreeOpen(false)  // 移动端选中即收起抽屉
   }
 
   const handleSelectMap = async (mid: number) => {
@@ -86,11 +91,13 @@ export default function PlanetPage({ onClose, hideBack }: { onClose?: () => void
       setSelectedPid(m.planet_id)
       if (m.note_id) await loadNote(m.note_id)
       else setNote(null)
+      if (isMobile) setTreeOpen(false)
     } catch (e: any) { setNotice(e.message || '加载导图失败') }
   }
 
   const handleSelectNote = async (nid: number) => {
     await loadNote(nid)
+    if (isMobile) setTreeOpen(false)
   }
 
   const handleCreatePlanet = async () => {
@@ -144,6 +151,16 @@ export default function PlanetPage({ onClose, hideBack }: { onClose?: () => void
         padding: '8px 12px', background: 'var(--header-bg)', borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
       }}>
+        {isMobile && (
+          <button onClick={() => setTreeOpen((o) => !o)} className="yuan-tip"
+            data-tip="星球目录" aria-label="星球目录"
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 6, flexShrink: 0,
+              color: treeOpen ? 'var(--accent)' : 'var(--text-secondary)', display: 'flex', lineHeight: 1,
+            }}>
+            <MenuIcon size={18} />
+          </button>
+        )}
         {hideBack ? null : onClose ? (
         <button onClick={onClose} style={{
           fontSize: 12, color: 'var(--text-secondary)', textDecoration: 'none',
@@ -159,9 +176,11 @@ export default function PlanetPage({ onClose, hideBack }: { onClose?: () => void
         }}><ArrowLeftIcon size={12} /> 返回</Link>
       )}
         <span style={{ lineHeight: 1, color: 'var(--accent)', display: 'flex' }}><GalaxyIcon size={19} /></span>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>知识星球</div>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>银河 · 恒星 · 行星 —— 导图一键改写为文章</div>
+          {!isMobile && (
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>银河 · 恒星 · 行星 —— 导图一键改写为文章</div>
+          )}
         </div>
         <div style={{ flex: 1 }} />
         {vaultStatus && (
@@ -182,9 +201,21 @@ export default function PlanetPage({ onClose, hideBack }: { onClose?: () => void
         </div>
       )}
 
-      {/* 主体双栏（背景透明，透出星空） */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <div style={{
+      {/* 主体双栏（背景透明，透出星空）；移动端侧栏变抽屉（P5） */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
+        {isMobile && treeOpen && (
+          <div onClick={() => setTreeOpen(false)}
+            style={{ position: 'absolute', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.4)' }} />
+        )}
+        <div style={isMobile ? {
+          position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 30,
+          width: 'min(300px, 85vw)', borderRight: '1px solid var(--border)',
+          padding: '12px 10px', overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
+          background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-md)',
+          transform: treeOpen ? 'translateX(0)' : 'translateX(-100%)',
+          transition: 'transform 0.25s ease',
+        } : {
           width: 280, flexShrink: 0, borderRight: '1px solid var(--border)',
           padding: '12px 10px', overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
@@ -204,7 +235,7 @@ export default function PlanetPage({ onClose, hideBack }: { onClose?: () => void
             onRefresh={refreshPlanets}
           />
         </div>
-        <div style={{ flex: 1, minWidth: 0, padding: '14px 18px', overflow: 'hidden' }}>
+        <div style={{ flex: 1, minWidth: 0, padding: isMobile ? '12px 10px' : '14px 18px', overflow: 'hidden' }}>
           {map ? (
             <PlanetReader
               map={map}

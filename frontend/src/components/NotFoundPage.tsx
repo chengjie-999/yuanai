@@ -4,7 +4,7 @@ import Mascot from './Mascot'
 export default function NotFoundPage({ backTo = '/', backText = '返回首页' }: { backTo?: string; backText?: string }) {
   return (
     <div style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      minHeight: "100dvh", display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', gap: 20,
       padding: 24, textAlign: 'center',
     }}>

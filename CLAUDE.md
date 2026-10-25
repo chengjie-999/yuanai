@@ -210,7 +210,7 @@ data/                   数据目录
 
 **置顶主对话（豆包式）**：`chat_session.is_main`（迁移 0013）每用户一条，`ensure_main_session()` 幂等取/建，`POST /api/v1/chat/main-session`；侧栏图钉置顶显示；**登录直接落主对话**（挂载时 ensure + setCurrentSid + parseHistory，欢迎页仅接口异常兜底）；「新对话」按钮=另开普通会话。主对话历史截断最近 **60 条**（chat/router.py `/stream` 主链路，前置「更早的对话已整理进长期记忆」HumanMessage）——与记忆机制配套（二期挂账的 history 截断在此落地）；claude-stream 不截断。欢迎页退场后：推荐问题卡移到对话空状态（ChatView SUGGESTIONS 前 5 条，手机横滑一行）、数据集上传并入输入区回形针（csv/xlsx/xls/json → uploadDataset → `[数据集 #id]` 注入输入框）。输入区布局：textarea 行只留输入框+发送，功能键全部下沉工具行（左动作群 @/图片/语音/朗读/下载，右设置群 模式/推理强度，小屏藏下载）。**AI 会话标题（2026-10-16 修复）**：前端仅新会话首次发送传 title（sendMessages 只透传显式 title）；后端 /chat/save 仅当现标题是自动标题才覆盖（`_is_auto_title` 兼容前端 50 字与后端 80 字两种截断口径）；AI 生成标题（title_gen 豆包 lite 异步）不再被下一条消息压掉。
 
-**滚动跟随（2026-10-12）**：聊天自动跟随最新消息——贴底才跟随（流式直接设 `scrollTop`，无平滑动画防逐 token 抖动）；发送/修改重发/切换会话**无条件滚底并恢复跟随**（`sendTick` 计数从 ChatPage 传入，不看当前位置判定）；上滑阅读历史时**暂停跟随**，同时浮出「回到底部」圆形按钮（`ChatView.tsx` sticky 钉可视区底部居中，yuan-tip 提示 + aria-label，点击平滑滚底恢复跟随）；贴底状态由 scroll 监听实时维护（`nearBottomRef` + `showJump`）。
+**滚动跟随（2026-10-12）**：聊天自动跟随最新消息——贴底才跟随（流式直接设 `scrollTop`，无平滑动画防逐 token 抖动）；发送/修改重发/切换会话**无条件滚底并恢复跟随**（`sendTick` 计数从 ChatPage 传入，不看当前位置判定）；上滑阅读历史时**暂停跟随**，同时浮出「回到底部」圆形按钮（`ChatView.tsx` sticky 钉可视区底部居中，yuan-tip 提示 + aria-label，点击平滑滚底恢复跟随）；贴底状态由 scroll 监听实时维护（`nearBottomRef` + `showJump`）。**长回答防顶屏（2026-10-25）**：回答超过一屏时生成快于阅读——跟随前检查最后一条消息顶部，即将滚出视口就把消息顶部钉在视口顶部并冻结跟随（`chatEndRef.previousElementSibling` 定位 + `scrollTop +=` 对齐），用户按自己速度阅读，滚回底部或点「回到底部」恢复跟随。
 
 聊天图片：`data/chat_images/` 文件存储，经公开路由 `/api/v1/chat/image/{sid}/{fname}` 提供（`Cache-Control: immutable`，文件名含 UUID）。前端 `addToken` 对此路由**不拼接 JWT**——拼 token 会在每次登录后改变 URL，击穿浏览器缓存导致历史图片全部重新下载。
 

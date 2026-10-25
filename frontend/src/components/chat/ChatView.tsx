@@ -85,8 +85,20 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
       return
     }
     // 流式输出：贴底才跟随，直接设 scrollTop（无平滑动画）防逐 token 抖动；
-    // 上滑阅读历史时暂停跟随，点「回到底部」按钮恢复
+    // 上滑阅读历史时暂停跟随，点「回到底部」按钮恢复。
+    // 长回答防顶屏（2026-10-25）：回答超过一屏时生成速度超过阅读速度——
+    // 最后一条消息顶部即将滚出视口时，把消息顶部钉在视口顶部并冻结跟随，
+    // 用户按自己速度阅读；手动滚回底部（nearBottom 恢复）或点「回到底部」恢复跟随
     if (nearBottomRef.current) {
+      const lastEl = chatEndRef.current?.previousElementSibling as HTMLElement | null
+      const crect = container.getBoundingClientRect()
+      const lrect = lastEl ? lastEl.getBoundingClientRect() : null
+      if (lrect && lrect.top < crect.top + 8) {
+        container.scrollTop += (lrect.top - crect.top - 8)
+        nearBottomRef.current = false
+        setShowJump(true)
+        return
+      }
       container.scrollTop = container.scrollHeight
     }
   }, [messages, pendingApproval, loading, currentSid, sendTick])

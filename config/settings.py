@@ -290,6 +290,11 @@ MEMORY_MAX_CHARS = int(_syscfg("memory_max_chars"))                       # 长�
 MEMORY_FOLD_TIMEOUT_S = int(_syscfg("memory_fold_timeout_s"))
 MEMORY_FOLD_DAILY_MAX = int(_syscfg("memory_fold_daily_max"))             # 每用户每日折叠次数上限
 MEMORY_ORGANIZE_DELETE_DAILY_MAX = int(_syscfg("memory_organize_delete_daily_max"))  # 自整理删除：每用户每日删条数上限（安全事故教训后设的硬护栏）
+# 记忆定期自动整理（2026-10-25）：系统节流调度模型整理记忆——与 organize 工具护栏并存
+MEMORY_ORGANIZE_AUTO_ENABLED = os.getenv("MEMORY_ORGANIZE_AUTO_ENABLED", "1") == "1"     # 自动整理开关
+MEMORY_ORGANIZE_AUTO_INTERVAL_HOURS = int(os.getenv("MEMORY_ORGANIZE_AUTO_INTERVAL_HOURS", "24"))  # 每用户最小整理间隔（Redis TTL）
+MEMORY_ORGANIZE_AUTO_MIN_ITEMS = int(os.getenv("MEMORY_ORGANIZE_AUTO_MIN_ITEMS", "8"))   # 记忆条目数阈值（低于不整理）
+MEMORY_ORGANIZE_AUTO_DELETE_MAX = int(os.getenv("MEMORY_ORGANIZE_AUTO_DELETE_MAX", "10"))  # 单次自动整理删除上限（超出保留不删）
 
 # 聊天模式自主路由（2026-10-22）：每轮消息判定娱乐/工作，模型自主切换
 CHAT_MODE_ROUTER_LLM = os.getenv("CHAT_MODE_ROUTER_LLM", "1") == "1"   # 关键词无信号时豆包 lite 兜底判定（0=纯关键词零成本）

@@ -330,6 +330,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **游标**：`session_memory_state` 表（session_id PK / folded_count，max 语义只增不减；ai_chat 每次 save 全量重建 id 会变，游标必须是独立前缀计数；编辑重发自动回夹）
 - **合并**：`yuanai_core/memory.py` merge_facts 只追加 + **双向去重升级语义**（新行 ⊃ 旧行 → 原地替换不丢细节）+ 上限 100 条/2000 字丢最旧；`parse_facts` 占位词黑名单（无/没有/暂无/（无）等，根治「无」垃圾记忆）
 - **智能体自整理（organize_user_memory 工具，2026-10-12）**：模型可自行合并/改写/补充/删除记忆（`plan_organize` 差异推断：清单缺的旧行=删除候选，改写升级复用原 created_at 不洗白）。**删除硬护栏**（安全事故教训）：只删本会话内新增（created_at ≥ 会话首条消息时间，`current_session_id` ContextVar 三处 set：ws_client//stream/claude-stream）、每用户每日删 ≤ `MEMORY_ORGANIZE_DELETE_DAILY_MAX`(3) 条（Redis 计数 `mem_org:{uid}`）、审计日志 `data/logs/memory_audit.log`、任何护栏不过整单拒绝（fail-closed）；本地 Agent 经 `POST /api/v1/agent/memory/organize`（agent 凭据 + user_id + session_id）
+- **定期自动整理（2026-10-25，模型自管理记忆）**：`api/v1/chat/memory_organize.py` 挂 /chat/save fire-and-forget——Redis TTL 节流（`mem_org_auto:{uid}`，每用户每 24h 一次）+ 条目数 ≥8 才触发；豆包 lite（`MEMORY_MODEL`，可 env 换 deepseek）把当前清单重写为「整理后清单」（合并重复/清理过时/补充事实，提示词明确「未列出的旧行将被删除」）→ plan_organize 差异推断 → 原子写回。护栏：单次删除 ≤ `MEMORY_ORGANIZE_AUTO_DELETE_MAX`(10，超出保留不删)、审计 source=auto_organize、LLM 异常/空输出静默跳过、Redis 故障跳过（烧钱保守）。与工具护栏并存不互扰
 - **点踩**：ai_chat_feedback 三态互斥（liked/disliked，迁移 0009）；点踩消息在折叠 transcript 中被剔除并标注
 - **编辑入口**：`GET/PUT/DELETE /api/v1/auth/memory`（PUT 超限 400 拒绝而非截断；DELETE 按行文本定位，多条命中 400 不误删）；前端 `MemoryCard.tsx`（每行删除按钮 + 全量编辑抽屉）
 - **配置**：config/settings.py MEMORY_* 12 项（模型/窗口/阈值/护栏/上限/超时/日限额，.env 可覆盖）

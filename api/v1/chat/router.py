@@ -770,6 +770,14 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
         except Exception:
             logger.warning("记忆压缩调度失败（不影响保存）", exc_info=True)
 
+        # 记忆定期自动整理触发（fire-and-forget，2026-10-25）：Redis 间隔节流 +
+        # 条目数阈值；模型重写清单合并重复/清理过时，系统写回（与折叠同挂点）
+        try:
+            from api.v1.chat.memory_organize import maybe_schedule_memory_organize
+            maybe_schedule_memory_organize(user_id)
+        except Exception:
+            logger.warning("记忆自动整理调度失败（不影响保存）", exc_info=True)
+
         # 会话标题 AI 生成（fire-and-forget）：仅当标题仍是自动标题时触发一次
         try:
             from api.v1.chat.title_gen import maybe_generate_title

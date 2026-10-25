@@ -9,6 +9,7 @@ import VoiceCall from './chat/VoiceCall'
 import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
 import { useAutoRead } from '../hooks/useAutoRead'
+import { useAnswerTone, playAnswerTone } from '../hooks/useAnswerTone'
 import { useTheme } from '../contexts/ThemeContext'
 import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, LinkIcon } from './icons'
 
@@ -62,6 +63,7 @@ function parseHistory(history: any[]): ChatMessage[] {
     let error: string | undefined
     let stopped: boolean | undefined
     let htmls: string[] | undefined
+    let truncated: boolean | undefined
     let content = m.content || ''
     if (typeof content === 'string' && content.startsWith('\x00META\x00')) {
       const end = content.indexOf('\x00', 6)
@@ -75,6 +77,7 @@ function parseHistory(history: any[]): ChatMessage[] {
           if (meta.e) error = meta.e
           if (meta.sp) stopped = true
           if (meta.h) htmls = meta.h
+          if (meta.tr) truncated = true
         } catch {}
         content = content.substring(end + 1)
       }
@@ -85,7 +88,7 @@ function parseHistory(history: any[]): ChatMessage[] {
     if (m.turn) turn = m.turn
     if (m.type) msgType = m.type
     return { role: m.role, content, images: m.images, sender, toolCalls,
-             reasoning, finalReasoning, pageLink, recipient, turn, msgType, error, stopped, htmls }
+             reasoning, finalReasoning, pageLink, recipient, turn, msgType, error, stopped, htmls, truncated }
   })
 }
 
@@ -157,6 +160,8 @@ export default function ChatPage({ user }: { user?: any }) {
   const [feedback, setFeedbackState] = useState<Record<number, { liked: boolean; disliked: boolean }>>({})
   // 自动朗读（默认开启，与顶部栏喇叭/设置页开关共享 useAutoRead 同步）
   const autoRead = useAutoRead()
+  // 回答完成提示音（U5，默认开启，设置页可关）
+  const answerTone = useAnswerTone()
   // 模型自主界面联动（2026-10-22）：set_theme 工具 → 后端 theme_event → 主题切换
   const { setTheme: applyTheme } = useTheme()
   const [autoReadTick, setAutoReadTick] = useState(0)
@@ -170,6 +175,15 @@ export default function ChatPage({ user }: { user?: any }) {
   sidRef.current = currentSid
   const loadingRef = useRef(loading)
   loadingRef.current = loading
+  // U5 回答完成提示音：生成结束（loading 翻转）且有实际回答内容时响一声
+  const prevLoadingRef = useRef(loading)
+  useEffect(() => {
+    const wasLoading = prevLoadingRef.current
+    prevLoadingRef.current = loading
+    if (!wasLoading || loading || !answerTone) return
+    const last = messagesRef.current[messagesRef.current.length - 1]
+    if (last && last.role === 'assistant' && last.content) playAnswerTone()
+  }, [loading, answerTone])
   // 在途流（P1-1 停止生成/会话切换守卫）：sid + AbortController
   const streamRef = useRef<{ sid: string; controller: AbortController } | null>(null)
   // 会话加载序号（2026-10-19）：快速切换会话时丢弃迟到响应
@@ -584,6 +598,14 @@ export default function ChatPage({ user }: { user?: any }) {
         }
       } else if (event.type === 'approval') {
         setPendingApproval({ decision_id: event.data.decision_id, tool_name: event.data.tool_name, command: event.data.command })
+      } else if (event.type === 'truncated') {
+        // U4 继续生成（2026-10-25）：回答撞 max_tokens 被截断——标记气泡显示「继续生成」
+        setMessages((prev) => {
+          const last = [...prev]
+          const i = last.length - 1
+          if (i >= 0) last[i] = { ...last[i], truncated: true }
+          return last
+        })
       } else if (event.type === 'error') {
         // 展示真实错误信息（截断），便于排查；error 标记进消息（可落库、气泡显示错误卡）
         const errMsg = typeof event.data === 'string' && event.data ? event.data.slice(0, 300) : '请求失败，请重试'
@@ -897,7 +919,7 @@ export default function ChatPage({ user }: { user?: any }) {
             pendingApproval={pendingApproval} handleDecision={handleDecision}
             likes={feedback} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
             onEditMessage={handleEditMessage} onFeedback={handleFeedback}
-            onRegenerate={handleRegenerate}
+            onRegenerate={handleRegenerate} onContinue={() => handleSend('继续')}
             onStartVoiceCall={startVoiceCallWithPermission}
             entMode={entMode} toggleEntMode={toggleEntMode}
             targetAgent={targetAgent} setTargetAgent={setTargetAgent}

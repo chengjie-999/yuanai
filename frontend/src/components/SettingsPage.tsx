@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import MemoryCard from './MemoryCard'
 import Modal from './Modal'
 import { useAutoRead, toggleAutoRead } from '../hooks/useAutoRead'
+import { useAnswerTone, toggleAnswerTone } from '../hooks/useAnswerTone'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const C = {
@@ -68,6 +69,8 @@ export default function SettingsPage() {
   const [models, setModels] = useState<Record<string, { label: string; provider: string }>>({})
   // 自动朗读开关：默认开启，与顶部栏喇叭共用 useAutoRead 同步
   const autoRead = useAutoRead()
+  // 回答完成提示音（U5，默认开启）
+  const answerTone = useAnswerTone()
   const [agentModels, setAgentModels] = useState<Record<string, string>>({})
   const [savingRole, setSavingRole] = useState('')
   // 语音音色
@@ -243,6 +246,34 @@ export default function SettingsPage() {
               }}>
               <span style={{
                 position: 'absolute', top: 2, left: autoRead ? 20 : 2,
+                width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                transition: 'left 0.2s',
+              }} />
+            </button>
+          </div>
+        </div>
+
+        {/* ---- 回答完成提示音（U5 通用体验 2026-10-25，默认开启） ---- */}
+        <div style={C.card}>
+          <div style={C.title}>
+            回答完成提示音
+            <span style={C.sub}>　生成结束时响一声，切走窗口也知道答完了</span>
+          </div>
+          <div style={{ ...C.row, borderBottom: 'none' }}>
+            <div style={{ flex: 1 }}>
+              <div style={C.label}>默认开启提示音</div>
+              <div style={C.hint}>仅在切走窗口/浏览其他标签时提醒；关闭后完全静音</div>
+            </div>
+            <button onClick={() => toggleAnswerTone()} role="switch" aria-checked={answerTone}
+              aria-label={answerTone ? '关闭回答完成提示音' : '开启回答完成提示音'}
+              style={{
+                width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+                position: 'relative', flexShrink: 0,
+                background: answerTone ? 'var(--accent)' : 'var(--border)',
+                transition: 'background 0.2s',
+              }}>
+              <span style={{
+                position: 'absolute', top: 2, left: answerTone ? 20 : 2,
                 width: 18, height: 18, borderRadius: '50%', background: '#fff',
                 transition: 'left 0.2s',
               }} />

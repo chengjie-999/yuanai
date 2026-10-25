@@ -593,6 +593,8 @@ export function streamChat(
             try {
               const event = JSON.parse(line.slice(6))
               if (event.type === 'done') {
+                // U4 继续生成：回答被 max_tokens 截断时后端带 truncated 标志
+                if (event.data?.truncated) onEvent({ type: 'truncated' })
                 gotDone = true
                 onDone()
               } else {

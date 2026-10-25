@@ -36,7 +36,7 @@ function HtmlFrame({ url, title }: { url: string; title: string }) {
   )
 }
 
-const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onRegenerate, autoRead, autoReadTick, onOpenPanel }: {
+const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onRegenerate, onContinue, autoRead, autoReadTick, onOpenPanel }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
@@ -45,6 +45,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   onEditCancel: () => void
   onFeedback: (i: number, kind: 'like' | 'dislike') => void
   onRegenerate?: (i: number) => void
+  onContinue?: () => void
   autoRead?: boolean; autoReadTick?: number
   onOpenPanel?: (link: string) => void
 }) {
@@ -288,7 +289,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" />
           </svg>
         </button>
-        {/* 重新生成：截断本条及其后消息，重发它前面的最后一条用户消息（豆包式） */}
+        {/* 重新生成：只替换本条气泡（2026-10-25 起不再截断其后消息） */}
         {onRegenerate && (
           <button onClick={() => onRegenerate(index)} disabled={loading}
             className="yuan-tip" data-tip="重新生成" aria-label="重新生成"
@@ -296,6 +297,19 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
             onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
             <svg {...iconProps}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg>
+          </button>
+        )}
+        {/* U4 继续生成：回答被 max_tokens 截断（后端 finish_reason=length 标志） */}
+        {msg.truncated && onContinue && (
+          <button onClick={onContinue} disabled={loading}
+            className="yuan-tip" data-tip="让 AI 接着写完整" aria-label="继续生成"
+            style={{
+              marginLeft: 6, padding: '3px 12px', borderRadius: 999,
+              border: '1px solid var(--accent)', background: 'var(--accent-light)',
+              color: 'var(--accent)', fontSize: 12, fontWeight: 600,
+              cursor: loading ? 'default' : 'pointer', lineHeight: 1.6,
+            }}>
+            继续生成
           </button>
         )}
         </>

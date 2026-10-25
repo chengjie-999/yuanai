@@ -19,6 +19,7 @@ export interface ChatMessage {
   progress?: { current: number; total: number; message?: string }
   error?: string    // 流式错误（气泡错误卡 + 重试入口；META 短键 e）
   stopped?: boolean // 用户手动停止生成（META 短键 sp）
+  truncated?: boolean // 回答被 max_tokens 截断（U4 继续生成；META 短键 tr）
 }
 
 export interface ToolCall {

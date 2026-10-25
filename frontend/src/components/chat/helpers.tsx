@@ -95,6 +95,7 @@ export function encodeMsg(m: any) {
   // P1-1：错误/停止标记（前端状态持久化；META 短键 e=错误文案 / sp=停止）
   if (m.error) meta.e = m.error
   if (m.stopped) meta.sp = 1
+  if (m.truncated) meta.tr = 1  // U4 继续生成
   // B0：交互图表 URL 持久化（META 短键 h=htmls 数组；此前刷新即丢）
   if (m.htmls?.length) meta.h = m.htmls
   const content = Object.keys(meta).length > 0

@@ -165,6 +165,7 @@ async def _deepseek_agent_stream(
             round_content = ""
             tool_call_chunks: list = []
             round_usage = None  # 末块 usage（include_usage 时返回；记账用）
+            finish_reason = ""  # U4 继续生成：末块 finish_reason（length=撞 max_tokens 截断）
             # DSML 抑制：本轮 content/reasoning 各一路过滤器
             content_f = DsmlStreamFilter()
             reasoning_f = DsmlStreamFilter()
@@ -172,6 +173,10 @@ async def _deepseek_agent_stream(
             async for chunk in stream:
                 if getattr(chunk, "usage", None):
                     round_usage = chunk.usage
+                if chunk.choices:
+                    fr = getattr(chunk.choices[0], "finish_reason", None)
+                    if fr:
+                        finish_reason = fr
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if not delta:
                     continue
@@ -255,6 +260,9 @@ async def _deepseek_agent_stream(
                     "data": {
                         "display_content": round_content,
                         "reasoning_content": full_reasoning,
+                        # U4 继续生成（2026-10-25）：length = 回答撞 max_tokens 被截断，
+                        # 前端据此显示「继续生成」按钮
+                        "truncated": finish_reason == "length",
                     },
                 }
                 return

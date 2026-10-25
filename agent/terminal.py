@@ -223,6 +223,8 @@ class PlainRenderer:
         print(text, end="", flush=True)
 
     def reasoning(self, text: str) -> None:
+        if not _TTY:
+            return  # 管道模式：思考内容不外泄（脚本消费者只要答案）
         print(f"{GRAY}{text}{RESET}", end="", flush=True)
 
     def tool_start(self, name: str) -> None:
@@ -609,25 +611,33 @@ async def run_pipe(query: str, mode: str, render=None) -> None:
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="小元AI 终端对话 CLI（默认 /claude 本机 Claude Code）")
+    p = argparse.ArgumentParser(description="小元AI 本地 Agent 终端（yuan：终端对话 + 云端联动一体）")
     p.add_argument("--new", action="store_true", help="强制开新会话（默认自动续接上次会话）")
     p.add_argument("--session", default=None, help="续接指定会话 ID（/history 查看）")
     p.add_argument("--mode", default="claude", choices=["claude", "chat"],
                    help="启动模式：claude=本机 Claude Code（默认）/ chat=本地 LLM")
+    p.add_argument("-p", "--pipe", default=None,
+                   help="管道单轮问答（claude -p 同款，不落盘会话）")
     p.add_argument("--install-yuan", action="store_true",
-                   help="把 yuan 命令装进用户 PATH（仿 claude：任何目录直接 yuan 启动）")
+                   help="把 yuan/yuancc 装进用户 PATH（任何目录直接 yuan 启动）")
+    # Agent 形态直通（yuan = 本地 Agent 的终端形态，2026-10-25 合一）：
+    p.add_argument("--install", default=None, help="安装码：注册本机设备后退出")
+    p.add_argument("--tray", action="store_true", help="托盘形态（无终端窗口，后台常驻）")
+    p.add_argument("--server-url", default=None, help="云端 WebSocket 地址（默认身份文件/wss://cjyuanai.cn）")
+    p.add_argument("--agent-name", default=None, help="Agent 显示名称")
+    p.add_argument("--no-plan-executor", action="store_true", help="禁用计划执行器线程")
     return p.parse_args()
 
 
 def install_yuan_command() -> int:
-    """把 `yuan` / `yuancc` / `yuanagent` 装进用户 PATH（仿 claude 命令，2026-10-25 用户拍板）：
-    - yuan      = 小元自建 v2 终端（/claude SDK loop + /chat 本地 LLM + 桌宠 + 自有会话）
-    - yuancc    = Claude Code 原生终端（参数透传：yuancc -p "问题" = claude -p）
-    - yuanagent = 本地 Agent 命令行形态（终端命令安装/启动：yuanagent --install <安装码>
-                  注册 / --tray 托盘 / 默认后台运行——源码环境免 exe 下载）
-    ① 生成三个 .bat（内嵌仓库路径 + venv python，ASCII 内容防 cmd GBK 误读）
+    """把 `yuan` / `yuancc` 装进用户 PATH（仿 claude 命令，2026-10-25 用户拍板两入口）：
+    - yuan   = 小元本地 Agent 的终端形态（终端对话 + 后台云端联动 + 桌宠一体；
+               --install <码> 注册 / --tray 托盘 / -p 管道 / /chat 本地 LLM）
+    - yuancc = Claude Code 原生终端（参数透传：yuancc -p "问题" = claude -p）
+    ① 生成两个 .bat（内嵌仓库路径 + venv python，ASCII 内容防 cmd GBK 误读）
        到 %LOCALAPPDATA%\\yuan\\
-    ② 该目录追加进用户 PATH（PowerShell 用户级写回，防 setx 1024 截断；幂等）"""
+    ② 清理旧版三入口残留（yuanagent.bat 已并入 yuan）
+    ③ 该目录追加进用户 PATH（PowerShell 用户级写回，防 setx 1024 截断；幂等）"""
     import subprocess
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     local = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
@@ -637,10 +647,18 @@ def install_yuan_command() -> int:
     yuan_bat = os.path.join(inst_dir, "yuan.bat")
     with open(yuan_bat, "w", encoding="ascii") as f:
         f.write('@echo off\n')
-        f.write('rem XiaoYuanAI built-in terminal (installed by --install-yuan)\n')
+        f.write('rem XiaoYuanAI local agent terminal (installed by --install-yuan)\n')
         f.write(f'cd /d "{repo}"\n')
         f.write('venv\\Scripts\\python.exe -m agent.terminal %*\n')
         f.write('exit /b %errorlevel%\n')
+
+    # 三入口合一后的旧命令清理（yuanagent 已并入 yuan --install/--tray）
+    old_agent_bat = os.path.join(inst_dir, "yuanagent.bat")
+    if os.path.exists(old_agent_bat):
+        try:
+            os.remove(old_agent_bat)
+        except OSError:
+            pass
 
     yuancc_bat = os.path.join(inst_dir, "yuancc.bat")
     with open(yuancc_bat, "w", encoding="ascii") as f:
@@ -655,14 +673,6 @@ def install_yuan_command() -> int:
         f.write('echo [yuancc] Claude Code CLI not found. Install: npm install -g @anthropic-ai/claude-code\n')
         f.write('exit /b 1\n')
 
-    yuanagent_bat = os.path.join(inst_dir, "yuanagent.bat")
-    with open(yuanagent_bat, "w", encoding="ascii") as f:
-        f.write('@echo off\n')
-        f.write('rem XiaoYuanAI local agent - terminal install/launch (no exe download needed)\n')
-        f.write(f'cd /d "{repo}"\n')
-        f.write('venv\\Scripts\\python.exe -m agent.main %*\n')
-        f.write('exit /b %errorlevel%\n')
-
     ps = (
         "$p=[Environment]::GetEnvironmentVariable('Path','User');"
         f"if(';{inst_dir};' -notlike '*;'+$p+';*'){{"
@@ -673,11 +683,11 @@ def install_yuan_command() -> int:
     if r.returncode != 0:
         print(f"PATH 注册失败: {r.stderr}", file=sys.stderr)
         return 1
-    print(f"✅ yuan / yuancc / yuanagent 已安装到: {inst_dir}")
+    print(f"✅ yuan / yuancc 已安装到: {inst_dir}")
     print("   新开一个终端窗口即可使用：")
-    print("   yuan       = 小元自建终端（/claude 默认 + /chat 本地 LLM + 桌宠联动）")
-    print('   yuancc     = Claude Code 原生终端（yuancc -p "问题" 管道单轮）')
-    print("   yuanagent  = 本地 Agent（--install <安装码> 注册 / --tray 托盘 / 默认后台）")
+    print("   yuan    = 本地 Agent 终端（对话 + 云端联动 + 桌宠一体）")
+    print("   yuancc  = Claude Code 原生终端（yuancc -p \"问题\" 管道单轮）")
+    print("   注册/托盘：yuan --install <安装码> / yuan --tray")
     return 0
 
 
@@ -685,11 +695,27 @@ async def main():
     args = parse_args()
     if args.install_yuan:
         sys.exit(install_yuan_command())
+
+    # —— Agent 形态直通（yuan = 本地 Agent 的终端形态，与 agent.main 同入口）——
+    if args.install:
+        from agent.main import do_install
+        do_install(args.server_url or "wss://cjyuanai.cn", args.install)
+        return
+    if args.tray:
+        from agent.tray import main as tray_main
+        tray_main()
+        return
+
+    # -p 管道单轮（claude -p 同款）：轻量单轮，不起 Agent、不落盘会话
+    if args.pipe:
+        await run_pipe(args.pipe, args.mode)
+        return
+
     store = TerminalSessionStore()
     store.load()
 
     if not sys.stdin.isatty():
-        # 管道模式：echo "问题" | python -m agent.terminal
+        # 管道模式：echo "问题" | python -m agent.terminal（单轮轻量，不起 Agent）
         query = read_stdin_query()
         if not query:
             print("用法: echo \"问题\" | python -m agent.terminal", file=sys.stderr)
@@ -697,20 +723,43 @@ async def main():
         await run_pipe(query, args.mode)
         return
 
-    session = None
-    if args.session:
-        session = store.get(args.session)
-        if not session:
-            print(f"{RED}会话不存在: {args.session}（/history 查看可用 ID）{RESET}", file=sys.stderr)
-            return
-    if session is None and not args.new:
-        session = store.latest()
-        if session and session.get("messages"):
-            print(f"{GRAY}已续接上次会话 {session['id']}（{len(session['messages'])} 条历史；"
-                  f"--new 开新会话）{RESET}")
-    if session is None:
-        session = store.new_session(args.mode)
-    await run_repl(session, store, render=RichRenderer())
+    # REPL 模式：同进程拉起后台 Agent（云端联动 + 计划执行 + 桌宠事件）——
+    # 无身份文件时静默跳过（纯本地终端）；远端 ws:// 被护栏拒绝仅提示不阻塞终端
+    handle = None
+    try:
+        from agent.main import load_identity, run_agent
+        identity = load_identity()
+        if identity.get("agent_id"):
+            handle = await run_agent(
+                server_url=args.server_url or identity.get("server_url") or "wss://cjyuanai.cn",
+                agent_id=str(identity.get("agent_id")),
+                agent_token=identity.get("agent_secret", "") or "",
+                agent_name=args.agent_name or "小元AI 本地 Agent",
+                no_plan_executor=args.no_plan_executor,
+            )
+    except SystemExit as e:
+        print(f"{YELLOW}{e}{RESET}", file=sys.stderr)
+    except Exception as e:
+        print(f"{GRAY}云端联动启动失败（终端功能不受影响）: {str(e)[:120]}{RESET}", file=sys.stderr)
+
+    try:
+        session = None
+        if args.session:
+            session = store.get(args.session)
+            if not session:
+                print(f"{RED}会话不存在: {args.session}（/history 查看可用 ID）{RESET}", file=sys.stderr)
+                return
+        if session is None and not args.new:
+            session = store.latest()
+            if session and session.get("messages"):
+                print(f"{GRAY}已续接上次会话 {session['id']}（{len(session['messages'])} 条历史；"
+                      f"--new 开新会话）{RESET}")
+        if session is None:
+            session = store.new_session(args.mode)
+        await run_repl(session, store, render=RichRenderer())
+    finally:
+        if handle:
+            await handle.shutdown()
 
 
 if __name__ == "__main__":

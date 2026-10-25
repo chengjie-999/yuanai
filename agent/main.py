@@ -131,16 +131,61 @@ async def main():
     agent_id = args.agent_id or str(identity.get("agent_id") or socket.gethostname())
     agent_token = args.agent_token or identity.get("agent_secret", "") or os.getenv("AGENT_TOKEN", "")
 
-    # S3.3：强制 wss（ws:// 仅允许 localhost/127.0.0.1 且 AGENT_ALLOW_INSECURE_WS=1 显式豁免）
-    from urllib.parse import urlparse as _urlparse
-    _host = _urlparse(server_url).hostname or ""
-    if server_url.startswith("ws://") and not (
-            _host in ("localhost", "127.0.0.1") and os.getenv("AGENT_ALLOW_INSECURE_WS") == "1"):
-        logger.error("拒绝明文 ws:// 连接（%s）：Agent 凭据经明文传输会被窃取；"
-                     "本地开发可设 AGENT_ALLOW_INSECURE_WS=1", server_url)
-        sys.exit(1)
+    _setup_agent_logging()
+    handle = await run_agent(server_url=server_url, agent_id=agent_id,
+                             agent_token=agent_token, agent_name=args.agent_name,
+                             no_plan_executor=args.no_plan_executor)
 
-    # 配置日志
+    # 优雅退出（兼容 Windows：add_signal_handler 不可用时退回到 signal.signal）
+    loop = asyncio.get_running_loop()
+    stop = loop.create_future()
+
+    def _shutdown():
+        logger.info("收到退出信号，正在关闭...")
+        stop.set_result(True)
+
+    _signal_ok = False
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, _shutdown)
+            _signal_ok = True
+        except NotImplementedError:
+            pass
+    if not _signal_ok:
+        # Windows fallback: signal.signal + call_soon_threadsafe
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, lambda s, f: loop.call_soon_threadsafe(_shutdown))
+
+    try:
+        await stop
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await handle.shutdown()
+
+    logger.info("Agent 已退出")
+
+
+class AgentHandle:
+    """后台 Agent 的运行句柄（yuan 终端形态复用：同一进程内终端 + 云端联动）"""
+
+    def __init__(self, client, plan_loop, connect_task):
+        self._client = client
+        self._plan_loop = plan_loop
+        self._connect_task = connect_task
+
+    async def shutdown(self) -> None:
+        if self._plan_loop:
+            self._plan_loop.stop()
+        await self._client.disconnect()
+        self._connect_task.cancel()
+        try:
+            await self._connect_task
+        except asyncio.CancelledError:
+            pass
+
+
+def _setup_agent_logging() -> None:
     from logging.handlers import RotatingFileHandler
     from utils.data_path import root_path
     log_dir = os.path.join(root_path(), "data", "logs")
@@ -162,6 +207,23 @@ async def main():
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
 
+
+async def run_agent(*, server_url: str, agent_id: str, agent_token: str,
+                    agent_name: str = "小元AI 本地 Agent",
+                    no_plan_executor: bool = False) -> AgentHandle:
+    """后台 Agent 启动（2026-10-25 从 main() 抽出——yuan 终端形态同进程复用：
+    终端对话 + 云端 WebSocket 联动一体，不再是两个独立入口）。
+
+    ws:// 护栏：仅 localhost/127.0.0.1 放行（本地联调）；远程明文一律拒绝。
+    无身份（identity 缺失）时调用方应自行决定是否跳过。"""
+    # S3.3：强制 wss（ws:// 仅允许 localhost/127.0.0.1；远程明文拒绝——
+    # 本地联调免设环境变量，2026-10-25 收敛）
+    from urllib.parse import urlparse as _urlparse
+    _host = _urlparse(server_url).hostname or ""
+    if server_url.startswith("ws://") and _host not in ("localhost", "127.0.0.1"):
+        raise SystemExit(f"拒绝明文 ws:// 连接（{server_url}）：Agent 凭据经明文传输会被窃取；"
+                         "云端连接请使用 wss:// 地址")
+
     from skills import skill_registry
     capabilities = skill_registry.names
 
@@ -169,7 +231,7 @@ async def main():
     client = AgentWSClient(
         server_url=server_url,
         agent_id=agent_id,
-        agent_name=args.agent_name,
+        agent_name=agent_name,
         capabilities=capabilities,
         agent_token=agent_token,
     )
@@ -177,8 +239,6 @@ async def main():
     # 三路分派：mode=claude → 本机 Claude Code 桥接；@指定子智能体 → 直接调
     # 对应 skill Agent（确定性路由，跳过统筹 LLM）；其余 → 统筹 Agent 意图路由
     from agent.claude_bridge import ClaudeBridgeHandler
-    # 2026-10-19 修复：补传 server_url/agent_id/token——此前【记住】记忆写入
-    # 因 _server_url 为空永远 no-op
     claude_handler = ClaudeBridgeHandler(server_url=server_url,
                                          agent_id=agent_id, agent_token=agent_token)
 
@@ -203,32 +263,12 @@ async def main():
     logger.info("可用能力: %s", capabilities)
     logger.info("=" * 50)
 
-    # 优雅退出（兼容 Windows：add_signal_handler 不可用时退回到 signal.signal）
-    loop = asyncio.get_running_loop()
-    stop = loop.create_future()
-
-    def _shutdown():
-        logger.info("收到退出信号，正在关闭...")
-        stop.set_result(True)
-
-    _signal_ok = False
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, _shutdown)
-            _signal_ok = True
-        except NotImplementedError:
-            pass
-    if not _signal_ok:
-        # Windows fallback: signal.signal + call_soon_threadsafe
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            signal.signal(sig, lambda s, f: loop.call_soon_threadsafe(_shutdown))
-
     connect_task = asyncio.create_task(client.connect())
 
     # 计划执行器（手机定计划、电脑执行）：后台线程轮询云端队列，认领分步
     # 执行分析/采集任务；云端是唯一真相源，本机崩溃后看门狗自动续跑
     plan_loop = None
-    if not args.no_plan_executor and agent_token and not str(agent_token).startswith("eyJ"):
+    if not no_plan_executor and agent_token and not str(agent_token).startswith("eyJ"):
         # 仅机器模式（agent_secret）可用：REST 端点校验设备凭据，JWT 旧模式会 401
         from agent.plan_executor import PlanExecutor
         http_base = server_url.replace("wss://", "https://").replace("ws://", "http://")
@@ -237,21 +277,7 @@ async def main():
         threading.Thread(target=plan_loop.run_loop, name="plan-executor", daemon=True).start()
         logger.info("计划执行器已启动（轮询 %s）", http_base)
 
-    try:
-        await stop
-    except asyncio.CancelledError:
-        pass
-    finally:
-        if plan_loop:
-            plan_loop.stop()
-        await client.disconnect()
-        connect_task.cancel()
-        try:
-            await connect_task
-        except asyncio.CancelledError:
-            pass
-
-    logger.info("Agent 已退出")
+    return AgentHandle(client, plan_loop, connect_task)
 
 
 if __name__ == "__main__":

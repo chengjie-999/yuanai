@@ -1,9 +1,17 @@
 """P1 终端对话 CLI（产品愿景：终端对话 → 宠物对话）
 
+v2 企业级重构（2026-10-25）：
+- **rich** 渲染：REPL 里回答以 Markdown 流式渲染（标题/粗体/表格/代码块
+  pygments 着色），回答块带边框面板；管道模式保持纯文本输出
+- **prompt_toolkit** 交互：多行输入（粘贴代码不碎行，Enter 提交 /
+  Esc+Enter 换行）、跨会话命令历史（data/terminal_history.txt）、
+  ↑↓ 历史 / 光标编辑；Ctrl+C 第一下停止本轮生成回到提示符，空闲时再按退出
+- /chat 与 /claude 统一流式输出（llm.astream / SDK loop），不再全文突现
+
 `python -m agent.terminal` 在 Windows 终端里直接对话本机 Claude Code / 本地 LLM。
 零配置纯本地：默认 /claude 复用 agent/claude_loop.py 的 anthropic SDK loop
 （凭证 env > ~/.claude/.credentials.json，与桥接一致），审批流在终端内 Y/N
-裁决；/chat 切本地 LLM 直连（deepseek-flash，yuanai_core.core.lc.call_llm）。
+裁决；/chat 切本地 LLM 直连（deepseek-flash，yuanai_core.core.lc.get_llm）。
 
 用法:
     python -m agent.terminal                     # REPL 交互（自动续接上次会话）
@@ -18,7 +26,7 @@
     /clear    清空当前会话消息
     /quit     退出
 
-设计要点（2026-10-23，与用户对齐）:
+设计要点：
 - 会话续接独立文件 data/terminal_sessions.json（不与云端桥接 claude_sessions.json 互串）
 - 安全沿用桥接口径：cwd 锁仓库根（CC_PROJECT_DIR 可指真实仓库）、工具执行
   经 claude_loop.execute_tool 的安全分类（deny 拒绝 / review 审批）
@@ -51,6 +59,7 @@ else:
     PROJECT_ROOT = root_path()
 
 SESSIONS_FILE = os.path.join(PROJECT_ROOT, "data", "terminal_sessions.json")
+HISTORY_FILE = os.path.join(PROJECT_ROOT, "data", "terminal_history.txt")
 DEFAULT_CHAT_MODEL = os.getenv("TERMINAL_CHAT_MODEL", "deepseek-flash")
 MAX_TOOL_OUTPUT = 2000   # 终端回显工具输出截断（对齐 claude_bridge）
 MAX_SESSIONS = 50        # 会话文件保留上限
@@ -65,9 +74,8 @@ try:
 except Exception:
     pass
 
-# ———————— ANSI 颜色（仅 tty 输出；管道模式纯文本） ————————
+# ———————— ANSI 颜色（PlainRenderer 用；仅 tty 输出，管道模式纯文本） ————————
 _TTY = sys.stdout.isatty()
-DIM = "\x1b[90m" if _TTY else ""
 GRAY = "\x1b[90m" if _TTY else ""
 CYAN = "\x1b[96m" if _TTY else ""
 YELLOW = "\x1b[93m" if _TTY else ""
@@ -79,6 +87,8 @@ _CHAT_SYSTEM_PROMPT = (
     "用简洁中文回答，涉及代码时给可复制的命令。"
 )
 
+
+# ==================== 会话存储 ====================
 
 class TerminalSessionStore:
     """终端会话持久化：data/terminal_sessions.json（独立于云端桥接映射）。
@@ -121,7 +131,6 @@ class TerminalSessionStore:
              "created": time.time(), "updated": time.time()}
         self._sessions[sid] = s
         self._data["sessions"].append(s)
-        # 保留最近 MAX_SESSIONS 个
         if len(self._data["sessions"]) > MAX_SESSIONS:
             for old in self._data["sessions"][:-MAX_SESSIONS]:
                 self._sessions.pop(old.get("id"), None)
@@ -174,6 +183,18 @@ def _clean_text(text: str) -> str:
     return text.encode("utf-8", errors="replace").decode("utf-8")
 
 
+def read_stdin_query() -> str:
+    """按字节读 stdin 并容错解码：utf-8 优先、GBK 兜底（中文 Windows 终端/管道
+    双形态）。绕过 sys.stdin 默认 surrogateescape（脏字节会变成 surrogate 混入请求）。"""
+    raw = sys.stdin.buffer.read()
+    for enc in ("utf-8", "gbk"):
+        try:
+            return _clean_text(raw.decode(enc).strip())
+        except UnicodeDecodeError:
+            continue
+    return _clean_text(raw.decode("utf-8", errors="replace").strip())
+
+
 def find_terminal_launcher():
     """探测可启动终端的 (python_exe, project_root)；不可用返回 None。
 
@@ -193,46 +214,112 @@ def find_terminal_launcher():
     return None
 
 
-def read_stdin_query() -> str:
-    """按字节读 stdin 并容错解码：utf-8 优先、GBK 兜底（中文 Windows 终端/管道
-    双形态）。绕过 sys.stdin 默认 surrogateescape（脏字节会变成 surrogate 混入请求）。"""
-    raw = sys.stdin.buffer.read()
-    for enc in ("utf-8", "gbk"):
+# ==================== 渲染层（v2 抽象：管道纯文本 / tty rich 流式） ====================
+
+class PlainRenderer:
+    """管道/测试渲染：纯文本直接打 stdout（capsys 可断言）"""
+
+    def token(self, text: str) -> None:
+        print(text, end="", flush=True)
+
+    def reasoning(self, text: str) -> None:
+        print(f"{GRAY}{text}{RESET}", end="", flush=True)
+
+    def tool_start(self, name: str) -> None:
+        print(f"\n{CYAN}⚙ {name}{RESET}", flush=True)
+
+    def tool_end(self, name: str, output: str) -> None:
+        out = output if len(output) <= MAX_TOOL_OUTPUT else output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
+        print(f"{GRAY}{out}{RESET}", flush=True)
+
+    def done(self) -> None:
+        print(flush=True)
+
+    def error(self, text: str) -> None:
+        print(f"\n{RED}✗ {text}{RESET}", flush=True)
+
+    def info(self, text: str) -> None:
+        print(f"{GRAY}{text}{RESET}", flush=True)
+
+    def interrupted(self) -> None:
+        print(f"\n{YELLOW}（已停止生成）{RESET}", flush=True)
+
+
+class RichRenderer:
+    """tty REPL 渲染：rich Live 流式 Markdown（代码块 pygments 着色）+ 面板回答块"""
+
+    def __init__(self, console=None):
+        from rich.console import Console
+        self._console = console or Console()
+        self._answer = ""      # 回答 markdown 累积
+        self._reasoning = ""   # 思考累积
+        self._live = None
         try:
-            return _clean_text(raw.decode(enc).strip())
-        except UnicodeDecodeError:
-            continue
-    return _clean_text(raw.decode("utf-8", errors="replace").strip())
+            dark = os.getenv("TERMINAL_DARK", "1") == "1"
+        except Exception:
+            dark = True
+        self._code_theme = "github-dark" if dark else "github-light"
+
+    def _refresh(self) -> None:
+        from rich.live import Live
+        from rich.markdown import Markdown
+        from rich.text import Text
+        from rich.console import Group
+        if self._live is None:
+            self._live = Live(Group(), console=self._console, refresh_per_second=12)
+            self._live.start()
+        parts = []
+        if self._reasoning:
+            parts.append(Text("思考中…\n" + self._reasoning, style="dim italic"))
+        parts.append(Markdown(self._answer or "…", code_theme=self._code_theme))
+        self._live.update(Group(*parts))
+
+    def _stop_live(self) -> None:
+        if self._live is not None:
+            self._live.stop()
+            self._live = None
+
+    def token(self, text: str) -> None:
+        self._answer += text
+        self._refresh()
+
+    def reasoning(self, text: str) -> None:
+        self._reasoning += text
+        self._refresh()
+
+    def tool_start(self, name: str) -> None:
+        self._stop_live()
+        self._console.print(f"[yellow]⚙[/yellow] [bold]{name}[/bold]")
+
+    def tool_end(self, name: str, output: str) -> None:
+        from rich.text import Text
+        out = output if len(output) <= MAX_TOOL_OUTPUT else output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
+        self._console.print(Text(out, style="dim"))
+
+    def done(self) -> None:
+        self._stop_live()
+        if self._answer:
+            from rich.markdown import Markdown
+            from rich.panel import Panel
+            self._console.print(Panel(
+                Markdown(self._answer, code_theme=self._code_theme),
+                border_style="bright_black", padding=(0, 1),
+            ))
+
+    def error(self, text: str) -> None:
+        self._stop_live()
+        self._console.print(f"[red]✗ {text}[/red]")
+
+    def info(self, text: str) -> None:
+        self._stop_live()
+        self._console.print(f"[dim]{text}[/dim]")
+
+    def interrupted(self) -> None:
+        self._stop_live()
+        self._console.print("[yellow]（已停止生成）[/yellow]")
 
 
-# ==================== 渲染 ====================
-
-def render_token(text: str) -> None:
-    print(text, end="", flush=True)
-
-
-def render_reasoning(text: str) -> None:
-    print(f"{GRAY}{text}{RESET}", end="", flush=True)
-
-
-def render_tool_start(name: str) -> None:
-    print(f"\n{CYAN}⚙ {name}{RESET}", flush=True)
-
-
-def render_tool_end(name: str, output: str) -> None:
-    out = output if len(output) <= MAX_TOOL_OUTPUT else output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
-    print(f"{GRAY}{out}{RESET}", flush=True)
-
-
-def render_error(text: str) -> None:
-    print(f"\n{RED}✗ {text}{RESET}", flush=True)
-
-
-def render_done() -> None:
-    print(flush=True)
-
-
-# ==================== 查询执行 ====================
+# ==================== 查询执行（render 注入，v2 统一流式） ====================
 
 def _emit_pet(state: str, tool: str = None) -> None:
     """桌宠事件（失败静默，不阻塞终端）"""
@@ -244,19 +331,20 @@ def _emit_pet(state: str, tool: str = None) -> None:
 
 
 def _approve_yn(decision_id: str, tool_name: str, command: str) -> str:
-    """终端内审批：Y/N 交互；空输入/非法输入 = deny（fail-closed，对齐桥接）"""
+    """管道/纯文本模式审批：Y/N 交互；空输入/非法输入 = deny（fail-closed）"""
     _emit_pet("attention")
     ans = input(f"{YELLOW}  ⚠ 审批 [{tool_name}] `{str(command)[:120]}` 执行? [y/N] {RESET}")
     return "approve" if ans.strip().lower() in ("y", "yes") else "deny"
 
 
-async def run_claude_query(messages: list, on_approval=None) -> str:
+async def run_claude_query(messages: list, on_approval=None, render=None) -> str:
     """/claude 模式：复用 claude_loop SDK loop（与云端桥接同一条代码路径）"""
     from agent.claude_loop import run_sdk_loop, load_credentials, BRIDGE_SYSTEM_PROMPT
 
+    render = render or PlainRenderer()
     api_key = load_credentials()
     if not api_key:
-        render_error("未找到 Anthropic 凭证（ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN / "
+        render.error("未找到 Anthropic 凭证（ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN / "
                      "~/.claude/.credentials.json）——请配置后重试，或 /chat 切本地 LLM")
         return ""
 
@@ -267,118 +355,197 @@ async def run_claude_query(messages: list, on_approval=None) -> str:
                                  on_approval=on_approval):
         kind = ev.get("type", "")
         if kind == "token":
-            render_token(_clean_text(ev["data"]))
+            render.token(_clean_text(ev["data"]))
         elif kind == "reasoning":
-            render_reasoning(_clean_text(ev["data"]))
+            render.reasoning(_clean_text(ev["data"]))
         elif kind == "tool_start":
             _emit_pet("working", tool=ev["data"]["name"])
-            render_tool_start(ev["data"]["name"])
+            render.tool_start(ev["data"]["name"])
         elif kind == "tool_end":
-            render_tool_end(ev["data"]["name"], _clean_text(ev["data"]["output"]))
+            render.tool_end(ev["data"]["name"], _clean_text(ev["data"]["output"]))
             _emit_pet("thinking")
         elif kind == "approval":
-            pass  # 审批提示由 _approve_yn 直接打印
+            pass  # 审批提示由 on_approval 直接打印
         elif kind == "done":
             final = _clean_text(ev["data"].get("display_content", ""))
-            render_done()
+            render.done()
             _emit_pet("idle")
         elif kind == "error":
-            render_error(_clean_text(ev["data"]))
+            render.error(_clean_text(ev["data"]))
             if "SDK 未安装" in str(ev["data"]):
-                render_error("请用项目 venv 运行：venv\\Scripts\\python.exe -m agent.terminal")
+                render.info("请用项目 venv 运行：venv\\Scripts\\python.exe -m agent.terminal")
             _emit_pet("error")
     return final
 
 
-async def _to_thread(fn, *args):
-    """asyncio.to_thread 兼容（Python 3.8 无该 API，退回 run_in_executor）"""
-    if hasattr(asyncio, "to_thread"):
-        return await asyncio.to_thread(fn, *args)
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, lambda: fn(*args))
+async def run_chat_query(messages: list, render=None) -> str:
+    """本地 LLM 直连（/chat 模式，v2 流式：llm.astream 逐块输出）"""
+    from yuanai_core.core.lc import get_llm
+    from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
-
-async def run_chat_query(messages: list) -> str:
-    """本地 LLM 直连（/chat 模式）"""
+    render = render or PlainRenderer()
     try:
-        from yuanai_core.core.lc import call_llm
-        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+        from yuanai_core.core.lc import get_llm as _get
+        from langchain_core.messages import SystemMessage as _S, HumanMessage as _H, AIMessage as _A
+        llm_messages = [_S(content=_CHAT_SYSTEM_PROMPT)]
+        for m in messages[-MAX_SENT_MSGS:]:
+            content = m.get("content", "")
+            if not content.strip():
+                continue
+            llm_messages.append(_H(content=content) if m["role"] == "user" else _A(content=content))
+        llm = get_llm(DEFAULT_CHAT_MODEL, temperature=0.1)
     except Exception as e:
-        render_error(f"本地 LLM 依赖不可用: {str(e)[:160]}——请用项目 venv 运行："
+        render.error(f"本地 LLM 依赖不可用: {str(e)[:160]}——请用项目 venv 运行："
                      "venv\\Scripts\\python.exe -m agent.terminal")
         _emit_pet("error")
         return ""
 
-    llm_messages = [SystemMessage(content=_CHAT_SYSTEM_PROMPT)]
-    for m in messages[-MAX_SENT_MSGS:]:
-        content = m.get("content", "")
-        if not content.strip():
-            continue
-        llm_messages.append(HumanMessage(content=content) if m["role"] == "user"
-                            else AIMessage(content=content))
     _emit_pet("thinking")
+    final = ""
     try:
-        result = await _to_thread(call_llm, llm_messages, DEFAULT_CHAT_MODEL)
+        async for chunk in llm.astream(llm_messages):
+            text = chunk.content if hasattr(chunk, "content") else str(chunk)
+            if not text:
+                continue
+            clean = _clean_text(text)
+            final += clean
+            render.token(clean)
     except Exception as e:
-        render_error(f"本地 LLM 调用失败: {str(e)[:200]}")
+        render.error(f"本地 LLM 调用失败: {str(e)[:200]}")
+        _emit_pet("error")
+        return "" if not final else final
+    if not final:
+        render.error("本地 LLM 返回空（检查模型配置/API Key）")
         _emit_pet("error")
         return ""
-    if not result:
-        render_error("本地 LLM 返回空（检查模型配置/API Key）")
-        _emit_pet("error")
-        return ""
-    print(result)
+    render.done()
     _emit_pet("idle")
-    return result
+    return final
 
 
-async def run_query(mode: str, messages: list, on_approval=None) -> str:
+async def run_query(mode: str, messages: list, on_approval=None, render=None) -> str:
     """按模式执行一轮；返回助手最终文本（空串 = 无产出/失败）"""
     history = messages[-MAX_SENT_MSGS:]
     if mode == "chat":
-        return await run_chat_query(history)
-    return await run_claude_query(history, on_approval=on_approval)
+        return await run_chat_query(history, render=render)
+    return await run_claude_query(history, on_approval=on_approval, render=render)
 
 
-# ==================== REPL ====================
+# ==================== REPL（prompt_toolkit 企业级交互） ====================
 
 async def _ainput(prompt: str = "") -> str:
+    """纯文本模式输入（测试可 mock 的默认实现）"""
     line = await asyncio.get_running_loop().run_in_executor(None, input, prompt)
     return _clean_text(line).strip()
 
 
-def _print_commands() -> None:
-    print(f"{DIM}命令: /claude 本机Claude(默认)  /chat 本地LLM  /history 历史会话  "
-          f"/clear 清空当前会话  /quit 退出{RESET}")
+def _make_ptk_prompt(mode_ref) -> object:
+    """prompt_toolkit PromptSession（惰性构造一次复用）：
+    - 多行输入：Enter 提交 / Esc+Enter 换行——粘贴多行代码不碎行
+    - FileHistory 跨会话历史（↑↓ 找回、左右编辑）
+    - Ctrl+C → KeyboardInterrupt 冒泡（空闲退出/生成中停止）
+    返回 prompt_fn = async () -> str | None（None = EOF 退出）"""
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.history import FileHistory
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.formatted_text import ANSI
+
+    kb = KeyBindings()
+
+    @kb.add("enter")
+    def _(event):
+        event.current_buffer.validate_and_handle()
+
+    @kb.add("escape", "enter")
+    def _(event):
+        event.current_buffer.insert_text("\n")
+
+    session = PromptSession(
+        multiline=True, key_bindings=kb,
+        history=FileHistory(HISTORY_FILE),
+    )
+
+    async def prompt_fn() -> str | None:
+        try:
+            mode = mode_ref[0]
+            p = f"小元[{mode}]> " if mode != "claude" else "小元> "
+            text = await session.prompt_async(ANSI(p))
+            return text.strip()
+        except EOFError:
+            return None
+
+    return prompt_fn
 
 
-def _print_help(session: dict) -> None:
-    mode = session.get("mode", "claude")
-    print(f"{DIM}小元AI 终端对话 — 模式: {mode} | 会话: {session.get('id', '')} | "
-          f"输入 /help 查看命令{RESET}")
+async def _ptk_approve(tool_name: str, command: str) -> str:
+    """rich REPL 的审批：prompt_toolkit 单行确认（与主输入会话分离）"""
+    from prompt_toolkit.shortcuts import prompt_async
+    from prompt_toolkit.formatted_text import ANSI
+
+    _emit_pet("attention")
+    try:
+        ans = await prompt_async(
+            ANSI(f"[yellow]  ⚠ 审批 [{tool_name}] `{str(command)[:120]}` 执行? [y/N] [/yellow]"),
+            default="N")
+    except (EOFError, KeyboardInterrupt):
+        return "deny"
+    return "approve" if ans.strip().lower() in ("y", "yes") else "deny"
 
 
-async def _list_history(store: TerminalSessionStore) -> None:
+def _print_help(render) -> None:
+    render.info("命令: /claude 本机Claude(默认)  /chat 本地LLM  /history 历史会话  "
+                "/clear 清空当前会话  /quit 退出")
+
+
+async def _list_history(store: TerminalSessionStore, render) -> None:
     sessions = sorted(store._sessions.values(), key=lambda s: s.get("updated", 0), reverse=True)
     if not sessions:
-        print(f"{DIM}(暂无历史会话){RESET}")
+        render.info("(暂无历史会话)")
         return
     for s in sessions:
         first = next((m["content"][:30] for m in s.get("messages", []) if m["role"] == "user"), "(空会话)")
-        print(f"{CYAN}{s['id']}{RESET}  {DIM}{s.get('mode', 'claude')}  "
-              f"{len(s.get('messages', []))} 条  {time.strftime('%m-%d %H:%M', time.localtime(s.get('updated', 0)))}"
-              f"{RESET}  {first}")
+        render.info(f"[{s['id']}] {s.get('mode', 'claude')}  {len(s.get('messages', []))} 条  "
+                    f"{time.strftime('%m-%d %H:%M', time.localtime(s.get('updated', 0)))}  {first}")
 
 
-async def run_repl(session: dict, store: TerminalSessionStore) -> None:
+async def run_repl(session: dict, store: TerminalSessionStore,
+                   prompt_fn=None, render=None) -> None:
+    """REPL 主循环。prompt_fn: async () -> str|None（None=退出）——默认
+    rich 模式用 prompt_toolkit，纯文本模式用 _ainput（测试可注入 mock）。"""
     mode = session.get("mode", "claude")
-    _print_help(session)
+    mode_ref = [mode]
+    rich_mode = render is not None and isinstance(render, RichRenderer)
+    render = render or PlainRenderer()
+    if prompt_fn is None:
+        if rich_mode:
+            try:
+                prompt_fn = _make_ptk_prompt(mode_ref)
+            except Exception:
+                # 非 Windows 控制台（Git Bash mintty 未加 winpty 等）：交互层回退
+                # 基础 input()，rich 渲染保留
+                render.info("当前终端不支持交互增强（需 cmd/PowerShell/Windows Terminal），"
+                            "已回退基础输入模式")
+                rich_mode = False
+        if prompt_fn is None:
+            async def _plain_prompt():
+                try:
+                    return await _ainput(f"小元[{mode_ref[0]}]> ")
+                except (EOFError, KeyboardInterrupt):
+                    return None
+            prompt_fn = _plain_prompt
+
+    render.info(f"小元AI 终端对话 — 模式: {mode} | 会话: {session.get('id', '')} | /help 查看命令")
+
     while True:
         try:
-            line = await _ainput(f"小元[{mode}]> ")
-        except (EOFError, KeyboardInterrupt):
+            line = await prompt_fn()
+        except KeyboardInterrupt:
+            # 空闲时 Ctrl+C = 退出
             print()
             break
+        if line is None:
+            break
+        line = line.strip()
         if not line:
             continue
         if line.startswith("/"):
@@ -387,30 +554,58 @@ async def run_repl(session: dict, store: TerminalSessionStore) -> None:
                 break
             elif cmd == "/clear":
                 store.clear(session["id"])
-                print(f"{DIM}当前会话已清空（{session['id']}）{RESET}")
+                render.info(f"当前会话已清空（{session['id']}）")
             elif cmd == "/history":
-                await _list_history(store)
+                await _list_history(store, render)
             elif cmd == "/help":
-                _print_commands()
+                _print_help(render)
             elif cmd == "/claude":
-                mode = "claude"
-                print(f"{DIM}已切换本机 Claude Code 模式{RESET}")
+                mode = "claude"; mode_ref[0] = mode
+                render.info("已切换本机 Claude Code 模式")
             elif cmd == "/chat":
-                mode = "chat"
-                print(f"{DIM}已切换本地 LLM 直连模式（{DEFAULT_CHAT_MODEL}）{RESET}")
+                mode = "chat"; mode_ref[0] = mode
+                render.info(f"已切换本地 LLM 直连模式（{DEFAULT_CHAT_MODEL}）")
             else:
-                print(f"{DIM}未知命令: {cmd}（/help 查看）{RESET}")
+                render.info(f"未知命令: {cmd}（/help 查看）")
             continue
         store.append(session["id"], "user", line, mode)
-        result = await run_query(mode, session["messages"], on_approval=_approve_yn)
+
+        # 审批回调：rich 模式走 ptk prompt_async（主循环线程）；纯文本走 input()
+        if rich_mode:
+            main_loop = asyncio.get_running_loop()
+
+            def on_approval(decision_id, tool_name, command):
+                fut = asyncio.run_coroutine_threadsafe(
+                    _ptk_approve(tool_name, command), main_loop)
+                try:
+                    return fut.result(timeout=120)
+                except Exception:
+                    return "deny"
+        else:
+            on_approval = _approve_yn
+
+        task = asyncio.create_task(
+            run_query(mode, session["messages"], on_approval=on_approval, render=render))
+        try:
+            result = await task
+        except KeyboardInterrupt:
+            # Ctrl+C 第一下：停止本轮生成，回到提示符（v2 语义）
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+            render.interrupted()
+            _emit_pet("idle")
+            continue
         if result.strip():
             store.append(session["id"], "assistant", result, mode)
 
 
-async def run_pipe(query: str, mode: str) -> None:
-    """管道模式：单轮输出、不落盘会话（脚本化场景）"""
+async def run_pipe(query: str, mode: str, render=None) -> None:
+    """管道模式：单轮输出、不落盘会话（脚本化场景，纯文本）"""
     messages = [{"role": "user", "content": query}]
-    await run_query(mode, messages, on_approval=_approve_yn)
+    await run_query(mode, messages, on_approval=_approve_yn, render=render)
 
 
 def parse_args():
@@ -419,11 +614,46 @@ def parse_args():
     p.add_argument("--session", default=None, help="续接指定会话 ID（/history 查看）")
     p.add_argument("--mode", default="claude", choices=["claude", "chat"],
                    help="启动模式：claude=本机 Claude Code（默认）/ chat=本地 LLM")
+    p.add_argument("--install-yuan", action="store_true",
+                   help="把 yuan 命令装进用户 PATH（仿 claude：任何目录直接 yuan 启动）")
     return p.parse_args()
+
+
+def install_yuan_command() -> int:
+    """把 `yuan` 装进用户 PATH（仿 claude 命令，2026-10-25）：
+    ① 生成 yuan.bat（内嵌仓库路径 + venv python，ASCII 内容防 cmd GBK 误读）
+       到 %LOCALAPPDATA%\\yuan\\
+    ② 该目录追加进用户 PATH（PowerShell 用户级写回，防 setx 1024 截断；幂等）"""
+    import subprocess
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    local = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    inst_dir = os.path.join(local, "yuan")
+    os.makedirs(inst_dir, exist_ok=True)
+    bat = os.path.join(inst_dir, "yuan.bat")
+    with open(bat, "w", encoding="ascii") as f:
+        f.write('@echo off\n')
+        f.write('rem XiaoYuanAI terminal CLI - global yuan command (installed by --install-yuan)\n')
+        f.write(f'cd /d "{repo}"\n')
+        f.write(f'venv\\Scripts\\python.exe -m agent.terminal %*\n')
+    ps = (
+        "$p=[Environment]::GetEnvironmentVariable('Path','User');"
+        f"if(';{inst_dir};' -notlike '*;'+$p+';*'){{"
+        f"[Environment]::SetEnvironmentVariable('Path',$p.TrimEnd(';')+';{inst_dir}','User')}}"
+    )
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"PATH 注册失败: {r.stderr}", file=sys.stderr)
+        return 1
+    print(f"✅ yuan 命令已安装: {bat}")
+    print("   新开一个终端窗口，任意目录输入 yuan 即可启动终端对话")
+    return 0
 
 
 async def main():
     args = parse_args()
+    if args.install_yuan:
+        sys.exit(install_yuan_command())
     store = TerminalSessionStore()
     store.load()
 
@@ -445,11 +675,11 @@ async def main():
     if session is None and not args.new:
         session = store.latest()
         if session and session.get("messages"):
-            print(f"{DIM}已续接上次会话 {session['id']}（{len(session['messages'])} 条历史；"
+            print(f"{GRAY}已续接上次会话 {session['id']}（{len(session['messages'])} 条历史；"
                   f"--new 开新会话）{RESET}")
     if session is None:
         session = store.new_session(args.mode)
-    await run_repl(session, store)
+    await run_repl(session, store, render=RichRenderer())
 
 
 if __name__ == "__main__":

@@ -103,20 +103,34 @@ def test_run_claude_query_error_event(capsys, monkeypatch):
     assert "执行失败" in capsys.readouterr().out
 
 
-# ---------------- /chat 模式（mock call_llm） ----------------
+# ---------------- /chat 模式（v2 流式：mock get_llm().astream） ----------------
+
+class _FakeChatLLM:
+    def __init__(self, chunks, boom=None):
+        self._chunks = chunks
+        self._boom = boom
+
+    async def astream(self, messages):
+        if self._boom:
+            raise self._boom
+        for c in self._chunks:
+            yield SimpleNamespace(content=c)
+
 
 def test_run_chat_query(capsys, monkeypatch):
-    monkeypatch.setattr("yuanai_core.core.lc.call_llm", lambda msgs, model="deepseek-flash", temperature=0.1: "本地回答")
+    monkeypatch.setattr("yuanai_core.core.lc.get_llm",
+                        lambda model, temperature=0.1: _FakeChatLLM(["本地", "回答"]))
     result = asyncio.run(terminal.run_chat_query([{"role": "user", "content": "hi"}]))
     assert result == "本地回答"
     assert "本地回答" in capsys.readouterr().out
 
 
 def test_run_chat_query_failure(capsys, monkeypatch):
-    monkeypatch.setattr("yuanai_core.core.lc.call_llm", lambda *a, **k: None)
+    monkeypatch.setattr("yuanai_core.core.lc.get_llm",
+                        lambda *a, **k: _FakeChatLLM([], boom=RuntimeError("endpoint closed")))
     result = asyncio.run(terminal.run_chat_query([{"role": "user", "content": "hi"}]))
     assert result == ""
-    assert "返回空" in capsys.readouterr().out
+    assert "调用失败" in capsys.readouterr().out
 
 
 # ---------------- 审批 Y/N ----------------
@@ -133,7 +147,7 @@ def test_approve_yn_yes_and_deny(monkeypatch):
 # ---------------- 管道模式 ----------------
 
 def test_run_pipe_single_shot(capsys, monkeypatch):
-    async def _fake_run_query(mode, messages, on_approval=None):
+    async def _fake_run_query(mode, messages, on_approval=None, render=None):
         assert mode == "claude"
         assert messages[0]["content"] == "问题"
         print("回答", end="")
@@ -155,7 +169,7 @@ def test_repl_commands_and_mode_switch(tmp_path, capsys, monkeypatch):
     async def _fake_input(prompt=""):
         return next(queue)
 
-    async def _fake_run_query(mode, messages, on_approval=None):
+    async def _fake_run_query(mode, messages, on_approval=None, render=None):
         return "回答"
 
     monkeypatch.setattr(terminal, "_ainput", _fake_input)

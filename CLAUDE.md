@@ -360,18 +360,20 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **托盘托管（2026-10-22 完成）**：托盘菜单「桌宠」子菜单——启动/关闭桌宠（`find_pet_exe` 探测 PET_EXE_PATH > %LOCALAPPDATA%\dsh-pet\* > Agent exe 同目录 dsh-pet\*）+ 一键联动设置（跑 setup()，未装桌宠时通知指引）；全部独立线程 + 失败只通知不崩托盘
 - **挂账**：换皮小元球素材（assets/characters manifest + WebM 帧动画）；stream_target/CC 桥接 approval→attention 扩展
 
-## 终端对话 CLI（P1 产品愿景，2026-10-23 落地）
+## 终端对话 CLI（P1 产品愿景，2026-10-23 落地；v2 企业级重构 2026-10-25）
 
-`python -m agent.terminal`——Windows 终端直接对话本机 Claude Code / 本地 LLM（终端=P4 桌宠的天然搭档，补桌面主动对话入口）。
+`python -m agent.terminal` 或直接 `yuan`——Windows 终端直接对话本机 Claude Code / 本地 LLM（终端=P4 桌宠的天然搭档，补桌面主动对话入口）。
 
-- **模式**：`/claude` 默认（复用 `claude_loop.run_sdk_loop`，与云端桥接同一条代码路径；审批流终端内 Y/N，fail-closed）/ `/chat` 本地 LLM 直连（`call_llm` deepseek-flash，`TERMINAL_CHAT_MODEL` 可配）；`/history` `/clear` `/quit`；**运行必须用项目 venv**（`venv\Scripts\python.exe -m agent.terminal` 或双击根目录 `terminal.bat`——系统默认 python 可能是 anaconda 3.8，缺依赖时报错并提示 venv）
+- **启动（仿 claude 命令）**：`python -m agent.terminal --install-yuan` 一键把 `yuan` 装进用户 PATH（%LOCALAPPDATA%\yuan\yuan.bat 内嵌仓库路径+venv，PowerShell 用户级 PATH 写回防 setx 截断，幂等）——任意目录直接 `yuan`；备选：双击根目录 `terminal.bat` / 托盘菜单「终端对话」/ `venv\Scripts\python.exe -m agent.terminal`（系统默认 python 可能是 anaconda 3.8，缺依赖时报错并提示 venv）
+- **v2 企业级交互（2026-10-25）**：**rich** 渲染——回答以 Markdown 流式渲染（标题/粗体/表格/代码块 pygments 着色）+ 面板回答块，思考 dim 斜体；**prompt_toolkit** 输入——多行（Enter 提交 / Esc+Enter 换行，粘贴多行代码不碎行）、跨会话命令历史 data/terminal_history.txt（↑↓ 找回/光标编辑）；**Ctrl+C 第一下停止本轮生成回到提示符**，空闲再按退出；非 Windows 控制台（Git Bash mintty 无 winpty）输入层自动回退 input()，rich 渲染保留；/chat 与 /claude 统一流式（llm.astream / SDK loop，不再全文突现）；渲染层抽象 Plain/Rich（管道纯文本 / tty 流式，测试可注入）
+- **模式**：`/claude` 默认（复用 `claude_loop.run_sdk_loop`，与云端桥接同一条代码路径；审批流终端内 Y/N，fail-closed）/ `/chat` 本地 LLM 直连（`TERMINAL_CHAT_MODEL` 可配）；`/history` `/clear` `/quit`
 - **托盘入口（2026-10-23 三本地合一）**：托盘菜单「终端对话」→ `find_terminal_launcher()` 探测（源码树=当前解释器+仓库根；frozen exe=向上四级探测 venv\Scripts\python.exe+agent\terminal.py）→ CREATE_NEW_CONSOLE 开新控制台窗口；发布版无源码环境通知提示。Agent 常驻+桌宠+终端三样统一托盘托管
 - **会话续接**：独立 `data/terminal_sessions.json`（不与云端桥接 claude_sessions.json 互串）；REPL 默认自动续接上次会话（--new 新开会话）；管道模式单轮不落盘
 - **安全**：cwd 锁仓库根（CC_PROJECT_DIR 可指真实仓库）；工具执行经 claude_loop.execute_tool 安全分类（deny/review 与桥接同口径）；`_BRIDGE_SYSTEM_PROMPT` 已上移至 claude_loop 共享（改一处两端生效）
 - **编码防护（真机踩坑）**：Windows 管道 GBK/UTF-8 错位与网关流脏字节会产生孤立 surrogate——stdin 按字节读 + utf-8/gbk 双解码兜底（`read_stdin_query`），token/结果/落盘全链路 `_clean_text` 清洗（anthropic SDK openapi_dumps 严格 utf-8 编码，带 surrogate 必崩）
 - **网关工具声明形态（2026-10-23 修复，云端桥接 SDK 模式同时受益）**：DeepSeek 官方 anthropic 兼容网关不认内置工具 type（422: unknown variant `bash_20250124`，只认 web_search_*）——`sdk_tools()` 按 ANTHROPIC_BASE_URL 含 deepseek 判定：网关端点发自定义 schema 工具（Bash/Edit 别名，classify/执行器零变化），Anthropic 官方端点保持内置声明
 - **桌宠联动**：thinking/working+工具名/attention(审批)/idle/error 挂 pet_events
-- **测试**：test/test_terminal.py 18 项（零网络 mock）+ test_claude_loop 3 项网关形态；真机实测管道 /claude /chat 与工具调用闭环全通
+- **测试**：test/test_terminal.py 21 项（零网络 mock，v2 流式 astream 注入）+ test_claude_loop 3 项网关形态；真机实测管道 /claude /chat 与工具调用闭环全通
 
 ## 语音对话
 

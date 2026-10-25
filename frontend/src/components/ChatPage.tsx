@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
-import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
+import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
@@ -135,6 +135,9 @@ export default function ChatPage({ user }: { user?: any }) {
   })
   const dmTargetsRef = useRef(dmTargets)
   dmTargetsRef.current = dmTargets
+  // 重新生成只替换本条气泡：其后消息暂存，流结束后按原序回挂（2026-10-25 修复——
+  // 此前截断其后所有消息 = 静默数据丢失）
+  const pendingAfterRef = useRef<{ sid: string; index: number; after: ChatMessage[] } | null>(null)
   const saveDmTarget = (sid: string, target: string) => {
     setDmTargets((prev) => {
       const next = target ? { ...prev, [sid]: target } : { ...prev }
@@ -395,6 +398,16 @@ export default function ChatPage({ user }: { user?: any }) {
     if (isMobile) setSidebarOpen(false)  // P2：移动端选中会话后收起侧栏
   }
 
+  // U2 会话重命名（2026-10-25）：prompt 输入新标题 → 后端归属校验更新 →
+  // 刷新列表；改名后 /chat/save 的自动标题不会覆盖（_is_auto_title 不命中）
+  const handleRenameSession = async (sid: string, oldTitle: string) => {
+    const title = window.prompt('新标题', oldTitle)
+    if (!title || !title.trim() || title.trim() === oldTitle) return
+    const ok = await renameSession(sid, title.trim())
+    if (ok) refreshSessions()
+    else window.alert('重命名失败，请重试')
+  }
+
   const handleDeleteSession = async (e: React.MouseEvent, sid: string) => {
     e.stopPropagation()
     const title = sessions.find((s) => s.session_id === sid)?.title || '该会话'
@@ -587,13 +600,15 @@ export default function ChatPage({ user }: { user?: any }) {
         if (i >= 0) last[i] = { ...last[i], content: last[i].content || errText, error: errText }
         return last
       })()
-      setMessages(errMsgs)
-      setLoading(false)
-      // P1-1：断流也落库（此前 onError 不保存，刷新后部分输出丢失）
+      // 重新生成失败同样回挂其后消息（数据不丢）
       const s = streamRef.current
       streamRef.current = null
+      const restored = s ? restoreAfterRegenerate(errMsgs, s.sid) : errMsgs
+      setMessages(restored)
+      setLoading(false)
+      // P1-1：断流也落库（此前 onError 不保存，刷新后部分输出丢失）
       if (s) {
-        const finalMsgs = flushVoiceTranscripts(errMsgs)
+        const finalMsgs = flushVoiceTranscripts(restored)
         saveMessages(s.sid, finalMsgs.map(encodeMsg)).finally(() => refreshSessions())
       }
     }
@@ -643,7 +658,11 @@ export default function ChatPage({ user }: { user?: any }) {
         if (s && s.sid !== sid) { setLoading(false); return }
         setLoading(false)
         if (autoRead) setAutoReadTick((t) => t + 1)  // 触发最后一条 AI 气泡自动朗读
-        const finalMsgs = flushVoiceTranscripts(messagesRef.current)
+        // 重新生成回挂：其后消息接回后再落库（全量替换，顺序错了就是数据丢失）
+        const restored = restoreAfterRegenerate(messagesRef.current, sid)
+        messagesRef.current = restored
+        setMessages(restored)
+        const finalMsgs = flushVoiceTranscripts(restored)
         const msgs = finalMsgs.map(encodeMsg)
         // C AI 会话标题：只透传显式 title（新会话首次发送），普通发送不再覆盖标题
         // 会话日期更新（2026-10-19 修复）：等 /chat/save 落库提交后再刷新列表——
@@ -671,6 +690,10 @@ export default function ChatPage({ user }: { user?: any }) {
   // 修改用户消息：替换内容 → 截断其后所有消息 → 重新发送
   const handleEditMessage = (index: number, newContent: string) => {
     if (loading || !newContent.trim() || !currentSid) return
+    // 2026-10-25 数据保护：修改会截断其后所有消息（语义必然）——有后续消息时
+    // 先确认，避免误触静默丢对话（重新生成已改为只替换本条，不再截断）
+    const dropCount = messages.length - index - 1
+    if (dropCount > 0 && !window.confirm(`修改后将清空其后 ${dropCount} 条消息并重新生成，确定继续？`)) return
     const base = [...messages]
     base[index] = { ...base[index], content: newContent.trim() }
     const truncated = base.slice(0, index + 1)
@@ -687,9 +710,10 @@ export default function ChatPage({ user }: { user?: any }) {
     sendMessages(truncated, newContent.trim(), base[index].images)
   }
 
-  // 重新生成（AI 气泡，点踩后）：截断本条及其后所有消息 → 重发它前面的
-  // 最后一条用户消息（复用修改重发的 SSE 链路；Claude 桥接模式同修改重发
-  // 一样是续接语义，无法真正回退）
+  // 重新生成（AI 气泡，点踩后）：只替换本条气泡——其后的对话保留（2026-10-25
+  // 修复：此前截断其后所有消息 = 静默数据丢失）；重发它前面的最后一条用户消息
+  // （复用修改重发的 SSE 链路；Claude 桥接模式同修改重发一样是续接语义，
+  // 无法真正回退）
   const handleRegenerate = (index: number) => {
     if (loading || !currentSid) return
     const ai = messages[index]
@@ -700,17 +724,39 @@ export default function ChatPage({ user }: { user?: any }) {
     }
     if (ui < 0) return  // 前面没有用户消息 → 无从重发
     const userMsg = messages[ui]
-    const truncated = messages.slice(0, index)
-    setMessages(truncated)
-    // 被截断消息的点赞/点踩态一并清理（下标越界孤儿行）
+    const after = messages.slice(index + 1)
+    pendingAfterRef.current = after.length ? { sid: currentSid, index, after } : null
+    setMessages(messages.slice(0, index))
+    // 只清理本条反馈态；其后消息的反馈保留（回挂后按 shift 重映射）
     setFeedbackState((p) => {
       const next = { ...p }
-      Object.keys(next).forEach((k) => { if (Number(k) >= index) delete next[Number(k)] })
+      delete next[index]
       return next
     })
     setEditingIndex(null)
     setSendTick((t) => t + 1)
-    sendMessages(truncated, String(userMsg.content || ''), (userMsg as any).images)
+    sendMessages(messages.slice(0, index), String(userMsg.content || ''), (userMsg as any).images)
+  }
+
+  // 重新生成回挂（2026-10-25）：流结束后把暂存的其后消息按原序接回，
+  // 并重映射反馈下标（新回答气泡数与原来不同时整体平移）
+  const restoreAfterRegenerate = (base: ChatMessage[], sid: string): ChatMessage[] => {
+    const pa = pendingAfterRef.current
+    if (!pa || pa.sid !== sid) return base
+    pendingAfterRef.current = null
+    const restored = [...base, ...pa.after]
+    const shift = base.length - pa.index - 1
+    if (shift !== 0) {
+      setFeedbackState((p) => {
+        const next: typeof p = {}
+        Object.entries(p).forEach(([k, v]) => {
+          const n = Number(k)
+          next[n > pa.index ? n + shift : n] = v
+        })
+        return next
+      })
+    }
+    return restored
   }
 
   // 点赞/点踩 三态互斥：乐观更新 + 失败回滚 + pending 防并发（流式期间禁止索引操作）
@@ -782,7 +828,7 @@ export default function ChatPage({ user }: { user?: any }) {
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}
-        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} />
+        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} />
 
       {sidebarOpen && <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 

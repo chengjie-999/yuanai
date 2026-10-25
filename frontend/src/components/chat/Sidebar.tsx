@@ -1,11 +1,18 @@
+import { useState } from 'react'
 import type { SessionInfo } from './helpers'
 import { groupSessions } from './helpers'
-import { PlusIcon, TrashIcon, PinIcon } from '../icons'
+import { PlusIcon, TrashIcon, PinIcon, SearchIcon, EditIcon } from '../icons'
 
-export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete }: {
+export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete, onRename }: {
   sessions: SessionInfo[]; currentSid: string; sidebarOpen: boolean; isMobile: boolean
   onNewSession: () => void; onSelect: (sid: string) => void; onDelete: (e: React.MouseEvent, sid: string) => void
+  onRename: (sid: string, title: string) => void
 }) {
+  // U3 侧栏会话搜索（2026-10-25）：按标题客户端过滤
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+  const filtered = q ? sessions.filter((s) => s.title.toLowerCase().includes(q)) : sessions
+
   return (
     <div className={`chat-sidebar ${sidebarOpen ? 'sidebar-open' : ''}`} style={{
       width: isMobile ? 0 : (sidebarOpen ? 260 : 0),
@@ -26,9 +33,32 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
         >
           <PlusIcon size={15} /> 新对话
         </button>
+        <div style={{ position: 'relative', marginTop: 8 }}>
+          <span style={{
+            position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+            color: 'var(--text-muted)', display: 'flex', pointerEvents: 'none',
+          }}><SearchIcon size={13} /></span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索会话"
+            aria-label="搜索会话"
+            style={{
+              width: '100%', padding: '7px 10px 7px 30px', borderRadius: 8,
+              border: '1px solid var(--border)', background: 'var(--bg-input)',
+              fontSize: 13, outline: 'none', color: 'var(--text-primary)',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px' }}>
-        {groupSessions(sessions).map((group) => (
+        {filtered.length === 0 && q && (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '16px 14px', textAlign: 'center' }}>
+            没有匹配「{query.trim()}」的会话
+          </div>
+        )}
+        {groupSessions(filtered).map((group) => (
           <div key={group.label}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '12px 14px 4px', fontWeight: 600, letterSpacing: 0.5 }}>{group.label}</div>
             {group.items.map((s) => (
@@ -52,12 +82,21 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                     {s.title.startsWith('🔧') ? <>{s.title}</> : s.title}
                   </span>
                 </span>
-                <span onClick={(e) => onDelete(e, s.session_id)} title="删除对话" aria-label="删除对话"
-                  className="chat-session-del"
-                  style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', flexShrink: 0, display: 'flex', alignItems: 'center' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
-                ><TrashIcon size={13} /></span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                  <span onClick={(e) => { e.stopPropagation(); onRename(s.session_id, s.title) }}
+                    title="重命名" aria-label="重命名"
+                    className="yuan-tip" data-tip="重命名"
+                    style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+                  ><EditIcon size={13} /></span>
+                  <span onClick={(e) => onDelete(e, s.session_id)} title="删除对话" aria-label="删除对话"
+                    className="chat-session-del"
+                    style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+                  ><TrashIcon size={13} /></span>
+                </span>
               </div>
             ))}
           </div>

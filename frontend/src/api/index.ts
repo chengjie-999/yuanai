@@ -333,6 +333,18 @@ export async function deleteSession(sessionId: string) {
   } catch (e) { console.error('API 调用失败:', e) }
 }
 
+/** 会话手动重命名（U2 通用体验 2026-10-25）；用户改名后自动标题不再覆盖 */
+export async function renameSession(sessionId: string, title: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/chat/rename-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ session_id: sessionId, title }),
+    })
+    return res.ok
+  } catch (e) { console.error('API 调用失败:', e); return false }
+}
+
 // ---- Messages ----
 export async function loadMessages(sessionId: string): Promise<{ role: string; content: string; images?: string[] }[]> {
   try {

@@ -63,12 +63,52 @@ export default function InputArea({ input, setInput, loading, handleSend, images
       || a.desc.toLowerCase().includes(atQuery)
   })
 
+  /* 统一上传管线（U1 通用体验 2026-10-25）：文件选择/Ctrl+V 粘贴/拖拽三条入口共用 */
+  const handleFiles = async (files: File[]) => {
+    if (!files.length) return
+    setUploading(true)
+    for (const f of files) {
+      const ext = f.name.split('.').pop()?.toLowerCase()
+      if (['csv', 'xlsx', 'xls', 'json'].includes(ext || '')) {
+        // 数据集文件：上传后注入 [数据集 #id] 引用 + 显示数据卡片
+        setUploadType('dataset')
+        try {
+          const result = await uploadDataset(f)
+          setUploadedDs((p) => [...p.filter((x) => x.id !== result.id), result])
+          setUploadErr('')
+          setInput((p) => p + ` [数据集 #${result.id}: ${result.name}]`)
+        } catch {
+          setUploadErr(`数据集 ${f.name} 上传失败，请重试`)
+        }
+      } else {
+        setUploadType('image')
+        try {
+          const compressed = await compressImage(f)
+          setImages((p) => [...p, compressed])
+        } catch {
+          // HEIC（iPhone 原片）：浏览器解不了码，原样回传会撞 nginx 20m 上限
+          // （P5 移动优化 2026-10-24）——给出明确提示而不是静默塞超限原图
+          if (/heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name)) {
+            setUploadErr(`${f.name} 是 HEIC 格式，浏览器不支持——请在相册里转为 JPG 后发送`)
+            continue
+          }
+          const reader = new FileReader()
+          reader.onload = () => setImages((p) => [...p, reader.result as string])
+          reader.readAsDataURL(f)
+        }
+      }
+    }
+    setUploading(false)
+  }
+
   return (
     <div className="chat-input-area" style={{ padding: '12px 24px 20px', borderTop: '1px solid var(--border)' }}>
       <div className="chat-input-inner" style={{ maxWidth: 720, margin: '0 auto', width: '100%', boxShadow: '0 4px 24px var(--shadow-sm)' }}>
         <div style={{ border: '1px solid var(--border)', borderRadius: 14, background: 'var(--bg-input)', transition: 'box-shadow 0.2s' }}
           onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 2px 16px var(--shadow-sm)'}
           onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); handleFiles(Array.from(e.dataTransfer.files || [])) }}
         >
           {uploading && (
             <div style={{ fontSize: 12, color: 'var(--accent)', padding: '8px 12px 0', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -145,6 +185,16 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                 }
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (loading) { onStop() } else { handleSend() } }
               }}
+              onPaste={(e) => {
+                // U1：Ctrl+V 粘贴图片/截图（通用 AI 对话方案）
+                const items = e.clipboardData?.items
+                if (!items) return
+                const files = Array.from(items)
+                  .filter((i) => i.kind === 'file')
+                  .map((i) => i.getAsFile())
+                  .filter((f): f is File => !!f)
+                if (files.length) { e.preventDefault(); handleFiles(files) }
+              }}
               placeholder={entMode ? '想聊点什么？八卦、脑洞、安利都行~' : '输入消息，@ 可指定智能体...'}
               rows={1}
               style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflow: 'hidden', color: 'var(--text-primary)' }}
@@ -167,42 +217,8 @@ export default function InputArea({ input, setInput, loading, handleSend, images
           <div className="chat-tool-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '0 14px 10px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
               <input ref={fileRef} type="file" accept="image/*,.csv,.xlsx,.xls,.json" multiple hidden
-                onChange={async (e) => {
-                  const files = e.target.files
-                  if (!files) return
-                  setUploading(true)
-                  for (const f of Array.from(files)) {
-                    const ext = f.name.split('.').pop()?.toLowerCase()
-                    if (['csv', 'xlsx', 'xls', 'json'].includes(ext || '')) {
-                      // 数据集文件：上传后注入 [数据集 #id] 引用 + 显示数据卡片
-                      setUploadType('dataset')
-                      try {
-                        const result = await uploadDataset(f)
-                        setUploadedDs((p) => [...p.filter((x) => x.id !== result.id), result])
-                        setUploadErr('')
-                        setInput((p) => p + ` [数据集 #${result.id}: ${result.name}]`)
-                      } catch {
-                        setUploadErr(`数据集 ${f.name} 上传失败，请重试`)
-                      }
-                    } else {
-                      setUploadType('image')
-                      try {
-                        const compressed = await compressImage(f)
-                        setImages((p) => [...p, compressed])
-                      } catch {
-                        // HEIC（iPhone 原片）：浏览器解不了码，原样回传会撞 nginx 20m 上限
-                        // （P5 移动优化 2026-10-24）——给出明确提示而不是静默塞超限原图
-                        if (/heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name)) {
-                          setUploadErr(`${f.name} 是 HEIC 格式，浏览器不支持——请在相册里转为 JPG 后发送`)
-                          continue
-                        }
-                        const reader = new FileReader()
-                        reader.onload = () => setImages((p) => [...p, reader.result as string])
-                        reader.readAsDataURL(f)
-                      }
-                    }
-                  }
-                  setUploading(false)
+                onChange={(e) => {
+                  if (e.target.files) handleFiles(Array.from(e.target.files))
                   e.target.value = ''
                 }}
               />

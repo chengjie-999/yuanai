@@ -667,6 +667,41 @@ async def delete_session(session_id: str, request: Request):
         raise HTTPException(status_code=500, detail=_SAFE_ERROR)
 
 
+class RenameSessionRequest(BaseModel):
+    session_id: str
+    title: str = Field("", max_length=80)
+
+
+@router.post("/rename-session")
+async def rename_session(req: RenameSessionRequest, request: Request):
+    """会话手动重命名（U2 通用体验 2026-10-25）：用户改名后的标题
+    _is_auto_title 判定不再命中 → /chat/save 的自动标题不会覆盖"""
+    try:
+        title = req.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="标题不能为空")
+        if len(title) > 50:
+            raise HTTPException(status_code=400, detail="标题最多 50 字")
+        db = _get_db()
+        user_id = _get_user_id(request)
+        _verify_session_owner(db, req.session_id, user_id)
+        from db.session import ChatSession
+        sess = db.Session()
+        try:
+            sess.query(ChatSession).filter_by(session_id=req.session_id).update({"title": title})
+            sess.commit()
+        finally:
+            sess.close()
+        from db.cache import clear_chat_cache
+        clear_chat_cache(req.session_id)
+        return {"renamed": req.session_id, "title": title}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("重命名会话失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
 @router.post("/messages")
 async def get_messages(req: MessagesRequest, request: Request):
     """获取指定会话的消息"""

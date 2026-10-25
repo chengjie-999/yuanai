@@ -174,11 +174,26 @@ def plan_organize(existing_entries: list, organized_lines: list) -> dict:
 
     deletions = [old[i] for i in range(len(old)) if i not in kept_idx]
 
+    # 保留区按 key 去重（2026-10-25 修复：合并重复旧行——同一行写了 N 遍的
+    # 记忆，模型输出一行时旧 N 行全部命中 kept，此前会原样保留 N 份重复。
+    # 现在只保留最早的一条，其余进 collapsed 供调用方审计「合并」语义）
+    collapsed = []
+    seen_kept = set()
+    deduped_kept = []
+    for entry in kept:
+        k = _dedup_key(entry["text"])
+        if k in seen_kept:
+            collapsed.append(entry)
+            continue
+        seen_kept.add(k)
+        deduped_kept.append(entry)
+    kept = deduped_kept
+
     for j, (ntext, _) in enumerate(new_lines):
         if j not in used:
             kept.append({"text": ntext, "created_at": "", "type": "chat",
                          "source": "organize", "file": ""})
-    return {"kept": kept, "deletions": deletions}
+    return {"kept": kept, "deletions": deletions, "collapsed": collapsed}
 
 
 def merge_facts(existing: list, new: list, max_items: int = 100, max_chars: int = 2000) -> tuple:

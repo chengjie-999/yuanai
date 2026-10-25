@@ -64,6 +64,15 @@ def maybe_schedule_memory_organize(user_id: int) -> bool:
 
 def _audit_auto_organize(user_id: int, texts: list) -> None:
     """自动整理删除审计（与 db._audit_organize 同文件同格式，source 区分）"""
+    _audit_line(user_id, "auto_organize", "deleted", texts)
+
+
+def _audit_merged(user_id: int, texts: list) -> None:
+    """自动整理合并审计：重复旧行并入保留行（内容语义保留，不算删除）"""
+    _audit_line(user_id, "auto_organize", "merged", texts)
+
+
+def _audit_line(user_id: int, source: str, action: str, texts: list) -> None:
     import json
     import os
     from datetime import datetime
@@ -72,7 +81,7 @@ def _audit_auto_organize(user_id: int, texts: list) -> None:
         path = os.path.join(root_path(), "data", "logs", "memory_audit.log")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         line = (f"{datetime.now().strftime('%Y-%m-%dT%H:%M:%S')} uid={user_id} "
-                f"sid= source=auto_organize deleted={json.dumps(texts, ensure_ascii=False)}\n")
+                f"sid= source={source} {action}={json.dumps(texts, ensure_ascii=False)}\n")
         with open(path, "a", encoding="utf-8") as f:
             f.write(line)
     except Exception:
@@ -128,8 +137,12 @@ def run_memory_organize(user_id: int) -> dict:
     total = memory_store.apply_entries(user_id, kept)
     if deletions:
         _audit_auto_organize(user_id, [d["text"] for d in deletions])
-    logger.info("记忆自动整理完成: uid=%s deleted=%d total=%d", user_id, len(deletions), total)
-    return {"organized": True, "deleted": len(deletions), "total": total}
+    if plan.get("collapsed"):
+        _audit_merged(user_id, [d["text"] for d in plan["collapsed"]])
+    logger.info("记忆自动整理完成: uid=%s deleted=%d merged=%d total=%d",
+                user_id, len(deletions), len(plan.get("collapsed", [])), total)
+    return {"organized": True, "deleted": len(deletions),
+            "merged": len(plan.get("collapsed", [])), "total": total}
 
 
 def _guarded(user_id: int) -> None:

@@ -144,3 +144,23 @@ def test_llm_exception_skips(env, monkeypatch):
     r = mo.run_memory_organize(1)
     assert r == {"skipped": "llm_error"}
     assert len(_mem(1)) == 8  # 未动
+
+
+def test_duplicate_merge_seven_copies(env, monkeypatch):
+    """用户真实场景：同一句记忆写了 7 遍 → 模型输出 1 行 → 合并为 1 条 + 6 条合并审计"""
+    _seed(1, ["记忆鉴权失效"] * 7 + ["用户在北京"])
+    _fake_llm(monkeypatch, "记忆鉴权失效\n用户在北京")
+    r = mo.run_memory_organize(1)
+    assert r["organized"] and r["merged"] == 6 and r["deleted"] == 0
+    assert set(_mem(1)) == {"记忆鉴权失效", "用户在北京"}
+    audit = open(os.path.join(str(env), "data", "logs", "memory_audit.log"), encoding="utf-8").read()
+    assert "merged=" in audit
+
+
+def test_plan_organize_dedup_kept():
+    """纯逻辑：重复旧行只保留最早一条，其余进 collapsed"""
+    from yuanai_core.memory import plan_organize
+    old = [_entry("记忆鉴权失效", f"2026-10-2{i % 2}T00:00:00.000000") for i in range(7)]
+    plan = plan_organize(old, ["记忆鉴权失效"])
+    assert len(plan["kept"]) == 1 and len(plan["collapsed"]) == 6
+    assert plan["deletions"] == []

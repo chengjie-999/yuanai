@@ -620,8 +620,12 @@ def parse_args():
 
 
 def install_yuan_command() -> int:
-    """把 `yuan` 装进用户 PATH（仿 claude 命令，2026-10-25）：
-    ① 生成 yuan.bat（内嵌仓库路径 + venv python，ASCII 内容防 cmd GBK 误读）
+    """把 `yuan` / `yuancc` / `yuanagent` 装进用户 PATH（仿 claude 命令，2026-10-25 用户拍板）：
+    - yuan      = 小元自建 v2 终端（/claude SDK loop + /chat 本地 LLM + 桌宠 + 自有会话）
+    - yuancc    = Claude Code 原生终端（参数透传：yuancc -p "问题" = claude -p）
+    - yuanagent = 本地 Agent 命令行形态（终端命令安装/启动：yuanagent --install <安装码>
+                  注册 / --tray 托盘 / 默认后台运行——源码环境免 exe 下载）
+    ① 生成三个 .bat（内嵌仓库路径 + venv python，ASCII 内容防 cmd GBK 误读）
        到 %LOCALAPPDATA%\\yuan\\
     ② 该目录追加进用户 PATH（PowerShell 用户级写回，防 setx 1024 截断；幂等）"""
     import subprocess
@@ -629,12 +633,36 @@ def install_yuan_command() -> int:
     local = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
     inst_dir = os.path.join(local, "yuan")
     os.makedirs(inst_dir, exist_ok=True)
-    bat = os.path.join(inst_dir, "yuan.bat")
-    with open(bat, "w", encoding="ascii") as f:
+
+    yuan_bat = os.path.join(inst_dir, "yuan.bat")
+    with open(yuan_bat, "w", encoding="ascii") as f:
         f.write('@echo off\n')
-        f.write('rem XiaoYuanAI terminal CLI - global yuan command (installed by --install-yuan)\n')
+        f.write('rem XiaoYuanAI built-in terminal (installed by --install-yuan)\n')
         f.write(f'cd /d "{repo}"\n')
-        f.write(f'venv\\Scripts\\python.exe -m agent.terminal %*\n')
+        f.write('venv\\Scripts\\python.exe -m agent.terminal %*\n')
+        f.write('exit /b %errorlevel%\n')
+
+    yuancc_bat = os.path.join(inst_dir, "yuancc.bat")
+    with open(yuancc_bat, "w", encoding="ascii") as f:
+        f.write('@echo off\n')
+        f.write('rem XiaoYuanAI - yuancc = Claude Code native terminal (thin wrapper)\n')
+        f.write('where claude >nul 2>nul\n')
+        f.write('if errorlevel 1 goto no_claude\n')
+        f.write('claude %*\n')
+        f.write('exit /b %errorlevel%\n')
+        f.write('\n')
+        f.write(':no_claude\n')
+        f.write('echo [yuancc] Claude Code CLI not found. Install: npm install -g @anthropic-ai/claude-code\n')
+        f.write('exit /b 1\n')
+
+    yuanagent_bat = os.path.join(inst_dir, "yuanagent.bat")
+    with open(yuanagent_bat, "w", encoding="ascii") as f:
+        f.write('@echo off\n')
+        f.write('rem XiaoYuanAI local agent - terminal install/launch (no exe download needed)\n')
+        f.write(f'cd /d "{repo}"\n')
+        f.write('venv\\Scripts\\python.exe -m agent.main %*\n')
+        f.write('exit /b %errorlevel%\n')
+
     ps = (
         "$p=[Environment]::GetEnvironmentVariable('Path','User');"
         f"if(';{inst_dir};' -notlike '*;'+$p+';*'){{"
@@ -645,8 +673,11 @@ def install_yuan_command() -> int:
     if r.returncode != 0:
         print(f"PATH 注册失败: {r.stderr}", file=sys.stderr)
         return 1
-    print(f"✅ yuan 命令已安装: {bat}")
-    print("   新开一个终端窗口，任意目录输入 yuan 即可启动终端对话")
+    print(f"✅ yuan / yuancc / yuanagent 已安装到: {inst_dir}")
+    print("   新开一个终端窗口即可使用：")
+    print("   yuan       = 小元自建终端（/claude 默认 + /chat 本地 LLM + 桌宠联动）")
+    print('   yuancc     = Claude Code 原生终端（yuancc -p "问题" 管道单轮）')
+    print("   yuanagent  = 本地 Agent（--install <安装码> 注册 / --tray 托盘 / 默认后台）")
     return 0
 
 

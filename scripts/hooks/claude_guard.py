@@ -1,11 +1,14 @@
 #!/usr/bin/env python
-"""Claude Code PreToolUse/PostToolUse 钩子：拦截危险操作 + 审计日志
+"""Claude Code PreToolUse/PostToolUse 钩子：拦截危险操作 + 审计日志 + 桌宠联动
 
 仅在桥接调用（环境变量 CLAUDE_CODE_BRIDGE=1）时启用拦截，
 不影响用户本人在本仓库的日常交互会话。
 
 PreToolUse：classify 结果 deny/review → exit 2（拒绝并给出原因）
 PostToolUse：写审计日志，恒放行（exit 0）
+桌宠联动（2026-10-25，yuan 薄封装后用户直接跑 claude 也不丢陪伴）：
+PreToolUse→working+工具名 / PostToolUse→thinking / UserPromptSubmit→thinking /
+Stop|SessionEnd→idle——交互会话与桥接路径都发，失败静默。
 """
 
 import json
@@ -30,19 +33,36 @@ def _audit(record: str):
         pass
 
 
+def _emit_pet(hook_event: str, tool_name: str):
+    """桌宠六态联动（失败静默，不阻塞钩子）"""
+    try:
+        from agent.pet_events import emit
+        if hook_event == "PreToolUse":
+            emit(state="working", tool=str(tool_name)[:64])
+        elif hook_event in ("PostToolUse", "UserPromptSubmit"):
+            emit(state="thinking")
+        elif hook_event in ("Stop", "SessionEnd"):
+            emit(state="idle")
+    except Exception:
+        pass
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
     except Exception:
         sys.exit(0)  # 无法解析则放行（钩子不应成为故障点）
 
-    # 仅桥接调用启用拦截（CLI/SDK 调用方注入 CLAUDE_CODE_BRIDGE=1）
-    if os.getenv("CLAUDE_CODE_BRIDGE", "0") != "1":
-        sys.exit(0)
-
     hook_event = payload.get("hook_event_name", "")
     tool_name = payload.get("tool_name", "")
     tool_input = payload.get("tool_input", {}) or {}
+
+    # 非桥接（用户交互会话）：不拦截，但桌宠联动照常
+    if os.getenv("CLAUDE_CODE_BRIDGE", "0") != "1":
+        _emit_pet(hook_event, tool_name)
+        sys.exit(0)
+
+    _emit_pet(hook_event, tool_name)
 
     from agent.bridge_policy import classify, explain
 

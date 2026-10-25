@@ -442,3 +442,11 @@ input, textarea, select {
 @media (max-width: 768px) {
   .chat-html-frame iframe { aspect-ratio: auto !important; height: 70vh; max-height: none !important; }
 }
+
+/* 流式打字光标（通用 AI 对话方案，2026-10-25）：生成中文本末尾闪烁块 */
+.stream-cursor {
+  display: inline-block; width: 7px; height: 15px; margin-left: 2px;
+  background: var(--accent); border-radius: 1px;
+  vertical-align: text-bottom; animation: stream-cursor-blink 1s steps(1) infinite;
+}
+@keyframes stream-cursor-blink { 50% { opacity: 0 } }

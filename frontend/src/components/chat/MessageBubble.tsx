@@ -459,6 +459,10 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
               </details>
             ) : null}
             <MarkdownContent content={msg.content} onImageExpand={setExpandedImage} />
+            {/* 流式打字光标（通用 AI 对话方案，2026-10-25）：生成中文本末尾闪烁 */}
+            {loading && isLast && !!msg.content && !msg.error && (
+              <span className="stream-cursor" aria-hidden="true" />
+            )}
             {msg.error && (
               <div style={{
                 marginTop: 8, padding: '8px 12px', borderRadius: 8,

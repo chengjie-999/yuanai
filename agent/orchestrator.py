@@ -381,7 +381,7 @@ class Orchestrator:
                     intent.group, intent.confidence, latest_msg[:50])
 
         # ---- Tier 1.5: 低置信度降级到 mini LLM 分类 ----
-        if intent_clf.needs_fallback_llm(intent) and latest_msg:
+        if intent_clf.needs_fallback_llm(intent, latest_msg) and latest_msg:
             try:
                 from agent.intent_classifier import LLM_CLASSIFIER_PROMPT, INTENT_TOOL_GROUPS
                 fallback_llm = get_llm(AGENT_MODEL_MAP["orchestrator"],

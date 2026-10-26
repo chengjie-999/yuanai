@@ -39,7 +39,10 @@ INTENT_TOOL_GROUPS: Dict[str, List[str]] = {
     "web_query":              ["general", "crawl"],
     "delegate_automation":    ["general", "delegate_automation"],
     "delegate_claude":        ["general", "delegate_claude"],
-    "general_chat":           ["general", "memory", "plan", "knowledge", "delegate_all"],
+    # 2026-10-26 提速：闲聊是最高频意图——原含 plan/knowledge 两组把工具 schema
+    # 撑大，DeepSeek 预填充 TTFT 实测 1.6s vs 精简 0.7s。计划/知识库有专属
+    # 关键词意图（plan_task/knowledge_q）+ LLM 兜底路由，从闲聊组移除
+    "general_chat":           ["general", "memory", "delegate_all"],
 }
 
 # 每个意图的中英文关键词
@@ -170,8 +173,16 @@ class IntentClassifier:
         return INTENT_TOOL_GROUPS.get(intent.group, ["general"])
 
     @staticmethod
-    def needs_fallback_llm(intent: IntentMatch) -> bool:
-        """是否需要降级 LLM 分类。"""
+    def needs_fallback_llm(intent: IntentMatch, message: str = "") -> bool:
+        """是否需要降级 LLM 分类。
+
+        2026-10-26 提速：短消息（<20 字）跳过兜底——高频闲聊原本每条都付一次
+        额外的模型分类调用（实测「1+1等于几」总链路 3.7s，其中兜底分类 ~2s）；
+        短消息要么命中关键词、要么直接 general_chat 足够。长消息保留兜底
+        （更可能是数据/采集/搜索类任务，值得精确选工具组）。
+        """
+        if len((message or "").strip()) < 20:
+            return False
         return intent.confidence < 0.4 or intent.group == "general_chat"
 
 

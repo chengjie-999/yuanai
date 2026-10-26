@@ -1,35 +1,36 @@
-"""记忆文件存储 — data/.yuan/{user_id}/（Claude Code 记忆目录风格，用户拍板）
+"""记忆文件存储 — data/.yuan/{user_id}/facts.jsonl（B2 企业级单文件方案，2026-10-26）
 
 写入口只有云端进程（折叠 worker / API 端点）；本地 Agent 的记忆工具经
 `/api/v1/agent/memory` HTTP 读写。users.memory 旧字段废弃，懒迁移在 db 层完成。
 
-结构：
-    data/.yuan/{user_id}/
-    ├── MEMORY.md                      # 索引（- [摘要](file.md) — created_at）
-    └── fact-{slug}-{uuid8}.md         # 每条记忆一个文件：
-        ---                            #   自实现扁平 frontmatter（不引 PyYAML，
-        name: 前 20 字                  #   同 vault_note 惯例）
-        description: 正文（单行）
-        type: chat
-        created_at: 2026-10-11T12:00:00
-        source: fold
-        ---
-        <正文一行>
+结构（v2 单文件 JSONL）：
+    data/.yuan/{user_id}/facts.jsonl   # 每条一行 JSON：
+        {"text": "…", "created_at": "2026-10-11T12:00:00.000000",
+         "type": "chat", "source": "fold"}
+    每行 json.dumps(ensure_ascii=False)——换行/引号自动转义，正文单行语义不变；
+    文件可直接 grep/tail 排查。
+
+v1 旧形态（每条一个 fact-*.md + MEMORY.md 索引）在首次读取时**懒迁移**：
+读旧条目 → 写 facts.jsonl → 删除旧 .md 与索引（facts.jsonl 成为唯一真相）。
+迁移在调用方持有的 per-user 锁内执行（load_entries 自身不加锁）。
 
 顺序语义：created_at 升序 = 「最旧在前」，超限丢最旧从头部丢。
-并发：per-user threading.Lock + 整目录原子替换（临时目录 + rename）。
+并发：per-user threading.Lock + 单文件原子替换（tmp 文件 + os.replace——
+比 v1 整目录替换更简单更稳）。
 """
+import json
 import os
 import re
 import shutil
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from utils.data_path import root_path
 
-MEMORY_INDEX = "MEMORY.md"
+MEMORY_FILE = "facts.jsonl"
+MEMORY_INDEX = "MEMORY.md"          # 仅 v1 旧形态识别/迁移用
 _FACT_RE = re.compile(r"^fact-(.+)-([0-9a-f]{8})\.md$")
 _LOCKS: dict = {}
 _LOCKS_GUARD = threading.Lock()
@@ -49,12 +50,59 @@ def _lock_for(user_id) -> threading.Lock:
         return _LOCKS.setdefault(str(user_id), threading.Lock())
 
 
-def _slug(text: str) -> str:
-    """文件名安全基（中文保留，非法字符换下划线，最长 16 字）"""
-    t = re.sub(r'[\\/:*?"<>|\r\n\t ]+', "-", text.strip())
-    t = re.sub(r"-{2,}", "-", t).strip("-")
-    return (t or "fact")[:16]
+# ==================== v2 JSONL 读写 ====================
 
+def _read_jsonl(path: str) -> List[dict]:
+    """读 facts.jsonl → 条目列表（坏行跳过，不因单行损坏丢掉全部记忆）"""
+    entries = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    continue  # 半行写坏（进程被杀窗口极小）：跳过该行
+                if isinstance(obj, dict) and str(obj.get("text", "")).strip():
+                    entries.append({"text": str(obj["text"]).strip(),
+                                    "created_at": obj.get("created_at", ""),
+                                    "type": obj.get("type", "chat"),
+                                    "source": obj.get("source", ""),
+                                    "file": ""})
+    except OSError:
+        pass
+    return entries
+
+
+def _write_jsonl(user_id: int, entries: List[dict]) -> None:
+    """单文件原子重写：tmp 文件 + os.replace；created_at 空则 base+微秒递增
+    补全保证严格单调（排序「丢最旧」的顺序键不能依赖写入顺序）。"""
+    d = _mem_dir(user_id)
+    os.makedirs(d, exist_ok=True)
+    tmp = os.path.join(d, f".facts-{uuid.uuid4().hex[:8]}.tmp")
+    base = datetime.now()
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            for i, e in enumerate(entries):
+                if not e.get("created_at"):
+                    e["created_at"] = (base + timedelta(microseconds=i)).strftime("%Y-%m-%dT%H:%M:%S.%f")
+                obj = {"text": str(e.get("text", "")).strip(),
+                       "created_at": e["created_at"],
+                       "type": e.get("type", "chat"),
+                       "source": e.get("source", "")}
+                f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        os.replace(tmp, os.path.join(d, MEMORY_FILE))
+    finally:
+        if os.path.isfile(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+
+# ==================== v1 旧形态读取与懒迁移 ====================
 
 def _parse_frontmatter(raw: str) -> dict:
     """自实现扁平 frontmatter 解析：--- 开头块，键值标量"""
@@ -70,8 +118,8 @@ def _parse_frontmatter(raw: str) -> dict:
     return meta
 
 
-def _read_fact_file(path: str) -> Optional[dict]:
-    """读单条记忆文件 → {text, created_at, type, source, file}；解析失败返回 None"""
+def _read_legacy_fact_file(path: str) -> Optional[dict]:
+    """v1 单条记忆文件 → {text, created_at, type, source}；解析失败返回 None"""
     try:
         with open(path, encoding="utf-8") as f:
             raw = f.read()
@@ -84,77 +132,57 @@ def _read_fact_file(path: str) -> Optional[dict]:
         return None
     return {"text": body, "created_at": meta.get("created_at", ""),
             "type": meta.get("type", "chat"), "source": meta.get("source", ""),
-            "file": os.path.basename(path)}
+            "file": ""}
 
 
-def _write_fact_file(dirpath: str, text: str, created_at: str,
-                     mtype: str = "chat", source: str = "") -> str:
-    """写一条记忆 → 文件名；created_at 空则取当前时间"""
-    created_at = created_at or _now()
-    fname = f"fact-{_slug(text)}-{uuid.uuid4().hex[:8]}.md"
-    name = re.sub(r"\s+", " ", text)[:20]
-    desc = re.sub(r"[\r\n]+", " ", text)
-    content = (f"---\nname: {name}\ndescription: {desc}\n"
-               f"type: {mtype}\ncreated_at: {created_at}\nsource: {source}\n---\n{text}\n")
-    with open(os.path.join(dirpath, fname), "w", encoding="utf-8") as f:
-        f.write(content)
-    return fname
-
-
-def _write_index(dirpath: str, entries: List[dict]) -> None:
-    lines = ["# 小元AI 记忆索引", ""]
-    for e in entries:
-        lines.append(f"- [{e['text'][:20]}]({e['file']}) — {e['created_at']}")
-    with open(os.path.join(dirpath, MEMORY_INDEX), "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-
-
-def _atomic_rewrite(user_id: int, entries: List[dict]) -> None:
-    """整目录原子替换（临时目录 + rename），entries 按序写入并补齐文件名
-
-    同批新条目的 created_at 用 base+微秒递增保证严格单调——排序（丢最旧
-    的顺序键）不能依赖文件系统 listdir 顺序。
-    """
-    from datetime import datetime, timedelta
-
-    target = _mem_dir(user_id)
-    tmp = os.path.join(root_path(), "data", ".yuan", f".tmp-{user_id}-{uuid.uuid4().hex[:8]}")
-    os.makedirs(tmp, exist_ok=True)
-    base = datetime.now()
+def _read_legacy_dir(d: str) -> List[dict]:
+    entries = []
     try:
-        for i, e in enumerate(entries):
-            if not e.get("created_at"):
-                e["created_at"] = (base + timedelta(microseconds=i)).strftime("%Y-%m-%dT%H:%M:%S.%f")
-            e["file"] = _write_fact_file(tmp, e["text"], e["created_at"],
-                                         e.get("type", "chat"), e.get("source", ""))
-        _write_index(tmp, entries)
-        bak = None
-        if os.path.isdir(target):
-            bak = target + ".bak"
-            if os.path.exists(bak):
-                shutil.rmtree(bak, ignore_errors=True)
-            os.rename(target, bak)
-        os.rename(tmp, target)
-        if bak:
-            shutil.rmtree(bak, ignore_errors=True)
-    finally:
-        if os.path.isdir(tmp):
-            shutil.rmtree(tmp, ignore_errors=True)
+        names = os.listdir(d)
+    except OSError:
+        return entries
+    for name in names:
+        if name == MEMORY_INDEX or not name.endswith(".md"):
+            continue
+        e = _read_legacy_fact_file(os.path.join(d, name))
+        if e:
+            entries.append(e)
+    return entries
+
+
+def _migrate_legacy(user_id: int, d: str, entries: List[dict]) -> None:
+    """v1 → v2 懒迁移：旧 .md 条目写 facts.jsonl 后删除旧文件（唯一真相切换）"""
+    _write_jsonl(user_id, entries)
+    try:
+        for name in os.listdir(d):
+            if name == MEMORY_FILE:
+                continue
+            p = os.path.join(d, name)
+            try:
+                if os.path.isfile(p):
+                    os.remove(p)
+            except OSError:
+                pass
+    except OSError:
+        pass
 
 
 def load_entries(user_id) -> List[dict]:
-    """读全部记忆条目（created_at 升序 = 最旧在前）；目录不存在返回 []"""
+    """读全部记忆条目（created_at 升序 = 最旧在前）；目录不存在返回 []。
+    v1 旧 .md 目录首次读取时懒迁移到 facts.jsonl。"""
     d = _mem_dir(user_id)
     if not os.path.isdir(d):
         return []
-    entries = []
-    for name in os.listdir(d):
-        if name == MEMORY_INDEX or not name.endswith(".md"):
-            continue
-        e = _read_fact_file(os.path.join(d, name))
-        if e:
-            entries.append(e)
+    jf = os.path.join(d, MEMORY_FILE)
+    if os.path.isfile(jf):
+        entries = _read_jsonl(jf)
+        entries.sort(key=lambda e: e["created_at"] or "")
+        return entries
+    # v1 旧形态：读旧条目并迁移（调用方多已持有 per-user 锁；裸调用并发迁移幂等）
+    entries = _read_legacy_dir(d)
     entries.sort(key=lambda e: e["created_at"] or "")
+    if entries:
+        _migrate_legacy(user_id, d, entries)
     return entries
 
 
@@ -188,7 +216,7 @@ def rewrite(user_id, lines: List[str], source: str = "edit") -> dict:
                             "type": reused["type"] if reused else "chat",
                             "source": reused["source"] if reused else source,
                             "file": ""})
-        _atomic_rewrite(user_id, entries)
+        _write_jsonl(user_id, entries)
         return {"memory": "\n".join(e["text"] for e in entries), "total": len(entries)}
 
 
@@ -197,7 +225,7 @@ def apply_entries(user_id, entries: List[dict]) -> int:
     created_at 空则记当前时间）。返回条目总数。"""
     with _lock_for(user_id):
         clean = [e for e in entries if str(e.get("text", "")).strip()]
-        _atomic_rewrite(user_id, clean)
+        _write_jsonl(user_id, clean)
         return len(clean)
 
 
@@ -232,7 +260,7 @@ def add_facts(user_id, new_lines: List[str], max_items: int = 100,
                             "type": reused["type"] if reused else "chat",
                             "source": reused["source"] if reused else source,
                             "file": ""})
-        _atomic_rewrite(user_id, entries)
+        _write_jsonl(user_id, entries)
         return {"added": added, "total": len(entries)}
 
 
@@ -258,7 +286,7 @@ def delete_fact(user_id, keyword: str) -> dict:
             return {"deleted": 0, "total": len(old),
                     "memory": "\n".join(e["text"] for e in old), "asked_more": False}
         remaining = [e for e in old if e is not hits[0]]
-        _atomic_rewrite(user_id, remaining)
+        _write_jsonl(user_id, remaining)
         return {"deleted": 1, "total": len(remaining),
                 "memory": "\n".join(e["text"] for e in remaining), "asked_more": False}
 

@@ -28,7 +28,32 @@ def _yuan_dir(memdir, uid):
 def test_add_and_load(memdir):
     store.add_facts(1, ["用户是数据分析师", "用户怕辣"])
     assert store.load_facts(1) == ["用户是数据分析师", "用户怕辣"]
-    assert os.path.isfile(os.path.join(_yuan_dir(memdir, 1), "MEMORY.md"))
+    # B2：v2 单文件 JSONL（不再每条一个 .md + MEMORY.md 索引）
+    assert os.path.isfile(os.path.join(_yuan_dir(memdir, 1), "facts.jsonl"))
+
+
+def test_legacy_md_migration(memdir):
+    """v1 旧形态（每条 .md + MEMORY.md）首次读取时懒迁移到 facts.jsonl 并删除旧文件"""
+    d = _yuan_dir(memdir, 2)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "fact-old-aaaaaaaa.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: 旧记忆\ndescription: 旧记忆\ntype: chat\n"
+                "created_at: 2026-10-01T00:00:00.000000\nsource: fold\n---\n旧记忆\n")
+    with open(os.path.join(d, "MEMORY.md"), "w", encoding="utf-8") as f:
+        f.write("# 索引\n")
+    assert store.load_facts(2) == ["旧记忆"]
+    assert os.path.isfile(os.path.join(d, "facts.jsonl"))
+    assert not os.path.exists(os.path.join(d, "fact-old-aaaaaaaa.md"))
+    assert not os.path.exists(os.path.join(d, "MEMORY.md"))
+
+
+def test_jsonl_corrupt_line_tolerated(memdir):
+    """单行损坏不丢全部记忆（坏行跳过）"""
+    store.add_facts(3, ["记忆A", "记忆B"])
+    jf = os.path.join(_yuan_dir(memdir, 3), "facts.jsonl")
+    with open(jf, "a", encoding="utf-8") as f:
+        f.write("{坏行不是合法JSON\n")
+    assert store.load_facts(3) == ["记忆A", "记忆B"]
 
 
 def test_add_dedup_and_upgrade(memdir):

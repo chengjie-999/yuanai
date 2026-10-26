@@ -45,6 +45,10 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   const lastSendTickRef = useRef(sendTick)
   // 是否贴底（滚动监听实时维护）：贴底才跟随最新消息；上滑阅读时暂停跟随
   const nearBottomRef = useRef(true)
+  // B3 修复（2026-10-26）：防顶屏冻结只钉一次——冻结期间程序化滚动不再触发
+  // 重钉，且冻结态不随「短暂贴底」抖动复位；用户主动下滑 >40px 才恢复跟随
+  const frozenRef = useRef(false)
+  const pinnedTopRef = useRef(0)
   const [showJump, setShowJump] = useState(false)
 
   const jumpToBottom = () => {
@@ -52,6 +56,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
     if (!container) return
     container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
     nearBottomRef.current = true
+    frozenRef.current = false
     setShowJump(false)
   }
 
@@ -60,6 +65,18 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
     if (!container) return
     const onScroll = () => {
       const near = container.scrollHeight - container.scrollTop - container.clientHeight < 120
+      if (frozenRef.current) {
+        // 冻结期间：程序化钉顶产生的短暂贴底不解除冻结；
+        // 只有用户继续向下滚动超过 40px（追上内容）才恢复跟随
+        if (near && container.scrollTop > pinnedTopRef.current + 40) {
+          frozenRef.current = false
+          nearBottomRef.current = true
+          setShowJump(false)
+        } else {
+          setShowJump(true)
+          return
+        }
+      }
       nearBottomRef.current = near
       setShowJump(!near)
     }
@@ -82,20 +99,25 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
     if (sessionChanged || justSent) {
       container.scrollTop = container.scrollHeight
       nearBottomRef.current = true
+      frozenRef.current = false
       setShowJump(false)
       return
     }
     // 流式输出：贴底才跟随，直接设 scrollTop（无平滑动画）防逐 token 抖动；
     // 上滑阅读历史时暂停跟随，点「回到底部」按钮恢复。
     // 长回答防顶屏（2026-10-25）：回答超过一屏时生成速度超过阅读速度——
-    // 最后一条消息顶部即将滚出视口时，把消息顶部钉在视口顶部并冻结跟随，
-    // 用户按自己速度阅读；手动滚回底部（nearBottom 恢复）或点「回到底部」恢复跟随
+    // 最后一条消息顶部即将滚出视口时，把消息顶部钉在视口顶部并冻结跟随；
+    // B3（2026-10-26）：钉住一次后冻结（frozenRef），不再逐 token 重复校正，
+    // 抖动消除；用户下滑 >40px 或点「回到底部」恢复跟随
+    if (frozenRef.current) return
     if (nearBottomRef.current) {
       const lastEl = chatEndRef.current?.previousElementSibling as HTMLElement | null
       const crect = container.getBoundingClientRect()
       const lrect = lastEl ? lastEl.getBoundingClientRect() : null
       if (lrect && lrect.top < crect.top + 8) {
         container.scrollTop += (lrect.top - crect.top - 8)
+        pinnedTopRef.current = container.scrollTop
+        frozenRef.current = true
         nearBottomRef.current = false
         setShowJump(true)
         return

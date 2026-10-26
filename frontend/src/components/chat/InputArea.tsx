@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { downloadChat } from './helpers'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
@@ -33,6 +33,15 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   notice: string
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const taRef = useRef<HTMLTextAreaElement>(null)
+  // B1 修复（2026-10-26）：发送后 input 置空，textarea 的自动增高样式残留——
+  // 重新输入单行才复原；输入为空时立即复位高度
+  useEffect(() => {
+    if (!input && taRef.current) {
+      taRef.current.style.height = 'auto'
+      taRef.current.style.overflowY = 'hidden'
+    }
+  }, [input])
   const [uploading, setUploading] = useState(false)
   const [uploadType, setUploadType] = useState<'image' | 'dataset'>('image')
   const [uploadErr, setUploadErr] = useState('')
@@ -174,7 +183,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
           {/* 输入行：只留输入框 + 发送/停止（豆包式，功能键全部下沉工具行）；
               P1-2：loading 时输入框不锁（可继续打字），发送键变停止键 */}
           <div style={{ display: 'flex', alignItems: 'flex-end', padding: '4px 4px 4px 16px' }}>
-            <textarea value={input} onChange={(e) => { setInput(e.target.value); if (!pickerOpen && e.target.value.endsWith('@')) { setPickerOpen(true); setPickIndex(0) }; const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; t.style.overflowY = t.scrollHeight > 200 ? 'auto' : 'hidden' }}
+            <textarea ref={taRef} value={input} onChange={(e) => { setInput(e.target.value); if (!pickerOpen && e.target.value.endsWith('@')) { setPickerOpen(true); setPickIndex(0) }; const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; t.style.overflowY = t.scrollHeight > 200 ? 'auto' : 'hidden' }}
               onKeyDown={(e) => {
                 // @面板键盘导航：↑↓ 移动 / Enter 选中 / Esc 关闭
                 if (pickerOpen) {

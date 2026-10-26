@@ -22,6 +22,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 _SAFE_ERROR = "请求处理失败，请稍后重试"
+
+
+def _sse(obj) -> str:
+    """SSE 事件序列化（2026-10-26 B4 修复）：网关流脏字节会产生孤立 surrogate——
+    json.dumps(ensure_ascii=False) 生成的字符串含 surrogate 时，uvicorn 按 utf-8
+    写响应抛 UnicodeEncodeError，流当场中断 = 回复中途截断（真机已复现脏字节
+    存在，终端侧同因曾致 SDK 序列化崩溃）。序列化前递归清洗。"""
+    def _clean(v):
+        if isinstance(v, str):
+            return v.encode("utf-8", errors="replace").decode("utf-8")
+        if isinstance(v, list):
+            return [_clean(x) for x in v]
+        if isinstance(v, dict):
+            return {k: _clean(x) for k, x in v.items()}
+        return v
+    return json.dumps(_clean(obj), ensure_ascii=False)
 _CHAT_IMG_DIR = os.path.join(root_path(), "data", "chat_images")
 
 # 云端直连（本地 Agent 离线）专用系统提示——整段重写、去委派化。
@@ -154,21 +170,21 @@ async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0,
     from api.v1.agent.router import cleanup_pending
     try:
         if prefix_event:
-            yield f"data: {json.dumps(prefix_event, ensure_ascii=False)}\n\n"
+            yield f"data: {_sse(prefix_event)}\n\n"
         while True:
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=300)
             except asyncio.TimeoutError:
-                yield f"data: {json.dumps({'type': 'error', 'data': 'Agent 响应超时'}, ensure_ascii=False)}\n\n"
+                yield f"data: {_sse({'type': 'error', 'data': 'Agent 响应超时'})}\n\n"
                 break
 
             if event.get("type") in ("done", "error"):
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                yield f"data: {_sse(event)}\n\n"
                 break
 
             for ui in _ui_events(event):
-                yield f"data: {json.dumps(ui, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                yield f"data: {_sse(ui)}\n\n"
+            yield f"data: {_sse(event)}\n\n"
     except asyncio.CancelledError:
         # B1-12 停止联动：SSE 被 abort（停止生成）→ 通知 Agent 杀脚本子进程
         try:
@@ -433,17 +449,17 @@ async def chat_stream(req: ChatRequest, request: Request):
         async def event_stream():
             try:
                 if mode_event:
-                    yield f"data: {json.dumps(mode_event, ensure_ascii=False)}\n\n"
+                    yield f"data: {_sse(mode_event)}\n\n"
                 # 同名工具单轮最多调 3 次（防重复调用死循环）+ LangGraph 轮数上限
                 async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
                     for ui in _ui_events(event):
-                        yield f"data: {json.dumps(ui, ensure_ascii=False)}\n\n"
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                        yield f"data: {_sse(ui)}\n\n"
+                    yield f"data: {_sse(event)}\n\n"
             except Exception as e:
                 # exc_info：异常来自哪一行一眼可见（曾出现「string indices must be integers」
                 # 无法定位——只打 str(e) 丢了堆栈）
                 logger.error("SSE 流式聊天异常: %s", e, exc_info=True)
-                yield f"data: {json.dumps({'type': 'error', 'data': _SAFE_ERROR}, ensure_ascii=False)}\n\n"
+                yield f"data: {_sse({'type': 'error', 'data': _SAFE_ERROR})}\n\n"
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
     except HTTPException:
@@ -552,11 +568,11 @@ async def claude_stream(req: ChatRequest, request: Request):
                 from yuanai_core.core.chat import limited_tools
                 async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
                     for ui in _ui_events(event):
-                        yield f"data: {json.dumps(ui, ensure_ascii=False)}\n\n"
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                        yield f"data: {_sse(ui)}\n\n"
+                    yield f"data: {_sse(event)}\n\n"
             except Exception as e:
                 logger.error("claude-stream 云端回退异常: %s", e)
-                yield f"data: {json.dumps({'type': 'error', 'data': _SAFE_ERROR}, ensure_ascii=False)}\n\n"
+                yield f"data: {_sse({'type': 'error', 'data': _SAFE_ERROR})}\n\n"
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
     except HTTPException:

@@ -255,7 +255,7 @@ export function LoadingDots() {
   }, [])
   return (
     <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 14 }}>
-      正在思考<span style={{ letterSpacing: 1 }}>{dots}</span>
+      正在回复<span style={{ letterSpacing: 1 }}>{dots}</span>
     </span>
   )
 }

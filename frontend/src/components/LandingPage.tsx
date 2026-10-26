@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { trackVisit } from '../api'
 import NeuralBackground from './NeuralBackground'
 import { SUB_AGENTS } from '../config/agents'
+import { ICP_BEIAN_NUMBER, POLICE_BEIAN_NUMBER, ICP_BEIAN_URL, POLICE_BEIAN_URL } from '../config/site'
 import Mascot from './Mascot'
 import LandingHeader from './LandingHeader'
 import { ArrowDownIcon } from './icons'
@@ -278,6 +279,20 @@ export default function LandingPage() {
         <span style={{ color: 'var(--text-secondary)' }}>云边协同 · 对话即执行</span>
         <Link to="/about" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>关于我们</Link>
         <Link to="/api-docs" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>API 文档</Link>
+        {/* ICP 备案号展示（管局明文要求：页面底部中央 + 链接工信部备案系统；
+            公安备案号完成后同排展示，链接公安备案平台） */}
+        {ICP_BEIAN_NUMBER && (
+          <a href={ICP_BEIAN_URL} target="_blank" rel="noreferrer"
+            style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>
+            {ICP_BEIAN_NUMBER}
+          </a>
+        )}
+        {POLICE_BEIAN_NUMBER && (
+          <a href={POLICE_BEIAN_URL} target="_blank" rel="noreferrer"
+            style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>
+            {POLICE_BEIAN_NUMBER}
+          </a>
+        )}
         <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>© 2026 小元AI</span>
         {isAdmin && (
           <Link to="/chat/admin" style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>

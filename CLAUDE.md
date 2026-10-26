@@ -373,7 +373,8 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **编码防护（真机踩坑）**：Windows 管道 GBK/UTF-8 错位与网关流脏字节会产生孤立 surrogate——stdin 按字节读 + utf-8/gbk 双解码兜底（`read_stdin_query`），token/结果/落盘全链路 `_clean_text` 清洗（anthropic SDK openapi_dumps 严格 utf-8 编码，带 surrogate 必崩）
 - **网关工具声明形态（2026-10-23 修复，云端桥接 SDK 模式同时受益）**：DeepSeek 官方 anthropic 兼容网关不认内置工具 type（422: unknown variant `bash_20250124`，只认 web_search_*）——`sdk_tools()` 按 ANTHROPIC_BASE_URL 含 deepseek 判定：网关端点发自定义 schema 工具（Bash/Edit 别名，classify/执行器零变化），Anthropic 官方端点保持内置声明
 - **桌宠联动**：thinking/working+工具名/attention(审批)/idle/error 挂 pet_events
-- **测试**：test/test_terminal.py 21 项（零网络 mock，v2 流式 astream 注入）+ test_claude_loop 3 项网关形态；真机实测管道 /claude /chat 与工具调用闭环全通
+- **云端观测面（O1-O3，2026-10-26）**：执行元数据单一收口云端——`POST /api/v1/agent/activity`（设备凭据，只收状态/工具名/≤120 字，**绝不上传内容**）；yuancc 无 WS 连接经 claude_guard 独立线程异步上报（桥接调用跳过防重复，读 agent_identity.json，失败静默）；`_get_agent_status` 合并 WS+REST 活动（`_merged_activities` 按时间取最近 10 条），离线设备带「（离线上报）」条目——手机随时看电脑在干什么（愿景「手机定计划、电脑执行」观测面）
+- **测试**：test/test_terminal.py 21 项（零网络 mock，v2 流式 astream 注入）+ test_claude_loop 3 项网关形态 + test_agent_activity 5 项；真机实测管道 /claude /chat、活动上报 200 与工具调用闭环全通
 
 ## 语音对话
 

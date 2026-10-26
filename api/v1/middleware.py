@@ -53,7 +53,8 @@ async def auth_middleware(request: Request, call_next):
             or path.startswith("/api/v1/agent/bridge-memory")
             or path.startswith("/api/v1/agent/knowledge")
             or path.startswith("/api/v1/agent/usage")
-            or path.startswith("/api/v1/agent/memory")):
+            or path.startswith("/api/v1/agent/memory")
+            or path.startswith("/api/v1/agent/activity")):  # O1 活动上报（设备凭据自鉴权）
         return await call_next(request)
 
     if is_public(path):

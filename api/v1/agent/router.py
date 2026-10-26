@@ -20,6 +20,10 @@ _agents: Dict[str, WebSocket] = {}
 # agent_id → agent info
 _agent_info: Dict[str, dict] = {}
 
+# REST 上报的活动（O1 观测 2026-10-26）：无 WS 连接的轻量客户端（yuancc hooks）
+# 经 /agent/activity 上报的元数据活动——agent_id → [{message, detail, time}]（最近 20 条）
+_rest_activities: Dict[str, list] = {}
+
 # request_id → asyncio.Queue（SSE 桥等待 Agent 回传事件）
 _pending: Dict[str, asyncio.Queue] = {}
 # request_id → agent_id（2026-10-19：断线清理按归属而非 UUID startswith）
@@ -61,7 +65,7 @@ def _get_agent_status(request: Request, include_activities: bool = False) -> lis
             "vault_sync_time": info.get("vault_sync_time", ""),
         }
         if include_activities:
-            entry["activities"] = list(reversed(info.get("activities", [])[-10:]))
+            entry["activities"] = _merged_activities(agent_id)
         result.append(entry)
 
     # Claude Code 桥接进程对白名单用户可见（前端据此给「⌘ Claude Code」按钮置灰/点亮）
@@ -80,9 +84,48 @@ def _get_agent_status(request: Request, include_activities: bool = False) -> lis
                 "last_heartbeat": info.get("last_heartbeat", ""),
             }
             if include_activities:
-                entry["activities"] = list(reversed(info.get("activities", [])[-10:]))
+                entry["activities"] = _merged_activities(bridge_id)
             result.append(entry)
+
+    # O3（2026-10-26）：REST 上报的离线设备活动（yuancc hooks 无 WS 连接）——
+    # 设备离线也把「在干活」展示出来（标注离线上报）
+    if include_activities:
+        for agent_id in list(_rest_activities.keys()):
+            if agent_id in _agents:
+                continue  # 在线设备已在主循环合并
+            if not is_admin and agent_id not in allowed_ids:
+                continue
+            rest = _rest_activities.get(agent_id, [])
+            if not rest:
+                continue
+            name = agent_id
+            if agent_id.isdigit():
+                try:
+                    from db.session import get_db, AgentDevice
+                    db = get_db()
+                    with db.session() as sess:
+                        dev = sess.query(AgentDevice).filter_by(id=int(agent_id)).first()
+                        if dev:
+                            name = dev.machine_name or agent_id
+                except Exception:
+                    pass
+            result.append({
+                "agent_id": agent_id,
+                "agent_name": f"{name}（离线上报）",
+                "capabilities": [],
+                "online": False,
+                "last_heartbeat": "",
+                "activities": list(reversed(rest[-10:])),
+            })
     return result
+
+
+def _merged_activities(agent_id: str) -> list:
+    """WS 活动与 REST 上报活动合并（O3 2026-10-26）：按时间排序取最近 10 条倒序"""
+    acts = list(_agent_info.get(agent_id, {}).get("activities", []))
+    acts += list(_rest_activities.get(agent_id, []))
+    acts.sort(key=lambda a: a.get("time", ""))
+    return list(reversed(acts[-10:]))
 
 
 @router.get("/status")
@@ -221,6 +264,45 @@ def require_agent_uid(request: Request) -> int:
     if not uid:
         raise HTTPException(status_code=403, detail="设备未绑定账号")
     return uid
+
+
+class ActivityReport(BaseModel):
+    """活动上报体（O1 2026-10-26）：只收元数据——state 六态词汇 / tool 工具名 /
+    message 展示文案 / detail 补充。绝不上传命令内容、文件内容、对话正文。"""
+    state: str = ""      # thinking/working/attention/error/idle/sleeping
+    tool: str = ""
+    message: str = ""
+    detail: str = ""
+
+
+@router.post("/activity")
+async def report_activity(req: ActivityReport, request: Request):
+    """无 WS 客户端（yuancc hooks 等）的元数据活动上报——设备凭据鉴权，
+    与 WS activity 事件同口径进该设备活动流；设备离线时活动仍记录展示。"""
+    try:
+        agent_id = require_agent_device(request)
+        state = req.state.strip()[:32]
+        tool = req.tool.strip()[:64]
+        message = req.message.strip()[:120]
+        detail = req.detail.strip()[:120]
+        # message 缺省时由 state/tool 推导（六态词汇中文映射）
+        if not message:
+            _state_zh = {"thinking": "思考中", "working": "工具调用", "attention": "等待审批",
+                         "error": "出错", "idle": "空闲", "sleeping": "休眠"}
+            message = _state_zh.get(state, state or "活动")
+            if tool:
+                message = f"{message}: {tool}"
+        acts = _rest_activities.setdefault(agent_id, [])
+        acts.append({"message": message, "detail": detail, "time": time.strftime("%H:%M:%S"),
+                     "source": "rest"})
+        if len(acts) > 20:
+            acts[:] = acts[-20:]
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("活动上报失败: %s", e)
+        raise HTTPException(status_code=500, detail="活动上报失败")
 
 
 def get_pending_queue(request_id: str) -> asyncio.Queue:

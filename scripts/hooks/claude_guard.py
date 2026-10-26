@@ -47,6 +47,63 @@ def _emit_pet(hook_event: str, tool_name: str):
         pass
 
 
+_HOOK_TO_STATE = {
+    "PreToolUse": ("working", True),        # (state, 是否带工具名)
+    "PostToolUse": ("thinking", False),
+    "UserPromptSubmit": ("thinking", False),
+    "Stop": ("idle", False),
+    "SessionEnd": ("idle", False),
+}
+
+
+def _report_activity(hook_event: str, tool_name: str):
+    """云端活动上报（O2 观测 2026-10-26）：yuancc 无 WS 连接也能让云端看到
+    「这台电脑在干活」。独立线程 + 短超时 + 失败静默，绝不阻塞 CC。
+    桥接调用（CLAUDE_CODE_BRIDGE=1）跳过——其活动已由 Agent 经 WS 上报，防重复。
+    只传元数据（状态/工具名），绝不传命令内容。"""
+    if os.getenv("CLAUDE_CODE_BRIDGE", "0") == "1":
+        return
+    mapping = _HOOK_TO_STATE.get(hook_event)
+    if not mapping:
+        return
+    state, with_tool = mapping
+    try:
+        from utils.data_path import root_path
+        import threading
+        import urllib.request
+
+        ident_path = os.path.join(root_path(), "data", "agent_identity.json")
+        if not os.path.isfile(ident_path):
+            return
+        with open(ident_path, "r", encoding="utf-8") as f:
+            identity = json.load(f)
+        server_url = (identity.get("server_url") or "").replace("wss://", "https://") \
+            .replace("ws://", "http://").rstrip("/")
+        agent_id = str(identity.get("agent_id") or "")
+        secret = str(identity.get("agent_secret") or "")
+        if not server_url or not agent_id or not secret:
+            return
+        body = json.dumps({
+            "state": state,
+            "tool": str(tool_name)[:64] if with_tool else "",
+        }, ensure_ascii=False).encode("utf-8")
+
+        def _post():
+            try:
+                req = urllib.request.Request(f"{server_url}/api/v1/agent/activity",
+                                             data=body, method="POST")
+                req.add_header("Content-Type", "application/json")
+                req.add_header("X-Agent-Id", agent_id)
+                req.add_header("X-Agent-Secret", secret)
+                urllib.request.urlopen(req, timeout=5)
+            except Exception:
+                pass  # 上报失败静默（观测是锦上添花）
+
+        threading.Thread(target=_post, daemon=True).start()
+    except Exception:
+        pass
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
@@ -57,9 +114,10 @@ def main():
     tool_name = payload.get("tool_name", "")
     tool_input = payload.get("tool_input", {}) or {}
 
-    # 非桥接（用户交互会话）：不拦截，但桌宠联动照常
+    # 非桥接（用户交互会话）：不拦截，但桌宠联动 + 云端活动上报照常
     if os.getenv("CLAUDE_CODE_BRIDGE", "0") != "1":
         _emit_pet(hook_event, tool_name)
+        _report_activity(hook_event, tool_name)
         sys.exit(0)
 
     _emit_pet(hook_event, tool_name)

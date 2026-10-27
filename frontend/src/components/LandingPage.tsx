@@ -5,6 +5,7 @@ import { trackVisit } from '../api'
 import NeuralBackground from './NeuralBackground'
 import { SUB_AGENTS } from '../config/agents'
 import { ICP_BEIAN_NUMBER, POLICE_BEIAN_NUMBER, ICP_BEIAN_URL, POLICE_BEIAN_URL } from '../config/site'
+import { usePageMeta } from '../hooks/usePageMeta'
 import Mascot from './Mascot'
 import LandingHeader from './LandingHeader'
 import { ArrowDownIcon } from './icons'
@@ -115,6 +116,13 @@ export default function LandingPage() {
   const { isAdmin, token, loading } = useAuth()
   const navigate = useNavigate()
   const [visible, setVisible] = useState(false)
+  // SEO（2026-10-26）：首页专属 title / description / og / canonical
+  usePageMeta({
+    title: '小元AI — 云边协同 · 多智能体协作平台',
+    description: '小元AI 是多智能体 AI 助手平台：数据分析、网页数据采集、浏览器自动化、知识库检索、计划任务执行一站式完成；手机定计划、电脑执行，本机 Agent 云端联动。',
+    ogUrl: 'https://cjyuanai.cn/',
+    canonical: 'https://cjyuanai.cn/',
+  })
 
   // 手机端直达聊天（产品决策）：移动 UA/窄屏不看首页——已登录落 /chat（主对话），
   // 未登录去 /login；桌面端保留官网首页。auth 加载完成前不判定。

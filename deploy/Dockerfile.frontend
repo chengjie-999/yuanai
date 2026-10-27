@@ -7,10 +7,14 @@ WORKDIR /app
 ARG VITE_BASE=/
 ARG VITE_API_TARGET=http://localhost:8000
 
+# SEO 预渲染需要无头浏览器（puppeteer-core + chromium；国内构建环境
+# 无法下载 Chromium，走 alpine 仓库安装）
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm config set registry https://registry.npmmirror.com && npm ci
 COPY frontend/ ./
-RUN npm run build
+RUN npm run build && CHROME_PATH=/usr/bin/chromium-browser npm run prerender
 
 # Stage 2: Nginx 服务
 FROM nginx:1.27-alpine

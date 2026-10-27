@@ -187,7 +187,7 @@ data/                   数据目录
 
 ## 对话界面
 
-业务入口。域名根路径 `/` 是**免登录的官网公开首页**（LandingPage，静态内容 + 基础 SEO + 神经元网络 Hero 背景 `NeuralBackground.tsx`，零依赖 Canvas，主题跟随明暗），`/about` 是**关于我公开页**（个人简历，匿名署名），两者共享 LandingHeader（首页/关于我们导航）。聊天页在 `/chat`（ProtectedRoute 保护，未登录跳 `/login`，登录后落 `/chat`），Header 按登录态显示「进入对话」/「登录」。聊天欢迎页居中显示输入框，历史对话以群聊形式展示：
+业务入口。域名根路径 `/` 是**免登录的官网公开首页**（LandingPage，静态内容 + 基础 SEO + 神经元网络 Hero 背景 `NeuralBackground.tsx`，零依赖 Canvas，主题跟随明暗），`/about` 是**关于我公开页**（个人简历，匿名署名），两者共享 LandingHeader（首页/关于我们导航）。**SEO 预渲染（2026-10-26）**：`frontend/scripts/prerender.mjs`（puppeteer-core + 本机 Edge/Docker chromium，`npm run prerender`，构建后脚本）——`/` 与 `/api-docs` 渲染为静态 `dist/index.html` / `dist/docs/index.html`（对外 `/docs`，浏览器访问经 /docs 路由重定向 SPA）；`public/robots.txt` + `sitemap.xml`；`usePageMeta` 按路由 title/description/og/canonical；index.html 含 noscript 业务介绍；Dockerfile.frontend 构建链已接（apk chromium）。聊天页在 `/chat`（ProtectedRoute 保护，未登录跳 `/login`，登录后落 `/chat`），Header 按登录态显示「进入对话」/「登录」。聊天欢迎页居中显示输入框，历史对话以群聊形式展示：
 
 - **首屏加载壳（2026-10-23）**：`frontend/index.html` 的 `#root` 内嵌纯 HTML 转圈+「加载中/检查网络」提示（含暗色媒体查询），JS 未到达时不再纯白屏——React createRoot 挂载时自动整段替换，零 JS 依赖
 - 蓝色 = 小元AI（统筹）

@@ -252,6 +252,9 @@ function AppInner() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/api-docs" element={<ApiDocsPage />} />
+        {/* SEO 预渲染的 /docs 静态页：浏览器访问时重定向到 SPA 文档页
+            （静态快照仅供爬虫，避免挂载后被 NotFound 替换） */}
+        <Route path="/docs" element={<Navigate to="/api-docs" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/chat/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
         <Route path="*" element={<NotFoundPage />} />

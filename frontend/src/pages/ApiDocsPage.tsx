@@ -3,6 +3,7 @@ import LandingHeader from '../components/LandingHeader'
 import MarkdownContent from '../components/MarkdownContent'
 import ZoomableImage from '../components/chat/ZoomableImage'
 import { API_BASE } from '../api'
+import { usePageMeta } from '../hooks/usePageMeta'
 import { Link } from 'react-router-dom'
 
 /* ============================================================
@@ -140,6 +141,13 @@ const METHOD_COLORS: Record<string, string> = {
 }
 
 export default function ApiDocsPage() {
+  // SEO（2026-10-26）：文档页专属 title / description / canonical（预渲染至 /docs）
+  usePageMeta({
+    title: '小元AI 使用文档 — 快速开始与 API 参考',
+    description: '小元AI 使用文档：快速开始、智能体架构、对话界面、计划闭环、长期记忆、API 接口参考与安全说明。',
+    ogUrl: 'https://cjyuanai.cn/docs',
+    canonical: 'https://cjyuanai.cn/docs',
+  })
   // 项目文档：与仓库 README.md 同一文件（后端 /docs/readme 每次请求读文件，
   // 改 README 即改本页；生产环境 git pull 后自动同步）
   const [readme, setReadme] = useState('')

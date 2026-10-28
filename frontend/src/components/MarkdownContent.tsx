@@ -2,7 +2,7 @@ import React, { useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getToken } from '../api'
-import { CopyIcon, CheckIcon, DownloadIcon, ChevronDownIcon, ChevronUpIcon } from './icons'
+import { CopyIcon, CheckIcon, DownloadIcon, ChevronDownIcon, ChevronUpIcon, BarChartIcon } from './icons'
 
 /* 递归提取代码块文本（react-markdown 的 children 可能是 string/数组/元素） */
 function codeText(children: ReactNode): string {
@@ -57,9 +57,17 @@ function TaskItem({ initial, children }: { initial: boolean; children: ReactNode
 function CodeBlock({ lang, text }: { lang: string; text: string }) {
   const [copied, setCopied] = useState(false)
   const [folded, setFolded] = useState(true)
+  const [showChart, setShowChart] = useState(false)
   const lines = text.split('\n')
   const foldable = lines.length > COLLAPSE_LINES
   const shown = folded && foldable ? lines.slice(0, SHOW_LINES).join('\n') : text
+  // CSV 代码块：图表化（2026-10-26，与表格同款面板）
+  const csv = lang.toLowerCase() === 'csv'
+    ? (() => {
+        const rows = lines.map((l) => l.split(',').map((c) => c.trim())).filter((r) => r.some((c) => c))
+        return { headers: rows[0] || [], rows: rows.slice(1) }
+      })()
+    : null
   const copy = () => {
     navigator.clipboard?.writeText(text).catch(() => { /* 剪贴板不可用静默 */ })
     setCopied(true)
@@ -121,6 +129,29 @@ function CodeBlock({ lang, text }: { lang: string; text: string }) {
           {folded ? '展开全部' : '收起'}
         </button>
       )}
+      {csv && (
+        <>
+          <div style={{
+            borderTop: '1px solid var(--border-light)', background: 'var(--bg-secondary)',
+            padding: '2px 10px',
+          }}>
+            <button onClick={() => setShowChart((s) => !s)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                       color: 'var(--accent)', padding: '2px 4px', display: 'flex',
+                       alignItems: 'center', gap: 3 }}>
+              <BarChartIcon size={12} />
+              {showChart ? '收起图表' : '图表化'}
+            </button>
+          </div>
+          {showChart && (
+            <div style={{ padding: '0 10px' }}>
+              <React.Suspense fallback={<div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '8px 0' }}>图表加载中…</div>}>
+                <ChartPanel headers={csv.headers} rows={csv.rows} />
+              </React.Suspense>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -134,10 +165,96 @@ function withAssetToken(src?: string): string | undefined {
   return src
 }
 
+/* 表格段（2026-10-26 图表化）：markdown 表格提前提取，渲染为「表格 + 图表化按钮」；
+   recharts 经 lazy 按需加载，不进主包 */
+const ChartPanel = React.lazy(() => import('./chat/TableChart'))
+
+function TableBlock({ block }: { block: string }) {
+  const [showChart, setShowChart] = useState(false)
+  const lines = block.trim().split('\n').map((l) => l.trim()).filter((l) => l.includes('|'))
+  const split = (l: string) => l.replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+  const all = lines.map(split)
+  const headers = all[0] || []
+  // 第二行是 |---|---| 分隔行，跳过
+  const rows = all.slice(2).filter((r) => r.some((c) => c !== ''))
+  return (
+    <div style={{ overflow: 'auto', margin: '6px 0' }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13, marginBottom: 0 }}>
+        <thead>
+          <tr>{headers.map((h, i) => (
+            <th key={i} style={{ border: '1px solid var(--border)', padding: '6px 10px', background: 'var(--bg-secondary)' }}>{h}</th>
+          ))}</tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>{headers.map((_, j) => (
+              <td key={j} style={{ border: '1px solid var(--border)', padding: '6px 10px' }}>{r[j] ?? ''}</td>
+            ))}</tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '2px 0 6px' }}>
+        <button onClick={() => setShowChart((s) => !s)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                   color: 'var(--accent)', padding: '2px 4px', display: 'flex', alignItems: 'center', gap: 3 }}>
+          <BarChartIcon size={12} />
+          {showChart ? '收起图表' : '图表化'}
+        </button>
+      </div>
+      {showChart && (
+        <React.Suspense fallback={<div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '8px 0' }}>图表加载中…</div>}>
+          <ChartPanel headers={headers} rows={rows} />
+        </React.Suspense>
+      )}
+    </div>
+  )
+}
+
+/* 切分内容：fence 代码块掩码 → markdown 表格提取（fence 内的伪表格不受影响） */
+function splitTables(content: string): { md: string; table: string }[] {
+  const fences: string[] = []
+  const masked = content.replace(/```[\s\S]*?```/g, (m) => {
+    fences.push(m)
+    return ` F${fences.length - 1} `
+  })
+  const segs: { md: string; table: string }[] = []
+  const parts = masked.split(/(\|[^\n]*\|[\r\n]+\|[-\s:|]+\|[\r\n]+(?:\|[^\n]*\|[\r\n]+)*)/)
+  for (const p of parts) {
+    if (/^\|[^\n]*\|/.test(p)) {
+      segs.push({ md: '', table: p })
+    } else if (p) {
+      const restored = p.replace(/ F(\d+) /g, (_, i) => fences[Number(i)])
+      segs.push({ md: restored, table: '' })
+    }
+  }
+  return segs.filter((s) => s.md || s.table)
+}
+
 function MarkdownContentInner({ content, indent, onImageExpand }: {
   content: string; indent?: boolean; onImageExpand?: (src: string) => void
 }) {
   if (!content) return null
+  const segments = splitTables(content)
+  if (segments.length > 1 || (segments.length === 1 && segments[0].table)) {
+    return (
+      <>
+        {segments.map((seg, si) => seg.table ? (
+          <TableBlock key={si} block={seg.table} />
+        ) : (
+          <MarkdownContentInnerPlain key={si} content={seg.md}
+            indent={indent} onImageExpand={onImageExpand} />
+        ))}
+      </>
+    )
+  }
+  return (
+    <MarkdownContentInnerPlain content={content} indent={indent} onImageExpand={onImageExpand} />
+  )
+}
+
+function MarkdownContentInnerPlain({ content, indent, onImageExpand }: {
+  content: string; indent?: boolean; onImageExpand?: (src: string) => void
+}) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}

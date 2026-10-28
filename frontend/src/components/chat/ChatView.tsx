@@ -129,7 +129,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   return (
     <>
       <div className="chat-main" style={{
-        flex: 1, overflowY: 'auto', padding: '32px 16px 16px',
+        flex: 1, overflowY: 'auto', overflowX: 'hidden',  // 溢出修复：整页不再横向滚动
+        padding: '32px 16px 16px',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         background: 'var(--bg-primary)',
       }}>

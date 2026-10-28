@@ -607,9 +607,21 @@ export default function ChatPage({ user }: { user?: any }) {
           return last
         })
       } else if (event.type === 'error') {
-        // 展示真实错误信息（截断），便于排查；error 标记进消息（可落库、气泡显示错误卡）
+        // 展示真实错误信息（截断），便于排查；error 标记进消息（可落库、气泡显示错误卡）；
+        // 2026-10-26 截断续写：已有部分回答时挂「继续生成」按钮而不是错误卡
         const errMsg = typeof event.data === 'string' && event.data ? event.data.slice(0, 300) : '请求失败，请重试'
-        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], content: last[i].content || `请求失败: ${errMsg}`, error: `请求失败: ${errMsg}` }; return last }); setLoading(false)
+        setMessages((prev) => {
+          const last = [...prev]
+          const i = last.length - 1
+          if (i >= 0) {
+            const hasPartial = !!last[i].content && last[i].role === 'assistant'
+            last[i] = { ...last[i], content: last[i].content || `请求失败: ${errMsg}`,
+                        error: hasPartial ? undefined : `请求失败: ${errMsg}`,
+                        ...(hasPartial ? { truncated: true } : {}) }
+          }
+          return last
+        })
+        setLoading(false)
       }
     }
     const onError = (msg?: string) => {
@@ -619,7 +631,14 @@ export default function ChatPage({ user }: { user?: any }) {
       const errMsgs = (() => {
         const last = [...messagesRef.current]
         const i = last.length - 1
-        if (i >= 0) last[i] = { ...last[i], content: last[i].content || errText, error: errText }
+        if (i >= 0) {
+          // 2026-10-26 截断续写：流中断但已有部分回答 → 标 truncated，
+          // 气泡出现「继续生成」按钮，用户一键接着写（不再只挂错误卡）
+          const hasPartial = !!last[i].content && last[i].role === 'assistant'
+          last[i] = { ...last[i], content: last[i].content || errText,
+                      error: hasPartial ? undefined : errText,
+                      ...(hasPartial ? { truncated: true } : {}) }
+        }
         return last
       })()
       // 重新生成失败同样回挂其后消息（数据不丢）

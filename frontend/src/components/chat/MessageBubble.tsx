@@ -323,6 +323,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
       display: 'flex',
       flexDirection: 'column',
       alignItems: isUser ? 'flex-end' : 'flex-start',
+      maxWidth: '100%',
+      minWidth: 0,  // 溢出修复：防止行内 flex 链把整页撑出横向滚动
     }}>
       {agent && (
         <div style={{
@@ -346,6 +348,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
         padding: '10px 16px',
         borderRadius: isUser ? '18px 18px 4px 18px' : '4px 14px 14px 14px',
         maxWidth: '75%',
+        minWidth: 0,  // 2026-10-26 溢出修复：flex 项默认 min-width:auto 会被
+                      // 超长内容撑开——min-width:0 让气泡严守 75% 上限
         background: isUser ? 'var(--accent)' : 'var(--bg-tertiary)',
         color: isUser ? '#fff' : 'var(--text-primary)',
         borderLeft: agent ? `3px solid ${agent.color}` : undefined,
@@ -355,7 +359,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
         whiteSpace: 'pre-wrap',
         fontSize: 14,
         lineHeight: 1.65,
-        overflowWrap: 'break-word',
+        overflowWrap: 'anywhere',  // 超长无空格串（长链接/base64/长 token）硬折行
         wordBreak: 'break-word',
       }}>
         {loading && isLast && msg.role === 'assistant' && !msg.content && (!msg.toolCalls || msg.toolCalls.length === 0) ? (

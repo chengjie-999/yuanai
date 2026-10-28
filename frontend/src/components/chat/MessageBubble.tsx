@@ -6,8 +6,8 @@ import TerminalView, { isTerminalCall } from './TerminalView'
 import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { voiceTtsStream } from '../../api'
-import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl } from './helpers'
-import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon } from '../icons'
+import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitHtmlBlocks } from './helpers'
+import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon } from '../icons'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
 const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSProperties => ({
@@ -32,6 +32,60 @@ function HtmlFrame({ url, title }: { url: string; title: string }) {
     }}>
       <iframe src={src} sandbox="allow-scripts" title={title}
         style={{ width: '100%', height: '100%', border: 'none' }} />
+    </div>
+  )
+}
+
+/* 模型输出 HTML 直渲（2026-10-26）：srcDoc + 沙箱 iframe——脚本允许（图表可交互）
+   但 opaque origin 无法触碰页面数据（不给 allow-same-origin，同 HtmlFrame 口径） */
+function InlineHtmlFrame({ html }: { html: string }) {
+  const [showSource, setShowSource] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const isDoc = /^\s*<!DOCTYPE html/i.test(html) || /^\s*<html[\s>]/i.test(html)
+  const srcDoc = isDoc ? html : (
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;margin:16px;line-height:1.7;color:#1f2937}table{border-collapse:collapse}td,th{border:1px solid #d1d5db;padding:6px 10px}</style></head><body>${html}</body></html>`
+  )
+  const copy = () => {
+    navigator.clipboard?.writeText(html).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <div style={{
+      margin: '8px 0', borderRadius: 10, overflow: 'hidden',
+      border: '1px solid var(--border)', background: 'var(--bg-primary)',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px',
+        background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-light)',
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>HTML 渲染</span>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowSource((s) => !s)}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+            color: 'var(--text-muted)', padding: '2px 4px',
+          }}>
+          {showSource ? '隐藏源码' : '查看源码'}
+        </button>
+        <button onClick={copy} className="yuan-tip" data-tip={copied ? '已复制' : '复制源码'}
+          aria-label="复制源码"
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+            color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex',
+          }}>
+          {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+        </button>
+      </div>
+      {showSource && (
+        <pre style={{
+          margin: 0, padding: '8px 10px', fontSize: 11, maxHeight: 160, overflow: 'auto',
+          borderBottom: '1px solid var(--border-light)', background: 'var(--bg-tertiary)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+        }}>{html}</pre>
+      )}
+      <iframe srcDoc={srcDoc} sandbox="allow-scripts" title="HTML 渲染"
+        style={{ width: '100%', height: 420, border: 'none', display: 'block' }} />
     </div>
   )
 }
@@ -476,7 +530,20 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 )}
               </details>
             ) : null}
-            <MarkdownContent content={msg.content} onImageExpand={setExpandedImage} />
+            {/* HTML 直渲（2026-10-26）：流式期间走纯 markdown（逐 token 正则切分有
+                性能成本），完成后按段切分——```html 围栏与完整 HTML 文档进沙箱
+                iframe 渲染，其余照旧 Markdown */}
+            {(loading && isLast) ? (
+              <MarkdownContent content={msg.content} onImageExpand={setExpandedImage} />
+            ) : (
+              splitHtmlBlocks(msg.content).map((seg, si) => (
+                seg.type === 'html' ? (
+                  <InlineHtmlFrame key={si} html={seg.value} />
+                ) : (
+                  <MarkdownContent key={si} content={seg.value} onImageExpand={setExpandedImage} />
+                )
+              ))
+            )}
             {/* 流式打字光标（通用 AI 对话方案，2026-10-25）：生成中文本末尾闪烁 */}
             {loading && isLast && !!msg.content && !msg.error && (
               <span className="stream-cursor" aria-hidden="true" />

@@ -259,3 +259,39 @@ export function LoadingDots() {
     </span>
   )
 }
+
+/* 从回复正文中切分 HTML 渲染段（2026-10-26）：完整 HTML 文档或 ```html 围栏块
+   独立成段交给沙箱 iframe 渲染，其余仍走 Markdown。 */
+export interface ContentSegment {
+  type: 'md' | 'html'
+  value: string
+}
+
+const _HTML_DOC_RE = /<!DOCTYPE html[\s\S]*?<\/html>|<html[\s>][\s\S]*?<\/html>/gi
+const _HTML_FENCE_RE = /```html\s*\n([\s\S]*?)```/g
+
+export function splitHtmlBlocks(content: string): ContentSegment[] {
+  if (!content) return []
+  const segments: ContentSegment[] = []
+  let last = 0
+  // 围栏块与完整文档统一按位置合并处理：先收集所有匹配区间
+  const spans: { start: number; end: number; html: string; full: boolean }[] = []
+  for (const m of content.matchAll(_HTML_DOC_RE)) {
+    const i = m.index ?? 0
+    spans.push({ start: i, end: i + m[0].length, html: m[0], full: true })
+  }
+  for (const m of content.matchAll(_HTML_FENCE_RE)) {
+    const i = m.index ?? 0
+    spans.push({ start: i, end: i + m[0].length, html: m[1], full: false })
+  }
+  if (!spans.length) return [{ type: 'md', value: content }]
+  spans.sort((a, b) => a.start - b.start)
+  for (const s of spans) {
+    if (s.start < last) continue  // 重叠区间跳过（围栏在文档内的情形）
+    if (s.start > last) segments.push({ type: 'md', value: content.slice(last, s.start) })
+    segments.push({ type: 'html', value: s.html })
+    last = s.end
+  }
+  if (last < content.length) segments.push({ type: 'md', value: content.slice(last) })
+  return segments.filter((s) => s.value.trim())
+}

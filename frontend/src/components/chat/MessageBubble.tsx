@@ -5,8 +5,9 @@ import ToolCallCard from '../ToolCallCard'
 import TerminalView, { isTerminalCall } from './TerminalView'
 import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
+import { useTheme } from '../../contexts/ThemeContext'
 import { voiceTtsStream } from '../../api'
-import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitHtmlBlocks } from './helpers'
+import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon } from '../icons'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
@@ -41,10 +42,20 @@ function HtmlFrame({ url, title }: { url: string; title: string }) {
 function InlineHtmlFrame({ html }: { html: string }) {
   const [showSource, setShowSource] = useState(false)
   const [copied, setCopied] = useState(false)
+  const { isDark } = useTheme()
   const isDoc = /^\s*<!DOCTYPE html/i.test(html) || /^\s*<html[\s>]/i.test(html)
-  const srcDoc = isDoc ? html : (
-    `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;margin:16px;line-height:1.7;color:#1f2937}table{border-collapse:collapse}td,th{border:1px solid #d1d5db;padding:6px 10px}</style></head><body>${html}</body></html>`
-  )
+  // 主题适配（2026-10-26）：完整文档注入 color-scheme（尊重文档自带配色）；
+  // 片段外壳按站点明暗显式上色（iframe 不继承站点的 data-theme）
+  const srcDoc = isDoc
+    ? html.replace(/(<head[^>]*>)/i, `$1<meta name="color-scheme" content="light dark">`)
+    : (
+      `<!DOCTYPE html><html><head><meta charset="utf-8">`
+      + `<style>body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;margin:16px;line-height:1.7;`
+      + (isDark
+        ? `background:#0b1220;color:#e2e8f0}table{border-collapse:collapse}td,th{border:1px solid #2b3b56;padding:6px 10px}`
+        : `color:#1f2937}table{border-collapse:collapse}td,th{border:1px solid #d1d5db;padding:6px 10px}`)
+      + `a{color:#60a5fa}</style></head><body>${html}</body></html>`
+    )
   const copy = () => {
     navigator.clipboard?.writeText(html).catch(() => {})
     setCopied(true)
@@ -86,6 +97,122 @@ function InlineHtmlFrame({ html }: { html: string }) {
       )}
       <iframe srcDoc={srcDoc} sandbox="allow-scripts" title="HTML 渲染"
         style={{ width: '100%', height: 420, border: 'none', display: 'block' }} />
+    </div>
+  )
+}
+
+/* Mermaid 图表直渲（2026-10-26）：动态 import 按需加载，不进主包；
+   主题跟随明暗切换重渲染；语法错误回退显示源码 */
+function MermaidBlock({ code }: { code: string }) {
+  const [svg, setSvg] = useState('')
+  const [err, setErr] = useState('')
+  const [showSource, setShowSource] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const { isDark } = useTheme()
+  useEffect(() => {
+    let alive = true
+    let disposed = false
+    import('mermaid').then((mod) => {
+      const m = mod.default
+      m.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default',
+                     fontFamily: '-apple-system, PingFang SC, Microsoft YaHei, sans-serif' })
+      m.render(`mmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, code)
+        .then((r: { svg: string }) => { if (alive && !disposed) { setSvg(r.svg); setErr('') } })
+        .catch((e: unknown) => { if (alive && !disposed) setErr(String(e)) })
+        .finally(() => { disposed = true })
+    }).catch(() => { if (alive) setErr('mermaid 加载失败（网络受限？）') })
+    return () => { alive = false }
+  }, [code, isDark])
+  const copy = () => {
+    navigator.clipboard?.writeText(code).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <div style={{
+      margin: '8px 0', borderRadius: 10, overflow: 'hidden',
+      border: '1px solid var(--border)', background: 'var(--bg-primary)',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px',
+        background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-light)',
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>图表</span>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowSource((s) => !s)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                   color: 'var(--text-muted)', padding: '2px 4px' }}>
+          {showSource ? '隐藏源码' : '查看源码'}
+        </button>
+        <button onClick={copy} className="yuan-tip" data-tip={copied ? '已复制' : '复制源码'}
+          aria-label="复制源码"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                   color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex' }}>
+          {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+        </button>
+      </div>
+      {showSource && (
+        <pre style={{
+          margin: 0, padding: '8px 10px', fontSize: 11, maxHeight: 160, overflow: 'auto',
+          borderBottom: '1px solid var(--border-light)', background: 'var(--bg-tertiary)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+        }}>{code}</pre>
+      )}
+      {svg ? (
+        <div style={{ padding: 12, overflow: 'auto', display: 'flex', justifyContent: 'center' }}
+          dangerouslySetInnerHTML={{ __html: svg }} />
+      ) : (
+        <div style={{ padding: '16px 12px', fontSize: 12, color: err ? 'var(--danger)' : 'var(--text-muted)' }}>
+          {err ? `图表语法错误：${err}` : '图表渲染中…'}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* SVG 直渲（2026-10-26）：img + data URI——img 上下文不执行脚本，天然安全 */
+function SvgBlock({ code }: { code: string }) {
+  const [showSource, setShowSource] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const uri = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(code)))}`
+  const copy = () => {
+    navigator.clipboard?.writeText(code).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <div style={{
+      margin: '8px 0', borderRadius: 10, overflow: 'hidden',
+      border: '1px solid var(--border)', background: 'var(--bg-primary)',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px',
+        background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-light)',
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>SVG 图形</span>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowSource((s) => !s)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                   color: 'var(--text-muted)', padding: '2px 4px' }}>
+          {showSource ? '隐藏源码' : '查看源码'}
+        </button>
+        <button onClick={copy} className="yuan-tip" data-tip={copied ? '已复制' : '复制源码'}
+          aria-label="复制源码"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                   color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex' }}>
+          {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+        </button>
+      </div>
+      {showSource && (
+        <pre style={{
+          margin: 0, padding: '8px 10px', fontSize: 11, maxHeight: 160, overflow: 'auto',
+          borderBottom: '1px solid var(--border-light)', background: 'var(--bg-tertiary)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+        }}>{code}</pre>
+      )}
+      <div style={{ padding: 12, display: 'flex', justifyContent: 'center', overflow: 'auto' }}>
+        <img src={uri} alt="SVG 图形" style={{ maxWidth: '100%' }} />
+      </div>
     </div>
   )
 }
@@ -536,9 +663,13 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             {(loading && isLast) ? (
               <MarkdownContent content={msg.content} onImageExpand={setExpandedImage} />
             ) : (
-              splitHtmlBlocks(msg.content).map((seg, si) => (
+              splitSpecialBlocks(msg.content).map((seg, si) => (
                 seg.type === 'html' ? (
                   <InlineHtmlFrame key={si} html={seg.value} />
+                ) : seg.type === 'mermaid' ? (
+                  <MermaidBlock key={si} code={seg.value} />
+                ) : seg.type === 'svg' ? (
+                  <SvgBlock key={si} code={seg.value} />
                 ) : (
                   <MarkdownContent key={si} content={seg.value} onImageExpand={setExpandedImage} />
                 )

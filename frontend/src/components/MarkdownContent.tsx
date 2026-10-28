@@ -1,4 +1,4 @@
-import React, { useState, type ReactNode } from 'react'
+import React, { useState, useEffect, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getToken } from '../api'
@@ -252,12 +252,44 @@ function MarkdownContentInner({ content, indent, onImageExpand }: {
   )
 }
 
+/* LaTeX 公式（2026-10-26）：$…$ 行内 / $$…$$ 块级 / \(…\) \[…\]——
+   katex 与插件按需动态加载（含公式的消息才付加载成本，主包零膨胀）；
+   模块级缓存一次加载全局复用 */
+let _mathPlugins: { remark: any[]; rehype: any[] } | null = null
+let _mathLoading: Promise<void> | null = null
+
+function _ensureMath(): Promise<void> {
+  if (_mathPlugins) return Promise.resolve()
+  if (!_mathLoading) {
+    _mathLoading = Promise.all([
+      import('remark-math'), import('rehype-katex'), import('katex/dist/katex.min.css'),
+    ]).then(([rm, rk]) => {
+      _mathPlugins = { remark: [rm.default], rehype: [rk.default] }
+    }).catch((e) => {
+      _mathLoading = null  // 失败允许重试
+      throw e
+    })
+  }
+  return _mathLoading
+}
+
+const _HAS_MATH_RE = /(?:\$\$|\\\(|\\\[|\$[^$\n]+\$)/
+
 function MarkdownContentInnerPlain({ content, indent, onImageExpand }: {
   content: string; indent?: boolean; onImageExpand?: (src: string) => void
 }) {
+  const hasMath = _HAS_MATH_RE.test(content)
+  const [mathReady, setMathReady] = useState(false)
+  useEffect(() => {
+    if (!hasMath || mathReady) return
+    let alive = true
+    _ensureMath().then(() => { if (alive) setMathReady(true) }).catch(() => {})
+    return () => { alive = false }
+  }, [hasMath, mathReady])
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, ...(mathReady && _mathPlugins ? _mathPlugins.remark : [])]}
+      rehypePlugins={mathReady && _mathPlugins ? _mathPlugins.rehype : undefined}
       components={{
         a: ({ href, children }) => (
           <a href={href} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>

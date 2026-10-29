@@ -508,6 +508,11 @@ python -m db.migrations.helper upgrade
 
 `AgentDatabase._run_alembic_migrations()` 在每次启动时自动调用 `alembic upgrade head`，失败时降级到 `create_all()`。
 
+**迁移幂等纪律（2026-10-30 生产事故，务必遵守）**：
+1. **每条迁移必须幂等**——create_table 前用 `inspect(bind).get_table_names()` 守卫、add_column 前查 `get_columns()`。事故：`_run_alembic_migrations` 失败 → create_all 兜底按新模型建出表（alembic 版本未戳）→ entrypoint 再跑 `alembic upgrade head` 撞「Table already exists」→ 容器崩溃循环 → 全站 502。幂等迁移 = 任何中间态重启都能自愈（跳过已存在、补齐缺失），无需人工修库。
+2. **重写迁移文件必须保留 revision/down_revision 块**——曾漏写导致 alembic「Could not determine revision id」；`test/test_migrations_sanity.py` 锁死（每个文件可导入 + revision 唯一 + 链连通）。
+3. 迁移失败降级 create_all 的兜底保留（新模型无迁移文件时建表），但幂等迁移保证它不再制造死循环。
+
 ## 会话总结惯例
 
 每次对话结束时，用表格总结本次修改的内容和对应的 commit，方便回顾。

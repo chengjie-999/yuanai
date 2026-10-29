@@ -264,8 +264,21 @@ def _langchain_from_items(items: list, prompt: str, images, system_content: str)
 async def chat_stream(req: ChatRequest, request: Request):
     """SSE 流式聊天（优先走本地 Agent，离线时回退到云端直接调用）"""
     try:
-        # 每日消息配额（成本护栏）：admin 不限，user 超限拒绝；Redis 不可用时宽松放行
+        # C6 内容安全闸（2026-10-29）：输入侧关键词拦截 + 审计
         user_id = _get_user_id(request)
+        from yuanai_core.pure.content_safety import check_content, audit_log, BLOCK_MESSAGE
+        blocked, hit = check_content(req.prompt or "")
+        if not blocked:
+            # 历史最新用户消息也检查（prompt 可能为空的历史续写场景）
+            for m in reversed(req.messages or []):
+                if m.get("role") == "user":
+                    blocked, hit = check_content(str(m.get("content", "")))
+                    break
+        if blocked:
+            audit_log(user_id or 0, "chat_stream", hit, req.prompt or "")
+            raise HTTPException(status_code=400, detail=BLOCK_MESSAGE)
+        # 每日消息配额（成本护栏）：admin 不限，user 超限拒绝；Redis 不可用时宽松放行
+        from config.settings import DAILY_MESSAGE_QUOTA
         from config.settings import DAILY_MESSAGE_QUOTA
         if DAILY_MESSAGE_QUOTA > 0 and getattr(request.state, "role", "") != "admin":
             from datetime import datetime
@@ -483,6 +496,12 @@ async def claude_stream(req: ChatRequest, request: Request):
     """
     from config.settings import CLAUDE_BRIDGE_AGENT_ID, CLAUDE_BRIDGE_ALLOWED_USERNAMES
 
+    # C6 内容安全闸（2026-10-29）
+    from yuanai_core.pure.content_safety import check_content, audit_log, BLOCK_MESSAGE
+    _blocked, _hit = check_content(req.prompt or "")
+    if _blocked:
+        audit_log(_get_user_id(request) or 0, "claude_stream", _hit, req.prompt or "")
+        raise HTTPException(status_code=400, detail=BLOCK_MESSAGE)
     # 访问控制
     role = getattr(request.state, "role", "")
     username = getattr(request.state, "username", "")

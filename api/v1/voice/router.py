@@ -267,6 +267,14 @@ def append_voice_message(req: VoiceMessageRequest, request: Request):
 
 @router.post("/tts")
 def voice_tts(req: VoiceTtsRequest, request: Request):
+    # C6 内容安全闸（2026-10-29）：任意文本合成语音前拦截
+    from yuanai_core.pure.content_safety import check_content, audit_log, BLOCK_MESSAGE
+    _b, _h = check_content(req.text or "")
+    if _b:
+        from api.v1.middleware import get_user_id as _gid
+        audit_log(_gid(request) or 0, "voice_tts", _h, req.text or "")
+        raise HTTPException(status_code=400, detail=BLOCK_MESSAGE)
+
     """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型 2.0，按消息归属 Agent 选音色。
 
     流式帧协议（api/v1/voice/tts_proto.py）：火山分片边到边转发并聚合到

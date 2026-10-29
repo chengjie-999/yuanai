@@ -8,7 +8,8 @@ import { AGENT_CONFIG } from '../../config/agents'
 import { useTheme } from '../../contexts/ThemeContext'
 import { voiceTtsStream } from '../../api'
 import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks } from './helpers'
-import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon } from '../icons'
+import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, XIcon } from '../icons'
+import ZoomableImage from './ZoomableImage'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
 const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSProperties => ({
@@ -42,6 +43,7 @@ function HtmlFrame({ url, title }: { url: string; title: string }) {
 function InlineHtmlFrame({ html }: { html: string }) {
   const [showSource, setShowSource] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [zoom, setZoom] = useState(false)
   const { isDark } = useTheme()
   const isDoc = /^\s*<!DOCTYPE html/i.test(html) || /^\s*<html[\s>]/i.test(html)
   // 主题适配（2026-10-26）：完整文档注入 color-scheme（尊重文档自带配色）；
@@ -72,6 +74,12 @@ function InlineHtmlFrame({ html }: { html: string }) {
       }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>HTML 渲染</span>
         <div style={{ flex: 1 }} />
+        <button onClick={() => setZoom(true)} className="yuan-tip" data-tip="全屏查看"
+          aria-label="全屏查看"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                   color: 'var(--accent)', padding: '2px 4px' }}>
+          放大
+        </button>
         <button onClick={() => setShowSource((s) => !s)}
           style={{
             background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
@@ -97,17 +105,51 @@ function InlineHtmlFrame({ html }: { html: string }) {
       )}
       <iframe srcDoc={srcDoc} sandbox="allow-scripts" title="HTML 渲染"
         style={{ width: '100%', height: 420, border: 'none', display: 'block' }} />
+      {zoom && <HtmlViewer html={srcDoc} onClose={() => setZoom(false)} />}
+    </div>
+  )
+}
+
+/* 全屏查看器（2026-10-29）：HTML 渲染结果像图片一样放大查看——
+   沙箱 iframe 保持 allow-scripts 隔离，不给越界新标签（blob 同源脚本 XSS 风险） */
+function HtmlViewer({ html, onClose }: { html: string; onClose: () => void }) {
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: 'min(1200px, 96vw)', height: 'min(90vh, 900px)', display: 'flex',
+        flexDirection: 'column', background: 'var(--bg-primary)', borderRadius: 12,
+        overflow: 'hidden', boxShadow: '0 12px 48px rgba(0,0,0,0.4)',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 14px', borderBottom: '1px solid var(--border)',
+          background: 'var(--bg-secondary)',
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>HTML 全屏查看</span>
+          <button onClick={onClose} aria-label="关闭"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                     color: 'var(--text-muted)', display: 'flex', lineHeight: 1 }}>
+            <XIcon size={16} />
+          </button>
+        </div>
+        <iframe srcDoc={html} sandbox="allow-scripts" title="HTML 全屏查看"
+          style={{ flex: 1, width: '100%', border: 'none' }} />
+      </div>
     </div>
   )
 }
 
 /* Mermaid 图表直渲（2026-10-26）：动态 import 按需加载，不进主包；
-   主题跟随明暗切换重渲染；语法错误回退显示源码 */
+   主题跟随明暗切换重渲染；语法错误回退显示源码；可像图片一样放大（2026-10-29） */
 function MermaidBlock({ code }: { code: string }) {
   const [svg, setSvg] = useState('')
   const [err, setErr] = useState('')
   const [showSource, setShowSource] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [zoom, setZoom] = useState(false)
   const { isDark } = useTheme()
   useEffect(() => {
     let alive = true
@@ -139,6 +181,14 @@ function MermaidBlock({ code }: { code: string }) {
       }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>图表</span>
         <div style={{ flex: 1 }} />
+        {svg && (
+          <button onClick={() => setZoom(true)} className="yuan-tip" data-tip="放大查看"
+            aria-label="放大查看"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                     color: 'var(--accent)', padding: '2px 4px' }}>
+            放大
+          </button>
+        )}
         <button onClick={() => setShowSource((s) => !s)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
                    color: 'var(--text-muted)', padding: '2px 4px' }}>
@@ -166,6 +216,11 @@ function MermaidBlock({ code }: { code: string }) {
           {err ? `图表语法错误：${err}` : '图表渲染中…'}
         </div>
       )}
+      {zoom && svg && (
+        <ZoomableImage
+          src={`data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`}
+          onClose={() => setZoom(false)} />
+      )}
     </div>
   )
 }
@@ -174,6 +229,7 @@ function MermaidBlock({ code }: { code: string }) {
 function SvgBlock({ code }: { code: string }) {
   const [showSource, setShowSource] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [zoom, setZoom] = useState(false)
   const uri = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(code)))}`
   const copy = () => {
     navigator.clipboard?.writeText(code).catch(() => {})
@@ -211,8 +267,10 @@ function SvgBlock({ code }: { code: string }) {
         }}>{code}</pre>
       )}
       <div style={{ padding: 12, display: 'flex', justifyContent: 'center', overflow: 'auto' }}>
-        <img src={uri} alt="SVG 图形" style={{ maxWidth: '100%' }} />
+        <img src={uri} alt="SVG 图形" style={{ maxWidth: '100%', cursor: 'zoom-in' }}
+          onClick={() => setZoom(true)} title="点击放大" />
       </div>
+      {zoom && <ZoomableImage src={uri} onClose={() => setZoom(false)} />}
     </div>
   )
 }

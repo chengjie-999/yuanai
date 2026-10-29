@@ -1,6 +1,7 @@
 """后台管理主路由：仪表盘/Agent 状态 + 聚合各资源子路由（users / agent_devices / resources）"""
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 from db.session import get_db
 
 from api.v1.admin.users import router as users_router
@@ -120,6 +121,30 @@ async def admin_agent_summary(request: Request):
 
 
 # ===================== Agent 状态（代理到 agent router 内部数据）=====================
+
+
+@router.get("/reports")
+async def admin_list_reports(request: Request):
+    """C7 举报工单列表（仅 admin）"""
+    from api.v1.middleware import require_admin
+    require_admin(request)
+    status = request.query_params.get("status", "")
+    return get_db().list_reports(status)
+
+
+class HandleReportBody(BaseModel):
+    note: str = ""
+
+
+@router.post("/reports/{report_id}/handle")
+async def admin_handle_report(report_id: int, body: HandleReportBody, request: Request):
+    """C7 工单处理（仅 admin）：标记已处理 + 处理备注"""
+    from api.v1.middleware import require_admin
+    require_admin(request)
+    ok = get_db().handle_report(report_id, body.note)
+    if not ok:
+        raise HTTPException(status_code=404, detail="工单不存在")
+    return {"ok": True}
 
 
 @router.get("/agent-status")

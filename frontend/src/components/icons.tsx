@@ -33,6 +33,9 @@ export const AtSignIcon = (p: IconProps) => <Svg {...p}><circle cx="12" cy="12" 
 /* 图钉（置顶主对话） */
 export const PinIcon = (p: IconProps) => <Svg {...p}><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z" /></Svg>
 
+/* 旗帜（举报 C7 投诉机制） */
+export const FlagIcon = (p: IconProps) => <Svg {...p}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" x2="4" y1="22" y2="15" /></Svg>
+
 /* 喇叭（自动朗读开关） */
 export const SpeakerIcon = (p: IconProps) => <Svg {...p}><path d="M11 5 6 9H2v6h4l5 4V5Z" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></Svg>
 

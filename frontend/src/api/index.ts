@@ -406,6 +406,18 @@ export async function setFeedback(sessionId: string, messageIndex: number,
   } catch { return false }
 }
 
+// ---- 举报（C7 投诉举报机制，2026-10-29）----
+export async function reportMessage(sessionId: string, messageIndex: number, reason: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/chat/report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ session_id: sessionId, message_index: messageIndex, reason }),
+    })
+    return res.ok
+  } catch { return false }
+}
+
 // ---- Stats ----
 export async function trackVisit(path: string) {
   try {

@@ -229,6 +229,15 @@ data/                   数据目录
 - **路线图**（plans/entertainment-mode-2026-10.md）：E2 火山生图 / E3 生视频挂账（执行前确认方舟账号开通与模型）。限额护栏必须与生图/生视频工具同日上线，不允许裸奔。
 - **验证**：test/test_entertainment_mode.py（娱乐跳过桥接+人设生效+@定向忽略 / 工作模式对照）；真机 SSE 双模式均实测通过。conftest 登录密码改 test1234（批次3 起密码最少 8 位，test123 只有 7 位导致所有鉴权测试静默跳过）。
 
+## 合规整改（2026-10-29，C1-C7，审计依据 docs/compliance-audit-2026-10.md）
+
+面向公众的生成式 AI 服务合规基建，已落地：C1 GPL 排除（spec）/ C2 记忆接口 IDOR / C3 图片 `?token=` 鉴权 / C4 用户注销+级联 / C5 AI 生成标识（气泡徽标+复制导出标识）/ C6 内容安全闸 v1（输入侧关键词+审计，`yuanai_core/pure/content_safety.py`）/ **C7 举报工单（本条）**。
+
+- **C7 链路**：AI 气泡「举报」按钮（MessageBubble onReport → ChatPage 弹窗选原因）→ `POST /chat/report`（chat/router.py，会话归属校验）→ `ai_chat_reports` 表（迁移 0020，db/session.py AIReport）→ 后台「举报工单」Tab（/chat/admin/reports，ReportsTab.tsx，状态筛选+处理备注）→ `GET /admin/reports` + `POST /admin/reports/{id}/handle`（admin/router.py，require_admin）。测试 test_report.py 6 项
+- **C6 教训（本会话修复）**：/stream 读 `req.messages` 但 ChatRequest 字段是 `history`——C6 提交后所有 /stream 500，全量测试 6 项失败暴露
+- **挂账**：C8-C11（桥接白名单复用/出境开关/爬虫收口/隐私政策文本）随「分享对话」同批；C5 落库 aigc 字段+TTS 提示音、C6 输出侧审核+人工复核、C7 冻结申诉
+- **C5 已有**：复制内容经 `copyContent` 附显式 AI 标识；星球笔记导出首行标识（PlanetReader）
+
 ## 开发经验教训（2026-09-04 全量代码审查沉淀）
 
 1. **跨文件复制私有 helper 必漏 import**：照抄 `_get_db/_verify_session_owner` 用法却不带定义 → 运行时 NameError，py_compile 查不出。复制后立即 grep 验证每个名字在本模块可解析，或提共享模块。

@@ -275,7 +275,7 @@ function SvgBlock({ code }: { code: string }) {
   )
 }
 
-const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onRegenerate, onContinue, autoRead, autoReadTick, onOpenPanel }: {
+const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, autoRead, autoReadTick, onOpenPanel }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
@@ -283,6 +283,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   onEditConfirm: (i: number, content: string) => void
   onEditCancel: () => void
   onFeedback: (i: number, kind: 'like' | 'dislike') => void
+  onReport?: (i: number) => void
   onRegenerate?: (i: number) => void
   onContinue?: () => void
   autoRead?: boolean; autoReadTick?: number
@@ -532,6 +533,19 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" />
           </svg>
         </button>
+        {/* 举报（C7 投诉举报机制，2026-10-29）：落工单由管理员处理 */}
+        {onReport && (
+          <button onClick={() => onReport(index)} disabled={loading}
+            className="yuan-tip" data-tip="举报" aria-label="举报"
+            style={iconBtnStyle(false)}
+            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
+            <svg {...iconProps}>
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+              <line x1="4" x2="4" y1="22" y2="15" />
+            </svg>
+          </button>
+        )}
         {/* 重新生成：只替换本条气泡（2026-10-25 起不再截断其后消息） */}
         {onRegenerate && (
           <button onClick={() => onRegenerate(index)} disabled={loading}

@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
-import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
+import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, reportMessage, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
+import Modal from './Modal'
 import Sidebar from './chat/Sidebar'
 import ChatView from './chat/ChatView'
 import VoiceCall from './chat/VoiceCall'
@@ -832,6 +833,35 @@ export default function ChatPage({ user }: { user?: any }) {
     refreshSessions()
   }
 
+  // ---- 举报（C7 投诉举报机制，2026-10-29）：AI 气泡举报按钮 → 弹窗选原因 → 落工单 ----
+  const REPORT_REASONS = ['违法违规内容', '虚假信息', '有害内容', '侵犯个人权益', '其他']
+  const [reportIndex, setReportIndex] = useState<number | null>(null)
+  const [reportReason, setReportReason] = useState('')
+  const [reportDetail, setReportDetail] = useState('')
+  const [reportDone, setReportDone] = useState(false)
+  const [reportSubmitting, setReportSubmitting] = useState(false)
+  const [reportError, setReportError] = useState('')
+
+  const handleReport = (index: number) => {
+    if (loading || !currentSid) return
+    setReportIndex(index)
+    setReportReason('')
+    setReportDetail('')
+    setReportDone(false)
+    setReportError('')
+  }
+
+  const submitReport = async () => {
+    if (!reportReason || reportIndex === null || !currentSid || reportSubmitting) return
+    setReportSubmitting(true)
+    setReportError('')
+    const reason = reportDetail.trim() ? `${reportReason}：${reportDetail.trim()}` : reportReason
+    const ok = await reportMessage(currentSid, reportIndex, reason)
+    setReportSubmitting(false)
+    if (ok) setReportDone(true)
+    else setReportError('提交失败，请稍后重试')
+  }
+
   // 审批决议：走 Claude 桥接专用流，body 带 decision
   const handleDecision = (approve: boolean) => {
     const pa = pendingApproval
@@ -967,7 +997,7 @@ export default function ChatPage({ user }: { user?: any }) {
             autoReadTick={autoReadTick}
             pendingApproval={pendingApproval} handleDecision={handleDecision}
             likes={feedback} editingIndex={editingIndex} setEditingIndex={setEditingIndex}
-            onEditMessage={handleEditMessage} onFeedback={handleFeedback}
+            onEditMessage={handleEditMessage} onFeedback={handleFeedback} onReport={handleReport}
             onRegenerate={handleRegenerate} onContinue={() => handleSend('继续')}
             onStartVoiceCall={startVoiceCallWithPermission}
             entMode={entMode} toggleEntMode={toggleEntMode}
@@ -981,6 +1011,56 @@ export default function ChatPage({ user }: { user?: any }) {
       </>
         )}
       </div>
+
+      {/* C7 举报弹窗（2026-10-29）：原因 chip 单选 + 补充说明（选填） */}
+      {reportIndex !== null && (
+        <Modal open title="举报消息"
+          onClose={() => { if (!reportSubmitting) setReportIndex(null) }}>
+          {reportDone ? (
+            <div style={{ minWidth: 340 }}>
+              <div style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12 }}>举报已提交，我们会尽快核实处理。</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>感谢你对内容安全的监督（《生成式AI服务管理暂行办法》第 15 条）。</div>
+              <button onClick={() => setReportIndex(null)} className="yuan-tip" data-tip="关闭" aria-label="关闭"
+                style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 20px', cursor: 'pointer', fontSize: 13 }}>
+                关闭
+              </button>
+            </div>
+          ) : (
+            <div style={{ minWidth: 340 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>请选择举报原因</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                {REPORT_REASONS.map((r) => (
+                  <button key={r} onClick={() => setReportReason(r)}
+                    style={{
+                      padding: '5px 12px', borderRadius: 999, fontSize: 12, cursor: 'pointer',
+                      border: reportReason === r ? '1px solid var(--accent)' : '1px solid var(--border)',
+                      background: reportReason === r ? 'var(--accent-light)' : 'var(--bg-input)',
+                      color: reportReason === r ? 'var(--accent)' : 'var(--text-secondary)',
+                      transition: 'all 0.15s',
+                    }}>{r}</button>
+                ))}
+              </div>
+              <textarea value={reportDetail} onChange={(e) => setReportDetail(e.target.value.slice(0, 300))}
+                placeholder="补充说明（选填）"
+                rows={3}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 6,
+                  border: '1px solid var(--border)', fontSize: 13, outline: 'none', resize: 'vertical',
+                  background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
+              {reportError && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 8 }}>{reportError}</div>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+                <button onClick={() => setReportIndex(null)} disabled={reportSubmitting}
+                  style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)' }}>
+                  取消
+                </button>
+                <button onClick={submitReport} disabled={!reportReason || reportSubmitting}
+                  style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', cursor: reportReason && !reportSubmitting ? 'pointer' : 'default', fontSize: 13, fontWeight: 500, opacity: !reportReason || reportSubmitting ? 0.55 : 1 }}>
+                  {reportSubmitting ? '提交中...' : '提交举报'}
+                </button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
 
       {voiceCallOpen && (
         <VoiceCall

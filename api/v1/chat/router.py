@@ -148,6 +148,44 @@ async def serve_chat_image(session_id: str, filename: str):
     })
 
 
+class ReportRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    message_index: int = Field(0, ge=0)
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/report")
+async def report_message(req: ReportRequest, request: Request):
+    """C7 举报工单（2026-10-29，生成式AI办法第 15 条）：用户举报某条消息，
+    落工单待管理员处理。会话归属校验防越权举报。"""
+    try:
+        db = _get_db()
+        user_id = _get_user_id(request)
+        _verify_session_owner(db, req.session_id, user_id)
+        # 取被举报消息内容预览（消息数组按 session 读）
+        preview = ""
+        try:
+            msgs = db.get_chats(req.session_id)
+            if 0 <= req.message_index < len(msgs):
+                c = msgs[req.message_index].get("content") or ""
+                # 剥 META 前缀
+                if isinstance(c, str) and c.startswith("\x00META\x00"):
+                    end = c.find("\x00", 6)
+                    if end > 6:
+                        c = c[end + 1:]
+                preview = c[:300]
+        except Exception:
+            pass
+        rid = db.add_report(user_id, req.session_id, req.message_index,
+                            req.reason, preview)
+        return {"ok": True, "report_id": rid}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("举报提交失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
 class MessagesRequest(BaseModel):
     session_id: str = Field(..., min_length=1, description="会话 ID")
 
@@ -270,7 +308,8 @@ async def chat_stream(req: ChatRequest, request: Request):
         blocked, hit = check_content(req.prompt or "")
         if not blocked:
             # 历史最新用户消息也检查（prompt 可能为空的历史续写场景）
-            for m in reversed(req.messages or []):
+            # 注意：ChatRequest 的历史字段是 history（messages 是 /chat/save 的字段，2026-10-29 修复）
+            for m in reversed(req.history or []):
                 if m.get("role") == "user":
                     blocked, hit = check_content(str(m.get("content", "")))
                     break
@@ -278,7 +317,6 @@ async def chat_stream(req: ChatRequest, request: Request):
             audit_log(user_id or 0, "chat_stream", hit, req.prompt or "")
             raise HTTPException(status_code=400, detail=BLOCK_MESSAGE)
         # 每日消息配额（成本护栏）：admin 不限，user 超限拒绝；Redis 不可用时宽松放行
-        from config.settings import DAILY_MESSAGE_QUOTA
         from config.settings import DAILY_MESSAGE_QUOTA
         if DAILY_MESSAGE_QUOTA > 0 and getattr(request.state, "role", "") != "admin":
             from datetime import datetime

@@ -79,6 +79,21 @@ class TokenUsage(Base):
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
+class AIReport(Base):
+    """C7 举报工单（2026-10-29，生成式AI办法第 15 条投诉举报机制）"""
+    __tablename__ = 'ai_chat_reports'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    session_id = Column(String(36), nullable=False, index=True)
+    message_index = Column(Integer, nullable=False, server_default='0')
+    reason = Column(String(500), nullable=False, server_default='')
+    content_preview = Column(Text, nullable=False)
+    status = Column(String(16), nullable=False, server_default='pending')
+    handler_note = Column(String(500), nullable=False, server_default='')
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    handled_at = Column(TIMESTAMP, nullable=True)
+
+
 class SessionMemoryState(Base):
     """会话记忆折叠游标：folded_count = 已折叠进长期记忆的前缀消息条数
 
@@ -859,6 +874,57 @@ class AgentDatabase:
                 f"sid={session_id} deleted={json.dumps(texts, ensure_ascii=False)}\n")
         with open(path, "a", encoding="utf-8") as f:
             f.write(line)
+
+    # --------------------------------------------------------------------------
+    # C7 举报工单（2026-10-29）
+    # --------------------------------------------------------------------------
+
+    def add_report(self, user_id: int, session_id: str, message_index: int,
+                   reason: str, content_preview: str) -> int:
+        sess = self.Session()
+        try:
+            r = AIReport(user_id=user_id, session_id=session_id,
+                         message_index=message_index, reason=reason[:500],
+                         content_preview=(content_preview or "")[:1000],
+                         status="pending")
+            sess.add(r)
+            sess.commit()
+            return r.id
+        finally:
+            sess.close()
+
+    def list_reports(self, status: str = "", limit: int = 100) -> list:
+        sess = self.Session()
+        try:
+            q = sess.query(AIReport)
+            if status:
+                q = q.filter(AIReport.status == status)
+            rows = q.order_by(AIReport.id.desc()).limit(limit).all()
+            return [{"id": r.id, "user_id": r.user_id, "session_id": r.session_id,
+                     "message_index": r.message_index, "reason": r.reason,
+                     "content_preview": r.content_preview, "status": r.status,
+                     "handler_note": r.handler_note,
+                     "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
+                     "handled_at": r.handled_at.strftime("%Y-%m-%d %H:%M:%S") if r.handled_at else ""}
+                    for r in rows]
+        finally:
+            sess.close()
+
+    def handle_report(self, report_id: int, note: str) -> bool:
+        from datetime import datetime
+        sess = self.Session()
+        try:
+            r = sess.query(AIReport).filter_by(id=report_id).first()
+            if not r:
+                return False
+            r.status = "handled"
+            r.handler_note = note[:500]
+            r.handled_at = datetime.utcnow()
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
 
     # --------------------------------------------------------------------------
     # C4 合规：用户注销级联删除（2026-10-29）

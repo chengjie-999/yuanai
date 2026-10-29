@@ -7,6 +7,7 @@ import { ChatAnalyticsTab, FeatureAnalyticsTab, RetentionAnalyticsTab, CostAnaly
 import AgentsTab from './AgentsTab'
 import AgentDevicesTab from './AgentDevicesTab'
 import SessionsTab from './SessionsTab'
+import ReportsTab from './ReportsTab'
 import ModelsTab from './ModelsTab'
 import WebsitesTab from './WebsitesTab'
 import DatasetsTab from './DatasetsTab'
@@ -35,6 +36,7 @@ const NAV_GROUPS: { label: string; icon: React.ReactNode; items: { key: string; 
     items: [
       { key: 'users', label: '用户管理' },
       { key: 'sessions', label: '会话记录' },
+      { key: 'reports', label: '举报工单' },
     ],
   },
   {
@@ -169,6 +171,7 @@ function AdminPageInner({ isAdmin }: { isAdmin: boolean }) {
             <Route path="agents" element={<AgentsTab />} />
             <Route path="agent-devices" element={<AgentDevicesTab />} />
             <Route path="sessions" element={<SessionsTab />} />
+            <Route path="reports" element={<ReportsTab />} />
             <Route path="user-analytics" element={<UserAnalyticsTab />} />
             <Route path="chat-analytics" element={<ChatAnalyticsTab />} />
             <Route path="feature-analytics" element={<FeatureAnalyticsTab />} />

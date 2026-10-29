@@ -8,7 +8,7 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice, onSuggest, sendTick, onOpenPanel }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onReport, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice, onSuggest, sendTick, onOpenPanel }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
@@ -26,6 +26,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   setEditingIndex: (v: number | null) => void
   onEditMessage: (index: number, content: string) => void
   onFeedback: (index: number, kind: 'like' | 'dislike') => void
+  onReport: (index: number) => void
   onRegenerate: (index: number) => void
   onContinue: () => void
   onStartVoiceCall: () => void
@@ -145,6 +146,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
               onEditConfirm={onEditMessage}
               onEditCancel={() => setEditingIndex(null)}
               onFeedback={onFeedback}
+              onReport={onReport}
               onRegenerate={onRegenerate}
               onContinue={onContinue}
               onOpenPanel={onOpenPanel} />

@@ -379,6 +379,32 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     if (globalStopReading) globalStopReading()
     globalStopReading = stopReading
     setSpeaking(true)
+    // C5 音频标识（2026-10-29）：朗读开始前播双音提示音（《标识办法》对合成音频的
+    // 提示音要求；Web Audio 合成零依赖；整条消息一次，分段连播不重复；失败静默）
+    try {
+      const AC = window.AudioContext || (window as any).webkitAudioContext
+      if (AC) {
+        const ctx = new AC()
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+        const t0 = ctx.currentTime + 0.02
+        const note = (freq: number, start: number, dur: number) => {
+          const o = ctx.createOscillator()
+          const g = ctx.createGain()
+          o.type = 'sine'
+          o.frequency.value = freq
+          g.gain.setValueAtTime(0.0001, t0 + start)
+          g.gain.exponentialRampToValueAtTime(0.12, t0 + start + 0.02)
+          g.gain.exponentialRampToValueAtTime(0.0001, t0 + start + dur)
+          o.connect(g)
+          g.connect(ctx.destination)
+          o.start(t0 + start)
+          o.stop(t0 + start + dur + 0.05)
+        }
+        note(880, 0, 0.12)
+        note(1174.66, 0.14, 0.16)
+        setTimeout(() => { ctx.close().catch(() => {}) }, 600)
+      }
+    } catch { /* 提示音失败不影响朗读 */ }
     try {
       const speech = toSpeechText(msg.content)
       const segments = splitSpeechSegments(speech)
@@ -776,6 +802,15 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                     background: 'transparent', color: 'var(--accent)', cursor: 'pointer',
                     fontSize: 12, flexShrink: 0,
                   }}>重试</button>
+              </div>
+            )}
+            {msg.complianceWarning && (
+              <div style={{
+                marginTop: 8, padding: '8px 12px', borderRadius: 8,
+                background: 'var(--warning-soft)', border: '1px solid var(--warning)',
+                fontSize: 12.5, color: 'var(--warning)',
+              }}>
+                本条回复已触发内容安全审核，平台正在人工复核（《生成式AI服务管理暂行办法》第 15 条）。
               </div>
             )}
             {msg.stopped && !msg.content && (

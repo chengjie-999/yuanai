@@ -229,14 +229,20 @@ data/                   数据目录
 - **路线图**（plans/entertainment-mode-2026-10.md）：E2 火山生图 / E3 生视频挂账（执行前确认方舟账号开通与模型）。限额护栏必须与生图/生视频工具同日上线，不允许裸奔。
 - **验证**：test/test_entertainment_mode.py（娱乐跳过桥接+人设生效+@定向忽略 / 工作模式对照）；真机 SSE 双模式均实测通过。conftest 登录密码改 test1234（批次3 起密码最少 8 位，test123 只有 7 位导致所有鉴权测试静默跳过）。
 
-## 合规整改（2026-10-29，C1-C7，审计依据 docs/compliance-audit-2026-10.md）
+## 合规整改（2026-10-29，C1-C11 全清，审计依据 docs/compliance-audit-2026-10.md）
 
-面向公众的生成式 AI 服务合规基建，已落地：C1 GPL 排除（spec）/ C2 记忆接口 IDOR / C3 图片 `?token=` 鉴权 / C4 用户注销+级联 / C5 AI 生成标识（气泡徽标+复制导出标识）/ C6 内容安全闸 v1（输入侧关键词+审计，`yuanai_core/pure/content_safety.py`）/ **C7 举报工单（本条）**。
+面向公众的生成式 AI 服务合规基建 **C1-C11 全部落地**：C1 GPL 排除 / C2 记忆 IDOR / C3 图片鉴权 / C4 注销级联 / C5 AI 标识（徽标+复制导出+aigc 落库+朗读提示音）/ C6 内容安全闸双向（输入拦截+输出审核自动工单）/ C7 举报工单+冻结申诉 / C8 桥接白名单复用+服务端固定提示 / C9 出境开关 / C10 爬虫收口 / C11 协议三件套+登录勾选+备案页脚。
 
-- **C7 链路**：AI 气泡「举报」按钮（MessageBubble onReport → ChatPage 弹窗选原因）→ `POST /chat/report`（chat/router.py，会话归属校验）→ `ai_chat_reports` 表（迁移 0020，db/session.py AIReport）→ 后台「举报工单」Tab（/chat/admin/reports，ReportsTab.tsx，状态筛选+处理备注）→ `GET /admin/reports` + `POST /admin/reports/{id}/handle`（admin/router.py，require_admin）。测试 test_report.py 6 项
-- **C6 教训（本会话修复）**：/stream 读 `req.messages` 但 ChatRequest 字段是 `history`——C6 提交后所有 /stream 500，全量测试 6 项失败暴露
-- **挂账**：C8-C11（桥接白名单复用/出境开关/爬虫收口/隐私政策文本）随「分享对话」同批；C5 落库 aigc 字段+TTS 提示音、C6 输出侧审核+人工复核、C7 冻结申诉
-- **C5 已有**：复制内容经 `copyContent` 附显式 AI 标识；星球笔记导出首行标识（PlanetReader）
+- **迁移 0021**：ai_chat.aigc、ai_chat_reports.source(user/auto)+kind(message/appeal)、users.freeze_reason+agreed_at
+- **C6 输出审核**：`_output_audit`（chat/router.py）缓冲流全文，done 时关键词审核——命中审计+自动工单（source=auto）+ `compliance_warning` SSE 事件（前端气泡挂警告条，MessageBubble complianceWarning）
+- **C7 申诉**：登录 403 附冻结原因与申诉指引；`POST /auth/appeal` 公开端点（校验前置，配额仅有效申诉计 3 次/IP/日）→ kind=appeal 工单
+- **C8**：/stream target=claude 与 /claude-stream 同白名单（CLAUDE_BRIDGE_ALLOWED_USERNAMES）；system_prompt 服务端固定（settings.DEFAULT_CHAT_SYSTEM_PROMPT 与前端 SYSTEM_PROMPT_BASE 同文；后台 chat_system_prompt 热更新覆盖）
+- **C9**：`config/settings.py` LLM_BASE_URL_ALLOWLIST（自定义模型 base_url 白名单 fail-closed，默认境内+本机）/ OVERSEAS_BASE_URL_ALLOWED / OVERSEAS_LOOKUP_ENABLED（DDG/PubMed 默认关）；claude_loop.endpoint_compliant（ANTHROPIC_BASE_URL 未设或官方端点 → SDK 不启用/降级 CLI，终端 /claude 同拒）
+- **C10**：`yuanai_core/pure/crawl_compliance.py`（robots 判定缓存 1h + 同域限流 1s + 统一 UA XiaoYuanBot/1.0 + guarded_get 三段式）；通用网页采集/fetch_url/check_url 全走合规链路；open_custom_url 加 validate_url（内网/file 拒）；小猿众包 15 工具下线（_preset_tool 开关，XIAOYUAN_PRESET_ENABLED=1 恢复）；示例数据改合成（data/user/from/，未入库）
+- **C11**：docs/agreements/{用户协议,隐私政策,服务规则}.md → `GET /api/v1/docs/agreement/{terms,privacy,rules}`（公开，改文档即改页面）→ 前端 AgreementPage（/terms /privacy /rules）+ 登录强制勾选（未勾选不可登录）+ `POST /auth/agree` 留痕 agreed_at；ICP 页脚（Landing/Login/Agreement，鲁ICP备2026043700号）
+- **测试**：test_compliance_batch.py 14 项；全量 565 过 2 跳过
+- **C6 教训（前会话修复）**：/stream 读 `req.messages` 但 ChatRequest 字段是 `history`——曾致所有 /stream 500
+- **剩余**：运营面——算法备案/大模型登记（向网信办提交）、公安联网备案、Privacy 第三方清单随部署 .env 开启项同步；C6 语义审核接模型审核 API、TTS 隐式标识挂账
 
 ## 开发经验教训（2026-09-04 全量代码审查沉淀）
 

@@ -1,3 +1,4 @@
+import os
 import random
 import threading
 import time
@@ -8,6 +9,16 @@ from langchain_core.tools import tool
 from spiderlx.auto.web.selenium.xiaoyuan.xiaoyuan import SeleniumXiaoYuan, SingleAuditHandler
 from spiderlx.core.browser_manager import browser_manager
 from agent.tools.errors import classify_error
+
+# C10（2026-10-29）高风险预置自动化下线：小猿众包自动化可能违反目标平台用户协议
+# （合规审计第 12 条「预置小猿众包自动化」）。默认不再注册为 LLM 工具；仅当
+# XIAOYUAN_PRESET_ENABLED=1 显式开启才恢复（用户自担平台协议风险）。
+_PRESET_ENABLED = os.getenv("XIAOYUAN_PRESET_ENABLED", "0") == "1"
+
+
+def _preset_tool(fn):
+    """开关装饰器：关闭时返回裸函数（不注册为 BaseTool，扫描器不收集）"""
+    return tool(fn) if _PRESET_ENABLED else fn
 
 
 _xiao_yuan: Optional[SeleniumXiaoYuan] = None
@@ -63,7 +74,7 @@ def _get_sa() -> SingleAuditHandler:
     return _sa
 
 
-@tool
+@_preset_tool
 def get_task_cards(keyword: str = "单题标答-审核") -> str:
     """
     获取主页任务卡片列表，按关键词筛选。
@@ -78,7 +89,7 @@ def get_task_cards(keyword: str = "单题标答-审核") -> str:
     return f"共获取 {len(titles)} 个任务卡片。\n所有标题：{titles}\n匹配到的目标：{target}"
 
 
-@tool
+@_preset_tool
 def start_task(card_title: str = None, card_index: int = 0) -> str:
     """
     开始一个任务。可通过卡片标题（完整字符串）或索引指定卡片。
@@ -109,21 +120,21 @@ def start_task(card_title: str = None, card_index: int = 0) -> str:
     return f"开始任务{'成功' if success else '失败'}"
 
 
-@tool
+@_preset_tool
 def go_home() -> str:
     """返回主页。"""
     _get_xiao_yuan().go_home()
     return "已返回主页"
 
 
-@tool
+@_preset_tool
 def save_page_html() -> str:
     """保存当前页面 HTML 到本地。"""
     _get_xiao_yuan().get_html()
     return "当前页面 HTML 已保存"
 
 
-@tool
+@_preset_tool
 def get_question_info() -> str:
     """
     获取当前题目的截图和参考答案信息。
@@ -191,7 +202,7 @@ def get_question_info() -> str:
     return json.dumps({"count": len(urls), "images": [{"type": "url", "data": u} for u in urls]}, ensure_ascii=False)
 
 
-@tool
+@_preset_tool
 def submit_task(action: str = "提交领下一任务", reject_reason: str = "") -> str:
     """
     提交当前任务或驳回。
@@ -206,7 +217,7 @@ def submit_task(action: str = "提交领下一任务", reject_reason: str = "") 
     return f"操作完成，{'可以继续任务' if can_continue else '任务终止或需手动处理'}"
 
 
-@tool
+@_preset_tool
 def zoom_question(count: int = 6) -> str:
     """
     缩小题目视图（默认6次点击）。
@@ -216,14 +227,14 @@ def zoom_question(count: int = 6) -> str:
     return f"已缩小题目视图 {count} 次"
 
 
-@tool
+@_preset_tool
 def restore_question_view() -> str:
     """恢复题目视图到原始大小。"""
     success = _get_sa().question_restore()
     return "已恢复题目视图" if success else "恢复失败"
 
 
-@tool
+@_preset_tool
 def mark_question_correct() -> str:
     """
     标记当前题目审核正确。
@@ -233,7 +244,7 @@ def mark_question_correct() -> str:
     return "已标记审核正确"
 
 
-@tool
+@_preset_tool
 def confirm_rejection() -> str:
     """
     确认驳回弹窗。
@@ -243,7 +254,7 @@ def confirm_rejection() -> str:
     return f"驳回已确认：{text}"
 
 
-@tool
+@_preset_tool
 def scroll_canvas(direction: str = "down", amount: int = 1000) -> str:
     """
     滚动画布中的题目内容（优先 Selenium ActionChains，支持无头模式）。
@@ -258,7 +269,7 @@ def scroll_canvas(direction: str = "down", amount: int = 1000) -> str:
     return f"已向{'下' if direction=='down' else '上'}滚动" if success else "滚动失败"
 
 
-@tool
+@_preset_tool
 def click_canvas(x: int, y: int) -> str:
     """
     点击画布指定坐标（优先 Selenium ActionChains，支持无头模式）。
@@ -272,7 +283,7 @@ def click_canvas(x: int, y: int) -> str:
     return f"已点击坐标 ({x}, {y})" if success else f"点击失败"
 
 
-@tool
+@_preset_tool
 def load_page_cookies() -> str:
     """
     加载小猿众包保存的 Cookie 到当前浏览器，用于自动登录。
@@ -293,7 +304,7 @@ def load_page_cookies() -> str:
         return classify_error(e, "加载 Cookie 失败")
 
 
-@tool
+@_preset_tool
 def save_page_cookies() -> str:
     """
     保存当前小猿众包页面的 Cookie 到本地文件。
@@ -308,7 +319,7 @@ def save_page_cookies() -> str:
         return classify_error(e, "保存 Cookie 失败")
 
 
-@tool
+@_preset_tool
 def get_page_status() -> str:
     """
     获取当前页面状态（是否有弹窗、当前任务信息等）。

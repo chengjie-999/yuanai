@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 # C3（2026-10-29）：chat/image 与 knowledge/img 移出公开白名单——
 # 改走 ?token= 鉴权（见 _extract_token 分支）
-PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register", "/api/v1/agent/register", "/api/v1/stats/visit", "/api/v1/docs/readme", "/api/v1/docs/asset"]
+PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", "/api/v1/auth/check", "/api/v1/auth/register", "/api/v1/agent/register", "/api/v1/stats/visit", "/api/v1/docs/readme", "/api/v1/docs/asset",
+                 "/api/v1/docs/agreement",  # C11：协议公开端点（登录前可读）
+                 "/api/v1/auth/appeal"]   # C7：冻结申诉公开端点（被冻结用户无法登录）
 
 
 def is_public(path: str) -> bool:

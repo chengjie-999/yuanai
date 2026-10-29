@@ -32,9 +32,9 @@ export default function UsersTab() {
     return users.filter((u) => u.username?.toLowerCase().includes(q) || String(u.id).includes(q))
   }, [users, search])
 
-  const handleFreeze = async (userId: number, days: number) => {
+  const handleFreeze = async (userId: number, days: number, reason: string = '') => {
     setError('')
-    const data = await freezeUser(userId, days)
+    const data = await freezeUser(userId, days, reason)
     if (data.detail) { setError(data.detail); return }
     fetchUsers()
   }
@@ -147,14 +147,17 @@ export default function UsersTab() {
   )
 }
 
-function FreezeBtn({ userId, onFreeze }: { userId: number; onFreeze: (id: number, days: number) => void }) {
+function FreezeBtn({ userId, onFreeze }: { userId: number; onFreeze: (id: number, days: number, reason: string) => void }) {
   const [open, setOpen] = useState(false); const [days, setDays] = useState(7)
+  const [reason, setReason] = useState('')
   if (!open) return <button onClick={() => setOpen(true)} title="冻结" aria-label="冻结" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>冻结</button>
   return (
     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
       <input type="number" min={1} max={365} value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ width: 48, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 12, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>天</span>
-      <button onClick={() => { onFreeze(userId, days); setOpen(false) }} title="确定" aria-label="确定" style={{ fontSize: 11, padding: '4px 8px', color: '#fff', background: 'var(--danger)', border: 'none', borderRadius: 4, cursor: 'pointer' }}>确定</button>
+      {/* C7（2026-10-29）：冻结原因，登录时向用户展示 */}
+      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="冻结原因（选填，展示给用户）" style={{ width: 150, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 12, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
+      <button onClick={() => { onFreeze(userId, days, reason); setOpen(false); setReason('') }} title="确定" aria-label="确定" style={{ fontSize: 11, padding: '4px 8px', color: '#fff', background: 'var(--danger)', border: 'none', borderRadius: 4, cursor: 'pointer' }}>确定</button>
       <button onClick={() => setOpen(false)} title="关闭" aria-label="关闭" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><XIcon size={13} /></button>
     </div>
   )

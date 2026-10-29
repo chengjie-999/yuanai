@@ -204,11 +204,13 @@ from api.v1.middleware import get_user_id as _get_user_id
 
 
 async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0,
-                      prefix_event: dict = None):
+                      prefix_event: dict = None, session_id: str = ""):
     """Agent 事件队列 → SSE 流（300s 超时按每次事件重置；done/error 终止）
     B1-12：客户端中断（停止生成/关页）→ 通知本地 Agent 终止脚本子进程
-    prefix_event：首个 SSE 事件前插入（模式自主路由的 mode_event）"""
+    prefix_event：首个 SSE 事件前插入（模式自主路由的 mode_event）
+    session_id：C6 输出侧审核（done 前对全文审核，命中先发警告事件）"""
     from api.v1.agent.router import cleanup_pending
+    full_text = []  # C6：输出全文缓冲
     try:
         if prefix_event:
             yield f"data: {_sse(prefix_event)}\n\n"
@@ -219,7 +221,14 @@ async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0,
                 yield f"data: {_sse({'type': 'error', 'data': 'Agent 响应超时'})}\n\n"
                 break
 
+            if event.get("type") == "token" and isinstance(event.get("data"), str):
+                full_text.append(event["data"])
+
             if event.get("type") in ("done", "error"):
+                # C6 输出侧审核（2026-10-29）：流结束审核全文，命中 → 警告事件 + 自动工单
+                if event.get("type") == "done" and full_text:
+                    if _output_audit(user_id, session_id, "".join(full_text), "bridge"):
+                        yield f"data: {_sse({'type': 'compliance_warning', 'data': _AUDIT_WARNING})}\n\n"
                 yield f"data: {_sse(event)}\n\n"
                 break
 
@@ -246,6 +255,29 @@ def _ui_events(event: dict) -> list:
                 and args.get("theme") in ("dark", "light"):
             return [{"type": "theme_event", "data": {"theme": args["theme"]}}]
     return []
+
+
+# C6 输出侧审核（2026-10-29）：流结束时对全文做关键词审核——命中即审计留痕 +
+# 自动工单（人工复核队列）+ 前端 compliance_warning 警告卡。
+# v1 与输入侧同词库（高置信度关键词，宁可漏检不误伤）；语义审核接模型审核 API 挂账。
+_AUDIT_WARNING = "本条回复可能包含违规内容，已按平台规则移交人工复核处理。"
+
+
+def _output_audit(user_id: int, session_id: str, text: str, kind: str = "chat") -> str:
+    """输出侧审核：命中返回 hit 词（并已审计+落自动工单），未命中返回空串。"""
+    from yuanai_core.pure.content_safety import check_content, audit_log
+    blocked, hit = check_content(text or "")
+    if not blocked:
+        return ""
+    audit_log(user_id or 0, f"output_{kind}", hit, (text or "")[:80])
+    try:
+        _get_db().add_report(user_id or 0, session_id, None,
+                             reason=f"输出侧审核命中：{hit}",
+                             content_preview=(text or "")[:300],
+                             source="auto", kind="message")
+    except Exception as e:
+        logger.warning("输出审核自动工单落库失败: %s", e)
+    return hit
 
 
 # 信封四字段（视图滤波在 views.py；此处保证扁平化时不丢身份）
@@ -332,6 +364,14 @@ async def chat_stream(req: ChatRequest, request: Request):
             model = VISION_MODEL
 
         target = getattr(req, "target_agent", "") or ""
+        # C8（2026-10-29）：target=claude 与 /claude-stream 同白名单——
+        # 此前经 /stream 可绕过桥接白名单（审计 13 条）
+        if target == "claude":
+            from config.settings import CLAUDE_BRIDGE_ALLOWED_USERNAMES
+            role = getattr(request.state, "role", "")
+            username = getattr(request.state, "username", "")
+            if role != "admin" and username not in CLAUDE_BRIDGE_ALLOWED_USERNAMES:
+                raise HTTPException(status_code=403, detail="无权访问 Claude Code 桥接")
         # 娱乐模式（E1）：纯云端智能体——强制跳过本地 Agent 桥接、忽略 @定向
         # （娱乐模式不委派），专属娱乐人设提示接管
         ent_mode = getattr(req, "chat_mode", "work") == "entertainment"
@@ -389,7 +429,11 @@ async def chat_stream(req: ChatRequest, request: Request):
         envelopes.append({"sender": "user", "recipient": target,
                           "turn": turn + 1, "type": "chat"})
 
-        system_prompt = req.system_prompt
+        # C8（2026-10-29）：服务端固定 canonical system prompt——客户端提交的
+        # system_prompt 一律忽略（审计 13 条：客户端可覆盖平台人设/安全指令）。
+        # 人设单一事实源 = 后台设定中心 chat_system_prompt（热更新，前端同源读取）
+        from config.settings import CHAT_SYSTEM_PROMPT
+        system_prompt = CHAT_SYSTEM_PROMPT
         # 注意（2026-10-17）：桥接路径不在此注入自报——本地统筹用自己的
         # orch_model（AGENT_MODEL_MAP）注入，此处用 req.model 会造成两条互斥
         # 的「你实际运行的模型 ID」；自报注入只在云端回退分支做
@@ -442,7 +486,9 @@ async def chat_stream(req: ChatRequest, request: Request):
             if bridged_request_id:
                 logger.info("chat/stream → Agent 桥接 (user=%s, req=%s)", user_id, bridged_request_id[:8])
                 queue = get_pending_queue(bridged_request_id)
-                return StreamingResponse(_bridge_sse(queue, bridged_request_id, user_id, mode_event), media_type="text/event-stream")
+                return StreamingResponse(_bridge_sse(queue, bridged_request_id, user_id, mode_event,
+                                                     session_id=getattr(req, "session_id", "") or ""),
+                                         media_type="text/event-stream")
 
         # --- 回退：云端直接调用 LLM ---
         logger.info("chat/stream → 云端直接调用 (user=%s, agent offline)", user_id)
@@ -505,10 +551,16 @@ async def chat_stream(req: ChatRequest, request: Request):
                 if mode_event:
                     yield f"data: {_sse(mode_event)}\n\n"
                 # 同名工具单轮最多调 3 次（防重复调用死循环）+ LangGraph 轮数上限
+                full_text = []  # C6：输出全文缓冲（流结束审核）
                 async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
+                    if event.get("type") == "token" and isinstance(event.get("data"), str):
+                        full_text.append(event["data"])
                     for ui in _ui_events(event):
                         yield f"data: {_sse(ui)}\n\n"
                     yield f"data: {_sse(event)}\n\n"
+                # C6 输出侧审核（2026-10-29）：流结束审核全文，命中 → 警告事件 + 自动工单
+                if full_text and _output_audit(user_id, getattr(req, "session_id", "") or "", "".join(full_text), "cloud"):
+                    yield f"data: {_sse({'type': 'compliance_warning', 'data': _AUDIT_WARNING})}\n\n"
             except Exception as e:
                 # exc_info：异常来自哪一行一眼可见（曾出现「string indices must be integers」
                 # 无法定位——只打 str(e) 丢了堆栈）
@@ -571,11 +623,13 @@ async def claude_stream(req: ChatRequest, request: Request):
         envelopes.append({"sender": "user", "recipient": "claude",
                           "turn": turn + 1, "type": "chat"})
 
+        # C8（2026-10-29）：服务端固定 canonical system prompt（与 /stream 同源）
+        from config.settings import CHAT_SYSTEM_PROMPT
         input_messages = build_input_messages(
             prompt=req.prompt,
             images_base64=req.images,
             history=history,
-            system_message=SystemMessage(content=req.system_prompt),
+            system_message=SystemMessage(content=CHAT_SYSTEM_PROMPT),
         )
         current_user_id.set(user_id if user_id else 0)
         current_session_id.set(getattr(req, "session_id", "") or "")
@@ -604,14 +658,17 @@ async def claude_stream(req: ChatRequest, request: Request):
                 logger.info("chat/claude-stream → Claude 桥接 (target=%s, user=%s, session=%s, req=%s)",
                             target_agent_id, user_id, req.session_id, bridged_request_id[:8])
                 queue = get_pending_queue(bridged_request_id)
-                return StreamingResponse(_bridge_sse(queue, bridged_request_id, target_agent_id), media_type="text/event-stream")
+                return StreamingResponse(_bridge_sse(queue, bridged_request_id, target_agent_id,
+                                                     session_id=getattr(req, "session_id", "") or ""),
+                                         media_type="text/event-stream")
 
         # 回退：云端直接调用 LLM
         logger.info("chat/claude-stream → Claude 桥离线，云端回退 (user=%s)", user_id)
         # 视图滤波：以 Claude 身份裁剪历史（信封全空退化为直通）
         from yuanai_core.core.views import view_for
         view = view_for("claude", fixed_items, envelopes=envelopes[1:-1])
-        input_messages = _langchain_from_items(view, req.prompt, req.images, req.system_prompt)
+        # C8：回退分支同样用服务端固定提示（此后整段重写为去委派化离线提示）
+        input_messages = _langchain_from_items(view, req.prompt, req.images, CHAT_SYSTEM_PROMPT)
         offline_prompt = ("你是小元AI助手（Claude Code 桥接当前离线，已切换云端模式）。"
                           "不要提及「委派」、不要调用任何 delegate 工具——子智能体在本机"
                           "Agent 上且当前离线，所有请求由你自己直接处理。"
@@ -626,10 +683,16 @@ async def claude_stream(req: ChatRequest, request: Request):
         async def event_stream():
             try:
                 from yuanai_core.core.chat import limited_tools
+                full_text = []  # C6：输出全文缓冲（流结束审核）
                 async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
+                    if event.get("type") == "token" and isinstance(event.get("data"), str):
+                        full_text.append(event["data"])
                     for ui in _ui_events(event):
                         yield f"data: {_sse(ui)}\n\n"
                     yield f"data: {_sse(event)}\n\n"
+                # C6 输出侧审核（2026-10-29）
+                if full_text and _output_audit(user_id, getattr(req, "session_id", "") or "", "".join(full_text), "claude_fallback"):
+                    yield f"data: {_sse({'type': 'compliance_warning', 'data': _AUDIT_WARNING})}\n\n"
             except Exception as e:
                 logger.error("claude-stream 云端回退异常: %s", e)
                 yield f"data: {_sse({'type': 'error', 'data': _SAFE_ERROR})}\n\n"
@@ -834,6 +897,8 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
                         recipient=msg.get("recipient") or "",
                         turn=msg.get("turn") or 0,
                         type=msg.get("type") or "chat",
+                        # C5（2026-10-29）：AI 生成内容落库标识（《标识办法》第 7 条存储要求）
+                        aigc=1 if msg["role"] == "assistant" else 0,
                     )
                     if msg.get("images"):
                         # data: URL 是新的需要保存；/api/v1/chat/image/ 是已保存的跳过

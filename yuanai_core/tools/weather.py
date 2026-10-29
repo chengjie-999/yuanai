@@ -12,7 +12,7 @@ def _fetch_weather(city: str, days: int = 1) -> dict | None:
     try:
         encoded = urllib.parse.quote(city)
         url = f"https://wttr.in/{encoded}?format=j1"
-        req = urllib.request.Request(url, headers={"User-Agent": "yuanai"})
+        req = urllib.request.Request(url, headers={"User-Agent": "XiaoYuanBot/1.0"})
         with urllib.request.urlopen(req, timeout=8) as resp:
             return json.loads(resp.read().decode())
     except Exception:

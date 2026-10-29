@@ -10,17 +10,12 @@ def fetch_url(url: str, retype: str = "text") -> str:
     """GET 请求，返回 'text' | 'json' | 'content'(base64)。
 
     S1.4/S1.5 加固：走 safe_fetch 收口（SSRF 守卫 + 逐跳重校验 + DNS 钉住 +
-    5MB 流式截断）。lazy import 保持本模块纯函数属性（spiderlx 依赖 requests）。
+    5MB 流式截断）。C10（2026-10-29）：改经 crawl_compliance.guarded_get
+    （robots 判定 + 同域限流 + 统一可识别 UA），robots 禁止的路径拒绝采集。
     """
-    from spiderlx.core.requests.safe_fetch import safe_get
+    from yuanai_core.pure.crawl_compliance import guarded_get
 
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        )
-    }
-    result = safe_get(url, headers=headers, timeout=15, max_bytes=FETCH_URL_MAX_BYTES)
+    result = guarded_get(url, timeout=15, max_bytes=FETCH_URL_MAX_BYTES)
     result.raise_for_status()
     if retype == "json":
         return result.text

@@ -12,6 +12,7 @@ router = APIRouter(tags=["admin"])  # 无 prefix：由主 router 统一加 /admi
 class FreezeRequest(BaseModel):
     user_id: int
     days: int
+    reason: str = ""  # C7（2026-10-29）：冻结原因，登录时向用户展示
 
 
 class AdminCreateUser(BaseModel):
@@ -64,9 +65,11 @@ async def freeze_user(req: FreezeRequest, request: Request):
             raise HTTPException(status_code=400, detail="不能冻结管理员")
         if req.days == 0:
             user.frozen_until = None
+            user.freeze_reason = ""  # 解冻清原因
             msg = f"已解冻用户 {user.username}"
         else:
             user.frozen_until = datetime.utcnow() + timedelta(days=req.days)
+            user.freeze_reason = (req.reason or "").strip()[:500]
             msg = f"已冻结用户 {user.username} {req.days} 天"
         sess.commit()
         return {"ok": True, "message": msg}

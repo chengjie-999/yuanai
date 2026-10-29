@@ -20,6 +20,7 @@ export interface ChatMessage {
   error?: string    // 流式错误（气泡错误卡 + 重试入口；META 短键 e）
   stopped?: boolean // 用户手动停止生成（META 短键 sp）
   truncated?: boolean // 回答被 max_tokens 截断（U4 继续生成；META 短键 tr）
+  complianceWarning?: boolean // C6 输出侧审核命中（2026-10-29）：气泡挂警告条，人工复核中
 }
 
 export interface ToolCall {

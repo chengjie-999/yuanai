@@ -418,6 +418,25 @@ export async function reportMessage(sessionId: string, messageIndex: number, rea
   } catch { return false }
 }
 
+// ---- 申诉（C7 冻结申诉，公开端点：被冻结用户无法登录）----
+export async function submitAppeal(username: string, contact: string, reason: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/auth/appeal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, contact, reason }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data?.detail || '申诉提交失败')
+  return data?.message || '申诉已提交'
+}
+
+// ---- 协议接受留痕（C11：登录勾选后调用，fire-and-forget）----
+export async function agreeTerms() {
+  try {
+    await fetch(`${API_BASE}/auth/agree`, { method: 'POST', headers: authHeaders() })
+  } catch { /* 留痕失败不影响使用 */ }
+}
+
 // ---- Stats ----
 export async function trackVisit(path: string) {
   try {
@@ -655,10 +674,10 @@ export async function deleteWebsite(id: number): Promise<boolean> {
   } catch { return false }
 }
 
-export async function freezeUser(userId: number, days: number): Promise<any> {
+export async function freezeUser(userId: number, days: number, reason: string = ''): Promise<any> {
   const res = await fetch(`${API_BASE}/admin/users/freeze`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ user_id: userId, days }),
+    body: JSON.stringify({ user_id: userId, days, reason }),
   })
   return res.json()
 }

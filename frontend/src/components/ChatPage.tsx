@@ -504,6 +504,11 @@ export default function ChatPage({ user }: { user?: any }) {
         if (t === 'dark' || t === 'light') applyTheme(t)
         return
       }
+      if (event.type === 'compliance_warning') {
+        // C6 输出侧审核（2026-10-29）：回复命中内容审核 → 气泡挂常驻警告条（人工复核中）
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], complianceWarning: true }; return last })
+        return
+      }
       if (event.type === 'token') {
         // 时序交叉渲染：首个 token 时把累积思考快照为「最终思考」（回答前展示），
         // 之后 reasoning 字段复位（下一阶段重新累积）

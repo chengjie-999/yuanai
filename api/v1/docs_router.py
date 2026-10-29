@@ -41,6 +41,28 @@ async def serve_readme():
 @router.get("/api/v1/docs/asset/{asset_path:path}")
 async def serve_docs_asset(asset_path: str):
     """docs/ 目录资产（README 内嵌图片）；文件名白名单 + realpath 防越界"""
+    return _serve_asset(asset_path)
+
+
+# C11（2026-10-29）：协议公开端点（登录前可读）——/terms /privacy /rules 页面消费。
+# 文件名白名单三份，改文档即改页面（生产 git pull 同步，无需重建前端）
+_AGREEMENTS = {"terms": "用户协议.md", "privacy": "隐私政策.md", "rules": "服务规则.md"}
+
+
+@router.get("/api/v1/docs/agreement/{name}")
+async def serve_agreement(name: str):
+    if name not in _AGREEMENTS:
+        raise HTTPException(status_code=404, detail="协议不存在")
+    path = os.path.join(root_path(), "docs", "agreements", _AGREEMENTS[name])
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="协议文档缺失")
+    with open(path, "r", encoding="utf-8") as f:
+        return Response(content=f.read(), media_type="text/markdown; charset=utf-8",
+                        headers={"Cache-Control": "no-store"})
+
+
+def _serve_asset(asset_path: str):
+    """docs/ 目录资产（README 内嵌图片）；文件名白名单 + realpath 防越界"""
     if not _ASSET_NAME_RE.match(asset_path) or ".." in asset_path.split("/"):
         raise HTTPException(status_code=400, detail="非法路径")
     full = os.path.realpath(os.path.join(_ASSET_DIR, asset_path))

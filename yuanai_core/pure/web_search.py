@@ -184,11 +184,16 @@ def web_search(query: str, max_results: int = SEARCH_MAX_RESULTS) -> List[Dict]:
     """网页搜索（DeepSeek 官方优先 → Bing → DDG 三级兜底）→ [{title, url, snippet, answer?}]
 
     query 过短（<2 字）直接返回 []——单字查询必然跑偏（曾出现「大」）。
+    C9（2026-10-29）：DDG 为境外检索，OVERSEAS_LOOKUP_ENABLED=0 时跳过（默认关）。
     """
     q = (query or "").strip()
     if len(q) < 2:
         return []
-    for searcher in (_search_deepseek, _search_bing, _search_ddg):
+    from config.settings import OVERSEAS_LOOKUP_ENABLED
+    searchers = (_search_deepseek, _search_bing)
+    if OVERSEAS_LOOKUP_ENABLED:
+        searchers = searchers + (_search_ddg,)
+    for searcher in searchers:
         try:
             results = searcher(q, max_results)
             if results:

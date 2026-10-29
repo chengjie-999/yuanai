@@ -112,6 +112,24 @@ def _is_gateway_endpoint() -> bool:
     return "deepseek" in base.lower()
 
 
+def endpoint_compliant() -> bool:
+    """C9（2026-10-29）出境开关：SDK 端点必须显式指向合规网关——
+    ANTHROPIC_BASE_URL 未设置（SDK 默认 api.anthropic.com）或指向官方端点时
+    判定违规（默认禁出境，fail-closed）；OVERSEAS_BASE_URL_ALLOWED=1 显式放行。"""
+    base = (os.getenv("ANTHROPIC_BASE_URL") or "").strip().lower()
+    if not base:
+        return False
+    # 直接读 env（settings 模块属性在进程启动后不随 env 变更，此处运行时判定）
+    if os.getenv("OVERSEAS_BASE_URL_ALLOWED", "0") == "1":
+        return True
+    try:
+        from urllib.parse import urlparse
+        host = (urlparse(base).hostname or "").lower()
+    except Exception:
+        return False
+    return not (host == "api.anthropic.com" or host.endswith(".anthropic.com"))
+
+
 def sdk_tools() -> List[Dict]:
     return _GATEWAY_TOOLS if _is_gateway_endpoint() else _ANTHROPIC_TOOLS
 

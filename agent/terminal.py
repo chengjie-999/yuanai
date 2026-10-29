@@ -341,13 +341,19 @@ def _approve_yn(decision_id: str, tool_name: str, command: str) -> str:
 
 async def run_claude_query(messages: list, on_approval=None, render=None) -> str:
     """/claude 模式：复用 claude_loop SDK loop（与云端桥接同一条代码路径）"""
-    from agent.claude_loop import run_sdk_loop, load_credentials, BRIDGE_SYSTEM_PROMPT
+    from agent.claude_loop import run_sdk_loop, load_credentials, endpoint_compliant, BRIDGE_SYSTEM_PROMPT
 
     render = render or PlainRenderer()
     api_key = load_credentials()
     if not api_key:
         render.error("未找到 Anthropic 凭证（ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN / "
                      "~/.claude/.credentials.json）——请配置后重试，或 /chat 切本地 LLM")
+        return ""
+    # C9 出境开关（2026-10-29）：SDK 端点须显式指向合规网关
+    if not endpoint_compliant():
+        render.error("C9 出境开关：ANTHROPIC_BASE_URL 未设置或指向 Anthropic 官方端点，"
+                     "已拒绝直连（数据出境）。请设置境内兼容网关（如 DeepSeek anthropic "
+                     "端点）后重试，或 /chat 切本地 LLM")
         return ""
 
     _emit_pet("thinking")

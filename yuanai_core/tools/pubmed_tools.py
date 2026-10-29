@@ -21,6 +21,16 @@ logger = logging.getLogger(__name__)
 PUBMED_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 REQUEST_DELAY = 0.34  # NCBI 限速：每秒最多 3 次请求
 
+
+def _overseas_gate() -> str:
+    """C9（2026-10-29）出境开关：NCBI 为境外检索，默认关闭。
+    返回空串=放行；非空=应向模型返回的关闭说明。"""
+    from config.settings import OVERSEAS_LOOKUP_ENABLED
+    if OVERSEAS_LOOKUP_ENABLED:
+        return ""
+    return ("PubMed 检索当前未开启（数据出境开关 OVERSEAS_LOOKUP_ENABLED=0）。"
+            "如需要，请联系管理员开启并在隐私政策中披露境外检索（NCBI）。")
+
 # 物种 → MeSH 术语映射
 SPECIES_MESH: Dict[str, str] = {
     "人类": "humans", "人": "humans", "human": "humans",
@@ -62,7 +72,7 @@ def _eutils_request(endpoint: str, params: dict) -> str:
     url = f"{PUBMED_BASE}/{endpoint}?{urllib.parse.urlencode(params)}"
     time.sleep(REQUEST_DELAY)  # 遵守 NCBI 限速
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "XiaoYuanAI/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "XiaoYuanBot/1.0"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.read().decode("utf-8")
     except Exception as e:
@@ -125,6 +135,9 @@ def _parse_efetch(xml_str: str) -> List[Dict]:
 def search_pubmed(query: str, species: str = "", max_results: int = 10) -> str:
     """Search PubMed for biomedical literature. query: keywords e.g. 'metformin diabetes', species: optional Chinese name e.g. '人类' '小鼠', max_results: 1-50."""
     try:
+        gate = _overseas_gate()
+        if gate:
+            return gate
         max_results = min(max(max_results, 1), 50)
 
         # 物种过滤

@@ -167,7 +167,14 @@ def _syscfg(key: str):
 
 # 助手设定（模型自知的提示词，后台可编辑）
 SELF_REPORT_TEMPLATE = str(_syscfg("self_report_template"))
-CHAT_SYSTEM_PROMPT = str(_syscfg("chat_system_prompt"))
+
+# C8（2026-10-29）：服务端 canonical 人设默认值——此前默认空串时 /stream 用
+# 客户端提交的 system_prompt（客户端可覆盖平台人设/安全指令，审计第 13 条）。
+# 现与前端 SYSTEM_PROMPT_BASE 同文（前端 GET /chat/system-prompt 同源读取），
+# 后台「设置 → 助手设定」仍可覆盖；单一事实源 = 服务端。
+DEFAULT_CHAT_SYSTEM_PROMPT = '你是小元AI的统筹助手。数据分析、数据采集、生命科学等能力以「脚本工具」（script_ 开头）直接挂在你名下，一次函数调用即可选定脚本并执行，不需要委派。\n\n可直接使用的工具：\n- 脚本工具：script_descriptive_stats（描述性统计）/ script_correlation（相关性）/ script_regression（回归）/ script_categorical（分类数据）/ script_timeseries（时间序列）/ script_preprocess（数据预处理）/ script_rfm_cluster（RFM 分群）/ script_churn_predict（流失预测）/ script_gene_expression（基因表达）/ script_generic_crawl（通用网页采集）\n- create_plan：把多步组合任务（先采集后分析等）拆成草稿计划\n- execute_plan：用户说「执行」时把计划加入队列\n- get_plan_status：查询计划进度\n- search_web：联网搜索（query 用核心短语、词间空格分词；搜索摘要通常已足够回答，不必逐条抓取，仅需正文详情时才用 fetch_url + parse_html）\n- retrieve_planet_knowledge：检索用户个人知识星球（导图/笔记，只读）\n- delegate_to_automation_agent：仅浏览器控制/审核等需多步自主操作的任务才委派\n\n计划流（重要）：多步骤组合任务（如「先抓取数据，再做统计分析」）先用 create_plan 制定草稿计划（每步写清 skill 与意图，能确定脚本时填 script 工具名与 params，信息不足先问用户），向用户复述步骤并说明「说『执行』才会开始」；用户明确说执行时再调用 execute_plan。不要用文字代替计划、不要连续自行委派执行。\n\n群聊说话人协议（重要）：历史消息中带【xx Agent】前缀的是其他智能体说过的话，不是你说的；无前缀的 assistant 消息才是你自己说过的。不要复述、冒充或接续别人的话，不要替其他智能体总结其发言。\n\n工作原则：\n1. 判断意图：分析/采集类直接选脚本工具执行，一句话说明在做什么\n2. 工具返回结果后，如果结果已经清晰完整，只做简短确认如"以上是结果"，不要再复述\n3. 只有当结果需要解读、比较或给出建议时，才补充分析\n4. 用户能看到工具输出，重复内容只会让对话冗余\n5. 对话结束或任务完成时，用表格总结本次完成了什么、关键结论是什么\n6. 每段回答的结尾必须使用句号等完整标点收尾，不要戛然而止（用户会误以为回复被截断）\n\n界面入口说明（重要）：计划面板、分析看板等界面由客户端提供，而你有能力让入口出现——你调用计划相关工具（create_plan/execute_plan/get_plan_status）后，你回复的气泡会自动带上「打开面板」按钮，用户点击即进入计划面板。用户要打开计划面板时，直接调用一次 get_plan_status（顺便报进度），按钮就会出现——不要说「无法给链接」「没有能力生成入口」。计划有执行中/排队中任务时聊天页顶部有「后台执行中」指示条；分析完成后你的气泡同样自动带看板的「打开面板」按钮。不要编造不存在的标签页或路径；用户设置等其余界面在页面右上角。'
+
+CHAT_SYSTEM_PROMPT = str(_syscfg("chat_system_prompt")) or DEFAULT_CHAT_SYSTEM_PROMPT
 CAPABILITY_NOTE = str(_syscfg("capability_note"))
 
 
@@ -335,6 +342,17 @@ AGENT_VOICE_MAP = _load_agent_voices()
 REGISTER_OPEN = bool(_syscfg("register_open"))   # 公开注册开关（默认关，用户由管理员后台创建）
 DAILY_MESSAGE_QUOTA = int(_syscfg("daily_message_quota"))  # 每用户每日消息配额（admin 不限；0 = 不限）
 VOICE_ENABLED = bool(_syscfg("voice_enabled"))    # 语音通话/朗读功能总开关
+
+# ===================== C9 数据出境开关（2026-10-29，合规审计第 10 条） =====================
+# 自定义模型 base_url 白名单：默认仅境内端点 + 本机联调；env 可追加（逗号分隔）。
+# OVERSEAS_BASE_URL_ALLOWED=1 时才放行任意境外端点（默认关 = fail-closed 拒路由）。
+LLM_BASE_URL_ALLOWLIST = [h.strip().lower() for h in os.getenv(
+    "LLM_BASE_URL_ALLOWLIST",
+    "api.deepseek.com,ark.cn-beijing.volces.com,127.0.0.1,localhost").split(",") if h.strip()]
+OVERSEAS_BASE_URL_ALLOWED = os.getenv("OVERSEAS_BASE_URL_ALLOWED", "0") == "1"
+# 境外公开数据检索（DDG 兜底搜索 / NCBI PubMed）：默认关。开启 = 检索查询出境，
+# 须在《隐私政策》第三方清单披露（合规审计第 10 条）。
+OVERSEAS_LOOKUP_ENABLED = os.getenv("OVERSEAS_LOOKUP_ENABLED", "0") == "1"
 
 # ===================== 鉴权配置 =====================
 
@@ -508,7 +526,7 @@ def reload_system_config() -> None:
     SYSTEM_CONFIG.clear()
     SYSTEM_CONFIG.update(_load_system_config())
     SELF_REPORT_TEMPLATE = str(_syscfg("self_report_template"))
-    CHAT_SYSTEM_PROMPT = str(_syscfg("chat_system_prompt"))
+    CHAT_SYSTEM_PROMPT = str(_syscfg("chat_system_prompt")) or DEFAULT_CHAT_SYSTEM_PROMPT
     CAPABILITY_NOTE = str(_syscfg("capability_note"))
     REASONING_EFFORT = str(_syscfg("reasoning_effort"))
     MEMORY_ENABLED = bool(_syscfg("memory_enabled"))

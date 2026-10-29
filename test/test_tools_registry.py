@@ -65,7 +65,9 @@ def test_all_tools_loads_via_registry():
 def test_agent_tools_load():
     from agent.tools import _scan_agent_tools
     names = {t.name for t in _scan_agent_tools()}
-    assert len(names) >= 30, f"专用工具数异常: {len(names)}"
+    # C10（2026-10-29）：小猿众包预置自动化下线（15 个工具默认不再注册，
+    # XIAOYUAN_PRESET_ENABLED=1 可恢复）——38 → 23
+    assert len(names) >= 20, f"专用工具数异常: {len(names)}"
 
 
 if __name__ == "__main__":

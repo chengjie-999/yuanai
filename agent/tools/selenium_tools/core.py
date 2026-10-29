@@ -60,6 +60,13 @@ def open_custom_url(url: str) -> str:
     driver = browser_manager.get_driver()
     if not driver:
         return "❌ [致命] 请先调用 launch_new_browser 启动浏览器"
+    # C10（2026-10-29）：浏览器自定义 URL 校验——此前无校验，内网/file:// 可达
+    # （审计第 12 条），复用 safe_fetch 的 validate_url（私有网段/file 协议拒绝）
+    try:
+        from spiderlx.core.requests.safe_fetch import validate_url
+        validate_url(url)
+    except Exception as e:
+        return f"❌ 网址校验未通过: {e}"
     try:
         name, target_url = driver.open_website(url=url)
         return f"✅ 已打开网址：{name} | {target_url}"

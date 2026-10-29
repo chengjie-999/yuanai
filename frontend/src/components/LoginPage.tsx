@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Navigate, Link } from 'react-router-dom'
-import { login } from '../api'
+import { login, submitAppeal, agreeTerms } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import Mascot from './Mascot'
@@ -23,6 +23,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [visible, setVisible] = useState(false)
   const [focused, setFocused] = useState<'user' | 'pw' | null>(null)
+  // C7 冻结申诉（2026-10-29）
+  const [appealContact, setAppealContact] = useState('')
+  const [appealReason, setAppealReason] = useState('')
+  const [appealMsg, setAppealMsg] = useState('')
+  const [appealLoading, setAppealLoading] = useState(false)
+  // C11 协议勾选（2026-10-29）：未勾选不可登录
+  const [agreed, setAgreed] = useState(false)
 
   const userRef = useRef<HTMLInputElement>(null)
 
@@ -41,18 +48,34 @@ export default function LoginPage() {
     const u = username.trim()
     if (!u || !password) { setError('请填写用户名和密码'); return }
     if (password.length < 8) { setError('密码至少 8 个字符'); return }
+    if (!agreed) { setError('请先阅读并同意《用户协议》与《隐私政策》'); return }
     setLoading(true)
     setError('')
     try {
       const data = await login(u, password)
       if (!data?.token) { setError('登录失败，服务器返回异常'); setLoading(false); return }
       handleLogin(data.token, data.user, remember)
+      agreeTerms()  // C11：协议接受留痕（fire-and-forget）
       if (data.user?.theme && data.user.theme !== theme) setTheme(data.user.theme)
       navigate('/chat', { replace: true })
     } catch (e: any) {
       setError(e.message || '操作失败')
     }
     setLoading(false)
+  }
+
+  const handleAppeal = async () => {
+    if (!username.trim() || !appealReason.trim() || appealLoading) return
+    setAppealLoading(true)
+    setAppealMsg('')
+    try {
+      const msg = await submitAppeal(username.trim(), appealContact.trim(), appealReason.trim())
+      setAppealMsg(msg)
+      setAppealReason('')
+    } catch (e: any) {
+      setAppealMsg(e.message || '申诉提交失败')
+    }
+    setAppealLoading(false)
   }
 
   if (token) return <Navigate to="/chat" replace />
@@ -114,6 +137,24 @@ export default function LoginPage() {
           <span>{error || ''}</span>
           <button onClick={() => setError('')} className="login-error-close" title="关闭" aria-label="关闭"><XIcon size={14} /></button>
         </div>
+
+        {/* C7 冻结申诉（2026-10-29）：登录提示冻结时出现，公开申诉无需登录 */}
+        {error.includes('冻结') && (
+          <div style={{ marginBottom: 14, padding: 12, borderRadius: 10, background: 'var(--warning-soft)', border: '1px solid var(--warning)' }}>
+            <div style={{ fontSize: 12.5, color: 'var(--warning)', fontWeight: 600, marginBottom: 8 }}>对冻结有异议？提交申诉，平台将在 3 个工作日内反馈</div>
+            <input value={appealContact} onChange={(e) => setAppealContact(e.target.value)}
+              placeholder="联系方式（邮箱/手机号，用于接收处理结果）"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)', marginBottom: 8 }} />
+            <input value={appealReason} onChange={(e) => setAppealReason(e.target.value)}
+              placeholder="申诉理由"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)', marginBottom: 8 }} />
+            {appealMsg && <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 6 }}>{appealMsg}</div>}
+            <button onClick={handleAppeal} disabled={appealLoading || !appealReason.trim()}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: 'var(--warning)', color: '#fff', fontSize: 13, cursor: appealReason.trim() && !appealLoading ? 'pointer' : 'default', opacity: appealReason.trim() && !appealLoading ? 1 : 0.55 }}>
+              {appealLoading ? '提交中...' : '提交申诉'}
+            </button>
+          </div>
+        )}
 
         {/* 用户名 */}
         <div className={`login-input-wrap ${focused === 'user' ? 'focused' : ''}`}>
@@ -179,8 +220,26 @@ export default function LoginPage() {
           记住我
         </label>
 
+        {/* C11 协议勾选（2026-10-29）：未勾选不可登录；登录后留痕（POST /auth/agree） */}
+        <label className="login-remember" style={{ marginTop: 10 }}>
+          <span className={`login-checkbox ${agreed ? 'checked' : ''}`}>
+            {agreed && (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            )}
+          </span>
+          <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ display: 'none' }}/>
+          <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            我已阅读并同意
+            <Link to="/terms" target="_blank" style={{ color: 'var(--accent)' }}>《用户协议》</Link>和
+            <Link to="/privacy" target="_blank" style={{ color: 'var(--accent)' }}>《隐私政策》</Link>
+          </span>
+        </label>
+
         {/* 登录按钮 */}
-        <button className={`login-btn ${loading ? 'loading' : ''}`} onClick={handleSubmit} disabled={loading}>
+        <button className={`login-btn ${loading ? 'loading' : ''}`} onClick={handleSubmit} disabled={loading || !agreed}
+          style={{ opacity: loading || !agreed ? 0.55 : 1 }}>
           {loading ? (
             <><span className="login-spinner"/> 登录中...</>
           ) : '登  录'}
@@ -192,6 +251,11 @@ export default function LoginPage() {
           <br />
           <span>微信 <b>17852428208</b> · <a href="mailto:chengjie2017020@163.com">chengjie2017020@163.com</a></span>
         </p>
+
+        {/* C11 ICP 备案页脚（登录页同展示） */}
+        <div style={{ textAlign: 'center', marginTop: 16, fontSize: 11, color: 'var(--text-muted)' }}>
+          <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer" style={{ color: 'var(--text-muted)' }}>鲁ICP备2026043700号</a>
+        </div>
       </div>
     </div>
   )

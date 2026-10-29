@@ -32,7 +32,7 @@ _HTML列表 = []
 # ### 参数
 
 # %%
-文件路径 = sys.argv[1] if len(sys.argv) > 1 else "data/user/sales_old.csv"
+文件路径 = sys.argv[1] if len(sys.argv) > 1 else "data/user/from/sales_old.csv"
 标签列   = sys.argv[2] if len(sys.argv) > 2 else "churn"
 特征列   = sys.argv[3] if len(sys.argv) > 3 else ""
 预测路径 = sys.argv[4] if len(sys.argv) > 4 else ""

@@ -79,7 +79,9 @@ def test_web_search_bing_first(monkeypatch):
 
 
 def test_web_search_ddg_fallback(monkeypatch):
-    """Bing 异常 → DDG 兜底"""
+    """Bing 异常 → DDG 兜底（C9 出境开关开启时）"""
+    # C9（2026-10-29）：DDG 为境外检索，默认 OVERSEAS_LOOKUP_ENABLED=0 跳过
+    monkeypatch.setattr("config.settings.OVERSEAS_LOOKUP_ENABLED", True)
 
     def fake(url, params):
         if "bing" in url:

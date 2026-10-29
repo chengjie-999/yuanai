@@ -6,18 +6,15 @@
 import os, sys, csv, time
 from datetime import datetime
 
-import requests
 from bs4 import BeautifulSoup
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 from utils.data_path import root_path
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    )
-}
+# C10（2026-10-29）：请求一律走 guarded_get（robots 判定 + 同域限流 +
+# 统一可识别 UA XiaoYuanBot/1.0 + safe_get SSRF 守卫）——此前裸 requests.get
+# 可绕过 SSRF 校验（重定向/分页）且无 robots 尊重
+from yuanai_core.pure.crawl_compliance import guarded_get, check_robots
 
 爬取目录 = os.path.join(root_path(), "data", "crawl")
 
@@ -107,20 +104,25 @@ if not 目标URL:
 all_rows = []
 os.makedirs(爬取目录, exist_ok=True)
 
+# 来源与 robots 状态（合规审计第 12 条：采集记录附来源/robots 状态）
+_robots_verdict, _robots_note = check_robots(目标URL)
+
 for page in range(1, 最大页数 + 1):
     page_url = _构建分页URL(目标URL, page)
     print(f"正在采集第 {page} 页: {page_url}")
 
     try:
-        resp = requests.get(page_url, headers=HEADERS, timeout=20)
+        resp = guarded_get(page_url, timeout=20, max_bytes=10 * 1024 * 1024)
         resp.raise_for_status()
-        resp.encoding = resp.apparent_encoding
-    except requests.RequestException as e:
+    except PermissionError as e:
+        raise RuntimeError(f"{e}（已尊重 robots.txt 拒绝采集）")
+    except Exception as e:
         if page == 1:
             raise RuntimeError(f"请求失败: {e}")
         break
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    # bytes 直喂 BeautifulSoup：由 meta charset 自动识别编码（safe_fetch 只给 utf-8 replace）
+    soup = BeautifulSoup(resp.content, "html.parser")
     rows = _提取数据(soup, CSS选择器)
     if not rows and page == 1:
         raise RuntimeError("未在页面中找到表格或列表数据，请指定 CSS选择器")
@@ -151,3 +153,6 @@ print(f"\n前 5 条预览:")
 for row in all_rows[:5]:
     print("  " + " | ".join(f"{k}: {v}" for k, v in row.items()))
 print(f"\n文件: {csv_path}")
+# C10（2026-10-29）：采集记录附来源与 robots 状态（合规审计第 12 条）
+print(f"来源: {目标URL}")
+print(f"robots: {_robots_verdict}" + (f"（{_robots_note}）" if _robots_note else ""))

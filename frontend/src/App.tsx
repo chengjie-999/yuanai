@@ -15,6 +15,7 @@ const LandingPage = lazy(() => import('./components/LandingPage'))
 import NotFoundPage from './components/NotFoundPage'
 const AboutPage = lazy(() => import('./components/AboutPage'))
 const ApiDocsPage = lazy(() => import('./pages/ApiDocsPage'))
+const AgreementPage = lazy(() => import('./components/AgreementPage'))
 const AdminPage = lazy(() => import('./components/AdminPage'))
 const UserPage = lazy(() => import('./components/UserPage'))
 const SettingsPage = lazy(() => import('./components/SettingsPage'))
@@ -252,6 +253,10 @@ function AppInner() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/api-docs" element={<ApiDocsPage />} />
+        {/* C11 协议公开页（免登录；文本单一事实源 = docs/agreements/*.md） */}
+        <Route path="/terms" element={<AgreementPage name="terms" />} />
+        <Route path="/privacy" element={<AgreementPage name="privacy" />} />
+        <Route path="/rules" element={<AgreementPage name="rules" />} />
         {/* SEO 预渲染的 /docs 静态页：浏览器访问时重定向到 SPA 文档页
             （静态快照仅供爬虫，避免挂载后被 NotFound 替换） */}
         <Route path="/docs" element={<Navigate to="/api-docs" replace />} />

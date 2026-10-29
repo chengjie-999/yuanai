@@ -205,10 +205,16 @@ class ClaudeBridgeHandler:
         async with self._sem:
             async with lock:
                 # SDK 决策：auto 模式按凭证有无（有 → SDK 全功能，无 → CLI 兜底）
+                # C9（2026-10-29）：凭证之外还须端点合规（ANTHROPIC_BASE_URL 显式
+                # 指向境内网关）；未设置/官方端点 → 不启用 SDK，降级 CLI
+                from agent.claude_loop import load_credentials, endpoint_compliant
                 use_sdk = self._sdk_mode
                 if use_sdk is None:
-                    from agent.claude_loop import load_credentials
-                    use_sdk = bool(load_credentials())
+                    use_sdk = bool(load_credentials()) and endpoint_compliant()
+                elif use_sdk and not endpoint_compliant():
+                    logger.warning("C9 出境开关：--sdk 强制但端点未指向合规网关"
+                                   "（ANTHROPIC_BASE_URL 未设置或为官方端点），降级 CLI")
+                    use_sdk = False
                 if use_sdk:
                     async for ev in self._run_sdk_query(req, rid):
                         yield ev

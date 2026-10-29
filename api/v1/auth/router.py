@@ -95,10 +95,15 @@ def login(req: AuthRequest, request: Request):
             )
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
-    # 3. 管理员冻结检查
+    # 3. 管理员冻结检查（C7 2026-10-29：附冻结原因与申诉入口）
     if user.frozen_until and user.frozen_until > datetime.utcnow():
         days = (user.frozen_until - datetime.utcnow()).days
-        raise HTTPException(status_code=403, detail=f"账号已被冻结，剩余 {days} 天")
+        reason = (user.freeze_reason or "").strip()
+        detail = f"账号已被冻结，剩余 {days} 天"
+        if reason:
+            detail += f"。冻结原因：{reason}"
+        detail += "。如有异议可通过申诉入口提交申诉。"
+        raise HTTPException(status_code=403, detail=detail)
 
     # 4. 登录成功 — 重置失败计数 + 发令牌
     db.reset_login_attempts(user.id)
@@ -118,6 +123,50 @@ def login(req: AuthRequest, request: Request):
             "theme": user.theme or "",
         },
     }
+
+
+class AppealRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=50)
+    contact: str = Field("", max_length=200)
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/appeal")
+def submit_appeal(req: AppealRequest, request: Request):
+    """C7 冻结申诉（2026-10-29，公开端点——被冻结用户无法登录）：
+    落申诉工单（kind=appeal），管理员在后台「举报工单」Tab 处理。
+    护栏：每 IP 每日 3 次（Redis 24h 计数，故障放行）；仅冻结账号可申诉。"""
+    ip = get_client_ip(request)
+    db = get_db()
+    # 先校验（404/400 不消耗配额——探测请求不占申诉额度），仅有效申诉计次数
+    user = db.get_user_by_username(req.username.strip())
+    if not user:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    from datetime import datetime as _dt
+    if not (user.frozen_until and user.frozen_until > _dt.utcnow()):
+        raise HTTPException(status_code=400, detail="账号当前未被冻结，无需申诉")
+    from api.v1.db_helpers import consume_daily_quota
+    if not consume_daily_quota(f"appeal:{ip}", 3):
+        raise HTTPException(status_code=429, detail="申诉提交过于频繁，请明天再试")
+    db.add_appeal(user.id, req.reason, req.contact)
+    logger.info("冻结申诉已提交: user=%s ip=%s", req.username, ip)
+    return {"ok": True, "message": "申诉已提交，平台将在 3 个工作日内通过您留的联系方式反馈处理结果"}
+
+
+@router.post("/agree")
+def agree_terms(request: Request):
+    """C11（2026-10-29）：记录《用户协议》《隐私政策》接受时间（登录勾选留痕）。
+    软记录不硬拦截——避免破坏 API 直调客户端；前端登录勾选强制 + 此处留痕。"""
+    user_id = getattr(request.state, "user_id", 0)
+    if user_id:
+        db = get_db()
+        with db.session() as sess:
+            from db.session import User
+            u = sess.query(User).filter_by(id=user_id).first()
+            if u and not u.agreed_at:
+                u.agreed_at = datetime.utcnow()
+                sess.commit()
+    return {"ok": True}
 
 
 class ThemeUpdate(BaseModel):

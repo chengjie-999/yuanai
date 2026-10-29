@@ -48,6 +48,7 @@ class AIChat(Base):
     recipient = Column(String(32), default='')       # '' = 广播；否则定向
     turn = Column(Integer, default=0)                # 1-based 轮次
     type = Column(String(16), default='chat')        # chat/tool_call/tool_result/summary/note
+    aigc = Column(Integer, default=0)                 # C5：AI 生成标识（1=AI 生成，迁移 0021）
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -80,14 +81,20 @@ class TokenUsage(Base):
 
 
 class AIReport(Base):
-    """C7 举报工单（2026-10-29，生成式AI办法第 15 条投诉举报机制）"""
+    """C7 举报/申诉工单（2026-10-29，生成式AI办法第 15 条投诉举报机制）
+
+    source=user（用户举报/申诉）/ auto（C6 输出侧审核自动建单）
+    kind=message（消息举报）/ appeal（账号冻结申诉，无消息定位，session/message 可空）
+    """
     __tablename__ = 'ai_chat_reports'
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, nullable=False, index=True)
-    session_id = Column(String(36), nullable=False, index=True)
-    message_index = Column(Integer, nullable=False, server_default='0')
+    session_id = Column(String(36), nullable=True, index=True)
+    message_index = Column(Integer, nullable=True)
     reason = Column(String(500), nullable=False, server_default='')
     content_preview = Column(Text, nullable=False)
+    source = Column(String(16), nullable=False, server_default='user')    # user/auto
+    kind = Column(String(16), nullable=False, server_default='message')   # message/appeal
     status = Column(String(16), nullable=False, server_default='pending')
     handler_note = Column(String(500), nullable=False, server_default='')
     created_at = Column(TIMESTAMP, server_default=func.now())
@@ -157,6 +164,8 @@ class User(Base):
     failed_login_attempts = Column(Integer, default=0)
     locked_until = Column(TIMESTAMP, nullable=True)
     token_version = Column(Integer, default=0, nullable=False)  # S3.4：令牌吊销计数（+1 全量失效）
+    freeze_reason = Column(String(500), default='')   # C7：冻结原因（登录时展示，迁移 0021）
+    agreed_at = Column(TIMESTAMP, nullable=True)      # C11：协议接受时间（登录勾选留痕，迁移 0021）
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -880,18 +889,27 @@ class AgentDatabase:
     # --------------------------------------------------------------------------
 
     def add_report(self, user_id: int, session_id: str, message_index: int,
-                   reason: str, content_preview: str) -> int:
+                   reason: str, content_preview: str,
+                   source: str = "user", kind: str = "message") -> int:
+        """落工单。source=user/auto（C6 输出审核自动建单）；kind=message/appeal"""
         sess = self.Session()
         try:
-            r = AIReport(user_id=user_id, session_id=session_id,
+            r = AIReport(user_id=user_id, session_id=session_id or None,
                          message_index=message_index, reason=reason[:500],
                          content_preview=(content_preview or "")[:1000],
-                         status="pending")
+                         source=source, kind=kind, status="pending")
             sess.add(r)
             sess.commit()
             return r.id
         finally:
             sess.close()
+
+    def add_appeal(self, user_id: int, reason: str, contact: str) -> int:
+        """C7 冻结申诉工单（无消息定位；contact=申诉人联系方式写入 content_preview）"""
+        return self.add_report(user_id, None, None,
+                               reason=f"冻结申诉：{reason}",
+                               content_preview=contact or "",
+                               source="user", kind="appeal")
 
     def list_reports(self, status: str = "", limit: int = 100) -> list:
         sess = self.Session()
@@ -903,6 +921,7 @@ class AgentDatabase:
             return [{"id": r.id, "user_id": r.user_id, "session_id": r.session_id,
                      "message_index": r.message_index, "reason": r.reason,
                      "content_preview": r.content_preview, "status": r.status,
+                     "source": r.source, "kind": r.kind,
                      "handler_note": r.handler_note,
                      "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
                      "handled_at": r.handled_at.strftime("%Y-%m-%d %H:%M:%S") if r.handled_at else ""}

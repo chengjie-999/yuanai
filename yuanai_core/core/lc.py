@@ -127,10 +127,30 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
             provider = MODELS[model].get("provider", "Custom")
         custom_key = _get_stored_key(provider)
         if custom_key:
-            # 默认用 OpenAI 兼容地址
+            # C9（2026-10-29）出境开关：自定义模型 base_url 一律校验——
+            # 默认白名单仅境内端点（DeepSeek/火山 Ark/本机联调），未知端点
+            # fail-closed 拒绝路由（曾默认 api.openai.com/v1 直接出境）。
+            from config.settings import LLM_BASE_URL_ALLOWLIST, OVERSEAS_BASE_URL_ALLOWED
+            base_url = kwargs.pop("base_url", "https://api.deepseek.com/v1")
+            if not OVERSEAS_BASE_URL_ALLOWED:
+                host = ""
+                try:
+                    from urllib.parse import urlparse
+                    host = (urlparse(base_url).hostname or "").lower()
+                except Exception:
+                    host = ""
+                allowed = any(
+                    host == p or host.endswith("." + p)
+                    for p in LLM_BASE_URL_ALLOWLIST
+                )
+                if not allowed:
+                    raise ValueError(
+                        f"模型 {model} 的 base_url（{base_url}）不在境内端点白名单内，"
+                        f"已拒绝路由（数据出境开关）。如该端点为合规境内网关，"
+                        f"请将域名加入 LLM_BASE_URL_ALLOWLIST 环境变量。")
             return ChatOpenAI(
                 api_key=custom_key,
-                base_url=kwargs.pop("base_url", "https://api.openai.com/v1"),
+                base_url=base_url,
                 model=model,
                 callbacks=kwargs.pop("callbacks", None) or [_usage_cb(model, usage_purpose)],
                 **kwargs,

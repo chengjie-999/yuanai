@@ -106,8 +106,10 @@ def check_url(url: str) -> str:
         from spiderlx.core.requests.safe_fetch import safe_get
         start = time.time()
         # S1.4/S1.5：守卫 + 逐跳重校验（不再 allow_redirects=True 盲跳）
+        # C10（2026-10-29）：统一可识别 UA（合规审计第 12 条）
+        from yuanai_core.pure.crawl_compliance import BOT_UA
         result = safe_get(url, method="HEAD", timeout=10,
-                          headers={"User-Agent": "Mozilla/5.0"}, max_bytes=4096)
+                          headers={"User-Agent": BOT_UA}, max_bytes=4096)
         elapsed = (time.time() - start) * 1000
         return (
             f"可访问 (状态码: {result.status_code})\n"

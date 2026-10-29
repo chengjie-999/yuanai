@@ -153,6 +153,13 @@ def search_pubmed(q: str, max_results: int = Query(10, alias="max")) -> Dict:
         raise HTTPException(status_code=400, detail="检索关键词不能为空")
     max_results = min(max(max_results, 1), 50)
 
+    # C9（2026-10-29）出境开关：NCBI 为境外检索，默认关闭（合规审计第 10 条）；
+    # 开启须在《隐私政策》第三方清单披露
+    from config.settings import OVERSEAS_LOOKUP_ENABLED
+    if not OVERSEAS_LOOKUP_ENABLED:
+        raise HTTPException(status_code=503,
+                            detail="PubMed 检索当前未开启（数据出境开关 OVERSEAS_LOOKUP_ENABLED=0）")
+
     try:
         # 第一步：esearch 按相关性取 PMID 列表
         search_xml = _eutils_request("esearch.fcgi", {

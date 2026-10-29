@@ -56,7 +56,12 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['torch', 'torchvision', 'torchaudio'],
+    excludes=['torch', 'torchvision', 'torchaudio',
+              # C1 合规（2026-10-29）：pyautogui 的传递依赖 pymsgbox/mouseinfo
+              # 为 GPL-3.0+——冻结进对外分发的 exe 会构成 GPL 组合作品，
+              # 与闭源商业定位冲突（审计报告极高危 #1）。业务未用其对话框功能，
+              # 排除后 pyautogui 其余功能不受影响
+              'pymsgbox', 'mouseinfo'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=None,

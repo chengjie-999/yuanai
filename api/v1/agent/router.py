@@ -562,10 +562,14 @@ def agent_usage_upload(request: Request, body: UsageUploadBody):
 def bridge_memory(request: Request, body: BridgeMemoryBody):
     """CC 桥接记忆写入：Agent 凭据校验 → 对 user_id 合并事实进长期记忆。
 
-    安全边界：持有设备 secret 即持有写权限（桥接设备属于站主），
-    调用方（claude_bridge）只传 chat_request 里的真实 user_id。
+    C2 安全修复（2026-10-29）：此前任意注册设备凭据即可对任意 user_id
+    写记忆（IDOR）。现在只允许桥接专用设备（agent_id == CLAUDE_BRIDGE_AGENT_ID）
+    写指定用户记忆；普通设备一律走绑定语义的 /memory 端点。
     """
-    require_agent_device(request)
+    agent_id = require_agent_device(request)
+    from config.settings import CLAUDE_BRIDGE_AGENT_ID
+    if str(CLAUDE_BRIDGE_AGENT_ID or "") != str(agent_id):
+        raise HTTPException(status_code=403, detail="仅桥接专用设备可写指定用户记忆")
     if not body.user_id or not body.facts:
         return {"ok": True, "added": 0}
 
@@ -587,27 +591,32 @@ class AgentMemoryBody(BaseModel):
 
 @router.get("/memory")
 def agent_get_memory(request: Request, user_id: int = 0):
-    """本地 Agent 记忆读取（get_user_memory 工具走 HTTP；data/.yuan/ 文件存储）"""
-    require_agent_device(request)
-    if not user_id:
-        raise HTTPException(status_code=400, detail="缺少 user_id")
+    """本地 Agent 记忆读取（get_user_memory 工具走 HTTP；data/.yuan/ 文件存储）。
+
+    C2 安全修复（2026-10-29）：目标用户强制为设备一对一绑定用户——
+    忽略调用方传入的任意 user_id（此前 IDOR：任何设备凭据可读他人记忆）。
+    """
+    uid = require_agent_uid(request)
     from db.session import get_db
-    memory = get_db().get_user_memory(user_id)
+    memory = get_db().get_user_memory(uid)
     return {"ok": True, "memory": memory}
 
 
 @router.post("/memory")
 def agent_add_memory(request: Request, body: AgentMemoryBody):
-    """本地 Agent 记忆写入（remember_user_info 工具走 HTTP；合并语义同折叠）"""
-    require_agent_device(request)
-    if not body.user_id or not body.facts:
+    """本地 Agent 记忆写入（remember_user_info 工具走 HTTP；合并语义同折叠）。
+
+    C2 安全修复（2026-10-29）：目标用户强制为设备绑定用户（忽略 body.user_id）。
+    """
+    uid = require_agent_uid(request)
+    if not body.facts:
         return {"ok": True, "added": 0}
     facts = [str(f)[:200] for f in body.facts[:20] if str(f).strip()]
     if not facts:
         return {"ok": True, "added": 0}
     from config.settings import MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS
     from db.session import get_db
-    r = get_db().merge_user_memory(body.user_id, facts, MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS)
+    r = get_db().merge_user_memory(uid, facts, MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS)
     return {"ok": True, "added": r["added"]}
 
 
@@ -619,12 +628,13 @@ class AgentOrganizeBody(BaseModel):
 
 @router.post("/memory/organize")
 def agent_organize_memory(request: Request, body: AgentOrganizeBody):
-    """本地 Agent 记忆自整理（organize_user_memory 工具走 HTTP；删除护栏在 db 层）"""
-    require_agent_device(request)
-    if not body.user_id:
-        raise HTTPException(status_code=400, detail="缺少 user_id")
+    """本地 Agent 记忆自整理（organize_user_memory 工具走 HTTP；删除护栏在 db 层）。
+
+    C2 安全修复（2026-10-29）：目标用户强制为设备绑定用户。
+    """
+    uid = require_agent_uid(request)
     from db.session import get_db
-    r = get_db().organize_user_memory(body.user_id, body.items, body.session_id)
+    r = get_db().organize_user_memory(uid, body.items, body.session_id)
     if not r.get("ok"):
         raise HTTPException(status_code=400, detail=r.get("detail", "整理失败"))
     return {"ok": True, "deleted": r["deleted"], "total": r["total"]}
@@ -632,12 +642,15 @@ def agent_organize_memory(request: Request, body: AgentOrganizeBody):
 
 @router.delete("/memory")
 def agent_delete_memory(request: Request, body: AgentMemoryBody):
-    """本地 Agent 记忆删除（forget_user_info 工具走 HTTP；多条命中不误删）"""
-    require_agent_device(request)
-    if not body.user_id or not body.line.strip():
-        raise HTTPException(status_code=400, detail="缺少 user_id 或 line")
+    """本地 Agent 记忆删除（forget_user_info 工具走 HTTP；多条命中不误删）。
+
+    C2 安全修复（2026-10-29）：目标用户强制为设备绑定用户。
+    """
+    uid = require_agent_uid(request)
+    if not body.line.strip():
+        raise HTTPException(status_code=400, detail="缺少 line")
     from db.session import get_db
-    r = get_db().delete_user_memory_line(body.user_id, body.line.strip())
+    r = get_db().delete_user_memory_line(uid, body.line.strip())
     if r["asked_more"]:
         raise HTTPException(status_code=400, detail="匹配到多条记忆，请说得更具体")
     if r["deleted"] == 0:

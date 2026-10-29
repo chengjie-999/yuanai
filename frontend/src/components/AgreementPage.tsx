@@ -21,15 +21,25 @@ export default function AgreementPage({ name }: { name: string }) {
   const doc = DOCS[name] || DOCS.terms
   const [content, setContent] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
 
   usePageMeta({ title: `${doc.title} - 小元AI`, description: doc.desc })
 
-  useEffect(() => {
-    trackVisit(`/agreement/${name}`)
+  // 加载 + 重试（2026-10-30 修复「空壳」：此前 fetch 完成前页面无任何状态提示）
+  const load = () => {
+    setLoading(true)
+    setError('')
     fetch(`${API_BASE}/docs/agreement/${name}`, { headers: { Accept: 'text/markdown' } })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text() })
-      .then(setContent)
-      .catch(() => setError('协议文档加载失败，请稍后重试'))
+      .then((t) => { setContent(t); setLoading(false) })
+      .catch(() => { setError('协议文档加载失败，请检查网络后重试'); setLoading(false) })
+  }
+
+  useEffect(() => {
+    trackVisit(`/agreement/${name}`)
+    setContent('')
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name])
 
   return (
@@ -45,8 +55,17 @@ export default function AgreementPage({ name }: { name: string }) {
         }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 6px' }}>{doc.title}</h1>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>{doc.desc}</div>
-          {error && <div style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 12 }}>{error}</div>}
-          {content && <MarkdownContent content={content} />}
+          {loading && <div style={{ textAlign: 'center', padding: '40px 0', fontSize: 13, color: 'var(--text-muted)' }}>文档加载中...</div>}
+          {error && (
+            <div style={{ textAlign: 'center', padding: '32px 0' }}>
+              <div style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 12 }}>{error}</div>
+              <button onClick={load}
+                style={{ padding: '6px 20px', borderRadius: 6, border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', cursor: 'pointer', fontSize: 13 }}>
+                重试
+              </button>
+            </div>
+          )}
+          {!loading && !error && content && <MarkdownContent content={content} />}
         </div>
       </div>
       <div style={{ marginTop: 'auto', textAlign: 'center', padding: '20px 16px 28px', fontSize: 12, color: 'var(--text-muted)' }}>

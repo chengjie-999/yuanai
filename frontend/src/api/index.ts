@@ -9,6 +9,23 @@ function _safeGetSession(k: string): string | null {
   try { return sessionStorage.getItem(k) } catch { return null }
 }
 
+// 非 JSON 响应友好错误（2026-10-30 修复）：后端挂掉/nginx 502 时响应是 HTML，
+// res.json() 直接抛 "Unexpected token '<'" 这类原始异常，用户完全看不懂。
+// 统一在这里转成可读提示（JSON 则透传后端 detail，如冻结原因）。
+export async function _errorDetail(res: Response): Promise<string> {
+  const ct = res.headers.get('content-type') || ''
+  if (ct.includes('json')) {
+    try {
+      const data = await res.json()
+      if (data?.detail) return typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)
+    } catch { /* 解析失败走兜底 */ }
+  }
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    return '服务暂时不可用，请稍后重试（若持续出现，请联系管理员）'
+  }
+  return `请求失败（HTTP ${res.status}），请稍后重试`
+}
+
 export function getToken(): string {
   return _safeGet('token') || _safeGetSession('token') || ''
 }
@@ -258,16 +275,23 @@ export async function updateAgentVoice(role: string, voice_id: string): Promise<
 
 // ---- Auth ----
 export async function login(username: string, password: string) {
-  const res = await fetch(`${API_BASE}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  })
-  if (!res.ok) {
-    const err = await res.json()
-    throw new Error(err.detail || '登录失败')
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+  } catch {
+    throw new Error('网络连接失败，请检查网络后重试')
   }
-  return res.json()
+  if (!res.ok) throw new Error(await _errorDetail(res))
+  // 200 但响应非 JSON（极端情况：中间层返回了 HTML）同样给可读错误
+  try {
+    return await res.json()
+  } catch {
+    throw new Error('服务响应异常，请稍后重试（若持续出现，请联系管理员）')
+  }
 }
 
 export async function register(username: string, password: string) {
@@ -425,8 +449,8 @@ export async function submitAppeal(username: string, contact: string, reason: st
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, contact, reason }),
   })
+  if (!res.ok) throw new Error(await _errorDetail(res))
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data?.detail || '申诉提交失败')
   return data?.message || '申诉已提交'
 }
 

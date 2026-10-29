@@ -28,8 +28,10 @@ export default function LoginPage() {
   const [appealReason, setAppealReason] = useState('')
   const [appealMsg, setAppealMsg] = useState('')
   const [appealLoading, setAppealLoading] = useState(false)
-  // C11 协议勾选（2026-10-29）：未勾选不可登录
-  const [agreed, setAgreed] = useState(false)
+  // C11 协议勾选（2026-10-29）：未勾选不可登录；已勾选过则记住（localStorage 安全读）
+  const [agreed, setAgreed] = useState(() => {
+    try { return localStorage.getItem('agreedTerms') === '1' } catch { return false }
+  })
 
   const userRef = useRef<HTMLInputElement>(null)
 
@@ -45,6 +47,7 @@ export default function LoginPage() {
   }, [])
 
   const handleSubmit = async () => {
+    if (loading) return  // 防重复提交（连点登录按钮发多个请求）
     const u = username.trim()
     if (!u || !password) { setError('请填写用户名和密码'); return }
     if (password.length < 8) { setError('密码至少 8 个字符'); return }
@@ -229,11 +232,14 @@ export default function LoginPage() {
               </svg>
             )}
           </span>
-          <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ display: 'none' }}/>
+          <input type="checkbox" checked={agreed} onChange={e => {
+            setAgreed(e.target.checked)
+            try { localStorage.setItem('agreedTerms', e.target.checked ? '1' : '0') } catch { /* 忽略 */ }
+          }} style={{ display: 'none' }}/>
           <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
             我已阅读并同意
-            <Link to="/terms" target="_blank" style={{ color: 'var(--accent)' }}>《用户协议》</Link>和
-            <Link to="/privacy" target="_blank" style={{ color: 'var(--accent)' }}>《隐私政策》</Link>
+            <Link to="/terms" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>《用户协议》</Link>和
+            <Link to="/privacy" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>《隐私政策》</Link>
           </span>
         </label>
 

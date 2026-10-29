@@ -95,6 +95,8 @@ async def admin_delete_user(user_id: int, request: Request):
             raise HTTPException(status_code=404, detail="用户不存在")
         if user.role == "admin":
             raise HTTPException(status_code=400, detail="不能删除管理员")
-        sess.delete(user)
-        sess.commit()
-        return {"ok": True, "deleted": user.username}
+        sess.close()
+        # C4（2026-10-29）：级联删除全部个人数据（会话/消息/记忆/数据集/
+        # 星球/计划/日志/文件/Milvus + 设备解绑）——不再只删 users 行
+        summary = db.delete_user_cascade(user_id)
+        return {"ok": True, "deleted": user.username, **summary}

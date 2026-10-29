@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { updateProfile, changePassword } from '../api'
+import { updateProfile, changePassword, deleteAccount } from '../api'
 import { useIsMobile } from '../hooks/useIsMobile'
 import Modal from './Modal'
 
@@ -18,6 +18,26 @@ const C = {
 export default function UserPage({ user, onLogout }: { user: any; onLogout: () => void }) {
   const isMobile = useIsMobile()
   const { refresh } = useAuth()
+  // C4 注销（2026-10-29）：密码确认 → 级联删除全部数据 → 退出
+  const [deleting, setDeleting] = useState(false)
+  const handleDeleteAccount = async () => {
+    const pwd = window.prompt('此操作将永久删除你的全部数据（会话/记忆/数据集/知识星球等），不可恢复。' +
+      '请输入密码确认：')
+    if (!pwd) return
+    if (!window.confirm('再次确认：删除后所有数据将无法找回，确定注销账号？')) return
+    setDeleting(true)
+    try {
+      const ok = await deleteAccount(pwd)
+      if (ok) {
+        window.alert('账号已注销，所有数据已删除。')
+        onLogout()
+      } else {
+        window.alert('注销失败，请重试（密码是否正确？）')
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
   const [name, setName] = useState(user?.display_name || '')
   const [nameMsg, setNameMsg] = useState('')
   // password flow
@@ -128,6 +148,14 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
           border: '1px solid var(--border)', background: 'var(--bg-primary)',
           cursor: 'pointer', fontSize: 14, color: 'var(--danger)',
         }}>退出登录</button>
+
+        {/* ---- 注销账号（C4 合规 2026-10-29：密码确认 + 级联删除全部数据，不可恢复） ---- */}
+        <button onClick={handleDeleteAccount} style={{
+          width: '100%', padding: '12px 0', borderRadius: 10,
+          border: '1px solid var(--danger)', background: 'var(--danger-soft)',
+          cursor: deleting ? 'default' : 'pointer', fontSize: 14, color: 'var(--danger)',
+          opacity: deleting ? 0.5 : 1,
+        }}>{deleting ? '注销中…' : '注销账号（删除全部数据）'}</button>
       </div>
 
       {/* ---- 修改密码侧边抽屉（共享 Modal mode=right） ---- */}

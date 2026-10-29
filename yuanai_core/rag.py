@@ -336,6 +336,29 @@ def _get_max_id() -> int:
         return 0
 
 
+def remove_user_chunks(user_id: int) -> int:
+    """删除某用户全部私有 chunk（C4 注销级联，2026-10-29）——返回删除数"""
+    db = _get_db()
+    if not db.has_collection(COLLECTION_NAME):
+        return 0
+    try:
+        results = db.query(
+            COLLECTION_NAME,
+            filter=f'user_id == {int(user_id)}',
+            output_fields=["id"],
+            limit=MILVUS_QUERY_LIMIT,
+        )
+    except Exception:
+        return 0
+    ids = [r["id"] for r in results]
+    if ids:
+        try:
+            db.delete(COLLECTION_NAME, ids)
+        except Exception:
+            return 0
+    return len(ids)
+
+
 def remove_source(source: str, user_id: int | None = None) -> int:
     """删除指定来源的所有 chunk（可选按 user_id 限定），返回删除数"""
     db = _get_db()

@@ -626,6 +626,19 @@ class AgentDatabase:
         finally:
             sess.close()
 
+    def verify_password(self, user_id: int, password: str) -> bool:
+        """密码二次确认（C4 注销等危险操作前校验；2026-10-29）"""
+        import bcrypt as _bcrypt
+        sess = self.Session()
+        try:
+            user = sess.query(User).filter_by(id=user_id).first()
+            return bool(user and user.password_hash
+                        and _bcrypt.checkpw(password.encode(), user.password_hash.encode()))
+        except Exception:
+            return False
+        finally:
+            sess.close()
+
     def get_user_by_username(self, username: str):
         """根据用户名获取用户（用于登录前锁定检查等）"""
         sess = self.Session()
@@ -846,6 +859,119 @@ class AgentDatabase:
                 f"sid={session_id} deleted={json.dumps(texts, ensure_ascii=False)}\n")
         with open(path, "a", encoding="utf-8") as f:
             f.write(line)
+
+    # --------------------------------------------------------------------------
+    # C4 合规：用户注销级联删除（2026-10-29）
+    # --------------------------------------------------------------------------
+
+    def delete_user_cascade(self, user_id: int) -> dict:
+        """删除用户全部数据（PIPL 删除权）：业务表全清 + 磁盘文件（记忆/聊天
+        图片/数据集/星球/私有知识库）+ Milvus 向量（星球笔记/私有知识库 chunk）
+        + 设备解绑。返回删除计数摘要。"""
+        import os
+        import shutil
+        from utils.data_path import root_path
+
+        summary = {}
+        sess = self.Session()
+        try:
+            # 1) 会话链：session_ids → 消息/反馈/游标 → 会话行
+            sids = [r[0] for r in sess.query(ChatSession.session_id)
+                    .filter_by(user_id=user_id).all()]
+            if sids:
+                sess.query(AIChat).filter(AIChat.session_id.in_(sids))                     .delete(synchronize_session=False)
+                sess.query(AIChatFeedback).filter(AIChatFeedback.session_id.in_(sids))                     .delete(synchronize_session=False)
+                sess.query(SessionMemoryState).filter(SessionMemoryState.session_id.in_(sids))                     .delete(synchronize_session=False)
+                sess.query(TaskImage).filter(TaskImage.session_id.in_(sids))                     .delete(synchronize_session=False)
+            sess.query(ChatSession).filter_by(user_id=user_id)                 .delete(synchronize_session=False)
+            summary["chat_sessions"] = len(sids)
+
+            # 2) 数据集（含文件）
+            datasets = sess.query(Dataset).filter_by(user_id=user_id).all()
+            for ds in datasets:
+                if ds.file_path and os.path.exists(ds.file_path):
+                    try:
+                        os.remove(ds.file_path)
+                    except OSError:
+                        pass
+            sess.query(Dataset).filter_by(user_id=user_id).delete(synchronize_session=False)
+            summary["datasets"] = len(datasets)
+
+            # 3) 分析历史 / 访问日志 / 用量 / 采集记录
+            if sids:
+                sess.query(AnalysisHistory)                     .filter(AnalysisHistory.session_id.in_(sids))                     .delete(synchronize_session=False)
+            sess.query(VisitLog).filter_by(user_id=user_id).delete(synchronize_session=False)
+            sess.query(TokenUsage).filter_by(user_id=user_id).delete(synchronize_session=False)
+            sess.query(CrawlRecord).filter_by(user_id=user_id).delete(synchronize_session=False)
+
+            # 4) 知识星球：先记星球 id（行删后再级联文件与 Milvus）
+            planet_ids = [r[0] for r in sess.query(Planet.id).filter_by(user_id=user_id).all()]
+            sess.query(PlanetJob).filter(PlanetJob.planet_id.in_(planet_ids))                 .delete(synchronize_session=False) if planet_ids else None
+            sess.query(PlanetNote).filter(PlanetNote.planet_id.in_(planet_ids))                 .delete(synchronize_session=False) if planet_ids else None
+            sess.query(PlanetMap).filter(PlanetMap.planet_id.in_(planet_ids))                 .delete(synchronize_session=False) if planet_ids else None
+            sess.query(Planet).filter_by(user_id=user_id).delete(synchronize_session=False)
+            summary["planets"] = len(planet_ids)
+
+            # 5) 计划（plans/plan_steps/plan_runs 均带 user_id 冗余）
+            sess.query(PlanRun).filter_by(user_id=user_id).delete(synchronize_session=False)
+            sess.query(PlanStep).filter_by(user_id=user_id).delete(synchronize_session=False)
+            sess.query(Plan).filter_by(user_id=user_id).delete(synchronize_session=False)
+
+            # 6) 设备解绑（保留设备行，解除用户关联并停用）
+            sess.query(AgentDevice).filter_by(user_id=user_id)                 .update({"user_id": None, "enabled": 0}, synchronize_session=False)
+
+            # 7) 用户行
+            user = sess.query(User).filter_by(id=user_id).first()
+            if user:
+                sess.delete(user)
+            sess.commit()
+        finally:
+            sess.close()
+
+        # 8) 磁盘文件（DB 提交后；失败不阻塞注销）
+        root = root_path()
+        import yuanai_core.memory_store as ms
+        try:
+            ms.clear(user_id)  # data/.yuan/{uid} 长期记忆
+        except Exception:
+            pass
+        for sid in sids:
+            shutil.rmtree(os.path.join(root, "data", "chat_images", sid),
+                          ignore_errors=True)
+        for pid in planet_ids:
+            shutil.rmtree(os.path.join(root, "data", "planet", str(user_id), str(pid)),
+                          ignore_errors=True)
+        # 私有知识库目录（u{uid}_* 形态）
+        try:
+            aip = os.path.join(root, "data", "aiprompt")
+            if os.path.isdir(aip):
+                for name in os.listdir(aip):
+                    if name.startswith(f"u{user_id}_"):
+                        shutil.rmtree(os.path.join(aip, name), ignore_errors=True)
+        except Exception:
+            pass
+
+        # 9) Milvus 向量（星球笔记 + 私有知识库 chunk）
+        try:
+            from api.v1.planet.store import deindex_map, _db as _planet_db
+            pdb = _planet_db()
+            for pid in planet_ids:
+                try:
+                    for m in pdb.list_maps(pid, user_id=user_id):
+                        deindex_map(pdb, user_id, pid, m["id"])
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            from yuanai_core import rag
+            rag.remove_user_chunks(user_id)
+        except Exception:
+            pass
+
+        summary["user_id"] = user_id
+        return summary
+
 
     # --------------------------------------------------------------------------
     # 计划闭环（plans / plan_steps / plan_runs 事件溯源；2026-10-12）

@@ -766,3 +766,15 @@ export async function fetchDatasetAnalysis(id: number, charts = false, force = f
   } catch { return null }
 }
 
+
+/** C4 注销（2026-10-29）：密码确认后级联删除全部个人数据 */
+export async function deleteAccount(password: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/delete-account`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ password }),
+    })
+    return res.ok
+  } catch { return false }
+}

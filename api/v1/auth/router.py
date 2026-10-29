@@ -385,6 +385,33 @@ def get_sse_token(request: Request):
     return {"token": create_sse_token(payload["user_id"], payload.get("role", "user"))}
 
 
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+
+@router.post("/delete-account")
+def delete_account(req: DeleteAccountRequest, request: Request):
+    """用户自助注销（C4 合规 2026-10-29，PIPL 删除权）：密码二次确认 →
+    级联删除全部个人数据（会话/消息/记忆/数据集/星球/计划/日志/文件/Milvus）
+    → 设备解绑。不可恢复。"""
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    payload = verify_token(token) if token else None
+    if not payload:
+        raise HTTPException(status_code=401, detail="未登录")
+    user_id = int(payload["user_id"])
+    db = get_db()
+    user = db.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="用户不存在")
+    if user.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="管理员账号请走后台处理，不支持自助注销")
+    if not db.verify_password(user_id, req.password):
+        raise HTTPException(status_code=400, detail="密码错误")
+    summary = db.delete_user_cascade(user_id)
+    return {"ok": True, "deleted": user_id, **summary}
+
+
 @router.post("/check")
 def check_token(req: TokenCheck):
     """验证 token 是否有效"""

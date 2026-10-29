@@ -569,8 +569,8 @@ def test_retention_analytics_no_crash(db):
 
 # ===================== CC 桥接记忆端点 =====================
 
-def test_bridge_memory_endpoint(client, db):
-    """agent 凭据 401 矩阵 + 合并写用户记忆"""
+def test_bridge_memory_endpoint(client, db, monkeypatch):
+    """agent 凭据 401 矩阵 + 合并写用户记忆；C2：仅桥接专用设备可写指定用户"""
     from db.session import AgentDevice, User
     import uuid as _uuid
 
@@ -586,6 +586,9 @@ def test_bridge_memory_endpoint(client, db):
     finally:
         sess.close()
     h = {"X-Agent-Id": str(dev_id), "X-Agent-Secret": secret}
+    # C2：本测试设备即桥接专用设备（普通设备 403 见 test_agent_memory_auth）
+    import config.settings as _s
+    monkeypatch.setattr(_s, "CLAUDE_BRIDGE_AGENT_ID", dev_id)
     try:
         # 401：坏 secret
         r = client.post("/api/v1/agent/bridge-memory",

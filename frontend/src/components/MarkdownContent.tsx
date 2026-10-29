@@ -159,7 +159,9 @@ function CodeBlock({ lang, text }: { lang: string; text: string }) {
 /* 知识星球资产图片无法带 Authorization 头 → 拼 ?token=（其它路径原样） */
 function withAssetToken(src?: string): string | undefined {
   if (!src) return src
-  if (src.startsWith('/api/v1/planet/asset/') && !src.includes('token=')) {
+  // C3（2026-10-29）：知识库图片同样改鉴权，与星球资产同口径拼 ?token=
+  if ((src.startsWith('/api/v1/planet/asset/') || src.startsWith('/api/v1/knowledge/img'))
+      && !src.includes('token=')) {
     return `${src}${src.includes('?') ? '&' : '?'}token=${getToken()}`
   }
   return src

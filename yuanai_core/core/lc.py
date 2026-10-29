@@ -103,6 +103,9 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
             api_key=ds_api_key,
             base_url="https://api.deepseek.com/beta",
             model=model,
+            # B4 截断根因之一（2026-10-29）：未设 max_tokens 时网关默认 4096，
+            # 长回答被 finish_reason=length 硬切；显式给足（deepseek 系上限 8K）
+            max_tokens=kwargs.pop("max_tokens", 8192),
             callbacks=kwargs.pop("callbacks", None) or [_usage_cb(model, usage_purpose)],
             **kwargs,
             **extra_params,

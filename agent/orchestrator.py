@@ -458,6 +458,7 @@ class Orchestrator:
         from yuanai_core.core.chat import feed_dsml, flush_dsml, dsml_filters, dsml_saw_block
         filters = dsml_filters()   # DSML 抑制：run_id → (content, reasoning) 过滤器
         saw_tool = False           # 本轮是否有结构化工具调用（配合 DSML 抑制兜底）
+        last_finish = ""           # B4 截断续写：末个模型调用的 finish_reason
         try:
             async for event in agent.astream_events(
                     {"messages": input_messages}, version="v2",
@@ -467,6 +468,14 @@ class Orchestrator:
 
                 if kind == "on_chat_model_stream":
                     chunk = event["data"]["chunk"]
+                    # finish_reason 出现在末块（response_metadata / generation_info）
+                    fr = (getattr(chunk, "response_metadata", None) or {}).get("finish_reason") \
+                        if hasattr(chunk, "response_metadata") else None
+                    if not fr:
+                        gi = getattr(chunk, "generation_info", None) or {}
+                        fr = gi.get("finish_reason")
+                    if fr:
+                        last_finish = fr
                     if hasattr(chunk, "content") and chunk.content:
                         clean = feed_dsml(filters, run_id, "content", chunk.content)
                         if clean:
@@ -520,6 +529,15 @@ class Orchestrator:
                 yield error_event("模型把工具调用写成了文本（已抑制）。请重试或换种问法", rid)
                 return
             _pet_emit(state="idle")
+            # B4 截断诊断埋点（2026-10-29）：流结束画像——finish_reason/
+            # 内容长度，短回复截断复现时日志直接指认环节
+            logger.info("统筹流结束: finish=%s len=%d reasoning_len=%d",
+                        last_finish, len(full_response), len(full_reasoning))
+            # B4 截断续写（2026-10-29 补齐统筹路径）：末轮 finish_reason=length
+            # （撞 max_tokens）→ 发 truncated 事件，前端显示「继续生成」按钮
+            if last_finish == "length":
+                from yuanai_core.core.schemas import AgentEvent
+                yield AgentEvent(type="truncated", data="", request_id=rid)
             yield done(full_response, full_reasoning, rid)
         except Exception as e:
             logger.error("统筹 Agent 异常: %s", e, exc_info=True)

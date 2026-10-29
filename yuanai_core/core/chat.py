@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import logging
 import asyncio
 from typing import List, AsyncGenerator, Dict, Any
 
@@ -13,6 +14,8 @@ from langchain_core.tools import BaseTool
 from yuanai_core.core.lc import get_langgraph_agent, current_reasoning_effort
 from yuanai_core.pure.dsml import DsmlStreamFilter
 
+
+logger = logging.getLogger(__name__)
 
 def _is_deepseek_v4(model_name: str) -> bool:
     # V4.1 Flash 新 ID 为 deepseek-flash（v4-flash 已退役路由至它）；v4-flash 保留兼容旧配置
@@ -255,6 +258,12 @@ async def _deepseek_agent_stream(
 
             if not tool_call_chunks:
                 # 没有工具调用，最终回复已流式输出完毕
+                # B4 截断诊断埋点（2026-10-29）：流结束画像——finish_reason /
+                # 内容长度 / DSML 过滤器残留（in_block 吞了多少字节）全记录，
+                # 短回复截断复现时日志直接指认环节
+                logger.info("DS流结束: finish=%s len=%d reasoning_len=%d buf_residual=%d in_block=%s",
+                            finish_reason, len(round_content), len(full_reasoning),
+                            len(content_f._buf), content_f._in_block)
                 yield {
                     "type": "done",
                     "data": {

@@ -345,11 +345,15 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     , [])
 
   const copyContent = async () => {
-    // 复制 msg.content 原样（AI 消息即 markdown 原文）
-    try { await navigator.clipboard.writeText(msg.content) }
+    // C5 AI 标识（2026-10-29）：复制内容附显式标识（《标识办法》第 4 条
+    // 下载/复制/导出须含标识）——用户消息原样，AI 消息追加声明
+    const text = isUser ? msg.content : `${msg.content}
+
+（以上内容由 AI 生成）`
+    try { await navigator.clipboard.writeText(text) }
     catch {
       const ta = document.createElement('textarea')
-      ta.value = msg.content
+      ta.value = text
       document.body.appendChild(ta)
       ta.select()
       document.execCommand('copy')
@@ -575,6 +579,12 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             display: 'inline-block', flexShrink: 0,
           }} />
           {agent.label}
+          {/* C5 AI 标识（2026-10-29，《标识办法》第 4 条）：AI 气泡常显徽标 */}
+          <span style={{
+            fontSize: 10, fontWeight: 500, padding: '1px 6px', borderRadius: 999,
+            background: 'var(--bg-tertiary)', color: 'var(--text-muted)',
+            flexShrink: 0, lineHeight: 1.5,
+          }}>AI 生成</span>
         </div>
       )}
       {isUser && (

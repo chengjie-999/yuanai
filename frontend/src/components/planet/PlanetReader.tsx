@@ -115,6 +115,15 @@ export default function PlanetReader({ map, note, job, onConvert, onSaveNote, on
           ) : note ? (
             <div>
               {savedMsg && <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 6 }}>{savedMsg}</div>}
+              {/* C5 AI 标识（2026-10-29，《标识办法》第 4 条）：AI 生成的笔记
+                  正文前显式标注（note.source==='ai'） */}
+              {note.source === 'ai' && (
+                <div style={{
+                  fontSize: 11, padding: '3px 10px', borderRadius: 999, marginBottom: 8,
+                  background: 'var(--accent-light)', color: 'var(--accent)',
+                  display: 'inline-block',
+                }}>本文由 AI 生成，仅供参考</div>
+              )}
               <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', background: 'var(--bg-primary)' }}>
                 <MarkdownContent content={note.content} indent onImageExpand={setZoomSrc} />
               </div>

@@ -66,6 +66,8 @@ export function stripMarkdown(text: string): string {
 }
 
 export function downloadChat(messages: ChatMessage[], filename: string) {
+  // C5 AI 标识（2026-10-29）：导出文件头部显式声明（《标识办法》第 4 条）
+  const AIGC_HEADER = '【说明】本对话记录中的 AI 回复均由人工智能生成，仅供参考，请自行核实重要信息。\n\n'
   const text = messages
     .map((m) => {
       const role = m.role === 'user' ? 'You' : 'AI'
@@ -73,7 +75,7 @@ export function downloadChat(messages: ChatMessage[], filename: string) {
       return `[${role}]\n${content}\n`
     })
     .join('\n---\n')
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+  const blob = new Blob([AIGC_HEADER + text], { type: 'text/plain;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

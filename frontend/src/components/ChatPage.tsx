@@ -487,6 +487,7 @@ export default function ChatPage({ user }: { user?: any }) {
     if (!window.confirm(`删除会话「${title}」？该操作不可恢复。`)) return
     if (loading && streamRef.current && sidRef.current === sid) stopStream()
     await deleteSession(sid)
+    flashNotice('已移入回收站（可在侧栏回收站恢复）')
     if (currentSid === sid) { setCurrentSid(''); setMessages([]) }
     // 清理小窗定向映射孤儿（删除会话后 localStorage 里残留的 dmTargets 键）
     setDmTargets((prev) => {

@@ -24,11 +24,19 @@ const C = {
 
 /* 我的用量卡（2026-10-30）：用户本人 API 成本展示——
    计费价 = 真实成本 × 盈利系数（后端 COST_PROFIT_MULTIPLIER，默认 1.8）。
+   金额格式：常规两位小数；<0.01 的小金额保留两位有效数字（不显示成 ¥0.00）。
    加载失败静默不显示（成本展示非关键路径）。 */
 type UsageData = {
   month_cost: number; total_cost: number
   month_calls: number; total_calls: number
   multiplier: number; billed_month: number; billed_total: number
+}
+
+// 金额格式化（2026-10-30 用户拍板）：≥0.01 两位小数；更小的保留两位有效数字
+const fmtCost = (v: number): string => {
+  if (!v || v <= 0) return '0.00'
+  if (v >= 0.01) return v.toFixed(2)
+  return String(Number(v.toPrecision(2)))
 }
 
 function MyUsageCard() {
@@ -53,12 +61,9 @@ function MyUsageCard() {
     <div style={C.card}>
       <div style={C.title}>我的用量 <span style={C.sub}>— 本人 API 成本（近 30 天）</span></div>
       <div style={{ display: 'flex', padding: '16px 12px' }}>
-        {stat('本月计费', `¥${data.billed_month.toFixed(4)}`, `真实成本 ¥${data.month_cost.toFixed(4)}`)}
-        {stat('累计计费', `¥${data.billed_total.toFixed(4)}`, `真实成本 ¥${data.total_cost.toFixed(4)}`)}
+        {stat('本月计费', `¥${fmtCost(data.billed_month)}`, `真实成本 ¥${fmtCost(data.month_cost)}`)}
+        {stat('累计计费', `¥${fmtCost(data.billed_total)}`, `真实成本 ¥${fmtCost(data.total_cost)}`)}
         {stat('本月调用', `${data.month_calls} 次`, `累计 ${data.total_calls} 次`)}
-      </div>
-      <div style={{ padding: '0 20px 14px', fontSize: 11, color: 'var(--text-muted)' }}>
-        计费价 = 实际成本 × {data.multiplier}（盈利系数）
       </div>
     </div>
   )

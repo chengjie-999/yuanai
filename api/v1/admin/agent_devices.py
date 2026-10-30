@@ -145,8 +145,9 @@ async def upload_agent_exe(request: Request, version: str = Form(""), note: str 
                  "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                  "note": (note or "")[:200]}
         data["versions"] = [v for v in data["versions"] if v["version"] != version] + [entry]
-        if not data.get("default_version"):
-            data["default_version"] = version
+        # 最新版本自动成为默认（2026-10-31 用户拍板）：发布即最新即默认；
+        # 如需回退旧版，后台「Agent 管理 → 设为默认」手动指定
+        data["default_version"] = version
         _save_versions(data)
         _sync_version_json(data)
         return {"ok": True, "version": version, "size": size,

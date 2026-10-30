@@ -69,15 +69,15 @@ class TestAgentVersions:
         data = client.get("/api/v1/admin/agent-versions", headers=ah).json()
         versions = {v["version"] for v in data["versions"]}
         assert {"001", "002"} <= versions  # 多版本共存
-        assert data["default_version"] == "001"  # 首个上传自动成为默认
+        assert data["default_version"] == "002"  # 最新版本自动成为默认（2026-10-31）
         # 文件落盘
         assert os.path.isfile(os.path.join(tmp_downloads, "downloads", "versions", "yuanai-agent-v001.exe"))
         # version.json 兼容同步：指向默认版本
         import json
         with open(os.path.join(tmp_downloads, "downloads", "version.json"), encoding="utf-8") as f:
             vj = json.load(f)
-        assert vj["version"] == "001"
-        assert "versions/yuanai-agent-v001.exe" in vj["exe"]
+        assert vj["version"] == "002"
+        assert "versions/yuanai-agent-v002.exe" in vj["exe"]
         assert vj["sha256"]
 
     def test_same_version_overwrites(self, client, admin_jwt, tmp_downloads):

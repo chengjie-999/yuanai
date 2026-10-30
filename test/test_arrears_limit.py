@@ -18,6 +18,31 @@ def db():
     return _db_or_skip()
 
 
+@pytest.fixture(scope="module")
+def admin_jwt(db):
+    from db.session import User
+    from api.v1.auth.utils import create_token
+    sess = db.Session()
+    try:
+        old = sess.query(User).filter_by(username="__arrears_admin__").first()
+        if old:
+            sess.delete(old)
+            sess.commit()
+    finally:
+        sess.close()
+    r = db.register_user("__arrears_admin__", "test1234", role="admin")
+    assert "error" not in r, r
+    yield create_token(r["id"], "admin")
+    sess = db.Session()
+    try:
+        u = sess.query(User).filter_by(id=r["id"]).first()
+        if u:
+            sess.delete(u)
+            sess.commit()
+    finally:
+        sess.close()
+
+
 class TestArrearsHelper:
     def test_helper_blocks_when_owed(self, db, monkeypatch):
         """欠费满门槛 → 返回提示文案（含欠费金额与「已限制使用」）"""
@@ -101,6 +126,52 @@ class TestArrearsHelper:
                 sess.commit()
             finally:
                 sess.close()
+
+
+class TestArrearsAdminConfig:
+    def test_admin_changes_arrears_limit_hot_reload(self, client, admin_jwt):
+        """欠费阈值后台可管（2026-10-30）：改系统参数 → 热更新 → /auth/cost 与
+        _check_arrears 立即反映；非法值 400"""
+        import os as _os
+        from api.v1.chat.router import _check_arrears
+        _path = "data/models.json"
+        backup = None
+        if _os.path.exists(_path):
+            with open(_path, "r", encoding="utf-8") as f:
+                backup = f.read()
+        ah = {"Authorization": f"Bearer {admin_jwt}"}
+        try:
+            resp = client.put("/api/v1/admin/system-config",
+                              json={"system_config": {"arrears_limit": 50}},
+                              headers=ah)
+            assert resp.status_code == 200
+            import config.settings as _s
+            assert _s.ARREARS_LIMIT == pytest.approx(50)
+            # /auth/cost 返回新门槛
+            d = client.get("/api/v1/auth/cost", headers=ah).json()
+            assert d["arrears_limit"] == pytest.approx(50)
+            # 阈值 50：本地小用量用户不欠费 → None 放行
+            from db.session import get_db, User
+            db = get_db()
+            with db.session() as sess:
+                u = sess.query(User).filter_by(username="__test_api_user__").first()
+                uid = u.id if u else None
+            if uid:
+                assert _check_arrears(uid) is None
+            # 负数 → 400
+            resp = client.put("/api/v1/admin/system-config",
+                              json={"system_config": {"arrears_limit": -1}},
+                              headers=ah)
+            assert resp.status_code == 400
+        finally:
+            import config.settings as _s
+            if backup is None:
+                if _os.path.exists(_path):
+                    _os.remove(_path)
+            else:
+                with open(_path, "w", encoding="utf-8") as f:
+                    f.write(backup)
+            _s.reload_system_config()
 
 
 class TestArrearsEndpoint:

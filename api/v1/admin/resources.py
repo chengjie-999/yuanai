@@ -502,6 +502,7 @@ _SYSTEM_CONFIG_SCHEMA = {
     "daily_message_quota": {"type": "int", "min": 0, "max": 10000},
     "voice_enabled": {"type": "bool"},
     "cost_profit_multiplier": {"type": "float", "min": 0.1, "max": 100},
+    "arrears_limit": {"type": "float", "min": 0, "max": 100000},
     "model_pricing": {"type": "json"},
     "chat_system_prompt": {"type": "text", "max": 20000},
     "self_report_template": {"type": "text", "max": 2000},

@@ -83,6 +83,9 @@ _DEFAULT_SYSTEM_CONFIG = {
     # 用户侧成本展示的盈利系数（2026-10-30）：计费价 = 实际成本 × 系数；
     # 后台「设置 → 系统参数」可改，热更新生效
     "cost_profit_multiplier": 1.8,
+    # 欠费限制门槛（2026-10-30 用户拍板）：显示金额 ≤ -门槛 时限制聊天使用；
+    # 后台「设置 → 系统参数」可改（0 = 不限制）
+    "arrears_limit": 20,
     # 模型定价（dict，空=用内置默认；合并 MODEL_PRICING）
     "model_pricing": {},
     # 助手设定（提示词，模型自知的「可编辑设定」）
@@ -122,6 +125,7 @@ _SYS_CONFIG_ENV_MAP = {
     "daily_message_quota": "DAILY_MESSAGE_QUOTA",
     "voice_enabled": "VOICE_ENABLED",
     "cost_profit_multiplier": "COST_PROFIT_MULTIPLIER",
+    "arrears_limit": "ARREARS_LIMIT",
 }
 
 
@@ -367,8 +371,9 @@ COST_PROFIT_MULTIPLIER = float(_syscfg("cost_profit_multiplier"))
 MAX_LOGIN_SESSIONS = int(os.getenv("MAX_LOGIN_SESSIONS", "5"))
 
 # 欠费限制门槛（2026-10-30 用户拍板）：显示金额（收款 − 系数成本）≤ -ARREARS_LIMIT
-# 即欠费满该金额时限制聊天使用并提示缴费；0 = 不限制
-ARREARS_LIMIT = float(os.getenv("ARREARS_LIMIT", "20"))
+# 即欠费满该金额时限制聊天使用并提示缴费；0 = 不限制。
+# 后台「设置 → 系统参数 → 欠费限制」可改（热更新），env ARREARS_LIMIT 可覆盖
+ARREARS_LIMIT = float(_syscfg("arrears_limit"))
 
 # ===================== 鉴权配置 =====================
 
@@ -538,7 +543,7 @@ def reload_system_config() -> None:
     global MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, MEMORY_FOLD_TIMEOUT_S
     global MEMORY_FOLD_DAILY_MAX, MEMORY_ORGANIZE_DELETE_DAILY_MAX
     global REGISTER_OPEN, DAILY_MESSAGE_QUOTA, VOICE_ENABLED, MODEL_PRICING
-    global COST_PROFIT_MULTIPLIER
+    global COST_PROFIT_MULTIPLIER, ARREARS_LIMIT
 
     SYSTEM_CONFIG.clear()
     SYSTEM_CONFIG.update(_load_system_config())
@@ -561,6 +566,7 @@ def reload_system_config() -> None:
     DAILY_MESSAGE_QUOTA = int(_syscfg("daily_message_quota"))
     VOICE_ENABLED = bool(_syscfg("voice_enabled"))
     COST_PROFIT_MULTIPLIER = float(_syscfg("cost_profit_multiplier"))
+    ARREARS_LIMIT = float(_syscfg("arrears_limit"))
     MODEL_PRICING = dict(_MODEL_PRICING_DEFAULTS)
     try:
         _pricing_env = os.getenv("MODEL_PRICING_JSON", "")

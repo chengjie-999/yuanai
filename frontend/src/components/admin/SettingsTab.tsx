@@ -37,6 +37,7 @@ const PARAM_FIELDS: { key: string; label: string; hint: string; kind: 'number' |
   { key: 'daily_message_quota', label: '每日消息配额', hint: '每用户每天消息数（0=不限）', kind: 'number' },
   { key: 'voice_enabled', label: '语音功能开关', hint: '关闭后通话与朗读返回 503', kind: 'bool' },
   { key: 'cost_profit_multiplier', label: '盈利系数', hint: '用户侧成本展示的计费系数：计费价 = 实际成本 × 系数（0.1-100）', kind: 'number', step: 0.1 },
+  { key: 'arrears_limit', label: '欠费限制（元）', hint: '显示金额 ≤ -该值时限制聊天使用并提示缴费（0 = 不限制）', kind: 'number', step: 1 },
 ]
 
 const PROMPT_FIELDS: { key: string; label: string; hint: string; rows?: number }[] = [

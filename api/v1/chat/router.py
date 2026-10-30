@@ -749,6 +749,32 @@ class NewSessionRequest(BaseModel):
     title: str = Field("新对话", description="会话标题")
 
 
+@router.post("/demote-main")
+async def demote_main(req: MessagesRequest, request: Request):
+    """主对话降级为普通对话（2026-10-30 用户拍板）：不清消息不丢数据——
+    当前主对话 is_main=0 保留全部历史成为普通会话，自动新建一条空主对话。"""
+    try:
+        db = _get_db()
+        user_id = _get_user_id(request)
+        _verify_session_owner(db, req.session_id, user_id)
+        from db.session import ChatSession
+        with db.session() as sess:
+            cur = sess.query(ChatSession).filter_by(session_id=req.session_id).first()
+            if not cur or not cur.is_main:
+                raise HTTPException(status_code=400, detail="仅主对话可执行此操作")
+            cur.is_main = 0
+            sess.commit()
+        new = db.ensure_main_session(user_id)
+        from db.cache import clear_chat_cache
+        clear_chat_cache(req.session_id)
+        return {"ok": True, "new_session_id": new["session_id"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("主对话降级失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
 @router.post("/session/new")
 async def new_session(req: NewSessionRequest, request: Request):
     """创建新会话"""

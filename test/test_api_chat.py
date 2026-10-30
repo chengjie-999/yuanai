@@ -143,6 +143,37 @@ def test_main_session_cannot_be_deleted(client, auth_headers):
     assert resp.status_code == 200
 
 
+def test_demote_main_creates_new_main(client, auth_headers):
+    """主对话降级（2026-10-30）：is_main=0 保留历史 + 自动新建空主对话"""
+    if not auth_headers:
+        pytest.skip("需要有效登录凭据")
+    r = client.post("/api/v1/chat/main-session", headers=auth_headers)
+    assert r.status_code == 200
+    sid = r.json()["session_id"]
+    # 发一条消息进主对话
+    client.post("/api/v1/chat/save", json={
+        "session_id": sid,
+        "messages": [{"role": "user", "content": "历史消息"}],
+    }, headers=auth_headers)
+    # 降级
+    resp = client.post("/api/v1/chat/demote-main", json={"session_id": sid}, headers=auth_headers)
+    assert resp.status_code == 200
+    new_sid = resp.json()["new_session_id"]
+    assert new_sid != sid
+    # 新主对话已创建
+    r2 = client.post("/api/v1/chat/main-session", headers=auth_headers)
+    assert r2.json()["session_id"] == new_sid
+    # 旧对话历史保留且降级为普通
+    msgs = client.post("/api/v1/chat/messages", json={"session_id": sid}, headers=auth_headers).json()
+    assert any(m.get("content") == "历史消息" for m in msgs)
+    sessions = client.get("/api/v1/chat/sessions", headers=auth_headers).json()
+    old = [s for s in sessions if s["session_id"] == sid]
+    assert old and not old[0].get("is_main")
+    # 对普通会话再降级 → 400
+    assert client.post("/api/v1/chat/demote-main", json={"session_id": sid},
+                       headers=auth_headers).status_code == 400
+
+
 def test_main_session_idempotent(client, auth_headers):
     """主对话幂等：连续调用返回同一条（2026-10-19 唯一性修复）"""
     if not auth_headers:

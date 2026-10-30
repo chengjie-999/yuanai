@@ -36,6 +36,9 @@ export const PinIcon = (p: IconProps) => <Svg {...p}><path d="M12 17v5" /><path 
 /* 旗帜（举报 C7 投诉机制） */
 export const FlagIcon = (p: IconProps) => <Svg {...p}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" x2="4" y1="22" y2="15" /></Svg>
 
+/* 归档（主对话转为普通对话 #17） */
+export const ArchiveIcon = (p: IconProps) => <Svg {...p}><rect width="20" height="5" x="2" y="3" rx="1" /><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" /><path d="M10 12h4" /></Svg>
+
 /* 喇叭（自动朗读开关） */
 export const SpeakerIcon = (p: IconProps) => <Svg {...p}><path d="M11 5 6 9H2v6h4l5 4V5Z" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></Svg>
 

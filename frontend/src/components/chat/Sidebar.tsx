@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import type { SessionInfo } from './helpers'
 import { groupSessions } from './helpers'
-import { PlusIcon, TrashIcon, PinIcon, SearchIcon, EditIcon } from '../icons'
+import { PlusIcon, TrashIcon, PinIcon, SearchIcon, EditIcon, ArchiveIcon } from '../icons'
 
-export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete, onRename }: {
+export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete, onRename, onDemoteMain }: {
   sessions: SessionInfo[]; currentSid: string; sidebarOpen: boolean; isMobile: boolean
   onNewSession: () => void; onSelect: (sid: string) => void; onDelete: (e: React.MouseEvent, sid: string) => void
   onRename: (sid: string, title: string) => void
+  onDemoteMain: (sid: string) => void
 }) {
   // U3 侧栏会话搜索（2026-10-25）：按标题客户端过滤
   const [query, setQuery] = useState('')
@@ -90,6 +91,16 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
                   ><EditIcon size={13} /></span>
+                  {/* 主对话降级（2026-10-30）：不清数据——转普通对话 + 自动新建空主对话 */}
+                  {s.is_main && (
+                    <span onClick={(e) => { e.stopPropagation(); onDemoteMain(s.session_id) }}
+                      title="转为普通对话" aria-label="转为普通对话"
+                      className="yuan-tip" data-tip="转为普通对话（保留全部历史，自动新建空主对话）"
+                      style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+                    ><ArchiveIcon size={13} /></span>
+                  )}
                   {/* 主对话不可删除（2026-10-30 修复）：删除后当前页继续发消息会落孤儿数据，
                       刷新又自动重建——主对话是每用户唯一锚点，隐藏删除按钮 */}
                   {!s.is_main && (

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
-import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, reportMessage, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken } from '../api'
+import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, reportMessage, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken, authHeaders } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
@@ -433,6 +433,24 @@ export default function ChatPage({ user }: { user?: any }) {
     const ok = await renameSession(sid, title.trim())
     if (ok) refreshSessions()
     else window.alert('重命名失败，请重试')
+  }
+
+  // 主对话降级为普通对话（2026-10-30）：不清数据——自动新建空主对话并切过去
+  const handleDemoteMain = async (sid: string) => {
+    if (!window.confirm('将主对话转为普通对话？全部历史会保留在本对话中，并自动新建一条空主对话。')) return
+    if (loading && streamRef.current && sidRef.current === sid) stopStream()
+    try {
+      const res = await fetch(`${API_BASE}/chat/demote-main`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ session_id: sid }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.new_session_id) { flashNotice(data?.detail || '操作失败'); return }
+      refreshSessions()
+      setCurrentSid(data.new_session_id)
+      setMessages([])
+      flashNotice('已转为普通对话，新主对话已创建')
+    } catch { flashNotice('操作失败，请重试') }
   }
 
   const handleDeleteSession = async (e: React.MouseEvent, sid: string) => {
@@ -916,7 +934,7 @@ export default function ChatPage({ user }: { user?: any }) {
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}
-        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} />
+        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} onDemoteMain={handleDemoteMain} />
 
       {sidebarOpen && <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 

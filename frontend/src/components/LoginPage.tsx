@@ -173,7 +173,7 @@ export default function LoginPage() {
             onFocus={() => setFocused('user')}
             onBlur={() => setFocused(null)}
             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-            placeholder="用户名"
+            placeholder="用户名（至少 3 个字符）"
             autoComplete="username"
           />
         </div>
@@ -192,7 +192,7 @@ export default function LoginPage() {
             onBlur={() => setFocused(null)}
             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
             type={showPw ? 'text' : 'password'}
-            placeholder="密码"
+            placeholder="密码（至少 8 位）"
             autoComplete="current-password"
           />
           <button type="button" className="login-eye" onClick={() => setShowPw(!showPw)} tabIndex={-1}>

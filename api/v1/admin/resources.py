@@ -501,6 +501,7 @@ _SYSTEM_CONFIG_SCHEMA = {
     "register_open": {"type": "bool"},
     "daily_message_quota": {"type": "int", "min": 0, "max": 10000},
     "voice_enabled": {"type": "bool"},
+    "cost_profit_multiplier": {"type": "float", "min": 0.1, "max": 100},
     "model_pricing": {"type": "json"},
     "chat_system_prompt": {"type": "text", "max": 20000},
     "self_report_template": {"type": "text", "max": 2000},
@@ -568,6 +569,13 @@ async def update_system_config(req: SystemConfigUpdate, request: Request):
                 raise HTTPException(status_code=400, detail=f"{key} 不能大于 {schema['max']}")
         if t == "str" and "choices" in schema and val not in schema["choices"]:
             raise HTTPException(status_code=400, detail=f"{key} 仅支持: {schema['choices']}")
+        if t == "float":
+            if isinstance(val, bool) or not isinstance(val, (int, float)):
+                raise HTTPException(status_code=400, detail=f"{key} 需为数字")
+            if "min" in schema and val < schema["min"]:
+                raise HTTPException(status_code=400, detail=f"{key} 不能小于 {schema['min']}")
+            if "max" in schema and val > schema["max"]:
+                raise HTTPException(status_code=400, detail=f"{key} 不能大于 {schema['max']}")
         if t in ("str", "text") and not isinstance(val, str):
             raise HTTPException(status_code=400, detail=f"{key} 需为字符串")
         if t == "json" and not isinstance(val, dict):

@@ -2459,6 +2459,40 @@ class AgentDatabase:
         finally:
             sess.close()
 
+    def query_user_cost(self, user_id: int) -> dict:
+        """用户本人 API 成本（2026-10-30，用户侧用量展示）：
+        本月 30 天 + 累计成本、调用次数（真实成本口径；盈利系数由展示层乘）。"""
+        from sqlalchemy import func as _func, text as _text
+        from yuanai_core.usage import model_cost
+        sess = self.Session()
+        try:
+            def _agg(rows):
+                cost = sum(model_cost(r[0], int(r[1] or 0), int(r[2] or 0),
+                                      calls=int(r[3] or 1)) for r in rows)
+                return round(cost, 4), sum(int(r[3] or 0) for r in rows)
+
+            month_rows = (sess.query(TokenUsage)
+                          .filter(TokenUsage.user_id == user_id,
+                                  TokenUsage.create_time >= _text("DATE_SUB(CURDATE(), INTERVAL 29 DAY)"))
+                          .with_entities(TokenUsage.model,
+                                         _func.sum(TokenUsage.prompt_tokens),
+                                         _func.sum(TokenUsage.completion_tokens),
+                                         _func.count(TokenUsage.id))
+                          .group_by(TokenUsage.model).all())
+            total_rows = (sess.query(TokenUsage)
+                          .filter(TokenUsage.user_id == user_id)
+                          .with_entities(TokenUsage.model,
+                                         _func.sum(TokenUsage.prompt_tokens),
+                                         _func.sum(TokenUsage.completion_tokens),
+                                         _func.count(TokenUsage.id))
+                          .group_by(TokenUsage.model).all())
+            month_cost, month_calls = _agg(month_rows)
+            total_cost, total_calls = _agg(total_rows)
+            return {"month_cost": month_cost, "month_calls": month_calls,
+                    "total_cost": total_cost, "total_calls": total_calls}
+        finally:
+            sess.close()
+
     def query_cost_analytics(self, days: int = 30) -> dict:
         """成本维度指标体系 v2（2026-10-22）：总成本/单条成本/缓存命中率 + 日趋势
         + 用途拆分 + 每模型效率 + 用户 TopN。多维度成本按「细粒度 SQL 聚合 +

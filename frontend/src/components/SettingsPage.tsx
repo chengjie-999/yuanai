@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getStoredModel, setStoredModel, fetchModels } from '../api'
 import { fetchAgentModels, updateAgentModel, fetchApiKeys, saveApiKey, deleteApiKey } from '../api'
 import { fetchAgentVoices, updateAgentVoice } from '../api'
+import { API_BASE, authHeaders } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import MemoryCard from './MemoryCard'
 import Modal from './Modal'
@@ -19,6 +20,48 @@ const C = {
   input: { padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' } as const,
   select: { padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)', minWidth: 180 } as const,
   btn: { padding: '8px 18px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer' } as const,
+}
+
+/* 我的用量卡（2026-10-30）：用户本人 API 成本展示——
+   计费价 = 真实成本 × 盈利系数（后端 COST_PROFIT_MULTIPLIER，默认 1.8）。
+   加载失败静默不显示（成本展示非关键路径）。 */
+type UsageData = {
+  month_cost: number; total_cost: number
+  month_calls: number; total_calls: number
+  multiplier: number; billed_month: number; billed_total: number
+}
+
+function MyUsageCard() {
+  const [data, setData] = useState<UsageData | null>(null)
+
+  useEffect(() => {
+    fetch(`${API_BASE}/auth/cost`, { headers: authHeaders() })
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then(setData)
+      .catch(() => { /* 静默 */ })
+  }, [])
+
+  if (!data) return null
+  const stat = (label: string, value: string, sub: string) => (
+    <div style={{ flex: 1, textAlign: 'center', padding: '4px 8px' }}>
+      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent)', lineHeight: 1.3 }}>{value}</div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>
+    </div>
+  )
+  return (
+    <div style={C.card}>
+      <div style={C.title}>我的用量 <span style={C.sub}>— 本人 API 成本（近 30 天）</span></div>
+      <div style={{ display: 'flex', padding: '16px 12px' }}>
+        {stat('本月计费', `¥${data.billed_month.toFixed(4)}`, `真实成本 ¥${data.month_cost.toFixed(4)}`)}
+        {stat('累计计费', `¥${data.billed_total.toFixed(4)}`, `真实成本 ¥${data.total_cost.toFixed(4)}`)}
+        {stat('本月调用', `${data.month_calls} 次`, `累计 ${data.total_calls} 次`)}
+      </div>
+      <div style={{ padding: '0 20px 14px', fontSize: 11, color: 'var(--text-muted)' }}>
+        计费价 = 实际成本 × {data.multiplier}（盈利系数）
+      </div>
+    </div>
+  )
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -158,7 +201,10 @@ export default function SettingsPage() {
       <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px' }}>设置</h1>
 
-        {/* ---- API Key（仅 admin：全局密钥，普通用户写删会覆盖全站模型调用） ---- */}
+        {/* ---- 我的用量（2026-10-30）：本人 API 成本，计费价 = 成本 × 盈利系数 ---- */}
+        <MyUsageCard />
+
+        {/* ---- API Key（仅 admin：全局密钥，普通用户写删会覆盖全站模型调用）---- */}
         {isAdmin && (
         <div style={C.card}>
           <div style={C.title}>API Key <span style={C.sub}>— 配置模型供应商的访问密钥</span></div>

@@ -153,6 +153,23 @@ def submit_appeal(req: AppealRequest, request: Request):
     return {"ok": True, "message": "申诉已提交，平台将在 3 个工作日内通过您留的联系方式反馈处理结果"}
 
 
+@router.get("/cost")
+def my_cost(request: Request):
+    """用户本人 API 成本（2026-10-30）：本月 30 天/累计，计费价 = 成本 × 盈利系数。
+    真实成本与计费价都返回（前端展示计费价，标注系数来源）。"""
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    from config.settings import COST_PROFIT_MULTIPLIER
+    data = get_db().query_user_cost(uid)
+    return {
+        **data,
+        "multiplier": COST_PROFIT_MULTIPLIER,
+        "billed_month": round(data["month_cost"] * COST_PROFIT_MULTIPLIER, 2),
+        "billed_total": round(data["total_cost"] * COST_PROFIT_MULTIPLIER, 2),
+    }
+
+
 @router.post("/agree")
 def agree_terms(request: Request):
     """C11（2026-10-29）：记录《用户协议》《隐私政策》接受时间（登录勾选留痕）。

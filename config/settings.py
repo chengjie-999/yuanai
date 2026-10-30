@@ -80,6 +80,9 @@ _DEFAULT_SYSTEM_CONFIG = {
     "register_open": False,
     "daily_message_quota": 50,
     "voice_enabled": True,
+    # 用户侧成本展示的盈利系数（2026-10-30）：计费价 = 实际成本 × 系数；
+    # 后台「设置 → 系统参数」可改，热更新生效
+    "cost_profit_multiplier": 1.8,
     # 模型定价（dict，空=用内置默认；合并 MODEL_PRICING）
     "model_pricing": {},
     # 助手设定（提示词，模型自知的「可编辑设定」）
@@ -118,6 +121,7 @@ _SYS_CONFIG_ENV_MAP = {
     "register_open": "REGISTER_OPEN",
     "daily_message_quota": "DAILY_MESSAGE_QUOTA",
     "voice_enabled": "VOICE_ENABLED",
+    "cost_profit_multiplier": "COST_PROFIT_MULTIPLIER",
 }
 
 
@@ -354,6 +358,11 @@ OVERSEAS_BASE_URL_ALLOWED = os.getenv("OVERSEAS_BASE_URL_ALLOWED", "0") == "1"
 # 须在《隐私政策》第三方清单披露（合规审计第 10 条）。
 OVERSEAS_LOOKUP_ENABLED = os.getenv("OVERSEAS_LOOKUP_ENABLED", "0") == "1"
 
+# 用户侧成本展示的盈利系数（2026-10-30）：实际 API 成本 × 系数 = 对用户展示的
+# 「计费价」。仅影响展示，不影响后台真实成本口径；后台设定中心可改（热更新），
+# env COST_PROFIT_MULTIPLIER 可覆盖
+COST_PROFIT_MULTIPLIER = float(_syscfg("cost_profit_multiplier"))
+
 # ===================== 鉴权配置 =====================
 
 _jwt = os.getenv("JWT_SECRET_KEY")
@@ -522,6 +531,7 @@ def reload_system_config() -> None:
     global MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, MEMORY_FOLD_TIMEOUT_S
     global MEMORY_FOLD_DAILY_MAX, MEMORY_ORGANIZE_DELETE_DAILY_MAX
     global REGISTER_OPEN, DAILY_MESSAGE_QUOTA, VOICE_ENABLED, MODEL_PRICING
+    global COST_PROFIT_MULTIPLIER
 
     SYSTEM_CONFIG.clear()
     SYSTEM_CONFIG.update(_load_system_config())
@@ -543,6 +553,7 @@ def reload_system_config() -> None:
     REGISTER_OPEN = bool(_syscfg("register_open"))
     DAILY_MESSAGE_QUOTA = int(_syscfg("daily_message_quota"))
     VOICE_ENABLED = bool(_syscfg("voice_enabled"))
+    COST_PROFIT_MULTIPLIER = float(_syscfg("cost_profit_multiplier"))
     MODEL_PRICING = dict(_MODEL_PRICING_DEFAULTS)
     try:
         _pricing_env = os.getenv("MODEL_PRICING_JSON", "")

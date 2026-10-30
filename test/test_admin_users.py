@@ -84,6 +84,57 @@ class TestPasswordValidation:
                 sess.close()
 
 
+class TestUserCost:
+    """用户本人成本端点（2026-10-30）：计费价 = 真实成本 × 盈利系数"""
+
+    def test_my_cost_shape_and_auth(self, client, auth_headers):
+        if not auth_headers:
+            pytest.skip("需要有效登录凭据")
+        # 未登录 → 401
+        assert client.get("/api/v1/auth/cost").status_code == 401
+        resp = client.get("/api/v1/auth/cost", headers=auth_headers)
+        assert resp.status_code == 200
+        d = resp.json()
+        assert d["multiplier"] == pytest.approx(1.8)
+        assert d["billed_month"] == round(d["month_cost"] * d["multiplier"], 2)
+        assert d["billed_total"] == round(d["total_cost"] * d["multiplier"], 2)
+        assert "month_calls" in d and "total_calls" in d
+
+    def test_admin_changes_multiplier_hot_reload(self, client, auth_headers, db, admin_jwt):
+        """管理员改盈利系数 → 热更新 → /auth/cost 立即反映（2026-10-30）"""
+        if not auth_headers:
+            pytest.skip("需要有效登录凭据")
+        import os as _os
+        _path = "data/models.json"
+        backup = None
+        if _os.path.exists(_path):
+            with open(_path, "r", encoding="utf-8") as f:
+                backup = f.read()
+        ah = {"Authorization": f"Bearer {admin_jwt}"}
+        try:
+            resp = client.put("/api/v1/admin/system-config",
+                              json={"system_config": {"cost_profit_multiplier": 2.5}},
+                              headers=ah)
+            assert resp.status_code == 200
+            d = client.get("/api/v1/auth/cost", headers=auth_headers).json()
+            assert d["multiplier"] == pytest.approx(2.5)
+            assert d["billed_month"] == round(d["month_cost"] * 2.5, 2)
+            # 非法值 → 400（小于下限）
+            resp = client.put("/api/v1/admin/system-config",
+                              json={"system_config": {"cost_profit_multiplier": 0.01}},
+                              headers=ah)
+            assert resp.status_code == 400
+        finally:
+            import config.settings as _s
+            if backup is None:
+                if _os.path.exists(_path):
+                    _os.remove(_path)
+            else:
+                with open(_path, "w", encoding="utf-8") as f:
+                    f.write(backup)
+            _s.reload_system_config()
+
+
 class TestResetPassword:
     def test_reset_password_flow(self, client, db, admin_jwt):
         """重置 → 新密码可登录、旧密码 401；非 admin 403；管理员密码不可重置"""

@@ -20,7 +20,7 @@ const input: React.CSSProperties = {
 }
 
 // 系统参数字段清单（与后端 _SYSTEM_CONFIG_SCHEMA 对齐）
-const PARAM_FIELDS: { key: string; label: string; hint: string; kind: 'number' | 'bool' | 'select' | 'text' | 'json'; choices?: string[] }[] = [
+const PARAM_FIELDS: { key: string; label: string; hint: string; kind: 'number' | 'bool' | 'select' | 'text' | 'json'; choices?: string[]; step?: number }[] = [
   { key: 'memory_enabled', label: '记忆压缩总开关', hint: '关闭后对话不再折叠进长期记忆', kind: 'bool' },
   { key: 'memory_working_window', label: '工作记忆条数', hint: '最近 N 条原样保留不折叠', kind: 'number' },
   { key: 'memory_trigger_chars', label: '折叠触发字数', hint: '会话总字数超过该值触发折叠', kind: 'number' },
@@ -36,6 +36,7 @@ const PARAM_FIELDS: { key: string; label: string; hint: string; kind: 'number' |
   { key: 'register_open', label: '公开注册', hint: '打开后 /auth/register 恢复注册入口', kind: 'bool' },
   { key: 'daily_message_quota', label: '每日消息配额', hint: '每用户每天消息数（0=不限）', kind: 'number' },
   { key: 'voice_enabled', label: '语音功能开关', hint: '关闭后通话与朗读返回 503', kind: 'bool' },
+  { key: 'cost_profit_multiplier', label: '盈利系数', hint: '用户侧成本展示的计费系数：计费价 = 实际成本 × 系数（0.1-100）', kind: 'number', step: 0.1 },
 ]
 
 const PROMPT_FIELDS: { key: string; label: string; hint: string; rows?: number }[] = [
@@ -121,7 +122,7 @@ export default function SettingsTab() {
                   {(f.choices || []).map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               ) : (
-                <input type="number" value={cfg[f.key] ?? ''} onChange={(e) => setVal(f.key, Number(e.target.value))} style={{ ...input, maxWidth: 120 }} />
+                <input type="number" step={f.step ?? 1} value={cfg[f.key] ?? ''} onChange={(e) => setVal(f.key, Number(e.target.value))} style={{ ...input, maxWidth: 120 }} />
               )}
             </div>
           </div>

@@ -1,7 +1,7 @@
 /* 多维度经营分析 — 对话 / 功能 / 留存 / 成本（盈利决策数据底座） */
 import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Cell } from 'recharts'
-import { Spinner, ErrorMsg, Card, StatCard, headers, API_BASE, fmtCost, fmtCostNeg } from './shared'
+import { Spinner, ErrorMsg, Card, StatCard, headers, API_BASE, fmtCost, fmtCostNeg4 } from './shared'
 
 const C_BLUE = '#42a5f5'
 const C_GREEN = '#4caf50'
@@ -241,7 +241,7 @@ export function CostAnalyticsTab() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
         <StatCard label={`近${days}天营收`} value={`¥${fmtCost(ov.revenue)}`} color={C_GREEN}
           sub={`显示金额 = 成本 × ${ov.multiplier ?? 1.8}`} />
-        <StatCard label={`近${days}天成本`} value={fmtCostNeg(ov.total_cost)} color={C_RED} sub="各模型定价折算" />
+        <StatCard label={`近${days}天成本`} value={fmtCostNeg4(ov.total_cost)} color={C_RED} sub="各模型定价折算" />
         <StatCard label="毛利" value={`¥${fmtCost(ov.profit)}`} color={C_BLUE} sub="营收 - 成本" />
         <StatCard label="毛利率" value={`${ov.profit_rate ?? 0}%`} color={C_GREEN} sub="毛利 / 营收" />
         <StatCard label="总收款" value={`¥${fmtCost(ov.paid_total)}`} color={C_GREEN}
@@ -271,7 +271,7 @@ export function CostAnalyticsTab() {
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis dataKey="date" fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} tickFormatter={(v) => String(v).slice(5)} />
             <YAxis fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [`¥${fmtCost(Math.abs(Number(v)))}`, n === 'cost_neg' ? '成本（负）' : '营收']} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [n === 'cost_neg' ? fmtCostNeg4(Math.abs(Number(v))) : `¥${fmtCost(Math.abs(Number(v)))}`, n === 'cost_neg' ? '成本（负）' : '营收']} />
             <Area type="monotone" dataKey="billed" name="营收" stroke={C_GREEN} strokeWidth={2} fill="url(#revGrad)" />
             <Area type="monotone" dataKey="cost_neg" name="成本" stroke={C_RED} strokeWidth={2} fill="url(#costGrad)" />
           </AreaChart>
@@ -286,7 +286,7 @@ export function CostAnalyticsTab() {
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             <XAxis dataKey="name" fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} interval={0} angle={-15} height={40} textAnchor="end" />
             <YAxis fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [`${fmtCostNeg(v)}（${n}）`, '成本']} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [`${fmtCostNeg4(Math.abs(Number(v)))}（${n}）`, '成本']} />
             <Bar dataKey="cost_neg" name="成本(¥)" radius={[4, 4, 0, 0]}>
               {purposes.map((p: any, i: number) => <Cell key={i} fill={p.fill} />)}
             </Bar>
@@ -315,7 +315,7 @@ export function CostAnalyticsTab() {
                 <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.calls}</td>
                 <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{Math.round(m.prompt_tokens / Math.max(m.calls, 1)).toLocaleString()}</td>
                 <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{Math.round(m.completion_tokens / Math.max(m.calls, 1)).toLocaleString()}</td>
-                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{fmtCostNeg(m.cost)}</td>
+                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{fmtCostNeg4(m.cost)}</td>
                 <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.share ?? 0}%</td>
               </tr>
             ))}
@@ -344,7 +344,7 @@ export function CostAnalyticsTab() {
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.username}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>{u.user_id}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.calls}</td>
-                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{fmtCostNeg(u.cost)}</td>
+                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{fmtCostNeg4(u.cost)}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{fmtCost(u.billed)}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--success)', fontWeight: 600 }}>{fmtCost(u.paid)}</td>
                 </tr>

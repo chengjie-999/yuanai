@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, badge, headers, API_BASE, fmtCost, fmtCostNeg } from './shared'
+import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, badge, headers, API_BASE, fmtCost, fmtCostNeg4 } from './shared'
 import { freezeUser } from '../../api'
 import { XIcon } from '../icons'
 
@@ -189,7 +189,7 @@ export default function UsersTab() {
                     {/* 财务口径（2026-10-30）：主显显示金额（计费价），副行实际成本（负） */}
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontSize: 12, fontWeight: 600 }}>{fmtCost(u.billed)}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtCostNeg(u.cost)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtCostNeg4(u.cost)}</div>
                     </td>
                     <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: 'var(--success)' }}>
                       {!isAdminRole ? <PaidBtn userId={u.id} initial={u.paid} onPaid={handlePaid} /> : '—'}

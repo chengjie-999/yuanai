@@ -91,3 +91,16 @@ export const fmtCostNeg = (v: number | null | undefined): string => {
   const n = Number(v) || 0
   return n > 0 ? `-¥${fmtCost(n)}` : '¥0.00'
 }
+
+/* 实际成本精确显示（2026-10-30「绑定」口径）：与显示金额同框时用 4 位小数——
+   0.0329 × 1.8 = 0.0592 ≈ 0.06 一眼可验；两位小数（0.03 × 1.8 ≠ 0.06）会对不上 */
+export const fmtCost4 = (v: number | null | undefined): string => {
+  const n = Number(v) || 0
+  if (n <= 0) return '0.00'
+  return String(Number(n.toFixed(4)))
+}
+
+export const fmtCostNeg4 = (v: number | null | undefined): string => {
+  const n = Number(v) || 0
+  return n > 0 ? `-¥${fmtCost4(n)}` : '¥0.00'
+}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, headers, API_BASE } from './shared'
 import { getToken } from '../../api'
+import { useAuth } from '../../contexts/AuthContext'
 import { PackageIcon } from '../icons'
 
 // 本机开发 → 代理到 8000；线上 → 当前站点 wss
@@ -42,6 +43,7 @@ function CopyBtn({ text, label = '复制安装命令' }: { text: string; label?:
 }
 
 export default function AgentDevicesTab() {
+  const { user } = useAuth()
   const [devices, setDevices] = useState<any[]>([])
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -49,6 +51,11 @@ export default function AgentDevicesTab() {
   const [codeCount, setCodeCount] = useState(1)
   const [newCodes, setNewCodes] = useState<string[]>([])
   const [bindUserId, setBindUserId] = useState<Record<number, string>>({})
+  // 长令牌签发（发布 Agent 安装包用：本地打包脚本 --upload 鉴权）
+  const [tokenUserId, setTokenUserId] = useState<number | ''>('')
+  const [tokenDays, setTokenDays] = useState(90)
+  const [mintedToken, setMintedToken] = useState('')
+  const [tokenMsg, setTokenMsg] = useState('')
 
   // ---- Agent 版本清单（2026-10-30 多版本保留：上传不覆盖，全部留存可回退） ----
   const [versions, setVersions] = useState<any[]>([])
@@ -165,6 +172,19 @@ export default function AgentDevicesTab() {
       .then((list) => setUsers(list))
       .catch(() => {})
   }, [])
+
+  const mintToken = async () => {
+    setTokenMsg('')
+    const uid = tokenUserId === '' ? (user?.id ?? 0) : Number(tokenUserId)
+    if (!uid) { setTokenMsg('请选择用户'); return }
+    const res = await fetch(`${API_BASE}/admin/agent-token`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ user_id: uid, expires_days: tokenDays }),
+    })
+    const data = await res.json()
+    if (!res.ok) { setTokenMsg(data.detail || '签发失败'); return }
+    setMintedToken(data.token || '')
+  }
 
   const genCodes = async () => {
     setError('')
@@ -335,6 +355,45 @@ export default function AgentDevicesTab() {
                 <CopyBtn text={installCommand(c)} label="复制命令行" />
               </div>
             ))}
+          </div>
+        )}
+      </Card>
+
+      {/* 签发长令牌（2026-10-31：本地打包脚本 --upload 发布鉴权用） */}
+      <Card>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>签发长令牌</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>用户</span>
+          <select value={tokenUserId} onChange={(e) => setTokenUserId(e.target.value === '' ? '' : Number(e.target.value))}
+            style={{ ...inputStyle, width: 200 }}>
+            <option value="">当前管理员（自己）</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.username}（#{u.id}）</option>
+            ))}
+          </select>
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>有效期</span>
+          <input type="number" min={1} max={90} value={tokenDays}
+            onChange={(e) => setTokenDays(Math.max(1, Math.min(90, Number(e.target.value) || 90)))}
+            style={{ ...inputStyle, width: 80 }} />
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>天</span>
+          <button onClick={mintToken} title="签发长令牌" aria-label="签发长令牌" style={btnPrimary}>签发</button>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            用途：本地打包脚本一键发布（<code>YUAN_ADMIN_TOKEN</code>）与 Agent 桥接
+          </span>
+        </div>
+        {tokenMsg && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--danger)' }}>{tokenMsg}</div>}
+        {mintedToken && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 6 }}>
+              请立即复制保存——关闭页面后无法再次查看；令牌 90 天有效，可用 /admin/users/revoke-tokens 吊销
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{
+                fontFamily: 'monospace', fontSize: 11, padding: '6px 10px',
+                background: 'var(--bg-tertiary)', borderRadius: 6, wordBreak: 'break-all', maxWidth: 420,
+              }}>{mintedToken}</span>
+              <CopyBtn text={mintedToken} label="复制令牌" />
+            </div>
           </div>
         )}
       </Card>

@@ -3,6 +3,69 @@ import { API_BASE, headers, safeJson, authHeaders } from '../api'
 import { SUB_AGENTS } from '../config/agents'
 import { ErrorBoundary } from './ErrorBoundary'
 
+/* 我的用量卡（2026-10-30）：用户本人 API 成本展示——只展示计费价
+   （真实成本为平台内部口径，普通用户不显示）。
+   金额格式：常规两位小数；<0.01 的小金额保留两位有效数字（不显示成 ¥0.00）。
+   加载失败静默不显示（成本展示非关键路径）。 */
+type UsageData = {
+  billed_month: number; billed_total: number
+  paid: number; outstanding: number
+  arrears_limit: number
+  month_calls: number; total_calls: number
+}
+
+// 金额格式化（2026-10-30 用户拍板）：≥0.01 两位小数；更小的保留两位有效数字
+const fmtCost = (v: number): string => {
+  if (!v || v <= 0) return '0.00'
+  if (v >= 0.01) return v.toFixed(2)
+  return String(Number(v.toPrecision(2)))
+}
+
+// 带符号金额（显示金额余额口径）：负=欠费，正=余额；浮点尘埃按零
+const fmtCostSigned = (v: number): string =>
+  Math.abs(v) < 0.0001 ? '¥0.00' : (v < 0 ? `-¥${fmtCost(-v)}` : `¥${fmtCost(v)}`)
+
+function MyUsageCard() {
+  const [data, setData] = useState<UsageData | null>(null)
+
+  useEffect(() => {
+    fetch(`${API_BASE}/auth/cost`, { headers: authHeaders() })
+      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
+      .then(setData)
+      .catch(() => { /* 静默 */ })
+  }, [])
+
+  if (!data) return null
+  const stat = (label: string, value: string, sub: string, color?: string) => (
+    <div style={{ flex: 1, textAlign: 'center', padding: '4px 8px' }}>
+      <div style={{ fontSize: 20, fontWeight: 700, color: color || 'var(--accent)', lineHeight: 1.3 }}>{value}</div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>
+    </div>
+  )
+  const owe = data.paid - data.billed_total < 0
+  return (
+    <div style={_C.card}>
+      <div style={_C.title}>我的用量 <span style={_C.sub}>— 本人 API 成本（近 30 天）</span></div>
+      <div style={{ display: 'flex', padding: '16px 12px' }}>
+        {/* 2026-10-30 口径（与用户管理同款）：显示金额 = 收款 − 系数成本，
+            欠费红/余额绿 */}
+        {stat('本月应计', `¥${fmtCost(data.billed_month)}`, '')}
+        {stat('累计应计', `¥${fmtCost(data.billed_total)}`, '')}
+        {stat('累计已收', `¥${fmtCost(data.paid)}`, '')}
+        {stat('显示金额', `${fmtCostSigned(data.paid - data.billed_total)}`,
+          owe ? `负=欠费（满 ¥${data.arrears_limit || 20} 限制使用）` : '正=余额',
+          owe ? 'var(--danger)' : 'var(--success)')}
+        {stat('本月调用', `${data.month_calls} 次`, `累计 ${data.total_calls} 次`)}
+      </div>
+    </div>
+  )
+}
+
+
+
+
+
 /* 本地 Agent 下载卡（2026-10-30，自设置页迁入 /chat/agent）：版本列表 + 自服务安装码 +
    使用指南（图形/终端两套入口）；管理员管理版本在后台「Agent 管理」。 */
 const _C = {
@@ -174,6 +237,9 @@ export default function AgentPage({ userId }: { userId?: number }) {
     <ErrorBoundary>
     <div style={{ background: 'var(--bg-secondary)', padding: '40px', display: 'flex', justifyContent: 'center' }}>
       <div style={{ maxWidth: 560, width: '100%', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+        {/* 我的用量（2026-10-30 用户拍板：与 Agent 写一起）：应计/已收/显示金额/调用 */}
+        <MyUsageCard />
 
         {/* 下载与安装（2026-10-30 自设置页迁入）：版本列表 + 安装码 + 使用指南 */}
         <AgentDownloadCard />

@@ -16,8 +16,10 @@ class FreezeRequest(BaseModel):
 
 
 class AdminCreateUser(BaseModel):
-    username: str
-    password: str
+    # 校验与登录口径一致（2026-10-30 修复）：密码 <8 位或用户名 <3 字符的账号
+    # 在登录端会被拒绝——此前管理员可创建出「永远登不上」的用户
+    username: str = Field(..., min_length=3, max_length=50, description="用户名（至少 3 个字符）")
+    password: str = Field(..., min_length=8, max_length=64, description="密码（至少 8 个字符）")
     role: str = 'user'
 
 

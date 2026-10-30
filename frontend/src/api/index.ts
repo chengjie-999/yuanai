@@ -17,7 +17,15 @@ export async function _errorDetail(res: Response): Promise<string> {
   if (ct.includes('json')) {
     try {
       const data = await res.json()
-      if (data?.detail) return typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)
+      if (data?.detail) {
+        if (typeof data.detail === 'string') return data.detail
+        // pydantic 422：detail 是错误对象数组，取第一条 msg（如「密码至少 8 个字符」）
+        if (Array.isArray(data.detail) && data.detail.length) {
+          const first = data.detail[0]
+          return typeof first?.msg === 'string' ? first.msg : JSON.stringify(data.detail)
+        }
+        return JSON.stringify(data.detail)
+      }
     } catch { /* 解析失败走兜底 */ }
   }
   if (res.status === 502 || res.status === 503 || res.status === 504) {
@@ -183,10 +191,7 @@ export async function changePassword(old_password: string, new_password: string)
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ old_password, new_password }),
   })
-  if (!res.ok) {
-    const err = await res.json()
-    throw new Error(err.detail || '修改失败')
-  }
+  if (!res.ok) throw new Error(await _errorDetail(res))
   return res.json()
 }
 

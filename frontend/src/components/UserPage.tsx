@@ -173,7 +173,7 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
             </button>
           </>
         ) : (
-          <button onClick={resetPw} style={{ ...C.btn, fontSize: 14, padding: '10px 32px' }}>完成</button>
+          <button onClick={onLogout} style={{ ...C.btn, fontSize: 14, padding: '10px 32px' }}>重新登录</button>
         )}>
         {pwStep === 0 && (
           <div>
@@ -215,7 +215,9 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
               </svg>
             </div>
             <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>密码修改成功</div>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>下次登录请使用新密码</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
+              为安全起见，改密后所有旧登录已失效——请使用新密码重新登录。
+            </div>
           </div>
         )}
       </Modal>

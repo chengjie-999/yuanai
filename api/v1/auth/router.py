@@ -204,7 +204,8 @@ class ProfileUpdate(BaseModel):
 
 class PasswordUpdate(BaseModel):
     old_password: str
-    new_password: str
+    # 与登录校验同口径（2026-10-30）：<8 位的新密码改完就登不上，端点层直接拒
+    new_password: str = Field(..., min_length=8, max_length=64)
 
 
 @router.put("/profile")

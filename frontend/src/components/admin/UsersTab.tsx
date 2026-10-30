@@ -3,6 +3,15 @@ import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, ba
 import { freezeUser } from '../../api'
 import { XIcon } from '../icons'
 
+// detail 归一化（2026-10-30）：pydantic 422 的 detail 是数组——直接 setError 会
+// 渲染对象数组崩溃；取第一条 msg，string 直用，数组兜底「请求参数错误」
+const _detail = (d: any): string => {
+  const detail = d?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail) && detail.length) return typeof detail[0]?.msg === 'string' ? detail[0].msg : '请求参数错误'
+  return d?.error || ''
+}
+
 export default function UsersTab() {
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,7 +45,7 @@ export default function UsersTab() {
   const handleFreeze = async (userId: number, days: number, reason: string = '') => {
     setError('')
     const data = await freezeUser(userId, days, reason)
-    if (data.detail) { setError(data.detail); return }
+    if (data.detail) { setError(_detail(data)); return }
     fetchUsers()
   }
   // 重置密码（2026-10-30）：新密码由管理员输入，成功后旧会话全部失效
@@ -47,7 +56,7 @@ export default function UsersTab() {
       body: JSON.stringify({ password }),
     })
     const data = await res.json()
-    if (!res.ok || data.detail) { setError(data.detail || '重置失败'); return false }
+    if (!res.ok || data.detail) { setError(_detail(data) || '重置失败'); return false }
     setNotice(data.message || '密码已重置')
     return true
   }
@@ -62,13 +71,16 @@ export default function UsersTab() {
   }
   const handleCreateUser = async () => {
     if (!newUsername.trim() || !newPassword.trim()) { setError('请填写用户名和密码'); return }
+    // 与登录校验同口径（2026-10-30）：短密码/短用户名创建的账号永远无法登录
+    if (newUsername.trim().length < 3) { setError('用户名至少 3 个字符'); return }
+    if (newPassword.length < 8) { setError('密码至少 8 个字符'); return }
     if (newPassword !== newPassword2) { setError('两次输入的密码不一致'); return }
     setError('')
     try {
       const res = await fetch(`${API_BASE}/admin/users/create`, { method: 'POST', headers: headers(), body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole }) })
       const data = await res.json()
       // 2026-10-19 修复：后端 400 返回 detail 而非 error——此前失败也清空表单
-      if (!res.ok || data.error) { setError(data.detail || data.error || '创建失败'); return }
+      if (!res.ok || data.error) { setError(_detail(data) || '创建失败'); return }
       setShowCreate(false); setNewUsername(''); setNewPassword(''); setNewPassword2(''); setShowPw(false)
       fetchUsers()
     } catch { setError('创建失败') }
@@ -86,10 +98,10 @@ export default function UsersTab() {
       <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         {!showCreate ? <button onClick={() => setShowCreate(true)} title="创建用户" aria-label="创建用户" style={btnPrimary}>+ 创建用户</button> : (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="用户名" style={{ ...inputStyle, width: 130 }} />
-            {/* 密码输入 — 带小眼睛明文切换 */}
+            <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="用户名（≥3 字符）" style={{ ...inputStyle, width: 140 }} />
+            {/* 密码输入 — 带小眼睛明文切换；≥8 位与登录校验同口径 */}
             <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-              <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type={showPw ? 'text' : 'password'} placeholder="密码" style={{ ...inputStyle, width: 130, paddingRight: 32 }} />
+              <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type={showPw ? 'text' : 'password'} placeholder="密码（≥8 位）" style={{ ...inputStyle, width: 130, paddingRight: 32 }} />
               <button onClick={() => setShowPw(!showPw)} title={showPw ? '隐藏密码' : '显示密码'}
                 style={{ position: 'absolute', right: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-muted)', display: 'flex', lineHeight: 1 }}>
                 {showPw ? (

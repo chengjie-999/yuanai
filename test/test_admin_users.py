@@ -44,6 +44,46 @@ def admin_jwt(db):
         sess.close()
 
 
+class TestPasswordValidation:
+    """创建/改密与登录校验同口径（2026-10-30 修复：口径不一致会造出永远登不上的账号）"""
+
+    def test_admin_create_rejects_short_password(self, client, admin_jwt):
+        ah = {"Authorization": f"Bearer {admin_jwt}"}
+        resp = client.post("/api/v1/admin/users/create",
+                           json={"username": "shortpwtest", "password": "short"},
+                           headers=ah)
+        assert resp.status_code == 422
+
+    def test_admin_create_rejects_short_username(self, client, admin_jwt):
+        ah = {"Authorization": f"Bearer {admin_jwt}"}
+        resp = client.post("/api/v1/admin/users/create",
+                           json={"username": "ab", "password": "longpass123"},
+                           headers=ah)
+        assert resp.status_code == 422
+
+    def test_change_password_rejects_short_new(self, client, db, admin_jwt):
+        r = db.register_user("__pwchange_target__", "oldpass123")
+        assert "error" not in r, r
+        uid = r["id"]
+        try:
+            from api.v1.auth.utils import create_token
+            h = {"Authorization": f"Bearer {create_token(uid, 'user')}"}
+            resp = client.put("/api/v1/auth/password",
+                              json={"old_password": "oldpass123", "new_password": "short"},
+                              headers=h)
+            assert resp.status_code == 422
+        finally:
+            from db.session import User
+            sess = db.Session()
+            try:
+                u = sess.query(User).filter_by(id=uid).first()
+                if u:
+                    sess.delete(u)
+                    sess.commit()
+            finally:
+                sess.close()
+
+
 class TestResetPassword:
     def test_reset_password_flow(self, client, db, admin_jwt):
         """重置 → 新密码可登录、旧密码 401；非 admin 403；管理员密码不可重置"""

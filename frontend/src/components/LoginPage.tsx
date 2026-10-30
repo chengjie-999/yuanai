@@ -258,6 +258,11 @@ export default function LoginPage() {
           <span>微信 <b>17852428208</b> · <a href="mailto:chengjie2017020@163.com">chengjie2017020@163.com</a></span>
         </p>
 
+        {/* 忘记密码指引（2026-10-30）：无自助找回，管理员重置 */}
+        <p className="login-no-register" style={{ marginTop: 0, fontSize: 12 }}>
+          忘记密码？请联系管理员为你重置密码
+        </p>
+
         {/* C11 ICP 备案页脚（登录页同展示） */}
         <div style={{ textAlign: 'center', marginTop: 16, fontSize: 11, color: 'var(--text-muted)' }}>
           <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer" style={{ color: 'var(--text-muted)' }}>鲁ICP备2026043700号</a>

@@ -742,7 +742,7 @@ def cmd_update() -> int:
             from utils.data_path import root_path
             out_dir = os.path.join(root_path(), "data", "update")
         os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, f"小元AI-Agent-v{version}.exe")
+        out_path = os.path.join(out_dir, f"yuanai-agent-v{version}.exe")  # 统一命名规范（2026-10-30）
 
         print(f"正在下载 v{version}（{manifest.get('size', 0) // (1024 * 1024)}MB）...")
         hasher = hashlib.sha256()

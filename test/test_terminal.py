@@ -310,7 +310,7 @@ class TestCmdUpdate:
         import hashlib
         import json
         payload = b"MZ" + b"0" * 100
-        manifest = {"version": "v99", "exe": "/downloads/versions/yuanai-agent-v99.exe",
+        manifest = {"version": "99", "exe": "/downloads/versions/yuanai-agent-v99.exe",
                     "size": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
         manifest.update(manifest_payload)
         responses = {
@@ -336,14 +336,14 @@ class TestCmdUpdate:
         from agent.terminal import cmd_update
         payload = self._patch(monkeypatch, tmp_path, {})
         assert cmd_update() == 0
-        out = tmp_path / "data" / "update" / "小元AI-Agent-vv99.exe"
+        out = tmp_path / "data" / "update" / "yuanai-agent-v99.exe"
         assert out.is_file() and out.read_bytes() == payload
 
     def test_update_hash_mismatch_fail_closed(self, monkeypatch, tmp_path):
         from agent.terminal import cmd_update
         self._patch(monkeypatch, tmp_path, {"sha256": "0" * 64})
         assert cmd_update() == 1
-        out = tmp_path / "data" / "update" / "小元AI-Agent-vv99.exe"
+        out = tmp_path / "data" / "update" / "yuanai-agent-v99.exe"
         assert not out.exists()
 
     def test_update_missing_sha_rejected(self, monkeypatch, tmp_path):

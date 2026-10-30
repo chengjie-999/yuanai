@@ -25,10 +25,10 @@ python -m agent.main
 python -m agent.main --tray
 
 # 一键启动（Windows 双击 start_agent.bat）
-# 发布版 exe：python -m PyInstaller agent/yuanai_agent.spec（产物 dist/小元AI Agent.exe，
-#   上传服务器 downloads/yuanai-agent.exe，后台「Agent 管理」与官网首页提供下载入口；
-#   上传端点流式计算 sha256 进 version.json，客户端自动更新强制 https + sha256 校验（缺 hash 拒更），
-#   发布顺序：先后端（含 hash）→ 再推新 exe）
+# 发布版 exe：python scripts/build_agent.py <版本号>（产物 dist/versions/yuanai-agent-v<版本号>.exe，
+#   与服务器版本库命名统一；自动注入 AGENT_VERSION + 算 sha256）→ 后台「Agent 管理 → 发布新版本」
+#   填同版本号拖入上传（多版本保留，可设默认）；上传端点流式计算 sha256 进清单，
+#   客户端自动更新强制 https + sha256 校验（缺 hash 拒更），发布顺序：先后端（含 hash）→ 再推新 exe）
 ```
 
 ## 智能体架构（2026-10-14 融合重构：脚本工具直调，对齐业界）

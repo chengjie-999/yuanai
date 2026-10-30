@@ -106,9 +106,10 @@ async def mint_agent_token(req: AgentTokenRequest, request: Request):
 async def upload_agent_exe(request: Request, version: str = Form(""), note: str = Form(""),
                            file: UploadFile = File(...)):
     """上传本地 Agent 安装包（仅 admin）——多版本保留（2026-10-30）：
-    写入 downloads/versions/yuanai-agent-{version}.exe 并追加 versions.json 清单，
+    写入 downloads/versions/yuanai-agent-v{version}.exe 并追加 versions.json 清单，
     不再覆盖旧版本；同版本号上传 = 覆盖该版本（修正重新打包）。
-    version.json 同步指向默认版本（客户端自动更新零改动）。"""
+    version.json 同步指向默认版本（客户端自动更新零改动）。
+    命名与本地打包脚本 scripts/build_agent.py 产物一致（统一规范）。"""
     require_admin(request)
     version = version.strip() or datetime.now().strftime("%Y%m%d-%H%M%S")
     if not _VERSION_NAME_RE.match(version):
@@ -116,7 +117,7 @@ async def upload_agent_exe(request: Request, version: str = Form(""), note: str 
     if not (file.filename or "").lower().endswith(".exe"):
         raise HTTPException(status_code=400, detail="仅支持 .exe 安装包")
 
-    exe_path = os.path.join(_versions_dir(), f"yuanai-agent-{version}.exe")
+    exe_path = os.path.join(_versions_dir(), f"yuanai-agent-v{version}.exe")
     tmp_path = exe_path + ".uploading"
 
     # 流式分块写入（200MB 级文件不占内存）+ 同步计算 sha256（S1.7，不二次读盘）
@@ -139,7 +140,7 @@ async def upload_agent_exe(request: Request, version: str = Form(""), note: str 
 
         os.replace(tmp_path, exe_path)
         data = _load_versions()
-        entry = {"version": version, "filename": f"yuanai-agent-{version}.exe",
+        entry = {"version": version, "filename": f"yuanai-agent-v{version}.exe",
                  "size": size, "sha256": hasher.hexdigest(),
                  "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                  "note": (note or "")[:200]}

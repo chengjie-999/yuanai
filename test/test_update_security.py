@@ -201,9 +201,9 @@ def test_upload_writes_sha256(client, monkeypatch, tmp_path):
     assert manifest["sha256"] == hashlib.sha256(payload).hexdigest()
     assert manifest["size"] == len(payload)
     assert manifest["min_version"] == "9.9.9"
-    assert "versions/yuanai-agent-9.9.9.exe" in manifest["exe"]
+    assert "versions/yuanai-agent-v9.9.9.exe" in manifest["exe"]
     # 服务端落盘内容与上传一致（版本文件）
-    assert (tmp_path / "downloads" / "versions" / "yuanai-agent-9.9.9.exe").read_bytes() == payload
+    assert (tmp_path / "downloads" / "versions" / "yuanai-agent-v9.9.9.exe").read_bytes() == payload
     # 清单记录该版本
     versions = json.loads((tmp_path / "downloads" / "versions.json").read_text(encoding="utf-8"))
     assert any(v["version"] == "9.9.9" and v["sha256"] == hashlib.sha256(payload).hexdigest()

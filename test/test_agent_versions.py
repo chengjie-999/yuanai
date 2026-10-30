@@ -63,29 +63,29 @@ def _upload(client, ah, version: str, note: str = "", content: bytes = b"MZ-fake
 class TestAgentVersions:
     def test_upload_keeps_all_versions(self, client, admin_jwt, tmp_downloads):
         ah = {"Authorization": f"Bearer {admin_jwt}"}
-        r1 = _upload(client, ah, "v001", "首个版本")
-        r2 = _upload(client, ah, "v002", "第二个版本")
+        r1 = _upload(client, ah, "001", "首个版本")
+        r2 = _upload(client, ah, "002", "第二个版本")
         assert r1.status_code == 200 and r2.status_code == 200
         data = client.get("/api/v1/admin/agent-versions", headers=ah).json()
         versions = {v["version"] for v in data["versions"]}
-        assert {"v001", "v002"} <= versions  # 多版本共存
-        assert data["default_version"] == "v001"  # 首个上传自动成为默认
+        assert {"001", "002"} <= versions  # 多版本共存
+        assert data["default_version"] == "001"  # 首个上传自动成为默认
         # 文件落盘
         assert os.path.isfile(os.path.join(tmp_downloads, "downloads", "versions", "yuanai-agent-v001.exe"))
         # version.json 兼容同步：指向默认版本
         import json
         with open(os.path.join(tmp_downloads, "downloads", "version.json"), encoding="utf-8") as f:
             vj = json.load(f)
-        assert vj["version"] == "v001"
+        assert vj["version"] == "001"
         assert "versions/yuanai-agent-v001.exe" in vj["exe"]
         assert vj["sha256"]
 
     def test_same_version_overwrites(self, client, admin_jwt, tmp_downloads):
         ah = {"Authorization": f"Bearer {admin_jwt}"}
-        assert _upload(client, ah, "v003", content=b"old").status_code == 200
-        assert _upload(client, ah, "v003", "修正版", content=b"new-content").status_code == 200
+        assert _upload(client, ah, "003", content=b"old").status_code == 200
+        assert _upload(client, ah, "003", "修正版", content=b"new-content").status_code == 200
         data = client.get("/api/v1/admin/agent-versions", headers=ah).json()
-        v3 = [v for v in data["versions"] if v["version"] == "v003"]
+        v3 = [v for v in data["versions"] if v["version"] == "003"]
         assert len(v3) == 1 and v3[0]["note"] == "修正版"  # 同版本覆盖不重复
 
     def test_set_default_and_delete_guards(self, client, admin_jwt, tmp_downloads):

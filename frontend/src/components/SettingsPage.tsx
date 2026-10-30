@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react'
 import { getStoredModel, setStoredModel, fetchModels } from '../api'
-import { fetchAgentModels, updateAgentModel, fetchApiKeys, saveApiKey, deleteApiKey } from '../api'
+import { fetchAgentModels, updateAgentModel } from '../api'
 import { fetchAgentVoices, updateAgentVoice } from '../api'
 import { API_BASE, authHeaders } from '../api'
-import { useAuth } from '../contexts/AuthContext'
 import MemoryCard from './MemoryCard'
-import Modal from './Modal'
 import { useAutoRead, toggleAutoRead } from '../hooks/useAutoRead'
 import { useAnswerTone, toggleAnswerTone } from '../hooks/useAnswerTone'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -147,8 +145,17 @@ function AgentDownloadCard() {
           <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>安装码加载中...</div>
         )}
         {msg && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 6 }}>{msg}</div>}
-        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 8 }}>
-          使用流程：下载最新版本 → 双击运行 → 安装引导中粘贴上方安装码 → 完成（托盘常驻，可开关各 Agent）
+        {/* 使用指南（2026-10-30 用户拍板：图形 + yuan/yuancc 终端两套入口） */}
+        <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.9 }}>
+          <b style={{ color: 'var(--text-primary)' }}>使用指南</b>
+          <div>① <b>图形安装（推荐）</b>：下载最新版本 → 双击运行 → 安装引导中粘贴上方安装码 → 完成（托盘常驻，可开关各 Agent）</div>
+          <div>② <b>终端安装（开发者，本机需 Python 3.10+ 环境）</b>：</div>
+          <div style={{ fontFamily: 'monospace', fontSize: 11.5, paddingLeft: 18, color: 'var(--text-primary)' }}>
+            yuan --install &lt;安装码&gt;&nbsp;&nbsp;注册本机设备（之后 yuan 自动联动云端）
+            <br />yuan --tray&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;托盘常驻（含桌宠/计划执行一体）
+            <br />yuan --update&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;下载默认版本安装包（sha256 校验）
+            <br />yuancc&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Claude Code 原生终端（需本机装有 claude 命令）
+          </div>
         </div>
       </div>
       <div style={{ padding: '14px 20px' }}>
@@ -218,7 +225,6 @@ const VOICE_OPTIONS = [
 
 export default function SettingsPage() {
   const isMobile = useIsMobile()
-  const { isAdmin } = useAuth()
   const [chatModel, setChatModel] = useState(getStoredModel())
   const [models, setModels] = useState<Record<string, { label: string; provider: string }>>({})
   // 自动朗读开关：默认开启，与顶部栏喇叭共用 useAutoRead 同步
@@ -230,21 +236,11 @@ export default function SettingsPage() {
   // 语音音色
   const [agentVoices, setAgentVoices] = useState<Record<string, string>>({})
   const [savingVoiceRole, setSavingVoiceRole] = useState('')
-  // api keys
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
-  const [showAddKey, setShowAddKey] = useState(false)
-  const [newProvider, setNewProvider] = useState('')
-  const [newKey, setNewKey] = useState('')
-  const [keyMsg, setKeyMsg] = useState('')
-  const [keyErr, setKeyErr] = useState(false)
-
   useEffect(() => {
     fetchModels().then(setModels)
     fetchAgentModels().then(setAgentModels)
-    fetchApiKeys().then(setApiKeys)
     fetchAgentVoices().then(setAgentVoices)
   }, [])
-  const refreshKeys = () => fetchApiKeys().then(setApiKeys)
 
   const handleRoleModel = async (role: string, modelId: string) => {
     setSavingRole(role)
@@ -266,47 +262,6 @@ export default function SettingsPage() {
     provider: v.provider,
   }))
 
-  // ---- 添加 API Key 侧边面板（共享 Modal mode=right） ----
-  const closeAddKey = () => { setShowAddKey(false); setNewProvider(''); setNewKey(''); setKeyMsg('') }
-  const addKeyPanel = (
-    <Modal open={showAddKey} mode="right" title="添加 API Key" onClose={closeAddKey}
-      footer={<>
-        <button onClick={closeAddKey}
-          style={{ padding: '10px 24px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>取消</button>
-        <button onClick={async () => {
-          setKeyErr(false); setKeyMsg('')
-          if (!newProvider.trim() || !newKey.trim()) { setKeyMsg('请填写供应商和密钥'); setKeyErr(true); return }
-          await saveApiKey(newProvider.trim(), newKey.trim())
-          closeAddKey(); refreshKeys()
-        }} style={{ ...C.btn, fontSize: 14, padding: '10px 24px' }}>确认添加</button>
-      </>}>
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>供应商</div>
-        <input value={newProvider} onChange={e => setNewProvider(e.target.value)}
-          style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
-          placeholder="如 DeepSeek、Doubao、OpenAI" autoFocus />
-        <div style={C.hint}>API 提供商名称，用于匹配模型</div>
-      </div>
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>密钥</div>
-        <input type="password" value={newKey} onChange={e => setNewKey(e.target.value)}
-          style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
-          placeholder="sk-... 或 API Key"
-          onKeyDown={async e => {
-            if (e.key === 'Enter') {
-              if (!newProvider.trim() || !newKey.trim()) { setKeyMsg('请填写供应商和密钥'); setKeyErr(true); return }
-              await saveApiKey(newProvider.trim(), newKey.trim())
-              closeAddKey(); refreshKeys()
-            }
-          }} />
-        <div style={C.hint}>密钥仅存储于服务器，前端不会明文展示</div>
-      </div>
-      {keyMsg && (
-        <div style={{ fontSize: 13, color: keyErr ? 'var(--danger)' : 'var(--success)', marginBottom: 16, padding: '8px 12px', borderRadius: 6, background: keyErr ? 'rgba(244,71,71,0.08)' : 'rgba(106,153,85,0.08)' }}>{keyMsg}</div>
-      )}
-    </Modal>
-  )
-
   return (
     <div style={{ height: '100%', overflow: 'auto', background: 'var(--bg-secondary)', padding: isMobile ? '20px 16px' : '32px 24px' }}>
       <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -317,35 +272,6 @@ export default function SettingsPage() {
 
         {/* ---- 本地 Agent 下载（2026-10-30）：版本列表 + 自服务安装码 ---- */}
         <AgentDownloadCard />
-
-        {/* ---- API Key（仅 admin：全局密钥，普通用户写删会覆盖全站模型调用）---- */}
-        {isAdmin && (
-        <div style={C.card}>
-          <div style={C.title}>API Key <span style={C.sub}>— 配置模型供应商的访问密钥</span></div>
-          {Object.keys(apiKeys).length === 0 ? (
-            <div style={{ padding: '24px 20px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>暂未配置 API Key</div>
-          ) : (
-            <div>
-              {Object.entries(apiKeys).map(([provider, masked]) => (
-                <div key={provider} style={C.row}>
-                  <div>
-                    <div style={C.label}>{provider}</div>
-                    <div style={{ ...C.hint, fontFamily: 'monospace', fontSize: 11 }}>{masked}</div>
-                  </div>
-                  <button
-                    onClick={async () => { await deleteApiKey(provider); refreshKeys() }}
-                    style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--danger)', fontSize: 12, padding: '4px 12px', borderRadius: 6, cursor: 'pointer' }}
-                  >删除</button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{ padding: '14px 20px' }}>
-            <button onClick={() => { setShowAddKey(true); setKeyMsg(''); setKeyErr(false) }}
-              style={C.btn}>+ 添加 API Key</button>
-          </div>
-        </div>
-        )}
 
         {/* ---- 模型配置 ---- */}
         <div style={C.card}>
@@ -497,7 +423,6 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
-      {addKeyPanel}
     </div>
   )
 }

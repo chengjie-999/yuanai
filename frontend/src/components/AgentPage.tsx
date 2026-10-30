@@ -2,12 +2,8 @@ import { useState, useEffect } from 'react'
 import { API_BASE, headers, safeJson } from '../api'
 import { SUB_AGENTS } from '../config/agents'
 import { ErrorBoundary } from './ErrorBoundary'
-import { XIcon } from './icons'
-import Modal from './Modal'
-import { useAuth } from '../contexts/AuthContext'
 
 export default function AgentPage({ userId }: { userId?: number }) {
-  const { isAdmin } = useAuth()
   const [agents, setAgents] = useState<any[]>([])
 
   const load = async () => {
@@ -37,9 +33,6 @@ export default function AgentPage({ userId }: { userId?: number }) {
     <div style={{ background: 'var(--bg-secondary)', padding: '40px', display: 'flex', justifyContent: 'center' }}>
       <div style={{ maxWidth: 560, width: '100%', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-        {/* 模型配置（2026-10-19：仅 admin——普通用户看到的是注定 403 的管理表单） */}
-        {isAdmin && <ModelsCard />}
-
         {/* 运行状态 */}
         <div style={{ background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', padding: '20px 24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -67,7 +60,7 @@ export default function AgentPage({ userId }: { userId?: number }) {
           {!mainOnline && (
             <div style={{ marginTop: 12, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8 }}>
               <p style={{ margin: 0 }}>请在本机启动 小元AI Agent 客户端，启动后将自动连接云端。</p>
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>如未安装，请联系管理员获取安装包。</p>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>如未安装，请到「设置页 → 本地 Agent 下载」自取安装包与安装码。</p>
             </div>
           )}
         </div>
@@ -125,92 +118,3 @@ export default function AgentPage({ userId }: { userId?: number }) {
     </ErrorBoundary>
   )
 }
-
-function ModelsCard() {
-  const [models, setModels] = useState<Record<string, any>>({})
-  const [showModal, setShowModal] = useState(false)
-  const [newId, setNewId] = useState('')
-  const [newProvider, setNewProvider] = useState('Custom')
-  const [newKey, setNewKey] = useState('')
-
-  const loadModels = () => {
-    fetch(`${API_BASE}/admin/models`, { headers: headers() })
-      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
-      .then((data) => { if (data && typeof data === 'object' && !Array.isArray(data)) setModels(data) })
-      .catch(() => {})
-  }
-  useEffect(() => { loadModels() }, [])
-
-  const handleAdd = async () => {
-    if (!newId.trim()) return
-    // label 用模型 ID 本身（显示名无意义）
-    await fetch(`${API_BASE}/admin/models`, {
-      method: 'POST', headers: headers(),
-      body: JSON.stringify({ model_id: newId.trim(), label: newId.trim(), provider: newProvider.trim() || 'Custom' }),
-    })
-    if (newKey.trim()) {
-      await fetch(`${API_BASE}/admin/apikeys`, {
-        method: 'POST', headers: headers(),
-        body: JSON.stringify({ provider: newProvider.trim() || 'Custom', key: newKey.trim() }),
-      })
-    }
-    setShowModal(false); setNewId(''); setNewProvider('Custom'); setNewKey('')
-    loadModels()
-  }
-
-  const handleDelete = async (id: string) => {
-    await fetch(`${API_BASE}/admin/models`, {
-      method: 'DELETE', headers: headers(),
-      body: JSON.stringify({ model_id: id }),
-    })
-    loadModels()
-  }
-
-  return (
-    <div style={{ background: "var(--bg-primary)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-      <div style={{ padding: "14px 24px", borderBottom: "1px solid var(--border-light)", fontWeight: 600, fontSize: 14, color: "var(--text-primary)", background: "var(--bg-secondary)", display: 'flex', alignItems: 'center' }}>
-        模型配置
-        <div style={{ flex: 1 }} />
-        <button onClick={() => setShowModal(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--accent)' }}>+ 添加</button>
-      </div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead>
-          <tr style={{ background: "var(--bg-tertiary)" }}>
-            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "var(--text-secondary)" }}>模型 ID</th>
-            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "var(--text-secondary)" }}>供应商</th>
-            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 12, color: "var(--text-secondary)", width: 40 }}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {Object.entries(models).map(([id, info]) => {
-            if (!info || typeof info !== 'object') return null
-            return (
-            <tr key={id} style={{ borderBottom: "1px solid var(--border-light)" }}>
-              <td style={{ padding: "10px 14px", fontFamily: 'monospace', fontSize: 12, color: 'var(--text-primary)' }}>{id}</td>
-              <td style={{ padding: "10px 14px", color: "var(--text-secondary)", fontSize: 12 }}>{info.provider as string}</td>
-              <td style={{ padding: "10px 14px" }}>
-                {!info.builtin && <button onClick={() => handleDelete(id)} title="删除" aria-label="删除"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', lineHeight: 1, display: 'flex' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--danger)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}><XIcon size={13} /></button>}
-              </td>
-            </tr>
-          )})}
-        </tbody>
-      </table>
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="添加模型"
-        footer={<>
-          <button onClick={() => setShowModal(false)} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)' }}>取消</button>
-          <button onClick={handleAdd} style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: 13 }}>确认添加</button>
-        </>}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="模型 ID (如 doubao-seed-2-1-lite-260915)" style={{ ...inputStyle, fontFamily: 'monospace' }} />
-          <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)} placeholder="供应商 (如 Doubao/DeepSeek)" style={inputStyle} />
-          <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="API Key (可选)" style={inputStyle} />
-        </div>
-      </Modal>
-    </div>
-  )
-}
-
-const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }

@@ -274,10 +274,9 @@ def _model_with_override(env_key: str, map_key: str, default: str) -> str:
 
 
 # 知识星球「导图 → 文章化笔记」转换模型（注意：必须显式传模型名，call_llm 默认名会炸）
-# 默认豆包（火山引擎国内节点，本地直连快且稳）；DeepSeek 海外 API 本地直连实测
-# 一半请求卡超时（120s×2 后走大纲兜底），故不设为默认。后台可换（分配键 planet_article）。
+# 2026-10-31 统一默认 deepseek-flash（与主模型一致）；后台可换（分配键 planet_article）。
 PLANET_ARTICLE_MODEL = _model_with_override(
-    "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-0-lite-260215")
+    "PLANET_ARTICLE_MODEL", "planet_article", "deepseek-flash")
 
 
 def reload_agent_models() -> None:
@@ -286,16 +285,16 @@ def reload_agent_models() -> None:
     global MEMORY_MODEL, PLANET_ARTICLE_MODEL
     AGENT_MODEL_MAP.clear()
     AGENT_MODEL_MAP.update(_load_agent_models())
-    MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-0-lite-260215")
+    MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "deepseek-flash")
     PLANET_ARTICLE_MODEL = _model_with_override(
-        "PLANET_ARTICLE_MODEL", "planet_article", "doubao-seed-2-0-lite-260215")
+        "PLANET_ARTICLE_MODEL", "planet_article", "deepseek-flash")
 
 # ===================== 记忆机制（短期工作记忆 / 长期条目化记忆） =====================
 # 决策：最近 N 条原样保留；超出部分豆包 lite 后台异步折叠成条目化事实存 users.memory；
 # 设置页「我的记忆」透明可编辑；点踩内容不进记忆。选择链：env 优先 → 后台设定中心
 # （_system_config）→ 默认；后台改完 reload_system_config 热更新。
 MEMORY_ENABLED = bool(_syscfg("memory_enabled"))                          # 压缩总开关
-MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-0-lite-260215")  # 折叠用模型
+MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "deepseek-flash")  # 折叠用模型（2026-10-31 统一主模型系，豆包仅多模态/审核场景）
 # 对话昵称生成模型（2026-10-31 用户拍板：直接用 deepseek-flash，不用豆包——本地豆包端点不通生成失败）
 TITLE_MODEL = _model_with_override("TITLE_MODEL", "title_gen", "deepseek-flash")
 
@@ -304,7 +303,7 @@ TITLE_MODEL = _model_with_override("TITLE_MODEL", "title_gen", "deepseek-flash")
 FOLLOWUP_SUGGEST_ENABLED = os.getenv("FOLLOWUP_SUGGEST_ENABLED", "1") == "1"
 # 模型选择链：env → 后台分配 → 默认（本地豆包 lite 端点不通时 env 设 deepseek-flash）
 FOLLOWUP_SUGGEST_MODEL = _model_with_override(
-    "FOLLOWUP_SUGGEST_MODEL", "followup_suggest", "doubao-seed-2-0-lite-260215")
+    "FOLLOWUP_SUGGEST_MODEL", "followup_suggest", "deepseek-flash")
 MEMORY_WORKING_WINDOW = int(_syscfg("memory_working_window"))             # 工作记忆条数（最近 N 条永不折叠）
 MEMORY_TRIGGER_CHARS = int(_syscfg("memory_trigger_chars"))               # 触发阈值：会话总字数
 MEMORY_FOLD_MIN_MESSAGES = int(_syscfg("memory_fold_min_messages"))       # 单次折叠最小条数（烧钱护栏，设 1 = 字面口径）

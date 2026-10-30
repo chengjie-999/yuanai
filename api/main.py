@@ -30,6 +30,7 @@ from api.v1.plan.router import router as plan_router
 from api.v1.agent.plan_sync import router as plan_sync_router
 from api.v1.middleware import auth_middleware, rate_limit_middleware
 from api.v1.exceptions import AppError, app_error_handler
+from api.v1.announcements import router as announcements_router, auto_deploy_announcement
 from utils.data_path import root_path
 
 # S3.5：生产关 /docs 与 /openapi.json（收敛接口面）；开发保持可用
@@ -54,6 +55,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 部署自动公告（2026-10-31）：检测 git HEAD 变化，首次部署/每次更新各发一条
+try:
+    auto_deploy_announcement()
+except Exception:
+    pass
+
 qimg_dir = os.path.join(root_path(), 'data', 'qimg')
 os.makedirs(qimg_dir, exist_ok=True)
 chat_img_dir = os.path.join(root_path(), 'data', 'chat_images')
@@ -63,6 +70,7 @@ os.makedirs(planet_dir, exist_ok=True)
 
 spider_router = init_router()
 app.include_router(spider_router, prefix="/api/v1/spider", tags=["spider"])
+app.include_router(announcements_router)
 app.include_router(chat_router, prefix="/api/v1", tags=["chat"])
 app.include_router(tools_router, prefix="/api/v1", tags=["tools"])
 app.include_router(auth_router, prefix="/api/v1", tags=["auth"])

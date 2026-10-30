@@ -79,8 +79,84 @@ export default function SettingsTab() {
 
   const setVal = (key: string, v: any) => setCfg((p) => ({ ...p, [key]: v }))
 
+  // ---- 更新公告（2026-10-31 用户拍板：网站部署与 Agent 版本更新各发一条） ----
+  const [anns, setAnns] = useState<any[]>([])
+  const [annKind, setAnnKind] = useState('site')
+  const [annTitle, setAnnTitle] = useState('')
+  const [annContent, setAnnContent] = useState('')
+  const [annMsg, setAnnMsg] = useState('')
+
+  const loadAnns = () => {
+    fetch(`${API_BASE}/announcements?limit=20`, { headers: headers() })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setAnns)
+      .catch(() => {})
+  }
+  useEffect(() => { loadAnns() }, [])
+
+  const publishAnn = async () => {
+    if (!annTitle.trim() || !annContent.trim()) { setAnnMsg('请填写标题与内容'); return }
+    const res = await fetch(`${API_BASE}/admin/announcements`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ title: annTitle.trim(), content: annContent.trim(), kind: annKind }),
+    })
+    const d = await res.json().catch(() => ({}))
+    if (!res.ok) { setAnnMsg(d.detail || '发布失败'); return }
+    setAnnMsg('')
+    setAnnTitle(''); setAnnContent('')
+    loadAnns()
+  }
+
+  const deleteAnn = async (id: string) => {
+    if (!window.confirm('确定删除该公告？')) return
+    await fetch(`${API_BASE}/admin/announcements/${id}`, { method: 'DELETE', headers: headers() })
+    loadAnns()
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* 更新公告（2026-10-31）：发布/列表/删除；部署与 Agent 版本更新会自动发布 */}
+      <Card>
+        <CardHeader title="更新公告" />
+        <div style={{ padding: '4px 20px', fontSize: 11, color: 'var(--text-muted)' }}>
+          网站部署更新与本地 Agent 新版本发布会自动生成公告；此处可手动补充发布。
+        </div>
+        <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: '1px solid var(--border-light)' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select value={annKind} onChange={(e) => setAnnKind(e.target.value)} style={select}>
+              <option value="site">平台更新</option>
+              <option value="agent">Agent 更新</option>
+            </select>
+            <input value={annTitle} onChange={(e) => setAnnTitle(e.target.value)} maxLength={100}
+              placeholder="公告标题" style={{ ...input, flex: 1 }} />
+          </div>
+          <textarea value={annContent} onChange={(e) => setAnnContent(e.target.value)} maxLength={2000} rows={2}
+            placeholder="公告内容" style={{ ...input, width: '100%', fontFamily: 'inherit', resize: 'vertical' }} />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button onClick={publishAnn}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: 13 }}>
+              发布公告
+            </button>
+            {annMsg && <span style={{ fontSize: 12, color: 'var(--danger)' }}>{annMsg}</span>}
+          </div>
+        </div>
+        <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+          {anns.length === 0 ? (
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>暂无公告</div>
+          ) : anns.map((a) => (
+            <div key={a.id} style={{ ...row, alignItems: 'center' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ ...label, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</div>
+                <div style={hint}>{a.kind === 'agent' ? 'Agent 更新' : '平台更新'} · {a.created_at?.slice(0, 16)}</div>
+              </div>
+              <button onClick={() => deleteAnn(a.id)} title="删除" aria-label="删除"
+                style={{ fontSize: 12, padding: '3px 10px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
+                删除
+              </button>
+            </div>
+          ))}
+        </div>
+      </Card>
       {/* 2026-10-19 清理：日志级别/错误通知/自动收起侧栏三个开关全项目无
           消费方（仅写 localStorage）——移除误导性控件 */}
       <Card>

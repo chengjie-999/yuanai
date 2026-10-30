@@ -150,6 +150,16 @@ async def upload_agent_exe(request: Request, version: str = Form(""), note: str 
         data["default_version"] = version
         _save_versions(data)
         _sync_version_json(data)
+        # Agent 版本更新自动公告（2026-10-31 用户拍板：本地 Agent 更新也发一条）
+        try:
+            from api.v1.announcements import add_announcement
+            add_announcement(
+                f"本地 Agent 新版本 v{version} 已发布",
+                f"新增/修复内容：{(note or '—')[:200]}。托盘会自动更新；"
+                f"也可到「Agent 页」下载安装。",
+                kind="agent", version=version)
+        except Exception:
+            pass
         return {"ok": True, "version": version, "size": size,
                 "sha256": hasher.hexdigest()}
     finally:

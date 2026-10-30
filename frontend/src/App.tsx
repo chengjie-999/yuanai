@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import AgentStatus from './components/AgentStatus'
+import AnnouncementBar from './components/AnnouncementBar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useAutoRead, toggleAutoRead } from './hooks/useAutoRead'
 import { SpeakerIcon, SpeakerOffIcon } from './components/icons'
@@ -111,6 +112,8 @@ function AppLayout() {
 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
+      {/* 更新公告条（2026-10-31）：顶栏下方最新未读一条，弹窗宿主形态下不显示 */}
+      {!window.opener && <AnnouncementBar />}
       {/* 弹窗宿主（计划面板等独立窗口）：整个顶栏藏起——完全独立形态，无品牌行无导航 */}
       {!window.opener && (
       <header className="app-header" style={{

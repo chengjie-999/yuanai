@@ -1,4 +1,5 @@
-"""网页搜索纯函数 — Bing 国内站主用（境内可用），DuckDuckGo 海外兜底（免费无 Key）
+"""网页搜索纯函数 — DeepSeek 官方优先 / Bing 国内主用；DuckDuckGo 为境外备用源，
+受 OVERSEAS_LOOKUP_ENABLED 控制（默认关闭，合规披露后开启）。
 
 与数据采集链路融合：search_web 给 URL → 模型用 fetch_url + parse_html 取详情。
 请求走 safe_fetch（SSRF 守卫 + 超时 + 体积上限，与 fetch_url 同一条咽喉）。
@@ -45,7 +46,7 @@ def _fetch(url: str, params: dict):
 
 
 def _search_ddg(q: str, max_results: int) -> List[Dict]:
-    """DuckDuckGo HTML 端点（国内不通 → 海外兜底）"""
+    """DuckDuckGo HTML 端点（境外备用源，仅 OVERSEAS_LOOKUP_ENABLED=1 时调用）"""
     from bs4 import BeautifulSoup
 
     result = _fetch(SEARCH_BASE, {"q": q})

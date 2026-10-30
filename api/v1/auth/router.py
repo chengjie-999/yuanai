@@ -156,18 +156,25 @@ def submit_appeal(req: AppealRequest, request: Request):
 @router.get("/cost")
 def my_cost(request: Request):
     """用户本人 API 成本（2026-10-30）：本月 30 天/累计，计费价 = 成本 × 盈利系数。
-    真实成本与计费价都返回（前端展示计费价，标注系数来源）。"""
+    真实成本为平台内部口径，普通用户不返回（2026-10-30 用户拍板）；admin 保留
+    （后台成本分析同口径）。"""
     uid = getattr(request.state, "user_id", None)
     if not uid:
         raise HTTPException(status_code=401, detail="未登录")
     from config.settings import COST_PROFIT_MULTIPLIER
     data = get_db().query_user_cost(uid)
-    return {
-        **data,
-        "multiplier": COST_PROFIT_MULTIPLIER,
+    is_admin = getattr(request.state, "role", "") == "admin"
+    out = {
         "billed_month": round(data["month_cost"] * COST_PROFIT_MULTIPLIER, 2),
         "billed_total": round(data["total_cost"] * COST_PROFIT_MULTIPLIER, 2),
+        "month_calls": data["month_calls"],
+        "total_calls": data["total_calls"],
     }
+    if is_admin:
+        out["month_cost"] = data["month_cost"]
+        out["total_cost"] = data["total_cost"]
+        out["multiplier"] = COST_PROFIT_MULTIPLIER
+    return out
 
 
 @router.post("/agree")

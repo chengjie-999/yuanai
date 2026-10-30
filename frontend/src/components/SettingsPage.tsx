@@ -22,14 +22,13 @@ const C = {
   btn: { padding: '8px 18px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer' } as const,
 }
 
-/* 我的用量卡（2026-10-30）：用户本人 API 成本展示——
-   计费价 = 真实成本 × 盈利系数（后端 COST_PROFIT_MULTIPLIER，默认 1.8）。
+/* 我的用量卡（2026-10-30）：用户本人 API 成本展示——只展示计费价
+   （真实成本为平台内部口径，普通用户不显示）。
    金额格式：常规两位小数；<0.01 的小金额保留两位有效数字（不显示成 ¥0.00）。
    加载失败静默不显示（成本展示非关键路径）。 */
 type UsageData = {
-  month_cost: number; total_cost: number
+  billed_month: number; billed_total: number
   month_calls: number; total_calls: number
-  multiplier: number; billed_month: number; billed_total: number
 }
 
 // 金额格式化（2026-10-30 用户拍板）：≥0.01 两位小数；更小的保留两位有效数字
@@ -61,8 +60,9 @@ function MyUsageCard() {
     <div style={C.card}>
       <div style={C.title}>我的用量 <span style={C.sub}>— 本人 API 成本（近 30 天）</span></div>
       <div style={{ display: 'flex', padding: '16px 12px' }}>
-        {stat('本月计费', `¥${fmtCost(data.billed_month)}`, `真实成本 ¥${fmtCost(data.month_cost)}`)}
-        {stat('累计计费', `¥${fmtCost(data.billed_total)}`, `真实成本 ¥${fmtCost(data.total_cost)}`)}
+        {/* 真实成本仅后台可见（2026-10-30 用户拍板）：用户侧只展示计费价 */}
+        {stat('本月计费', `¥${fmtCost(data.billed_month)}`, '')}
+        {stat('累计计费', `¥${fmtCost(data.billed_total)}`, '')}
         {stat('本月调用', `${data.month_calls} 次`, `累计 ${data.total_calls} 次`)}
       </div>
     </div>

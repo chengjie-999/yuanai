@@ -95,10 +95,10 @@ class TestUserCost:
         resp = client.get("/api/v1/auth/cost", headers=auth_headers)
         assert resp.status_code == 200
         d = resp.json()
-        assert d["multiplier"] == pytest.approx(1.8)
-        assert d["billed_month"] == round(d["month_cost"] * d["multiplier"], 2)
-        assert d["billed_total"] == round(d["total_cost"] * d["multiplier"], 2)
+        # 普通用户只看计费价与调用次数，真实成本/系数不返回（2026-10-30）
+        assert "billed_month" in d and "billed_total" in d
         assert "month_calls" in d and "total_calls" in d
+        assert "month_cost" not in d and "total_cost" not in d and "multiplier" not in d
 
     def test_admin_changes_multiplier_hot_reload(self, client, auth_headers, db, admin_jwt):
         """管理员改盈利系数 → 热更新 → /auth/cost 立即反映（2026-10-30）"""
@@ -116,9 +116,13 @@ class TestUserCost:
                               json={"system_config": {"cost_profit_multiplier": 2.5}},
                               headers=ah)
             assert resp.status_code == 200
-            d = client.get("/api/v1/auth/cost", headers=auth_headers).json()
+            # admin 视角：真实成本 + 系数可见
+            d = client.get("/api/v1/auth/cost", headers=ah).json()
             assert d["multiplier"] == pytest.approx(2.5)
             assert d["billed_month"] == round(d["month_cost"] * 2.5, 2)
+            # 普通用户视角：无真实成本字段
+            u = client.get("/api/v1/auth/cost", headers=auth_headers).json()
+            assert "month_cost" not in u and "multiplier" not in u
             # 非法值 → 400（小于下限）
             resp = client.put("/api/v1/admin/system-config",
                               json={"system_config": {"cost_profit_multiplier": 0.01}},

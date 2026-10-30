@@ -229,6 +229,18 @@ data/                   数据目录
 - **路线图**（plans/entertainment-mode-2026-10.md）：E2 火山生图 / E3 生视频挂账（执行前确认方舟账号开通与模型）。限额护栏必须与生图/生视频工具同日上线，不允许裸奔。
 - **验证**：test/test_entertainment_mode.py（娱乐跳过桥接+人设生效+@定向忽略 / 工作模式对照）；真机 SSE 双模式均实测通过。conftest 登录密码改 test1234（批次3 起密码最少 8 位，test123 只有 7 位导致所有鉴权测试静默跳过）。
 
+## 2026-10-30 晚批次（任务 #17-#24 全部完成，用户定时开工指令）
+
+- **注册开放**：register_open 默认 True；注册端点强化（协议后端强制+agreed_at、admin 词/违规词拦截、每 IP 3 账号/日、IntegrityError 兜底）；前端登录页注册模式+自动登录
+- **Agent 多版本管理**：上传不再覆盖——downloads/versions/ 多版本共存 + versions.json 清单（default_version）；后台版本卡（上传版本号+备注/设默认/删除）；version.json 兼容同步指向默认（客户端自动更新零改动）
+- **用户下载入口**：设置页「本地 Agent 下载」卡（版本列表+自服务安装码——生成即预绑定 user_id，注册即绑定）；小元身份卡含下载指引段
+- **yuan --update**：终端下载默认版本（sha256 fail-closed、明文远程拒绝）
+- **全局 401 自动登出**：fetch 全局包装（68+ 调用点零改动）→ AuthContext 清 token 跳登录 + loginError 原因提示
+- **主对话降级**：POST /chat/demote-main（is_main=0 + ensure 新建空主对话）；侧栏归档图标
+- **会话回收站 v1**：ChatSession.deleted_at（迁移 0024）；删除=软删除可恢复；两级惰性清理（AUTO_ARCHIVE_DAYS 365 不活跃归档 / RECYCLE_RETENTION_DAYS 365 回收站超期级联删）；侧栏回收站入口+恢复/彻底删除
+- **欠费阈值后台可管**：arrears_limit 系统参数化热更新（SettingsTab 行）
+- 测试：test_register 8 / test_agent_versions 5 / test_agent_my_code 3 / cmd_update 4 / test_trash 4 / demote 1 等；全量 608 过 2 跳过（test_rag_isolation 2 项为既有隔离 flaky，单跑全过）
+
 ## 合规整改（2026-10-29，C1-C11 全清，审计依据 docs/compliance-audit-2026-10.md）
 
 面向公众的生成式 AI 服务合规基建 **C1-C11 全部落地**：C1 GPL 排除 / C2 记忆 IDOR / C3 图片鉴权 / C4 注销级联 / C5 AI 标识（徽标+复制导出+aigc 落库+朗读提示音）/ C6 内容安全闸双向（输入拦截+输出审核自动工单）/ C7 举报工单+冻结申诉 / C8 桥接白名单复用+服务端固定提示 / C9 出境开关 / C10 爬虫收口 / C11 协议三件套+登录勾选+备案页脚。

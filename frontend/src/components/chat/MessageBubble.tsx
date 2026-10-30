@@ -787,28 +787,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             {/* 流式打字光标（通用 AI 对话方案，2026-10-25）：生成中文本末尾闪烁 */}
             {loading && isLast && !!msg.content && !msg.error && (
               <span className="stream-cursor" aria-hidden="true" />
-            )}
-            {/* 追问预测（2026-10-31 用户拍板）：AI 预测用户接下来可能问的问题——
-                普通/娱乐对话出现；coding（claude）与有工具调用的轮次不出 */}
-            {!isUser && !loading && onFollowup && (msg.suggestions?.length || 0) > 0
-              && !msg.toolCalls?.length && sender !== 'claude' && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-                {(msg.suggestions || []).slice(0, 3).map((s) => (
-                  <button key={s} onClick={() => onFollowup(s)}
-                    style={{
-                      padding: '5px 12px', borderRadius: 999, fontSize: 12.5,
-                      border: '1px solid var(--border)', background: 'var(--bg-input)',
-                      color: 'var(--text-secondary)', cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
-            {msg.error && (
+            )}            {msg.error && (
               <div style={{
                 marginTop: 8, padding: '8px 12px', borderRadius: 8,
                 background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
@@ -920,6 +899,26 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
           </>
         )}
       </div>
+      {/* 追问预测（2026-10-31 用户拍板）：放在聊天气泡外面——AI 预测用户接下来
+          可能问的问题；普通/娱乐对话出现，coding/工具轮次不出 */}
+      {!isUser && !loading && onFollowup && (msg.suggestions?.length || 0) > 0
+        && !msg.toolCalls?.length && sender !== 'claude' && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+          {(msg.suggestions || []).slice(0, 3).map((s) => (
+            <button key={s} onClick={() => onFollowup(s)}
+              style={{
+                padding: '5px 12px', borderRadius: 999, fontSize: 12.5,
+                border: '1px solid var(--border)', background: 'var(--bg-input)',
+                color: 'var(--text-secondary)', cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

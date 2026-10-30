@@ -35,8 +35,10 @@ export default function AnnouncementBar() {
   const unread = all.find((a) => !read.includes(a.id))
   if (!unread) return null
 
-  const markRead = (id: string) => {
-    const next = [...new Set([...read, id])]
+  // 关闭 = 全部已读（2026-10-31 用户拍板：不要一条条点——当前已加载的公告一次全关，
+  // 之后新发布的公告会再次出现）
+  const markAllRead = () => {
+    const next = [...new Set([...read, ...all.map((a) => a.id)])]
     setRead(next)
     _saveReadIds(next)
   }
@@ -61,7 +63,7 @@ export default function AnnouncementBar() {
           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--accent)', flexShrink: 0, padding: 0 }}>
           详情
         </button>
-        <button onClick={() => markRead(unread.id)} title="关闭" aria-label="关闭"
+        <button onClick={markAllRead} title="全部关闭" aria-label="全部关闭"
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex', lineHeight: 1, flexShrink: 0 }}>
           <XIcon size={13} />
         </button>

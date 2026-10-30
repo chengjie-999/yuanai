@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, badge, headers, API_BASE, fmtCost, fmtCostNeg4 } from './shared'
+import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, badge, headers, API_BASE, fmtCost, fmtCostNeg4, fmtCostSigned } from './shared'
 import { freezeUser } from '../../api'
 import { XIcon } from '../icons'
 
@@ -168,7 +168,7 @@ export default function UsersTab() {
               <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>状态</th>
               <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>注册时间</th>
               <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}
-                title="显示金额 = 系数成本（实际成本×盈利系数）− 收款；副行为换算过程">显示金额(¥)</th>
+                title="显示金额 = 收款 − 系数成本（实际成本×盈利系数）；负=欠费，正=余额；副行为换算过程">显示金额(¥)</th>
               <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>收款(¥)</th>
               <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>操作</th>
             </tr></thead>
@@ -186,10 +186,12 @@ export default function UsersTab() {
                       {isFrozen ? `冻结至 ${u.frozen_until?.slice(0, 10)}` : '正常'}
                     </td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.create_time?.slice(0, 10)}</td>
-                    {/* 财务口径（2026-10-30）：显示金额 = 系数成本 − 收款；
+                    {/* 财务口径（2026-10-30）：显示金额 = 收款 − 系数成本（负=欠费，正=余额）；
                         副行展示换算：实际成本(4位) × 系数 = 系数成本 */}
                     <td style={{ padding: '10px 14px' }}>
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>{fmtCost(Math.max(u.billed - u.paid, 0))}</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: (u.paid - u.billed) < 0 ? 'var(--danger)' : 'var(--success)' }}>
+                        {fmtCostSigned(u.paid - u.billed)}
+                      </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                         {fmtCostNeg4(u.cost)} × {u.multiplier ?? 1.8} → {fmtCostNeg4(u.billed)}
                       </div>

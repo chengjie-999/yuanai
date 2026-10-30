@@ -1,7 +1,7 @@
 /* 多维度经营分析 — 对话 / 功能 / 留存 / 成本（盈利决策数据底座） */
 import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Cell } from 'recharts'
-import { Spinner, ErrorMsg, Card, StatCard, headers, API_BASE, fmtCost, fmtCostNeg4 } from './shared'
+import { Spinner, ErrorMsg, Card, StatCard, headers, API_BASE, fmtCost, fmtCostNeg4, fmtCostSigned } from './shared'
 
 const C_BLUE = '#42a5f5'
 const C_GREEN = '#4caf50'
@@ -346,8 +346,11 @@ export function CostAnalyticsTab() {
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.calls}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{fmtCostNeg4(u.cost)}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--success)', fontWeight: 600 }}>{fmtCost(u.paid)}</td>
-                  {/* 显示金额 = 系数成本 − 收款（2026-10-30 换逻辑：与收款挂钩） */}
-                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{fmtCost(Math.max(u.billed - u.paid, 0))}</td>
+                  {/* 显示金额 = 收款 − 系数成本（2026-10-30：负=欠费，正=余额） */}
+                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600,
+                    color: (u.paid - u.billed) < 0 ? 'var(--danger)' : 'var(--success)' }}>
+                    {fmtCostSigned(u.paid - u.billed)}
+                  </td>
                 </tr>
               ))}
               {(data?.users || []).length === 0 && (

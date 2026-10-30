@@ -39,6 +39,9 @@ const fmtCost = (v: number): string => {
   return String(Number(v.toPrecision(2)))
 }
 
+// 带符号金额（显示金额余额口径）：负=欠费，正=余额
+const fmtCostSigned = (v: number): string => (v < 0 ? `-¥${fmtCost(-v)}` : `¥${fmtCost(v)}`)
+
 function MyUsageCard() {
   const [data, setData] = useState<UsageData | null>(null)
 
@@ -65,7 +68,7 @@ function MyUsageCard() {
         {stat('本月应计', `¥${fmtCost(data.billed_month)}`, '')}
         {stat('累计应计', `¥${fmtCost(data.billed_total)}`, '')}
         {stat('累计已收', `¥${fmtCost(data.paid)}`, '')}
-        {stat('显示金额', `¥${fmtCost(Math.max(data.outstanding, 0))}`, data.outstanding < 0 ? '余额可抵后续费用' : '')}
+        {stat('显示金额', `${fmtCostSigned(data.paid - data.billed_total)}`, (data.paid - data.billed_total) < 0 ? '负=欠费' : '正=余额')}
         {stat('本月调用', `${data.month_calls} 次`, `累计 ${data.total_calls} 次`)}
       </div>
     </div>

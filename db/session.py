@@ -9,7 +9,7 @@ from sqlalchemy.sql import func
 import os
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from utils.data_path import root_path
 from config.settings import DEFAULT_MODEL
 
@@ -34,6 +34,7 @@ class ChatSession(Base):
     main_uid = Column(BigInteger, Computed("CASE WHEN is_main = 1 THEN user_id END", persisted=True))
     create_time = Column(TIMESTAMP, server_default=func.now())
     update_time = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    deleted_at = Column(TIMESTAMP, nullable=True)  # 回收站软删除（2026-10-30，迁移 0024）
 
 
 class AIChat(Base):
@@ -455,10 +456,11 @@ class AgentDatabase:
             session.close()
 
     def get_sessions(self, limit: int = 50, user_id: int = None) -> list:
-        """获取会话列表（按最后活跃时间倒序：旧对话发新消息后自动置顶）"""
+        """获取会话列表（按最后活跃时间倒序：旧对话发新消息后自动置顶）。
+        回收站软删除（2026-10-30）：deleted_at 非空的会话不出现在列表。"""
         session = self.Session()
         try:
-            q = session.query(ChatSession)
+            q = session.query(ChatSession).filter(ChatSession.deleted_at.is_(None))
             if user_id is not None:
                 q = q.filter(ChatSession.user_id == user_id)
             q = q.order_by(ChatSession.is_main.desc(), ChatSession.update_time.desc()).limit(limit).all()
@@ -497,14 +499,96 @@ class AgentDatabase:
             sess.close()
 
     def delete_session(self, session_id: str):
-        """删除会话及其所有消息"""
+        """删除会话 = 移入回收站（2026-10-30 软删除：消息原地保留可恢复）"""
+        from datetime import datetime as _dt
         sess = self.Session()
         try:
+            sess.query(ChatSession).filter_by(session_id=session_id).update(
+                {"deleted_at": _dt.utcnow()})
+            sess.commit()
+        finally:
+            sess.close()
+
+    def restore_session(self, session_id: str) -> bool:
+        """回收站恢复（deleted_at 置空）；不存在返回 False"""
+        sess = self.Session()
+        try:
+            row = sess.query(ChatSession).filter_by(session_id=session_id).first()
+            if not row:
+                return False
+            row.deleted_at = None
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def purge_session(self, session_id: str) -> bool:
+        """回收站彻底删除（级联删消息/反馈/记忆游标）；不存在返回 False"""
+        sess = self.Session()
+        try:
+            row = sess.query(ChatSession).filter_by(session_id=session_id).first()
+            if not row or not row.deleted_at:
+                return False
             sess.query(AIChat).filter_by(session_id=session_id).delete()
             sess.query(AIChatFeedback).filter_by(session_id=session_id).delete()
             sess.query(SessionMemoryState).filter_by(session_id=session_id).delete()
-            sess.query(ChatSession).filter_by(session_id=session_id).delete()
+            sess.delete(row)
             sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def list_trash(self, user_id: int, limit: int = 200) -> list:
+        """某用户回收站会话列表（新→旧）"""
+        sess = self.Session()
+        try:
+            rows = (sess.query(ChatSession)
+                    .filter(ChatSession.user_id == user_id,
+                            ChatSession.deleted_at.isnot(None))
+                    .order_by(ChatSession.deleted_at.desc()).limit(limit).all())
+            return [{"session_id": s.session_id, "title": s.title,
+                     "update_time": str(s.update_time),
+                     "deleted_at": str(s.deleted_at)[:19] if s.deleted_at else ""}
+                    for s in rows]
+        finally:
+            sess.close()
+
+    def auto_archive_inactive(self, days: int = 365) -> int:
+        """自动归档（2026-10-30）：非主对话 update_time 超过 N 天未更新 →
+        软删除进回收站。返回归档条数（惰性触发：会话列表请求时调用）。"""
+        if days <= 0:
+            return 0
+        sess = self.Session()
+        try:
+            since = datetime.utcnow() - timedelta(days=days)
+            rows = (sess.query(ChatSession)
+                    .filter(ChatSession.is_main == 0,
+                            ChatSession.deleted_at.is_(None),
+                            ChatSession.update_time < since)
+                    .update({"deleted_at": datetime.utcnow()}, synchronize_session=False))
+            sess.commit()
+            return rows
+        finally:
+            sess.close()
+
+    def purge_expired_trash(self, days: int = 365) -> int:
+        """回收站自动清理（2026-10-30）：deleted_at 超过 N 天 → 级联彻底删除。
+        返回清理条数（惰性触发：回收站列表请求时调用）。"""
+        if days <= 0:
+            return 0
+        sess = self.Session()
+        try:
+            since = datetime.utcnow() - timedelta(days=days)
+            rows = (sess.query(ChatSession)
+                    .filter(ChatSession.deleted_at.isnot(None),
+                            ChatSession.deleted_at < since).all())
+            for r in rows:
+                sess.query(AIChat).filter_by(session_id=r.session_id).delete()
+                sess.query(AIChatFeedback).filter_by(session_id=r.session_id).delete()
+                sess.query(SessionMemoryState).filter_by(session_id=r.session_id).delete()
+                sess.delete(r)
+            sess.commit()
+            return len(rows)
         finally:
             sess.close()
 

@@ -196,12 +196,18 @@ def test_upload_writes_sha256(client, monkeypatch, tmp_path):
     assert resp.status_code == 200, resp.text
     assert resp.json()["sha256"] == hashlib.sha256(payload).hexdigest()
 
+    # 多版本保留（2026-10-30）：落盘到 versions/ 且清单含该版本
     manifest = json.loads((tmp_path / "downloads" / "version.json").read_text(encoding="utf-8"))
     assert manifest["sha256"] == hashlib.sha256(payload).hexdigest()
     assert manifest["size"] == len(payload)
     assert manifest["min_version"] == "9.9.9"
-    # 服务端落盘内容与上传一致
-    assert (tmp_path / "downloads" / "yuanai-agent.exe").read_bytes() == payload
+    assert "versions/yuanai-agent-9.9.9.exe" in manifest["exe"]
+    # 服务端落盘内容与上传一致（版本文件）
+    assert (tmp_path / "downloads" / "versions" / "yuanai-agent-9.9.9.exe").read_bytes() == payload
+    # 清单记录该版本
+    versions = json.loads((tmp_path / "downloads" / "versions.json").read_text(encoding="utf-8"))
+    assert any(v["version"] == "9.9.9" and v["sha256"] == hashlib.sha256(payload).hexdigest()
+               for v in versions["versions"])
 
 
 if __name__ == "__main__":

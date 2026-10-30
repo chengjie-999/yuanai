@@ -804,6 +804,12 @@ async def list_sessions(request: Request, own: bool = False):
         else:
             user_id = None if is_admin else _get_user_id(request)
             limit = 200 if is_admin else 50
+        # 惰性自动归档（2026-10-30）：非主对话 N 天未更新 → 进回收站（单条 UPDATE）
+        from config.settings import AUTO_ARCHIVE_DAYS
+        try:
+            db.auto_archive_inactive(AUTO_ARCHIVE_DAYS)
+        except Exception as e:
+            logger.warning("自动归档失败（不影响列表）: %s", e)
         sessions = db.get_sessions(user_id=user_id, limit=limit)
         # 管理员补充用户名和消息数（侧栏 own=1 无需补充）
         if is_admin and not own:
@@ -843,8 +849,8 @@ async def list_sessions(request: Request, own: bool = False):
 
 @router.delete("/session/{session_id}")
 async def delete_session(session_id: str, request: Request):
-    """删除会话。主对话（is_main）不可删除（2026-10-30）——
-    删除后当前页继续发消息会落孤儿数据，刷新又自动重建空主对话。"""
+    """删除会话 = 移入回收站（2026-10-30 软删除，可恢复）。
+    主对话（is_main）不可删除——降级为普通对话后再删。"""
     try:
         db = _get_db()
         user_id = _get_user_id(request)
@@ -853,16 +859,64 @@ async def delete_session(session_id: str, request: Request):
         with db.session() as sess:
             cur = sess.query(ChatSession).filter_by(session_id=session_id).first()
             if cur and cur.is_main:
-                raise HTTPException(status_code=400, detail="主对话不可删除")
+                raise HTTPException(status_code=400, detail="主对话不可删除（可先转为普通对话）")
         db.delete_session(session_id)
         # 清除消息缓存（2026-10-19：此前 TTL 内仍可读已删除对话）
         from db.cache import clear_chat_cache
         clear_chat_cache(session_id)
-        return {"deleted": session_id}
+        return {"deleted": session_id, "message": "已移入回收站（可恢复）"}
     except HTTPException:
         raise
     except Exception as e:
         logger.error("删除会话失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
+@router.get("/trash")
+async def list_trash(request: Request):
+    """回收站列表（2026-10-30）：进入时惰性清理超期会话（RECYCLE_RETENTION_DAYS）"""
+    try:
+        db = _get_db()
+        user_id = _get_user_id(request)
+        from config.settings import RECYCLE_RETENTION_DAYS
+        db.purge_expired_trash(RECYCLE_RETENTION_DAYS)
+        return db.list_trash(user_id)
+    except Exception as e:
+        logger.error("回收站列表失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
+@router.post("/trash/{session_id}/restore")
+async def restore_session(session_id: str, request: Request):
+    """回收站恢复：deleted_at 置空，会话回到列表（历史消息原样保留）"""
+    try:
+        db = _get_db()
+        user_id = _get_user_id(request)
+        _verify_session_owner(db, session_id, user_id)
+        if not db.restore_session(session_id):
+            raise HTTPException(status_code=404, detail="会话不在回收站中")
+        return {"ok": True, "message": "已恢复会话"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("恢复会话失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
+@router.delete("/trash/{session_id}")
+async def purge_session(session_id: str, request: Request):
+    """回收站彻底删除（级联消息/反馈/记忆游标，不可恢复）"""
+    try:
+        db = _get_db()
+        user_id = _get_user_id(request)
+        _verify_session_owner(db, session_id, user_id)
+        if not db.purge_session(session_id):
+            raise HTTPException(status_code=404, detail="会话不在回收站中")
+        return {"ok": True, "message": "已彻底删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("彻底删除会话失败: %s", e)
         raise HTTPException(status_code=500, detail=_SAFE_ERROR)
 
 

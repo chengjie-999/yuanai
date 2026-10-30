@@ -3,11 +3,12 @@ import type { SessionInfo } from './helpers'
 import { groupSessions } from './helpers'
 import { PlusIcon, TrashIcon, PinIcon, SearchIcon, EditIcon, ArchiveIcon } from '../icons'
 
-export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete, onRename, onDemoteMain }: {
+export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete, onRename, onDemoteMain, onOpenTrash }: {
   sessions: SessionInfo[]; currentSid: string; sidebarOpen: boolean; isMobile: boolean
   onNewSession: () => void; onSelect: (sid: string) => void; onDelete: (e: React.MouseEvent, sid: string) => void
   onRename: (sid: string, title: string) => void
   onDemoteMain: (sid: string) => void
+  onOpenTrash: () => void
 }) {
   // U3 侧栏会话搜索（2026-10-25）：按标题客户端过滤
   const [query, setQuery] = useState('')
@@ -34,6 +35,16 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
         >
           <PlusIcon size={15} /> 新对话
         </button>
+        {/* 回收站入口（2026-10-30 软删除可恢复） */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 6 }}>
+          <button onClick={onOpenTrash} aria-label="回收站"
+            className="yuan-tip" data-tip="回收站（已删除的对话可恢复）"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}>
+            <TrashIcon size={13} /> 回收站
+          </button>
+        </div>
         <div style={{ position: 'relative', marginTop: 8 }}>
           <span style={{
             position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',

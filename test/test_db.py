@@ -47,10 +47,16 @@ def test_session_crud():
     assert chats[1]['role'] == 'assistant'
     print('[OK] get chats')
 
+    # 删除 = 软删除进回收站（2026-10-30）：消息原地保留可恢复
     db.delete_session(sid)
     chats2 = db.get_chats(sid)
-    assert len(chats2) == 0
-    print('[OK] delete session')
+    assert len(chats2) == 2
+    trash = db.list_trash(1)
+    assert any(t["session_id"] == sid for t in trash)
+    # 彻底删除 → 消息级联清理
+    assert db.purge_session(sid) is True
+    assert len(db.get_chats(sid)) == 0
+    print('[OK] delete session (soft) + purge')
 
 
 def test_task_image():

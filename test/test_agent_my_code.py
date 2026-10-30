@@ -61,9 +61,11 @@ class TestMyAgentCode:
     def test_bound_device_shows_bound(self, client, db, code_user):
         from api.v1.auth.utils import create_token
         from db.session import AgentDevice
+        import uuid as _uuid
+        code = "YUAN-" + str(_uuid.uuid4())[:12].upper()  # 每次运行唯一（防脏数据撞唯一索引）
         sess = db.Session()
         try:
-            sess.add(AgentDevice(install_code="YUAN-BOUND-0000-0000",
+            sess.add(AgentDevice(install_code=code,
                                  agent_secret="sec", machine_name="测试电脑",
                                  user_id=code_user))
             sess.commit()

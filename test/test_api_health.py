@@ -43,13 +43,14 @@ class TestAuthEndpoints:
         # 应返回 401 而非 401/429 之外的错误（不会因为未认证被拦截）
         assert resp.status_code in (401, 429)
 
-    def test_register_disabled(self, client):
-        """注册功能暂不开放"""
+    def test_register_disabled(self, client, monkeypatch):
+        """注册开关关闭时 403（2026-10-30 起默认开放，管理员可关）"""
+        monkeypatch.setattr("config.settings.REGISTER_OPEN", False)
         resp = client.post("/api/v1/auth/register", json={
             "username": "test",
             "password": "test1234",
         })
-        assert resp.status_code in (403, 404)
+        assert resp.status_code == 403
 
     def test_protected_route_no_auth(self, client):
         """未认证访问受保护路由应返回 401"""

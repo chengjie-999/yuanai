@@ -435,6 +435,34 @@ export default function ChatPage({ user }: { user?: any }) {
     else window.alert('重命名失败，请重试')
   }
 
+  // ---- 回收站（2026-10-30 软删除）：列表/恢复/彻底删除 ----
+  const [trashOpen, setTrashOpen] = useState(false)
+  const [trashList, setTrashList] = useState<any[]>([])
+  const [trashBusy, setTrashBusy] = useState(false)
+
+  const loadTrash = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/chat/trash`, { headers: authHeaders() })
+      if (res.ok) setTrashList(await res.json())
+    } catch { /* 忽略 */ }
+  }
+  const openTrash = () => { setTrashOpen(true); loadTrash() }
+  const handleRestoreSession = async (sid: string) => {
+    setTrashBusy(true)
+    await fetch(`${API_BASE}/chat/trash/${sid}/restore`, { method: 'POST', headers: authHeaders() })
+    setTrashBusy(false)
+    refreshSessions()
+    loadTrash()
+  }
+  const handlePurgeSession = async (sid: string) => {
+    if (!window.confirm('彻底删除该会话？历史消息将无法恢复。')) return
+    setTrashBusy(true)
+    await fetch(`${API_BASE}/chat/trash/${sid}`, { method: 'DELETE', headers: authHeaders() })
+    setTrashBusy(false)
+    refreshSessions()
+    loadTrash()
+  }
+
   // 主对话降级为普通对话（2026-10-30）：不清数据——自动新建空主对话并切过去
   const handleDemoteMain = async (sid: string) => {
     if (!window.confirm('将主对话转为普通对话？全部历史会保留在本对话中，并自动新建一条空主对话。')) return
@@ -934,7 +962,7 @@ export default function ChatPage({ user }: { user?: any }) {
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}
-        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} onDemoteMain={handleDemoteMain} />
+        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} onDemoteMain={handleDemoteMain} onOpenTrash={openTrash} />
 
       {sidebarOpen && <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 
@@ -1034,6 +1062,39 @@ export default function ChatPage({ user }: { user?: any }) {
       </>
         )}
       </div>
+
+      {/* 回收站弹窗（2026-10-30）：软删除会话列表——恢复/彻底删除 */}
+      {trashOpen && (
+        <Modal open title="回收站" onClose={() => setTrashOpen(false)}>
+          <div style={{ minWidth: 400 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+              已删除的对话保留在此可恢复；超过保留期将自动彻底清理。
+            </div>
+            <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: 8 }}>
+              {trashList.length === 0 ? (
+                <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>回收站为空</div>
+              ) : (
+                trashList.map((t) => (
+                  <div key={t.session_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--border-light)' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title || '未命名'}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>删除于 {t.deleted_at?.slice(0, 16)}</div>
+                    </div>
+                    <button onClick={() => handleRestoreSession(t.session_id)} disabled={trashBusy}
+                      style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid var(--accent)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12 }}>
+                      恢复
+                    </button>
+                    <button onClick={() => handlePurgeSession(t.session_id)} disabled={trashBusy}
+                      style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid var(--danger)', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 12 }}>
+                      彻底删除
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* C7 举报弹窗（2026-10-29）：原因 chip 单选 + 补充说明（选填） */}
       {reportIndex !== null && (

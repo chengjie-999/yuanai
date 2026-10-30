@@ -371,6 +371,11 @@ COST_PROFIT_MULTIPLIER = float(_syscfg("cost_profit_multiplier"))
 # 单账号并发登录设备数上限（2026-10-30 用户拍板：5 台，超限踢最旧会话）
 MAX_LOGIN_SESSIONS = int(os.getenv("MAX_LOGIN_SESSIONS", "5"))
 
+# 回收站（2026-10-30 用户拍板）：普通对话 N 天未更新自动归档进回收站；
+# 回收站内再放 N 天自动彻底清理（两级管道，惰性触发）
+AUTO_ARCHIVE_DAYS = int(os.getenv("AUTO_ARCHIVE_DAYS", "365"))
+RECYCLE_RETENTION_DAYS = int(os.getenv("RECYCLE_RETENTION_DAYS", "365"))
+
 # 欠费限制门槛（2026-10-30 用户拍板）：显示金额（收款 − 系数成本）≤ -ARREARS_LIMIT
 # 即欠费满该金额时限制聊天使用并提示缴费；0 = 不限制。
 # 后台「设置 → 系统参数 → 欠费限制」可改（热更新），env ARREARS_LIMIT 可覆盖

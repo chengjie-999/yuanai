@@ -244,6 +244,9 @@ export function CostAnalyticsTab() {
         <StatCard label={`近${days}天成本`} value={fmtCostNeg(ov.total_cost)} color={C_RED} sub="各模型定价折算" />
         <StatCard label="毛利" value={`¥${fmtCost(ov.profit)}`} color={C_BLUE} sub="营收 - 成本" />
         <StatCard label="毛利率" value={`${ov.profit_rate ?? 0}%`} color={C_GREEN} sub="毛利 / 营收" />
+        <StatCard label="总收款" value={`¥${fmtCost(ov.paid_total)}`} color={C_GREEN}
+          sub="线下收款，管理员在用户管理填写" />
+        <StatCard label="未收款" value={`¥${fmtCost(ov.outstanding)}`} color={C_ORANGE} sub="营收 - 总收款" />
         <StatCard label="LLM 调用次数" value={(ov.calls ?? 0).toLocaleString()} color={C_BLUE}
           sub="含对话/辅助任务/向量化/搜索" />
         <StatCard label="缓存命中率" value={`${ov.cache_hit_rate ?? 0}%`} color={C_GREEN}
@@ -330,7 +333,7 @@ export function CostAnalyticsTab() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
-                {['用户', 'ID', '调用次数', '实际成本(¥)', '显示金额(¥)'].map((h) => (
+                {['用户', 'ID', '调用次数', '实际成本(¥)', '显示金额(¥)', '收款(¥)'].map((h) => (
                   <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{h}</th>
                 ))}
               </tr>
@@ -343,10 +346,11 @@ export function CostAnalyticsTab() {
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.calls}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{fmtCostNeg(u.cost)}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{fmtCost(u.billed)}</td>
+                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--success)', fontWeight: 600 }}>{fmtCost(u.paid)}</td>
                 </tr>
               ))}
               {(data?.users || []).length === 0 && (
-                <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>暂无用量数据</td></tr>
+                <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>暂无用量数据</td></tr>
               )}
             </tbody>
           </table>

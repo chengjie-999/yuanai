@@ -1,6 +1,6 @@
 import logging
 from urllib.parse import quote_plus
-from sqlalchemy import create_engine, Column, Integer, BigInteger, Text, TIMESTAMP, String, text, UniqueConstraint, Computed
+from sqlalchemy import create_engine, Column, Integer, BigInteger, Text, TIMESTAMP, String, text, UniqueConstraint, Computed, Numeric
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import declarative_base
@@ -166,6 +166,7 @@ class User(Base):
     token_version = Column(Integer, default=0, nullable=False)  # S3.4：令牌吊销计数（+1 全量失效）
     freeze_reason = Column(String(500), default='')   # C7：冻结原因（登录时展示，迁移 0021）
     agreed_at = Column(TIMESTAMP, nullable=True)      # C11：协议接受时间（登录勾选留痕，迁移 0021）
+    paid_amount = Column(Numeric(10, 2), default=0)   # 收款金额（2026-10-30：线下收款，管理员手动填写，迁移 0022）
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -926,6 +927,20 @@ class AgentDatabase:
                      "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
                      "handled_at": r.handled_at.strftime("%Y-%m-%d %H:%M:%S") if r.handled_at else ""}
                     for r in rows]
+        finally:
+            sess.close()
+
+    def set_user_paid(self, user_id: int, amount: float) -> bool:
+        """收款金额登记（2026-10-30：线下收款，管理员手动填写/更新）"""
+        from decimal import Decimal
+        sess = self.Session()
+        try:
+            user = sess.query(User).filter_by(id=user_id).first()
+            if not user:
+                return False
+            user.paid_amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+            sess.commit()
+            return True
         finally:
             sess.close()
 
@@ -2574,13 +2589,16 @@ class AgentDatabase:
                 e["cost"] += model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
                 e["calls"] += int(r[4] or 0)
             names = {}
+            paid_by_uid = {}
             if by_user:
                 uids = list(by_user.keys())
-                for u in sess.query(User.id, User.username).filter(User.id.in_(uids)).all():
+                for u in sess.query(User.id, User.username, User.paid_amount).filter(User.id.in_(uids)).all():
                     names[u[0]] = u[1]
+                    paid_by_uid[u[0]] = float(u[2] or 0)
             users = [{"user_id": uid, "username": names.get(uid, f"用户#{uid}"),
                       "cost": round(v["cost"], 4),
                       "billed": round(v["cost"] * COST_PROFIT_MULTIPLIER, 2),
+                      "paid": paid_by_uid.get(uid, 0.0),
                       "calls": v["calls"]}
                      for uid, v in sorted(by_user.items(), key=lambda x: -x[1]["cost"])]
 
@@ -2590,14 +2608,18 @@ class AgentDatabase:
             hit_total = int(base.with_entities(_func.sum(TokenUsage.cache_hit_tokens)).scalar() or 0)
             msgs = sess.query(_func.count(AIChat.id)).filter(AIChat.create_time >= since).scalar() or 0
             # 财务管理指标（2026-10-30）：营收（显示金额）= 成本 × 盈利系数；
-            # 毛利 = 营收 - 成本；毛利率 = 毛利 / 营收
+            # 毛利 = 营收 - 成本；毛利率 = 毛利 / 营收；
+            # 收款金额 = 线下收款，管理员在用户管理手动填写（全量汇总）
             revenue = round(total_cost * COST_PROFIT_MULTIPLIER, 2)
             profit = round(revenue - total_cost, 2)
+            paid_total = float(sess.query(_func.coalesce(_func.sum(User.paid_amount), 0)).scalar() or 0)
             return {
                 "overview": {"total_cost": total_cost,
                              "revenue": revenue, "profit": profit,
                              "profit_rate": round(profit / revenue * 100, 1) if revenue else 0.0,
                              "multiplier": COST_PROFIT_MULTIPLIER,
+                             "paid_total": round(paid_total, 2),
+                             "outstanding": round(revenue - paid_total, 2),
                              "cost_per_message": round(total_cost / max(int(msgs), 1), 6),
                              "messages": int(msgs), "calls": calls_total,
                              "cache_hit_rate": round(hit_total / prompt_total * 100, 1) if prompt_total else 0.0},

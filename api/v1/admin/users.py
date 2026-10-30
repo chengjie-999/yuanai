@@ -51,10 +51,11 @@ async def list_users(request: Request):
             "frozen": u.frozen_until is not None and u.frozen_until > now,
             "frozen_until": str(u.frozen_until)[:19] if u.frozen_until else None,
             "create_time": str(u.create_time)[:19] if u.create_time else "",
-            # 财务口径（2026-10-30）：累计实际成本 + 显示金额（计费价）
+            # 财务口径（2026-10-30）：累计实际成本 + 显示金额（计费价）+ 收款金额
             "cost": round(by_uid.get(u.id, {}).get("cost", 0), 4),
             "billed": round(by_uid.get(u.id, {}).get("cost", 0) * COST_PROFIT_MULTIPLIER, 2),
             "calls": by_uid.get(u.id, {}).get("calls", 0),
+            "paid": float(u.paid_amount or 0),
         } for u in users]
 @router.post("/users/revoke-tokens")
 async def revoke_user_tokens(req: FreezeRequest, request: Request):
@@ -126,6 +127,22 @@ async def admin_reset_password(user_id: int, body: ResetPasswordBody, request: R
         user.token_version = (user.token_version or 0) + 1
         sess.commit()
         return {"ok": True, "message": f"已重置用户 {user.username} 的密码（旧登录会话已失效）"}
+
+
+class PaidAmountBody(BaseModel):
+    amount: float = Field(..., ge=0, description="收款金额（元，≥0，两位小数）")
+
+
+@router.post("/users/{user_id}/paid")
+async def admin_set_paid(user_id: int, body: PaidAmountBody, request: Request):
+    """收款金额登记（2026-10-30）：线下收款，管理员手动填写/更新"""
+    require_admin(request)
+    db = get_db()
+    from decimal import Decimal
+    amount = round(Decimal(str(body.amount)), 2)
+    if not db.set_user_paid(user_id, float(amount)):
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return {"ok": True, "message": f"已登记收款金额 ¥{amount:.2f}"}
 
 
 @router.delete("/users/{user_id}")

@@ -60,6 +60,19 @@ export default function UsersTab() {
     setNotice(data.message || '密码已重置')
     return true
   }
+  // 收款金额登记（2026-10-30）：线下收款，管理员手动填写
+  const handlePaid = async (userId: number, amount: number) => {
+    setError('')
+    const res = await fetch(`${API_BASE}/admin/users/${userId}/paid`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers() },
+      body: JSON.stringify({ amount }),
+    })
+    const data = await res.json()
+    if (!res.ok || data.detail) { setError(_detail(data) || '登记失败'); return false }
+    setNotice(data.message || '已登记')
+    fetchUsers()
+    return true
+  }
   const handleDeleteUser = async (userId: number, username: string) => {
     if (!confirm(`确定删除用户 "${username}"？此操作不可恢复。`)) return
     try {
@@ -149,10 +162,10 @@ export default function UsersTab() {
         <Card>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
-              {['ID', '用户名', '角色', '状态', '注册时间', '累计成本(¥)', '累计显示(¥)', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>{h}</th>)}
+              {['ID', '用户名', '角色', '状态', '注册时间', '累计成本(¥)', '累计显示(¥)', '收款(¥)', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={8}><Empty msg={search ? '无匹配用户' : '暂无用户'} /></td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={9}><Empty msg={search ? '无匹配用户' : '暂无用户'} /></td></tr>}
               {filtered.map((u) => {
                 const isAdminRole = u.role === 'admin'; const isFrozen = u.frozen
                 return (
@@ -162,9 +175,13 @@ export default function UsersTab() {
                     <td style={{ padding: '10px 14px' }}>{isAdminRole ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>admin</span> : <span style={{ color: 'var(--text-secondary)' }}>user</span>}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>{isFrozen ? `冻结至 ${u.frozen_until?.slice(0, 10)}` : '正常'}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.create_time?.slice(0, 10)}</td>
-                    {/* 财务口径（2026-10-30）：累计实际成本为负、显示金额（计费价）为正 */}
+                    {/* 财务口径（2026-10-30）：累计实际成本为负、显示金额（计费价）为正、
+                        收款金额管理员手动填写（线下收款） */}
                     <td style={{ padding: '10px 14px', fontSize: 12 }}>{fmtCostNeg(u.cost)}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600 }}>{fmtCost(u.billed)}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: 'var(--success)' }}>
+                      {!isAdminRole ? <PaidBtn userId={u.id} initial={u.paid} onPaid={handlePaid} /> : '—'}
+                    </td>
                     <td style={{ padding: '10px 14px' }}>
                       {!isAdminRole && <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         {isFrozen ? <button onClick={() => handleFreeze(u.id, 0)} title="解冻" aria-label="解冻" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--success)', border: '1px solid var(--success)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>解冻</button> : <FreezeBtn userId={u.id} onFreeze={handleFreeze} />}
@@ -180,6 +197,34 @@ export default function UsersTab() {
         </Card>
       )}
     </>
+  )
+}
+
+/* 收款金额（2026-10-30）：线下收款，管理员手动填写/更新（元，≥0） */
+function PaidBtn({ userId, initial, onPaid }: { userId: number; initial: number; onPaid: (id: number, amount: number) => Promise<boolean> }) {
+  const [open, setOpen] = useState(false); const [amt, setAmt] = useState(''); const [busy, setBusy] = useState(false)
+  if (!open) return (
+    <button onClick={() => { setOpen(true); setAmt(initial > 0 ? String(initial) : '') }}
+      title="登记收款" aria-label="登记收款"
+      style={{ fontSize: 12, padding: '2px 8px', color: 'var(--success)', border: '1px solid var(--success)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>
+      ¥{fmtCost(initial)}
+    </button>
+  )
+  const v = Number(amt)
+  return (
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      <input value={amt} onChange={(e) => setAmt(e.target.value)} type="number" min={0} step={0.01}
+        placeholder="金额" style={{ width: 70, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 12, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
+      <button onClick={async () => {
+        if (!(v >= 0)) return
+        setBusy(true)
+        const ok = await onPaid(userId, v)
+        setBusy(false)
+        if (ok) setOpen(false)
+      }} disabled={!(v >= 0) || busy} title="确定" aria-label="确定"
+        style={{ fontSize: 11, padding: '4px 8px', color: '#fff', background: 'var(--success)', border: 'none', borderRadius: 4, cursor: v >= 0 && !busy ? 'pointer' : 'default', opacity: v >= 0 && !busy ? 1 : 0.55 }}>确定</button>
+      <button onClick={() => setOpen(false)} title="关闭" aria-label="关闭" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><XIcon size={13} /></button>
+    </div>
   )
 }
 

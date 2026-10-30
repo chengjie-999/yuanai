@@ -28,6 +28,7 @@ const C = {
    加载失败静默不显示（成本展示非关键路径）。 */
 type UsageData = {
   billed_month: number; billed_total: number
+  paid: number; outstanding: number
   month_calls: number; total_calls: number
 }
 
@@ -60,9 +61,12 @@ function MyUsageCard() {
     <div style={C.card}>
       <div style={C.title}>我的用量 <span style={C.sub}>— 本人 API 成本（近 30 天）</span></div>
       <div style={{ display: 'flex', padding: '16px 12px' }}>
-        {/* 真实成本仅后台可见（2026-10-30 用户拍板）：用户侧只展示计费价 */}
+        {/* 真实成本仅后台可见（2026-10-30 用户拍板）：用户侧只展示计费价 +
+            已收/当前应付（收款金额由管理员线下收款登记） */}
         {stat('本月计费', `¥${fmtCost(data.billed_month)}`, '')}
         {stat('累计计费', `¥${fmtCost(data.billed_total)}`, '')}
+        {stat('累计已收', `¥${fmtCost(data.paid)}`, '')}
+        {stat('当前应付', `¥${fmtCost(Math.max(data.outstanding, 0))}`, data.outstanding < 0 ? '余额可抵后续费用' : '')}
         {stat('本月调用', `${data.month_calls} 次`, `累计 ${data.total_calls} 次`)}
       </div>
     </div>

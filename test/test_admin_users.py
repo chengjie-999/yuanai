@@ -139,6 +139,48 @@ class TestUserCost:
             _s.reload_system_config()
 
 
+class TestPaidAmount:
+    """收款金额（2026-10-30）：线下收款，管理员手动登记；用户侧可见已收/当前应付"""
+
+    def test_admin_set_paid_and_user_view(self, client, db, admin_jwt):
+        r = db.register_user("__paid_target__", "test1234")
+        assert "error" not in r, r
+        uid = r["id"]
+        ah = {"Authorization": f"Bearer {admin_jwt}"}
+        try:
+            # 负数 → 422
+            resp = client.post(f"/api/v1/admin/users/{uid}/paid",
+                               json={"amount": -1}, headers=ah)
+            assert resp.status_code == 422
+            # 登记收款 12.34
+            resp = client.post(f"/api/v1/admin/users/{uid}/paid",
+                               json={"amount": 12.34}, headers=ah)
+            assert resp.status_code == 200
+            # 用户列表带 paid
+            users = client.get("/api/v1/admin/users", headers=ah).json()
+            hit = [u for u in users if u["id"] == uid]
+            assert hit and hit[0]["paid"] == pytest.approx(12.34)
+            # 用户视角 /auth/cost：paid + outstanding = billed_total - paid
+            from api.v1.auth.utils import create_token
+            h = {"Authorization": f"Bearer {create_token(uid, 'user')}"}
+            d = client.get("/api/v1/auth/cost", headers=h).json()
+            assert d["paid"] == pytest.approx(12.34)
+            assert d["outstanding"] == pytest.approx(round(d["billed_total"] - 12.34, 2))
+            # 不存在的用户 → 404
+            assert client.post("/api/v1/admin/users/999999999/paid",
+                               json={"amount": 1}, headers=ah).status_code == 404
+        finally:
+            from db.session import User
+            sess = db.Session()
+            try:
+                u = sess.query(User).filter_by(id=uid).first()
+                if u:
+                    sess.delete(u)
+                    sess.commit()
+            finally:
+                sess.close()
+
+
 class TestResetPassword:
     def test_reset_password_flow(self, client, db, admin_jwt):
         """重置 → 新密码可登录、旧密码 401；非 admin 403；管理员密码不可重置"""

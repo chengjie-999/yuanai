@@ -632,6 +632,8 @@ def parse_args():
     p.add_argument("--server-url", default=None, help="云端 WebSocket 地址（默认身份文件/wss://cjyuanai.cn）")
     p.add_argument("--agent-name", default=None, help="Agent 显示名称")
     p.add_argument("--no-plan-executor", action="store_true", help="禁用计划执行器线程")
+    p.add_argument("--update", action="store_true",
+                   help="下载云端默认版本的 Agent 安装包（sha256 校验后提示安装）")
     return p.parse_args()
 
 
@@ -694,13 +696,83 @@ def install_yuan_command() -> int:
     print("   yuan    = 本地 Agent 终端（对话 + 云端联动 + 桌宠一体）")
     print("   yuancc  = Claude Code 原生终端（yuancc -p \"问题\" 管道单轮）")
     print("   注册/托盘：yuan --install <安装码> / yuan --tray")
+    print("   下载更新：yuan --update（下载云端默认版本安装包）")
     return 0
+
+
+def cmd_update() -> int:
+    """yuan --update（2026-10-30）：下载云端默认版本安装包到更新目录，
+    sha256 同步校验（fail-closed），一致后提示双击安装（不搞自替换）。"""
+    import hashlib
+    import json as _json
+    import urllib.request
+    from agent.main import load_identity
+
+    identity = load_identity() or {}
+    server = str(identity.get("server_url", "") or "")
+    if not server:
+        server = os.getenv("YUAN_SERVER_URL", "")
+    base = server.strip().rstrip("/")
+    if base.startswith("wss://"):
+        base = "https://" + base[len("wss://"):]
+    elif base.startswith("ws://"):
+        base = "http://" + base[len("ws://"):]
+    if not base.startswith(("https://", "http://")):
+        base = "https://cjyuanai.cn"
+    # 护栏：远程明文一律拒绝（localhost 豁免）
+    if base.startswith("http://") and "localhost" not in base and "127.0.0.1" not in base:
+        print("yuan --update 必须走 https（远程明文下载已拒绝）；本地联调可用 localhost")
+        return 1
+
+    try:
+        with urllib.request.urlopen(f"{base}/downloads/version.json", timeout=10) as resp:
+            manifest = _json.loads(resp.read().decode("utf-8"))
+        remote_sha = str(manifest.get("sha256", "")).lower()
+        if not remote_sha:
+            print("云端清单缺少 sha256，已拒绝下载（fail-closed）")
+            return 1
+        exe_url = f"{base}{manifest.get('exe', '/downloads/yuanai-agent.exe')}"
+        version = str(manifest.get("version", ""))
+
+        # 落盘目录：frozen → %LOCALAPPDATA%\XiaoYuanAI\update；源码 → data/update
+        if getattr(sys, "frozen", False):
+            out_dir = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+                                   "XiaoYuanAI", "update")
+        else:
+            from utils.data_path import root_path
+            out_dir = os.path.join(root_path(), "data", "update")
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, f"小元AI-Agent-v{version}.exe")
+
+        print(f"正在下载 v{version}（{manifest.get('size', 0) // (1024 * 1024)}MB）...")
+        hasher = hashlib.sha256()
+        tmp = out_path + ".downloading"
+        with urllib.request.urlopen(exe_url, timeout=300) as resp, open(tmp, "wb") as f:
+            while True:
+                chunk = resp.read(1024 * 1024)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+                f.write(chunk)
+        if hasher.hexdigest().lower() != remote_sha:
+            os.remove(tmp)
+            print("sha256 校验失败，已删除下载文件（安全拒绝）")
+            return 1
+        os.replace(tmp, out_path)
+        print(f"下载完成：{out_path}")
+        print("请双击该安装包完成升级（新 exe 自带安装引导，会迁移旧数据）。")
+        return 0
+    except Exception as e:
+        print(f"下载失败: {str(e)[:200]}")
+        return 1
 
 
 async def main():
     args = parse_args()
     if args.install_yuan:
         sys.exit(install_yuan_command())
+    if args.update:
+        sys.exit(cmd_update())
 
     # —— Agent 形态直通（yuan = 本地 Agent 的终端形态，与 agent.main 同入口）——
     if args.install:

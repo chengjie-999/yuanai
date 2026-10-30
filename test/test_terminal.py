@@ -284,3 +284,74 @@ def test_find_launcher_frozen_none(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "app.exe"))
     assert terminal.find_terminal_launcher() is None
+
+
+class _FakeResp:
+    """流式假响应：read(n) 逐块吐出 payload"""
+    def __init__(self, payload: bytes):
+        self._p = payload
+        self._i = 0
+    def read(self, n: int = -1) -> bytes:
+        if n is None or n < 0:
+            n = len(self._p)
+        chunk = self._p[self._i:self._i + n]
+        self._i += n
+        return chunk
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+
+
+class TestCmdUpdate:
+    """yuan --update（2026-10-30）：下载默认版本 + sha256 fail-closed + 明文护栏"""
+
+    def _patch(self, monkeypatch, tmp_path, manifest_payload, server="https://cjyuanai.cn"):
+        import hashlib
+        import json
+        payload = b"MZ" + b"0" * 100
+        manifest = {"version": "v99", "exe": "/downloads/versions/yuanai-agent-v99.exe",
+                    "size": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
+        manifest.update(manifest_payload)
+        responses = {
+            f"{server}/downloads/version.json": json.dumps(manifest).encode(),
+            f"{server}/downloads/versions/yuanai-agent-v99.exe": payload,
+        }
+        import agent.terminal as T
+        import urllib.request
+
+        def fake_urlopen(url, timeout=None):
+            for k, v in responses.items():
+                if url.startswith(k):
+                    return _FakeResp(v)
+            raise AssertionError(f"unexpected url: {url}")
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setattr("agent.main.load_identity",
+                            lambda: {"server_url": server})
+        monkeypatch.setattr("utils.data_path.root_path", lambda: str(tmp_path))
+        return payload
+
+    def test_update_success(self, monkeypatch, tmp_path):
+        from agent.terminal import cmd_update
+        payload = self._patch(monkeypatch, tmp_path, {})
+        assert cmd_update() == 0
+        out = tmp_path / "data" / "update" / "小元AI-Agent-vv99.exe"
+        assert out.is_file() and out.read_bytes() == payload
+
+    def test_update_hash_mismatch_fail_closed(self, monkeypatch, tmp_path):
+        from agent.terminal import cmd_update
+        self._patch(monkeypatch, tmp_path, {"sha256": "0" * 64})
+        assert cmd_update() == 1
+        out = tmp_path / "data" / "update" / "小元AI-Agent-vv99.exe"
+        assert not out.exists()
+
+    def test_update_missing_sha_rejected(self, monkeypatch, tmp_path):
+        from agent.terminal import cmd_update
+        self._patch(monkeypatch, tmp_path, {"sha256": ""})
+        assert cmd_update() == 1
+
+    def test_update_plaintext_remote_rejected(self, monkeypatch, tmp_path):
+        from agent.terminal import cmd_update
+        self._patch(monkeypatch, tmp_path, {}, server="http://cjyuanai.cn")
+        assert cmd_update() == 1  # 远程明文拒绝，不发请求

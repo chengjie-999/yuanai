@@ -162,10 +162,18 @@ export default function UsersTab() {
         <Card>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
-              {['ID', '用户名', '角色', '状态', '注册时间', '累计成本(¥)', '累计显示(¥)', '收款(¥)', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>{h}</th>)}
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>ID</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>用户名</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>角色</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>状态</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>注册时间</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}
+                title="上行=显示金额（计费价=成本×盈利系数）；下行=实际成本（财务口径为负）">累计金额(¥)</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>收款(¥)</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>操作</th>
             </tr></thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={9}><Empty msg={search ? '无匹配用户' : '暂无用户'} /></td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={8}><Empty msg={search ? '无匹配用户' : '暂无用户'} /></td></tr>}
               {filtered.map((u) => {
                 const isAdminRole = u.role === 'admin'; const isFrozen = u.frozen
                 return (
@@ -173,17 +181,21 @@ export default function UsersTab() {
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.id}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-primary)', fontWeight: 600 }}>{u.username}{isAdminRole && badge('管理员', 'var(--accent)')}{isFrozen && badge('已冻结', 'var(--danger)')}</td>
                     <td style={{ padding: '10px 14px' }}>{isAdminRole ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>admin</span> : <span style={{ color: 'var(--text-secondary)' }}>user</span>}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>{isFrozen ? `冻结至 ${u.frozen_until?.slice(0, 10)}` : '正常'}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}
+                      title={isFrozen && u.freeze_reason ? `冻结原因：${u.freeze_reason}` : undefined}>
+                      {isFrozen ? `冻结至 ${u.frozen_until?.slice(0, 10)}` : '正常'}
+                    </td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.create_time?.slice(0, 10)}</td>
-                    {/* 财务口径（2026-10-30）：累计实际成本为负、显示金额（计费价）为正、
-                        收款金额管理员手动填写（线下收款） */}
-                    <td style={{ padding: '10px 14px', fontSize: 12 }}>{fmtCostNeg(u.cost)}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600 }}>{fmtCost(u.billed)}</td>
+                    {/* 财务口径（2026-10-30）：主显显示金额（计费价），副行实际成本（负） */}
+                    <td style={{ padding: '10px 14px' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{fmtCost(u.billed)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtCostNeg(u.cost)}</div>
+                    </td>
                     <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: 'var(--success)' }}>
                       {!isAdminRole ? <PaidBtn userId={u.id} initial={u.paid} onPaid={handlePaid} /> : '—'}
                     </td>
                     <td style={{ padding: '10px 14px' }}>
-                      {!isAdminRole && <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      {!isAdminRole && <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                         {isFrozen ? <button onClick={() => handleFreeze(u.id, 0)} title="解冻" aria-label="解冻" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--success)', border: '1px solid var(--success)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>解冻</button> : <FreezeBtn userId={u.id} onFreeze={handleFreeze} />}
                         {/* 重置密码（2026-10-30）：bcrypt 单向哈希无法显示原密码，管理员直接设新密码 */}
                         <ResetPwBtn userId={u.id} onReset={handleResetPw} />

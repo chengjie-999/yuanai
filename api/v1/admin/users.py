@@ -50,6 +50,7 @@ async def list_users(request: Request):
             "role": u.role,
             "frozen": u.frozen_until is not None and u.frozen_until > now,
             "frozen_until": str(u.frozen_until)[:19] if u.frozen_until else None,
+            "freeze_reason": u.freeze_reason or "",
             "create_time": str(u.create_time)[:19] if u.create_time else "",
             # 财务口径（2026-10-30）：累计实际成本 + 显示金额（计费价）+ 收款金额
             "cost": round(by_uid.get(u.id, {}).get("cost", 0), 4),

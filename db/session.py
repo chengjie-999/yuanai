@@ -101,6 +101,16 @@ class AIReport(Base):
     handled_at = Column(TIMESTAMP, nullable=True)
 
 
+class PaymentRecord(Base):
+    """收款记录（2026-10-30：逐笔记账，线下收款管理员登记；累计收款 = 各笔之和）"""
+    __tablename__ = 'payment_records'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    amount = Column(Numeric(10, 2), nullable=False)
+    note = Column(String(200), nullable=False, server_default='')
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
 class SessionMemoryState(Base):
     """会话记忆折叠游标：folded_count = 已折叠进长期记忆的前缀消息条数
 
@@ -166,7 +176,6 @@ class User(Base):
     token_version = Column(Integer, default=0, nullable=False)  # S3.4：令牌吊销计数（+1 全量失效）
     freeze_reason = Column(String(500), default='')   # C7：冻结原因（登录时展示，迁移 0021）
     agreed_at = Column(TIMESTAMP, nullable=True)      # C11：协议接受时间（登录勾选留痕，迁移 0021）
-    paid_amount = Column(Numeric(10, 2), default=0)   # 收款金额（2026-10-30：线下收款，管理员手动填写，迁移 0022）
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -930,17 +939,59 @@ class AgentDatabase:
         finally:
             sess.close()
 
-    def set_user_paid(self, user_id: int, amount: float) -> bool:
-        """收款金额登记（2026-10-30：线下收款，管理员手动填写/更新）"""
+    def add_payment(self, user_id: int, amount: float, note: str = "") -> int:
+        """登记一笔收款（2026-10-30 逐笔记账）。返回记录 id；用户不存在返回 0。"""
         from decimal import Decimal
         sess = self.Session()
         try:
             user = sess.query(User).filter_by(id=user_id).first()
             if not user:
+                return 0
+            p = PaymentRecord(user_id=user_id,
+                              amount=Decimal(str(amount)).quantize(Decimal("0.01")),
+                              note=(note or "")[:200])
+            sess.add(p)
+            sess.commit()
+            return p.id
+        finally:
+            sess.close()
+
+    def list_payments(self, user_id: int, limit: int = 200) -> list:
+        """某用户收款记录（新→旧）"""
+        sess = self.Session()
+        try:
+            rows = sess.query(PaymentRecord).filter_by(user_id=user_id) \
+                .order_by(PaymentRecord.id.desc()).limit(limit).all()
+            return [{"id": p.id, "amount": float(p.amount or 0), "note": p.note or "",
+                     "created_at": p.created_at.strftime("%Y-%m-%d %H:%M:%S") if p.created_at else ""}
+                    for p in rows]
+        finally:
+            sess.close()
+
+    def delete_payment(self, payment_id: int, user_id: int) -> bool:
+        """删除一笔收款记录（归属校验）"""
+        sess = self.Session()
+        try:
+            p = sess.query(PaymentRecord).filter_by(id=payment_id, user_id=user_id).first()
+            if not p:
                 return False
-            user.paid_amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+            sess.delete(p)
             sess.commit()
             return True
+        finally:
+            sess.close()
+
+    def user_paid_totals(self, user_ids: list = None) -> dict:
+        """累计收款按用户聚合（user_ids 为空 = 全部）"""
+        from sqlalchemy import func as _func
+        sess = self.Session()
+        try:
+            q = sess.query(PaymentRecord.user_id,
+                           _func.sum(PaymentRecord.amount))
+            if user_ids:
+                q = q.filter(PaymentRecord.user_id.in_(user_ids))
+            q = q.group_by(PaymentRecord.user_id)
+            return {int(uid or 0): float(total or 0) for uid, total in q.all()}
         finally:
             sess.close()
 
@@ -2593,9 +2644,10 @@ class AgentDatabase:
             paid_by_uid = {}
             if by_user:
                 uids = list(by_user.keys())
-                for u in sess.query(User.id, User.username, User.paid_amount).filter(User.id.in_(uids)).all():
+                for u in sess.query(User.id, User.username).filter(User.id.in_(uids)).all():
                     names[u[0]] = u[1]
-                    paid_by_uid[u[0]] = float(u[2] or 0)
+                # 累计收款（2026-10-30 逐笔记账）
+                paid_by_uid = self.user_paid_totals(uids)
             users = [{"user_id": uid, "username": names.get(uid, f"用户#{uid}"),
                       "cost": round(v["cost"], 4),
                       # 实际精度（round 6 去浮点噪声）；显示金额 = billed − paid 由前端算
@@ -2614,7 +2666,7 @@ class AgentDatabase:
             # 展示端才格式化——不用显示取整值参与计算
             revenue = round(total_cost * COST_PROFIT_MULTIPLIER, 6)
             profit = round(revenue - total_cost, 6)
-            paid_total = float(sess.query(_func.coalesce(_func.sum(User.paid_amount), 0)).scalar() or 0)
+            paid_total = round(sum(self.user_paid_totals().values()), 2)  # 累计收款全量汇总
             return {
                 "overview": {"total_cost": total_cost,
                              "revenue": revenue, "profit": profit,

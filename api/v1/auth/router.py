@@ -174,13 +174,10 @@ def my_cost(request: Request):
     is_admin = getattr(request.state, "role", "") == "admin"
     # 2026-10-30：计算全程用实际金额（round 6 仅去浮点噪声），展示端才做金额格式化
     billed_total = round(data["total_cost"] * COST_PROFIT_MULTIPLIER, 6)
-    # 收款金额（2026-10-30）：线下收款管理员登记；当前应付 = 累计计费 - 已收
+    # 累计收款（2026-10-30 逐笔记账）：线下收款管理员登记，各笔之和
     paid = 0.0
     try:
-        from db.session import User
-        with get_db().session() as sess:
-            u = sess.query(User).filter_by(id=uid).first()
-            paid = round(float(u.paid_amount or 0), 2) if u else 0.0
+        paid = round(get_db().user_paid_totals([uid]).get(uid, 0.0), 2)
     except Exception:
         pass
     out = {

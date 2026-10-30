@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, badge, headers, API_BASE, fmtCost, fmtCostNeg4, fmtCostSigned } from './shared'
 import { freezeUser } from '../../api'
 import { XIcon } from '../icons'
+import Modal from '../Modal'
 
 // detail 归一化（2026-10-30）：pydantic 422 的 detail 是数组——直接 setError 会
 // 渲染对象数组崩溃；取第一条 msg，string 直用，数组兜底「请求参数错误」
@@ -60,18 +61,44 @@ export default function UsersTab() {
     setNotice(data.message || '密码已重置')
     return true
   }
-  // 收款金额登记（2026-10-30）：线下收款，管理员手动填写
-  const handlePaid = async (userId: number, amount: number) => {
-    setError('')
-    const res = await fetch(`${API_BASE}/admin/users/${userId}/paid`, {
+  // 收款子页面（2026-10-30 逐笔记账）：点击「累计收款」弹窗登记/查看/删除
+  const [payUser, setPayUser] = useState<null | { id: number; username: string }>(null)
+  const [payments, setPayments] = useState<any[]>([])
+  const [payAmt, setPayAmt] = useState('')
+  const [payNote, setPayNote] = useState('')
+  const [payBusy, setPayBusy] = useState(false)
+  const [payMsg, setPayMsg] = useState('')
+
+  const loadPayments = async (userId: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${userId}/payments`, { headers: headers() })
+      if (res.ok) setPayments(await res.json())
+    } catch { /* 忽略 */ }
+  }
+  const openPayments = (u: { id: number; username: string }) => {
+    setPayUser(u); setPayments([]); setPayAmt(''); setPayNote(''); setPayMsg('')
+    loadPayments(u.id)
+  }
+  const handleAddPayment = async () => {
+    if (!payUser) return
+    const v = Number(payAmt)
+    if (!(v > 0)) { setPayMsg('请输入大于 0 的金额'); return }
+    setPayBusy(true); setPayMsg('')
+    const res = await fetch(`${API_BASE}/admin/users/${payUser.id}/payments`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...headers() },
-      body: JSON.stringify({ amount }),
+      body: JSON.stringify({ amount: v, note: payNote }),
     })
     const data = await res.json()
-    if (!res.ok || data.detail) { setError(_detail(data) || '登记失败'); return false }
-    setNotice(data.message || '已登记')
-    fetchUsers()
-    return true
+    setPayBusy(false)
+    if (!res.ok || data.detail) { setPayMsg(_detail(data) || '登记失败'); return }
+    setPayAmt(''); setPayNote('')
+    loadPayments(payUser.id)
+    fetchUsers()  // 刷新列表里的累计收款
+  }
+  const handleDeletePayment = async (pid: number) => {
+    if (!payUser) return
+    const res = await fetch(`${API_BASE}/admin/users/${payUser.id}/payments/${pid}`, { method: 'DELETE', headers: headers() })
+    if (res.ok) { loadPayments(payUser.id); fetchUsers() }
   }
   const handleDeleteUser = async (userId: number, username: string) => {
     if (!confirm(`确定删除用户 "${username}"？此操作不可恢复。`)) return
@@ -197,7 +224,13 @@ export default function UsersTab() {
                       </div>
                     </td>
                     <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: 'var(--success)' }}>
-                      {!isAdminRole ? <PaidBtn userId={u.id} initial={u.paid} onPaid={handlePaid} /> : '—'}
+                      {!isAdminRole ? (
+                        <button onClick={() => openPayments({ id: u.id, username: u.username })}
+                          title="累计收款（点击查看/登记每笔收款）" aria-label="累计收款"
+                          style={{ fontSize: 12, padding: '2px 8px', color: 'var(--success)', border: '1px solid var(--success)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>
+                          ¥{fmtCost(u.paid)}
+                        </button>
+                      ) : '—'}
                     </td>
                     <td style={{ padding: '10px 14px' }}>
                       {!isAdminRole && <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -213,35 +246,54 @@ export default function UsersTab() {
           </table>
         </Card>
       )}
-    </>
-  )
-}
 
-/* 收款金额（2026-10-30）：线下收款，管理员手动填写/更新（元，≥0） */
-function PaidBtn({ userId, initial, onPaid }: { userId: number; initial: number; onPaid: (id: number, amount: number) => Promise<boolean> }) {
-  const [open, setOpen] = useState(false); const [amt, setAmt] = useState(''); const [busy, setBusy] = useState(false)
-  if (!open) return (
-    <button onClick={() => { setOpen(true); setAmt(initial > 0 ? String(initial) : '') }}
-      title="登记收款" aria-label="登记收款"
-      style={{ fontSize: 12, padding: '2px 8px', color: 'var(--success)', border: '1px solid var(--success)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>
-      ¥{fmtCost(initial)}
-    </button>
-  )
-  const v = Number(amt)
-  return (
-    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-      <input value={amt} onChange={(e) => setAmt(e.target.value)} type="number" min={0} step={0.01}
-        placeholder="金额" style={{ width: 70, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 12, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
-      <button onClick={async () => {
-        if (!(v >= 0)) return
-        setBusy(true)
-        const ok = await onPaid(userId, v)
-        setBusy(false)
-        if (ok) setOpen(false)
-      }} disabled={!(v >= 0) || busy} title="确定" aria-label="确定"
-        style={{ fontSize: 11, padding: '4px 8px', color: '#fff', background: 'var(--success)', border: 'none', borderRadius: 4, cursor: v >= 0 && !busy ? 'pointer' : 'default', opacity: v >= 0 && !busy ? 1 : 0.55 }}>确定</button>
-      <button onClick={() => setOpen(false)} title="关闭" aria-label="关闭" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><XIcon size={13} /></button>
-    </div>
+      {/* 收款子页面（2026-10-30 逐笔记账）：累计收款 + 每笔记录 + 登记/删除 */}
+      {payUser && (
+        <Modal open title={`收款记录 — ${payUser.username}`} onClose={() => setPayUser(null)} width={520}>
+          <div style={{ minWidth: 420 }}>
+            {/* 登记新收款 */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input value={payAmt} onChange={(e) => setPayAmt(e.target.value)} type="number" min={0} step={0.01}
+                placeholder="金额（元）" style={{ ...inputStyle, width: 110 }} />
+              <input value={payNote} onChange={(e) => setPayNote(e.target.value)} maxLength={200}
+                placeholder="备注（选填，如支付方式/月份）" style={{ ...inputStyle, width: 170, flex: 1 }} />
+              <button onClick={handleAddPayment} disabled={payBusy}
+                style={{ ...btnPrimary, opacity: payBusy ? 0.6 : 1 }}>登记收款</button>
+            </div>
+            {payMsg && <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 10 }}>{payMsg}</div>}
+            {/* 累计 */}
+            <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 10 }}>
+              累计收款：<b style={{ color: 'var(--success)' }}>
+                ¥{fmtCost(payments.reduce((s, p) => s + (Number(p.amount) || 0), 0))}
+              </b>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>共 {payments.length} 笔</span>
+            </div>
+            {/* 记录列表 */}
+            <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: 8 }}>
+              {payments.length === 0 ? (
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>暂无收款记录</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <tbody>
+                    {payments.map((p) => (
+                      <tr key={p.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                        <td style={{ padding: '8px 12px', color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{p.created_at?.slice(0, 16)}</td>
+                        <td style={{ padding: '8px 12px', fontWeight: 600, color: 'var(--success)' }}>¥{fmtCost(p.amount)}</td>
+                        <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontSize: 11 }}>{p.note || '—'}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                          <button onClick={() => handleDeletePayment(p.id)} title="删除" aria-label="删除"
+                            style={{ fontSize: 11, padding: '2px 8px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>删除</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   )
 }
 

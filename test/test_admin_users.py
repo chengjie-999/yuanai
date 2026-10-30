@@ -140,43 +140,62 @@ class TestUserCost:
 
 
 class TestPaidAmount:
-    """收款金额（2026-10-30）：线下收款，管理员手动登记；用户侧可见已收/当前应付"""
+    """收款记录（2026-10-30 逐笔记账）：线下收款管理员登记，累计 = 各笔之和"""
 
-    def test_admin_set_paid_and_user_view(self, client, db, admin_jwt):
+    def test_payment_records_and_user_view(self, client, db, admin_jwt):
         r = db.register_user("__paid_target__", "test1234")
         assert "error" not in r, r
         uid = r["id"]
         ah = {"Authorization": f"Bearer {admin_jwt}"}
         try:
-            # 负数 → 422
-            resp = client.post(f"/api/v1/admin/users/{uid}/paid",
-                               json={"amount": -1}, headers=ah)
-            assert resp.status_code == 422
-            # 登记收款 12.34
-            resp = client.post(f"/api/v1/admin/users/{uid}/paid",
-                               json={"amount": 12.34}, headers=ah)
-            assert resp.status_code == 200
-            # 用户列表带 paid
+            # 负数/0 → 422
+            assert client.post(f"/api/v1/admin/users/{uid}/payments",
+                               json={"amount": -1}, headers=ah).status_code == 422
+            assert client.post(f"/api/v1/admin/users/{uid}/payments",
+                               json={"amount": 0}, headers=ah).status_code == 422
+            # 登记两笔：10.00（备注）+ 2.34
+            r1 = client.post(f"/api/v1/admin/users/{uid}/payments",
+                             json={"amount": 10, "note": "首月"}, headers=ah)
+            assert r1.status_code == 200
+            r2 = client.post(f"/api/v1/admin/users/{uid}/payments",
+                             json={"amount": 2.34}, headers=ah)
+            assert r2.status_code == 200
+            # 记录列表：2 笔，含备注
+            rows = client.get(f"/api/v1/admin/users/{uid}/payments", headers=ah).json()
+            assert len(rows) == 2
+            assert any(p["note"] == "首月" for p in rows)
+            # 用户列表 paid = 累计 12.34
             users = client.get("/api/v1/admin/users", headers=ah).json()
             hit = [u for u in users if u["id"] == uid]
             assert hit and hit[0]["paid"] == pytest.approx(12.34)
-            # 用户视角 /auth/cost：paid + outstanding = billed_total - paid
+            # 用户视角 /auth/cost：paid 累计 + outstanding
             from api.v1.auth.utils import create_token
             h = {"Authorization": f"Bearer {create_token(uid, 'user')}"}
             d = client.get("/api/v1/auth/cost", headers=h).json()
             assert d["paid"] == pytest.approx(12.34)
             assert d["outstanding"] == pytest.approx(round(d["billed_total"] - 12.34, 6))
+            # 删除一笔 → 累计变 10.00
+            pid = rows[0]["id"]
+            assert client.delete(f"/api/v1/admin/users/{uid}/payments/{pid}",
+                                 headers=ah).status_code == 200
+            users = client.get("/api/v1/admin/users", headers=ah).json()
+            hit = [u for u in users if u["id"] == uid]
+            assert hit and hit[0]["paid"] == pytest.approx(10.00)
+            # 越权删除他人记录 → 404（归属校验）
+            assert client.delete(f"/api/v1/admin/users/{uid}/payments/{pid}",
+                                 headers=ah).status_code == 404
             # 不存在的用户 → 404
-            assert client.post("/api/v1/admin/users/999999999/paid",
+            assert client.post("/api/v1/admin/users/999999999/payments",
                                json={"amount": 1}, headers=ah).status_code == 404
         finally:
-            from db.session import User
+            from db.session import User, PaymentRecord
             sess = db.Session()
             try:
+                sess.query(PaymentRecord).filter_by(user_id=uid).delete()
                 u = sess.query(User).filter_by(id=uid).first()
                 if u:
                     sess.delete(u)
-                    sess.commit()
+                sess.commit()
             finally:
                 sess.close()
 

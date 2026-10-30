@@ -45,6 +45,8 @@ async def list_users(request: Request):
             e["cost"] += model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
             e["calls"] += int(r[4] or 0)
         now = datetime.utcnow()
+        # 累计收款（2026-10-30 逐笔记账：各笔之和）
+        paid_totals = db.user_paid_totals([u.id for u in users])
         return [{
             "id": u.id, "username": u.username, "display_name": u.display_name or "",
             "role": u.role,
@@ -53,13 +55,13 @@ async def list_users(request: Request):
             "freeze_reason": u.freeze_reason or "",
             "create_time": str(u.create_time)[:19] if u.create_time else "",
             # 财务口径（2026-10-30）：实际成本 + 系数成本（=成本×系数，应计）+
-            # 收款金额；显示金额 = 系数成本 − 收款（前端计算）
+            # 累计收款；显示金额 = 系数成本 − 收款（前端计算）
             "cost": round(by_uid.get(u.id, {}).get("cost", 0), 4),
             # 系数成本保留实际精度（round 6 去浮点噪声），显示金额 = 系数成本 − 收款
             # 由前端用实际值计算后再格式化（2026-10-30：计算不用显示取整值）
             "billed": round(by_uid.get(u.id, {}).get("cost", 0) * COST_PROFIT_MULTIPLIER, 6),
             "calls": by_uid.get(u.id, {}).get("calls", 0),
-            "paid": float(u.paid_amount or 0),
+            "paid": round(paid_totals.get(u.id, 0.0), 2),
             "multiplier": COST_PROFIT_MULTIPLIER,
         } for u in users]
 @router.post("/users/revoke-tokens")
@@ -135,19 +137,37 @@ async def admin_reset_password(user_id: int, body: ResetPasswordBody, request: R
 
 
 class PaidAmountBody(BaseModel):
-    amount: float = Field(..., ge=0, description="收款金额（元，≥0，两位小数）")
+    amount: float = Field(..., gt=0, description="收款金额（元，>0，两位小数）")
+    note: str = Field("", max_length=200, description="备注（选填，如支付方式/月份）")
 
 
-@router.post("/users/{user_id}/paid")
-async def admin_set_paid(user_id: int, body: PaidAmountBody, request: Request):
-    """收款金额登记（2026-10-30）：线下收款，管理员手动填写/更新"""
+@router.get("/users/{user_id}/payments")
+async def admin_list_payments(user_id: int, request: Request):
+    """收款记录列表（2026-10-30 逐笔记账，子页面展示）"""
+    require_admin(request)
+    return get_db().list_payments(user_id)
+
+
+@router.post("/users/{user_id}/payments")
+async def admin_add_payment(user_id: int, body: PaidAmountBody, request: Request):
+    """登记一笔收款（2026-10-30）：逐笔追加，累计收款 = 各笔之和"""
     require_admin(request)
     db = get_db()
     from decimal import Decimal
     amount = round(Decimal(str(body.amount)), 2)
-    if not db.set_user_paid(user_id, float(amount)):
+    pid = db.add_payment(user_id, float(amount), body.note)
+    if not pid:
         raise HTTPException(status_code=404, detail="用户不存在")
-    return {"ok": True, "message": f"已登记收款金额 ¥{amount:.2f}"}
+    return {"ok": True, "payment_id": pid, "message": f"已登记收款 ¥{amount:.2f}"}
+
+
+@router.delete("/users/{user_id}/payments/{payment_id}")
+async def admin_delete_payment(user_id: int, payment_id: int, request: Request):
+    """删除一笔收款记录（归属校验；2026-10-30）"""
+    require_admin(request)
+    if not get_db().delete_payment(payment_id, user_id):
+        raise HTTPException(status_code=404, detail="记录不存在")
+    return {"ok": True, "message": "已删除该笔收款记录"}
 
 
 @router.delete("/users/{user_id}")

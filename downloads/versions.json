@@ -1,0 +1,13 @@
+{
+  "default_version": "20261030-demo",
+  "versions": [
+    {
+      "version": "20261030-demo",
+      "filename": "yuanai-agent-v20261030-demo.exe",
+      "size": 330,
+      "sha256": "449b64f08789e601f001a1b0712da07ea6d716c2e489b53cd64ce3e76390ff7c",
+      "uploaded_at": "2026-10-30 19:37:32",
+      "note": "本地联调演示版本（seed 脚本生成）"
+    }
+  ]
+}

@@ -86,14 +86,27 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                   </span>
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                  <span onClick={(e) => { e.stopPropagation(); onRename(s.session_id, s.title) }}
+                  {!s.is_main && (
+                    <span onClick={(e) => onDelete(e, s.session_id)} title="删除对话" aria-label="删除对话"
+                      className="chat-session-del"
+                      style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+                    ><TrashIcon size={13} /></span>
+                  )}                  {/* 自动生成对话昵称（2026-10-31 用户拍板：删除按钮后；显式触发覆盖任意标题） */}
+                  <span onClick={(e) => { e.stopPropagation(); onGenTitle(s.session_id) }}
+                    title="自动生成昵称" aria-label="自动生成昵称"
+                    className="yuan-tip" data-tip="AI 自动生成昵称"
+                    style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+                  ><SparklesIcon size={13} /></span>                  <span onClick={(e) => { e.stopPropagation(); onRename(s.session_id, s.title) }}
                     title="重命名" aria-label="重命名"
                     className="yuan-tip" data-tip="重命名"
                     style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
-                  ><EditIcon size={13} /></span>
-                  {/* 主对话降级（2026-10-30）：不清数据——转普通对话 + 自动新建空主对话 */}
+                  ><EditIcon size={13} /></span>                  {/* 主对话降级（2026-10-30）：不清数据——转普通对话 + 自动新建空主对话 */}
                   {s.is_main && (
                     <span onClick={(e) => { e.stopPropagation(); onDemoteMain(s.session_id) }}
                       title="转为普通对话" aria-label="转为普通对话"
@@ -103,24 +116,12 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
                     ><ArchiveIcon size={13} /></span>
                   )}
+
+
                   {/* 主对话不可删除（2026-10-30 修复）：删除后当前页继续发消息会落孤儿数据，
                       刷新又自动重建——主对话是每用户唯一锚点，隐藏删除按钮 */}
-                  {!s.is_main && (
-                    <span onClick={(e) => onDelete(e, s.session_id)} title="删除对话" aria-label="删除对话"
-                      className="chat-session-del"
-                      style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
-                    ><TrashIcon size={13} /></span>
-                  )}
-                  {/* 自动生成对话昵称（2026-10-31 用户拍板：删除按钮后；显式触发覆盖任意标题） */}
-                  <span onClick={(e) => { e.stopPropagation(); onGenTitle(s.session_id) }}
-                    title="自动生成昵称" aria-label="自动生成昵称"
-                    className="yuan-tip" data-tip="AI 自动生成昵称"
-                    style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
-                  ><SparklesIcon size={13} /></span>
+
+
                 </span>
               </div>
             ))}

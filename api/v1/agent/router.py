@@ -275,6 +275,18 @@ class ActivityReport(BaseModel):
     detail: str = ""
 
 
+@router.get("/downloads")
+async def agent_downloads(request: Request):
+    """用户侧 Agent 下载清单（2026-10-30，登录可见）：全部版本 + 默认标记。
+    普通用户下载入口（设置页「本地 Agent 下载」卡）消费本端点。"""
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    from api.v1.admin.agent_devices import _load_versions
+    data = _load_versions()
+    return {"default_version": data.get("default_version", ""), "versions": data["versions"]}
+
+
 @router.post("/activity")
 async def report_activity(req: ActivityReport, request: Request):
     """无 WS 客户端（yuancc hooks 等）的元数据活动上报——设备凭据鉴权，

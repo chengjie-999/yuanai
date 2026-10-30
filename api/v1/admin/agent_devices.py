@@ -1,6 +1,7 @@
-"""后台管理 — Agent 维度：安装码/设备绑定/安装包上传/长令牌"""
+"""后台管理 — Agent 维度：安装码/设备绑定/安装包多版本管理/长令牌"""
 
 import os
+import re
 import json
 from datetime import datetime
 from pydantic import BaseModel
@@ -10,6 +11,59 @@ from api.v1.middleware import require_admin
 from utils.data_path import root_path
 
 router = APIRouter(tags=["admin"])  # 无 prefix：由主 router 统一加 /admin
+
+# ---- Agent 版本清单（2026-10-30 多版本保留：上传不再覆盖，全部留存可回退） ----
+
+_VERSION_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,32}$")  # 版本号白名单（防路径穿越/URL 安全）
+
+
+def _downloads_dir() -> str:
+    d = os.path.join(root_path(), "downloads")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _versions_dir() -> str:
+    d = os.path.join(_downloads_dir(), "versions")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _load_versions() -> dict:
+    """versions.json 清单：{default_version, versions:[{version,filename,size,sha256,uploaded_at,note}]}"""
+    path = os.path.join(_downloads_dir(), "versions.json")
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and isinstance(data.get("versions"), list):
+                    return data
+        except Exception:
+            pass
+    return {"default_version": "", "versions": []}
+
+
+def _save_versions(data: dict) -> None:
+    with open(os.path.join(_downloads_dir(), "versions.json"), "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _sync_version_json(data: dict) -> None:
+    """同步兼容 version.json（客户端自动更新读取）：指向默认版本的
+    文件与 hash——客户端零改动。发布顺序纪律保持：先后端（含 sha256）再推 exe。"""
+    default = next((v for v in data["versions"] if v["version"] == data.get("default_version")), None)
+    if not default and data["versions"]:
+        default = data["versions"][-1]  # 未指定默认 → 最新上传
+    if not default:
+        return
+    with open(os.path.join(_downloads_dir(), "version.json"), "w", encoding="utf-8") as f:
+        json.dump({
+            "version": default["version"],
+            "exe": f"/downloads/versions/{default['filename']}",
+            "size": default["size"],
+            "sha256": default["sha256"],
+            "min_version": default["version"],
+        }, f, ensure_ascii=False, indent=2)
 
 
 class AgentTokenRequest(BaseModel):
@@ -49,18 +103,20 @@ async def mint_agent_token(req: AgentTokenRequest, request: Request):
                              expires_days=req.expires_days)
         return {"token": token, "user_id": user.id, "expires_days": req.expires_days}
 @router.post("/agent-exe-upload")
-async def upload_agent_exe(request: Request, version: str = Form(""), file: UploadFile = File(...)):
-    """上传本地 Agent 安装包（仅 admin）：写入 downloads/yuanai-agent.exe 并更新 version.json。
-    发布流程：打包 → 网页拖拽上传 → 所有客户端按 version.json 自动检查更新。
-    版本号留空时自动按上传时间生成（客户端比对不同即提示更新）。"""
+async def upload_agent_exe(request: Request, version: str = Form(""), note: str = Form(""),
+                           file: UploadFile = File(...)):
+    """上传本地 Agent 安装包（仅 admin）——多版本保留（2026-10-30）：
+    写入 downloads/versions/yuanai-agent-{version}.exe 并追加 versions.json 清单，
+    不再覆盖旧版本；同版本号上传 = 覆盖该版本（修正重新打包）。
+    version.json 同步指向默认版本（客户端自动更新零改动）。"""
     require_admin(request)
     version = version.strip() or datetime.now().strftime("%Y%m%d-%H%M%S")
+    if not _VERSION_NAME_RE.match(version):
+        raise HTTPException(status_code=400, detail="版本号仅限字母/数字/._-（≤32 字符）")
     if not (file.filename or "").lower().endswith(".exe"):
         raise HTTPException(status_code=400, detail="仅支持 .exe 安装包")
 
-    downloads_dir = os.path.join(root_path(), "downloads")
-    os.makedirs(downloads_dir, exist_ok=True)
-    exe_path = os.path.join(downloads_dir, "yuanai-agent.exe")
+    exe_path = os.path.join(_versions_dir(), f"yuanai-agent-{version}.exe")
     tmp_path = exe_path + ".uploading"
 
     # 流式分块写入（200MB 级文件不占内存）+ 同步计算 sha256（S1.7，不二次读盘）
@@ -81,17 +137,17 @@ async def upload_agent_exe(request: Request, version: str = Form(""), file: Uplo
         if size == 0:
             raise HTTPException(status_code=400, detail="文件为空")
 
-        # 原子替换 + 更新版本信息（version.json 供客户端自动更新检查；
-        # sha256 为客户端下载校验必需——发布顺序：先后端（含 sha256）再推新客户端）
         os.replace(tmp_path, exe_path)
-        with open(os.path.join(downloads_dir, "version.json"), "w", encoding="utf-8") as f:
-            json.dump({
-                "version": version,
-                "exe": "/downloads/yuanai-agent.exe",
-                "size": size,
-                "sha256": hasher.hexdigest(),
-                "min_version": version,
-            }, f, ensure_ascii=False, indent=2)
+        data = _load_versions()
+        entry = {"version": version, "filename": f"yuanai-agent-{version}.exe",
+                 "size": size, "sha256": hasher.hexdigest(),
+                 "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                 "note": (note or "")[:200]}
+        data["versions"] = [v for v in data["versions"] if v["version"] != version] + [entry]
+        if not data.get("default_version"):
+            data["default_version"] = version
+        _save_versions(data)
+        _sync_version_json(data)
         return {"ok": True, "version": version, "size": size,
                 "sha256": hasher.hexdigest()}
     finally:
@@ -100,6 +156,50 @@ async def upload_agent_exe(request: Request, version: str = Form(""), file: Uplo
                 os.remove(tmp_path)
             except OSError:
                 pass
+
+
+@router.get("/agent-versions")
+async def list_agent_versions(request: Request):
+    """版本清单（仅 admin）：含默认标记"""
+    require_admin(request)
+    data = _load_versions()
+    return {"default_version": data.get("default_version", ""), "versions": data["versions"]}
+
+
+class SetDefaultVersionBody(BaseModel):
+    version: str
+
+
+@router.post("/agent-versions/default")
+async def set_default_version(body: SetDefaultVersionBody, request: Request):
+    """指定默认下载版本（仅 admin）——同步 version.json 供客户端自动更新"""
+    require_admin(request)
+    data = _load_versions()
+    if not any(v["version"] == body.version for v in data["versions"]):
+        raise HTTPException(status_code=404, detail="版本不存在")
+    data["default_version"] = body.version
+    _save_versions(data)
+    _sync_version_json(data)
+    return {"ok": True, "default_version": body.version}
+
+
+@router.delete("/agent-versions/{version}")
+async def delete_agent_version(version: str, request: Request):
+    """删除某个版本（仅 admin）：默认版本不可删（先改默认再删）"""
+    require_admin(request)
+    data = _load_versions()
+    if data.get("default_version") == version:
+        raise HTTPException(status_code=400, detail="默认版本不可删除，请先指定新的默认版本")
+    entry = next((v for v in data["versions"] if v["version"] == version), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="版本不存在")
+    data["versions"] = [v for v in data["versions"] if v["version"] != version]
+    _save_versions(data)
+    try:
+        os.remove(os.path.join(_versions_dir(), entry["filename"]))
+    except OSError:
+        pass
+    return {"ok": True, "deleted": version}
 
 
 @router.post("/agent-codes")

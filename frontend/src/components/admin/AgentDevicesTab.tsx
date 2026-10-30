@@ -50,17 +50,22 @@ export default function AgentDevicesTab() {
   const [newCodes, setNewCodes] = useState<string[]>([])
   const [bindUserId, setBindUserId] = useState<Record<number, string>>({})
 
-  // ---- 已发布安装包信息（version.json） ----
-  const [pkgInfo, setPkgInfo] = useState<{ version: string; size: number } | null>(null)
+  // ---- Agent 版本清单（2026-10-30 多版本保留：上传不覆盖，全部留存可回退） ----
+  const [versions, setVersions] = useState<any[]>([])
+  const [defaultVersion, setDefaultVersion] = useState('')
+  const [upVersion, setUpVersion] = useState('')
+  const [upNote, setUpNote] = useState('')
 
-  const loadPkgInfo = () => {
-    fetch('/downloads/version.json', { cache: 'no-store' })
+  const loadVersions = () => {
+    fetch(`${API_BASE}/admin/agent-versions`, { headers: headers() })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d?.version) setPkgInfo(d); else setPkgInfo(null) })
-      .catch(() => setPkgInfo(null))
+      .then((d) => {
+        if (d) { setVersions(d.versions || []); setDefaultVersion(d.default_version || '') }
+      })
+      .catch(() => {})
   }
 
-  // ---- 安装包上传（拖拽 + XHR 带进度，发布即分发） ----
+  // ---- 安装包上传（拖拽 + XHR 带进度，发布即进版本库） ----
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadPct, setUploadPct] = useState(0)
   const [uploadMsg, setUploadMsg] = useState('')
@@ -70,7 +75,8 @@ export default function AgentDevicesTab() {
   const uploadExeFile = (f: File) => {
     setUploadBusy(true); setUploadPct(0); setUploadMsg('')
     const fd = new FormData()
-    fd.append('version', '')  // 留空 = 后端自动按上传时间生成版本号
+    fd.append('version', upVersion.trim())  // 留空 = 后端自动按上传时间生成版本号
+    fd.append('note', upNote.trim())
     fd.append('file', f)
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_BASE}/admin/agent-exe-upload`)
@@ -82,12 +88,37 @@ export default function AgentDevicesTab() {
       setUploadBusy(false)
       try {
         const data = JSON.parse(xhr.responseText)
-        if (xhr.status === 200 && data.ok) { setUploadMsg(`✓ 已发布 v${data.version}（${(data.size / 1024 / 1024).toFixed(0)}MB）`); loadPkgInfo() }
-        else setUploadMsg(data.detail || '上传失败')
+        if (xhr.status === 200 && data.ok) {
+          setUploadMsg(`✓ 已发布 v${data.version}（${(data.size / 1024 / 1024).toFixed(0)}MB）`)
+          setUpVersion(''); setUpNote('')
+          loadVersions()
+        } else setUploadMsg(data.detail || '上传失败')
       } catch { setUploadMsg(`上传失败 HTTP ${xhr.status}`) }
     }
     xhr.onerror = () => { setUploadBusy(false); setUploadMsg('上传失败，网络错误') }
     xhr.send(fd)
+  }
+
+  const handleSetDefault = async (version: string) => {
+    const res = await fetch(`${API_BASE}/admin/agent-versions/default`, {
+      method: 'POST', headers: headers(), body: JSON.stringify({ version }),
+    })
+    const data = await res.json()
+    if (!res.ok) { setError(data.detail || '设置失败'); return }
+    loadVersions()
+  }
+
+  const handleDeleteVersion = async (version: string) => {
+    if (!window.confirm(`确定删除版本 v${version}？删除后不可恢复。`)) return
+    const res = await fetch(`${API_BASE}/admin/agent-versions/${version}`, {
+      method: 'DELETE', headers: headers(),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setError(data.detail || '删除失败')
+      return
+    }
+    loadVersions()
   }
 
   const handleUploadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,7 +154,7 @@ export default function AgentDevicesTab() {
 
   useEffect(() => {
     fetchDevices()
-    loadPkgInfo()
+    loadVersions()
     const t = setInterval(fetchDevices, 10000)
     return () => clearInterval(t)
   }, [])
@@ -170,30 +201,76 @@ export default function AgentDevicesTab() {
       <Card>
         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>本机 Agent 安装包</div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <a href="/downloads/yuanai-agent.exe" style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '8px 18px', borderRadius: 8, background: 'var(--accent)', color: '#fff',
-            textDecoration: 'none', fontSize: 13, fontWeight: 600,
-          }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-            </svg>
-            下载（Windows）
-          </a>
-          {pkgInfo ? (
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              当前版本 <b style={{ color: 'var(--text-primary)' }}>v{pkgInfo.version}</b> · {(pkgInfo.size / 1024 / 1024).toFixed(0)}MB
-            </span>
+          {defaultVersion ? (
+            <a href={`/downloads/versions/yuanai-agent-${defaultVersion}.exe`} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '8px 18px', borderRadius: 8, background: 'var(--accent)', color: '#fff',
+              textDecoration: 'none', fontSize: 13, fontWeight: 600,
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              下载默认版本（Windows）
+            </a>
           ) : (
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>尚未发布安装包</span>
+          )}
+          {defaultVersion && (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              默认版本 <b style={{ color: 'var(--text-primary)' }}>v{defaultVersion}</b> · 共 {versions.length} 个版本
+            </span>
           )}
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             用户使用流程：下载 → 双击运行 → 弹出窗口粘贴安装码 → 完成（托盘常驻，可选开关各 Agent）
           </span>
         </div>
-        {/* 上传新版本（拖拽上传，发布即分发：客户端托盘自动检查 version.json 更新） */}
+        {/* 版本清单（2026-10-30 多版本保留：全部可下载/设为默认/删除） */}
+        {versions.length > 0 && (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 12 }}>
+            <thead>
+              <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                {['版本', '大小', '上传时间', '备注', '操作'].map((h) => (
+                  <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {versions.map((v) => (
+                <tr key={v.version} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                  <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    v{v.version}
+                    {v.version === defaultVersion && (
+                      <span style={{ fontSize: 11, color: 'var(--accent)', marginLeft: 6, fontWeight: 600 }}>默认</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>{(v.size / 1024 / 1024).toFixed(0)}MB</td>
+                  <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>{v.uploaded_at?.slice(0, 16)}</td>
+                  <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>{v.note || '—'}</td>
+                  <td style={{ padding: '6px 8px', display: 'flex', gap: 6 }}>
+                    <a href={`/downloads/versions/${v.filename}`} style={{ fontSize: 12, color: 'var(--accent)' }}>下载</a>
+                    {v.version !== defaultVersion && (
+                      <button onClick={() => handleSetDefault(v.version)} title="设为默认" aria-label="设为默认"
+                        style={{ fontSize: 12, padding: '2px 8px', color: 'var(--accent)', border: '1px solid var(--accent)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>设为默认</button>
+                    )}
+                    {v.version !== defaultVersion && (
+                      <button onClick={() => handleDeleteVersion(v.version)} title="删除" aria-label="删除"
+                        style={{ fontSize: 12, padding: '2px 8px', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>删除</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {/* 上传新版本（拖拽上传，多版本保留：同版本号覆盖，不同版本号新增） */}
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px dashed var(--border)' }}>
           <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: 'var(--text-primary)' }}>发布新版本</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <input value={upVersion} onChange={(e) => setUpVersion(e.target.value)} placeholder="版本号（留空自动生成，如 20261030）"
+              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)', width: 250 }} />
+            <input value={upNote} onChange={(e) => setUpNote(e.target.value)} maxLength={200} placeholder="备注（选填，如本次更新内容）"
+              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)', width: 220 }} />
+          </div>
           <input ref={fileRef} type="file" accept=".exe" hidden onChange={handleUploadFile} />
           <div
             onClick={() => !uploadBusy && fileRef.current?.click()}

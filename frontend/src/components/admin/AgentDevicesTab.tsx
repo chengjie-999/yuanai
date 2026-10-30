@@ -218,11 +218,11 @@ export default function AgentDevicesTab() {
       {error && <ErrorMsg msg={error} onRetry={fetchDevices} />}
 
       {/* 安装包发布：下载 + 上传新版本（上传即发布，客户端自动更新） */}
-      <Card>
+      <Card style={{ padding: '16px 20px' }}>
         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>本机 Agent 安装包</div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {defaultVersion ? (
-            <a href={`/downloads/versions/yuanai-agent-${defaultVersion}.exe`} style={{
+            <a href={`/downloads/versions/yuanai-agent-v${defaultVersion}.exe`} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               padding: '8px 18px', borderRadius: 8, background: 'var(--accent)', color: '#fff',
               textDecoration: 'none', fontSize: 13, fontWeight: 600,

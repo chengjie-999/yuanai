@@ -197,16 +197,18 @@ async def set_default_version(body: SetDefaultVersionBody, request: Request):
 
 @router.delete("/agent-versions/{version}")
 async def delete_agent_version(version: str, request: Request):
-    """删除某个版本（仅 admin）：默认版本不可删（先改默认再删）"""
+    """删除某个版本（仅 admin）。默认版本也允许删（2026-10-31 用户拍板）：
+    删除后自动把剩余最新版本设为默认；无剩余则清单为空。"""
     require_admin(request)
     data = _load_versions()
-    if data.get("default_version") == version:
-        raise HTTPException(status_code=400, detail="默认版本不可删除，请先指定新的默认版本")
     entry = next((v for v in data["versions"] if v["version"] == version), None)
     if not entry:
         raise HTTPException(status_code=404, detail="版本不存在")
     data["versions"] = [v for v in data["versions"] if v["version"] != version]
+    if data.get("default_version") == version:
+        data["default_version"] = data["versions"][-1]["version"] if data["versions"] else ""
     _save_versions(data)
+    _sync_version_json(data)
     try:
         os.remove(os.path.join(_versions_dir(), entry["filename"]))
     except OSError:

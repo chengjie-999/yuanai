@@ -97,9 +97,11 @@ class TestAgentVersions:
                            json={"version": "d002"}, headers=ah)
         assert resp.status_code == 200
         assert client.get("/api/v1/admin/agent-versions", headers=ah).json()["default_version"] == "d002"
-        # 删除默认 → 400
+        # 删默认版本 → 允许，自动让位剩余最新（2026-10-31 用户拍板）
         resp = client.delete("/api/v1/admin/agent-versions/d002", headers=ah)
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        data = client.get("/api/v1/admin/agent-versions", headers=ah).json()
+        assert data["default_version"] == "d001"
         # 删非默认 → ok
         resp = client.delete("/api/v1/admin/agent-versions/d001", headers=ah)
         assert resp.status_code == 200

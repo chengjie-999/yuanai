@@ -843,6 +843,35 @@ async def demote_main(req: MessagesRequest, request: Request):
         raise HTTPException(status_code=500, detail=_SAFE_ERROR)
 
 
+@router.post("/generate-title")
+async def generate_session_title(req: MessagesRequest, request: Request):
+    """自动生成对话昵称（2026-10-31 用户拍板：侧栏昵称「自动生成」按钮显式触发，
+    覆盖任意当前标题；自动生成链路仍不覆盖手动重命名）"""
+    try:
+        db = _get_db()
+        user_id = _get_user_id(request)
+        _verify_session_owner(db, req.session_id, user_id)
+        msgs = db.get_chats(req.session_id)
+        if len(msgs) < 2:
+            raise HTTPException(status_code=400, detail="对话内容太少，先聊几句再生成昵称")
+        from api.v1.chat.title_gen import generate_title
+        updated = generate_title(req.session_id, msgs, force=True)
+        if not updated:
+            raise HTTPException(status_code=500, detail="昵称生成失败，请稍后重试")
+        from db.cache import clear_chat_cache
+        clear_chat_cache(req.session_id)
+        from db.session import ChatSession
+        with db.session() as sess:
+            row = sess.query(ChatSession).filter_by(session_id=req.session_id).first()
+            title = row.title if row else ""
+        return {"ok": True, "title": title}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("生成昵称失败: %s", e)
+        raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
 @router.post("/session/new")
 async def new_session(req: NewSessionRequest, request: Request):
     """创建新会话"""

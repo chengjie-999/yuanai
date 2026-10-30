@@ -39,6 +39,9 @@ export const FlagIcon = (p: IconProps) => <Svg {...p}><path d="M4 15s1-1 4-1 5 2
 /* 归档（主对话转为普通对话 #17） */
 export const ArchiveIcon = (p: IconProps) => <Svg {...p}><rect width="20" height="5" x="2" y="3" rx="1" /><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" /><path d="M10 12h4" /></Svg>
 
+/* 星光（AI 自动生成昵称 2026-10-31） */
+export const SparklesIcon = (p: IconProps) => <Svg {...p}><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" /></Svg>
+
 /* 喇叭公告（更新公告 2026-10-31） */
 export const MegaphoneIcon = (p: IconProps) => <Svg {...p}><path d="m3 11 18-5v12L3 14v-3z" /><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" /></Svg>
 

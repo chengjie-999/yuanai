@@ -427,6 +427,24 @@ export default function ChatPage({ user }: { user?: any }) {
 
   // U2 会话重命名（2026-10-25）：prompt 输入新标题 → 后端归属校验更新 →
   // 刷新列表；改名后 /chat/save 的自动标题不会覆盖（_is_auto_title 不命中）
+  // 自动生成对话昵称（2026-10-31 用户拍板：侧栏删除按钮后的星光图标显式触发，
+  // 覆盖任意当前标题；自动生成链路仍不覆盖手动重命名）
+  const handleGenTitle = async (sid: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/chat/generate-title`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ session_id: sid }),
+      })
+      const data = await res.json()
+      if (res.ok && data.title) {
+        refreshSessions()
+        flashNotice(`已生成昵称：${data.title}`)
+      } else {
+        flashNotice(data?.detail || '昵称生成失败')
+      }
+    } catch { flashNotice('昵称生成失败，请重试') }
+  }
+
   const handleRenameSession = async (sid: string, oldTitle: string) => {
     const title = window.prompt('新标题', oldTitle)
     if (!title || !title.trim() || title.trim() === oldTitle) return
@@ -971,7 +989,7 @@ export default function ChatPage({ user }: { user?: any }) {
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}
-        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} onDemoteMain={handleDemoteMain} onOpenTrash={openTrash} />
+        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} onDemoteMain={handleDemoteMain} onOpenTrash={openTrash} onGenTitle={handleGenTitle} />
 
       {sidebarOpen && <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 

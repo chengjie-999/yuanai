@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import type { SessionInfo } from './helpers'
 import { groupSessions } from './helpers'
-import { PlusIcon, TrashIcon, PinIcon, SearchIcon, EditIcon, ArchiveIcon } from '../icons'
+import { PlusIcon, TrashIcon, PinIcon, SearchIcon, EditIcon, ArchiveIcon, SparklesIcon } from '../icons'
 
-export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete, onRename, onDemoteMain, onOpenTrash }: {
+export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete, onRename, onDemoteMain, onOpenTrash, onGenTitle }: {
   sessions: SessionInfo[]; currentSid: string; sidebarOpen: boolean; isMobile: boolean
   onNewSession: () => void; onSelect: (sid: string) => void; onDelete: (e: React.MouseEvent, sid: string) => void
   onRename: (sid: string, title: string) => void
   onDemoteMain: (sid: string) => void
+  onGenTitle: (sid: string) => void
   onOpenTrash: () => void
 }) {
   // U3 侧栏会话搜索（2026-10-25）：按标题客户端过滤
@@ -112,6 +113,14 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
                     ><TrashIcon size={13} /></span>
                   )}
+                  {/* 自动生成对话昵称（2026-10-31 用户拍板：删除按钮后；显式触发覆盖任意标题） */}
+                  <span onClick={(e) => { e.stopPropagation(); onGenTitle(s.session_id) }}
+                    title="自动生成昵称" aria-label="自动生成昵称"
+                    className="yuan-tip" data-tip="AI 自动生成昵称"
+                    style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+                  ><SparklesIcon size={13} /></span>
                 </span>
               </div>
             ))}

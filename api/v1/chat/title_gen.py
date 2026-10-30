@@ -36,7 +36,7 @@ def _is_auto_title(title: str, first_msg: str) -> bool:
     return False
 
 
-def generate_title(session_id: str, messages: list) -> bool:
+def generate_title(session_id: str, messages: list, force: bool = False) -> bool:
     """同步执行体（可测试）：从对话生成标题并落库。返回是否更新。"""
     if len(messages) < 2:
         return False
@@ -55,7 +55,9 @@ def generate_title(session_id: str, messages: list) -> bool:
     try:
         with db.session() as sess:
             row = sess.query(ChatSession).filter_by(session_id=session_id).first()
-            if not row or not _is_auto_title(row.title, first_msg):
+            # force（用户点「自动生成昵称」按钮）：跳过自动标题判定——
+            # 手动重命名优先级最高仅约束自动生成，不约束用户显式触发
+            if not row or (not force and not _is_auto_title(row.title, first_msg)):
                 return False
             # 已生成过且标题已非自动 → 跳过（上面的判断已覆盖；此处双保险）
             from config.settings import MEMORY_MODEL

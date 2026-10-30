@@ -2556,7 +2556,9 @@ class AgentDatabase:
                         ("calls", "prompt_tokens", "completion_tokens")}}
                         for k, v in sorted(by_purpose.items(), key=lambda x: -x[1]["cost"])]
 
-            # 用户维度 Top10（按 (user, model) 聚合后折算；用户名 JOIN）
+            # 用户维度（按 (user, model) 聚合后折算；用户名 JOIN）。
+            # 2026-10-30：展示每个用户的实际成本 + 显示金额（计费价 = 成本 × 盈利系数），
+            # 不再只取 Top10
             user_rows = (base.with_entities(TokenUsage.user_id, TokenUsage.model,
                                             _func.sum(TokenUsage.prompt_tokens),
                                             _func.sum(TokenUsage.completion_tokens),
@@ -2572,9 +2574,12 @@ class AgentDatabase:
                 uids = list(by_user.keys())
                 for u in sess.query(User.id, User.username).filter(User.id.in_(uids)).all():
                     names[u[0]] = u[1]
+            from config.settings import COST_PROFIT_MULTIPLIER
             users = [{"user_id": uid, "username": names.get(uid, f"用户#{uid}"),
-                      "cost": round(v["cost"], 4), "calls": v["calls"]}
-                     for uid, v in sorted(by_user.items(), key=lambda x: -x[1]["cost"])[:10]]
+                      "cost": round(v["cost"], 4),
+                      "billed": round(v["cost"] * COST_PROFIT_MULTIPLIER, 2),
+                      "calls": v["calls"]}
+                     for uid, v in sorted(by_user.items(), key=lambda x: -x[1]["cost"])]
 
             # 概览 + 缓存命中率（前缀缓存成效指标）
             calls_total = sum(m["calls"] for m in models)

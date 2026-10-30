@@ -8,6 +8,13 @@ const C_GREEN = '#4caf50'
 const C_ORANGE = '#ffa726'
 const C_RED = '#ef5350'
 
+// 金额格式化（2026-10-30 与设置页「我的用量」同口径）：≥0.01 两位小数；更小的保留两位有效数字
+const fmtCost = (v: number): string => {
+  if (!v || v <= 0) return '0.00'
+  if (v >= 0.01) return v.toFixed(2)
+  return String(Number(v.toPrecision(2)))
+}
+
 function useAnalytics(scope: string, days: number) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -315,31 +322,34 @@ export function CostAnalyticsTab() {
         </table>
       </Card>
 
-      {/* 用户成本 Top 10 */}
+      {/* 每用户成本：实际成本 + 显示金额（计费价 = 成本 × 盈利系数，2026-10-30） */}
       <Card style={{ padding: '20px 24px' }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 12px', color: 'var(--text-primary)' }}>用户成本 Top 10（近{days}天）</h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
-              {['用户', 'ID', '调用次数', '成本(¥)'].map((h) => (
-                <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {(data?.users || []).map((u: any) => (
-              <tr key={u.user_id} style={{ color: 'var(--text-primary)' }}>
-                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.username}</td>
-                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>{u.user_id}</td>
-                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.calls}</td>
-                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{u.cost}</td>
+        <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 12px', color: 'var(--text-primary)' }}>每用户成本（近{days}天）</h3>
+        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                {['用户', 'ID', '调用次数', '实际成本(¥)', '显示金额(¥)'].map((h) => (
+                  <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
               </tr>
-            ))}
-            {(data?.users || []).length === 0 && (
-              <tr><td colSpan={4} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>暂无用量数据</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {(data?.users || []).map((u: any) => (
+                <tr key={u.user_id} style={{ color: 'var(--text-primary)' }}>
+                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.username}</td>
+                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>{u.user_id}</td>
+                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.calls}</td>
+                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{fmtCost(u.cost)}</td>
+                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{fmtCost(u.billed)}</td>
+                </tr>
+              ))}
+              {(data?.users || []).length === 0 && (
+                <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>暂无用量数据</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </Card>
     </div>
   )

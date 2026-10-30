@@ -172,7 +172,8 @@ def my_cost(request: Request):
     from config.settings import COST_PROFIT_MULTIPLIER
     data = get_db().query_user_cost(uid)
     is_admin = getattr(request.state, "role", "") == "admin"
-    billed_total = round(data["total_cost"] * COST_PROFIT_MULTIPLIER, 2)
+    # 2026-10-30：计算全程用实际金额（round 6 仅去浮点噪声），展示端才做金额格式化
+    billed_total = round(data["total_cost"] * COST_PROFIT_MULTIPLIER, 6)
     # 收款金额（2026-10-30）：线下收款管理员登记；当前应付 = 累计计费 - 已收
     paid = 0.0
     try:
@@ -183,10 +184,10 @@ def my_cost(request: Request):
     except Exception:
         pass
     out = {
-        "billed_month": round(data["month_cost"] * COST_PROFIT_MULTIPLIER, 2),
+        "billed_month": round(data["month_cost"] * COST_PROFIT_MULTIPLIER, 6),
         "billed_total": billed_total,
         "paid": paid,
-        "outstanding": round(billed_total - paid, 2),
+        "outstanding": round(billed_total - paid, 6),
         "month_calls": data["month_calls"],
         "total_calls": data["total_calls"],
     }

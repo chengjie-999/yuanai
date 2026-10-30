@@ -116,10 +116,10 @@ class TestUserCost:
                               json={"system_config": {"cost_profit_multiplier": 2.5}},
                               headers=ah)
             assert resp.status_code == 200
-            # admin 视角：真实成本 + 系数可见
+            # admin 视角：真实成本 + 系数可见（计算用实际精度，round 6 去浮点噪声）
             d = client.get("/api/v1/auth/cost", headers=ah).json()
             assert d["multiplier"] == pytest.approx(2.5)
-            assert d["billed_month"] == round(d["month_cost"] * 2.5, 2)
+            assert d["billed_month"] == pytest.approx(round(d["month_cost"] * 2.5, 6))
             # 普通用户视角：无真实成本字段
             u = client.get("/api/v1/auth/cost", headers=auth_headers).json()
             assert "month_cost" not in u and "multiplier" not in u
@@ -165,7 +165,7 @@ class TestPaidAmount:
             h = {"Authorization": f"Bearer {create_token(uid, 'user')}"}
             d = client.get("/api/v1/auth/cost", headers=h).json()
             assert d["paid"] == pytest.approx(12.34)
-            assert d["outstanding"] == pytest.approx(round(d["billed_total"] - 12.34, 2))
+            assert d["outstanding"] == pytest.approx(round(d["billed_total"] - 12.34, 6))
             # 不存在的用户 → 404
             assert client.post("/api/v1/admin/users/999999999/paid",
                                json={"amount": 1}, headers=ah).status_code == 404

@@ -2553,8 +2553,9 @@ class AgentDatabase:
                 e["calls"] += int(r[4] or 0)
             daily = [{"date": d, "cost": round(v["cost"], 4), "tokens": v["tokens"],
                       "calls": v["calls"],
-                      # 财务口径（2026-10-30）：日营收 = 成本 × 盈利系数
-                      "billed": round(v["cost"] * COST_PROFIT_MULTIPLIER, 2)}
+                      # 财务口径（2026-10-30）：日应计 = 成本 × 盈利系数（实际精度，
+                      # 展示端格式化）
+                      "billed": round(v["cost"] * COST_PROFIT_MULTIPLIER, 6)}
                      for d, v in sorted(by_day.items())]
 
             # 用途维度（按 (purpose, model) 聚合后折算）
@@ -2597,7 +2598,8 @@ class AgentDatabase:
                     paid_by_uid[u[0]] = float(u[2] or 0)
             users = [{"user_id": uid, "username": names.get(uid, f"用户#{uid}"),
                       "cost": round(v["cost"], 4),
-                      "billed": round(v["cost"] * COST_PROFIT_MULTIPLIER, 2),
+                      # 实际精度（round 6 去浮点噪声）；显示金额 = billed − paid 由前端算
+                      "billed": round(v["cost"] * COST_PROFIT_MULTIPLIER, 6),
                       "paid": paid_by_uid.get(uid, 0.0),
                       "calls": v["calls"]}
                      for uid, v in sorted(by_user.items(), key=lambda x: -x[1]["cost"])]
@@ -2607,19 +2609,19 @@ class AgentDatabase:
             prompt_total = sum(m["prompt_tokens"] for m in models)
             hit_total = int(base.with_entities(_func.sum(TokenUsage.cache_hit_tokens)).scalar() or 0)
             msgs = sess.query(_func.count(AIChat.id)).filter(AIChat.create_time >= since).scalar() or 0
-            # 财务管理指标（2026-10-30）：营收（显示金额）= 成本 × 盈利系数；
-            # 毛利 = 营收 - 成本；毛利率 = 毛利 / 营收；
-            # 收款金额 = 线下收款，管理员在用户管理手动填写（全量汇总）
-            revenue = round(total_cost * COST_PROFIT_MULTIPLIER, 2)
-            profit = round(revenue - total_cost, 2)
+            # 财务管理指标（2026-10-30）：应计总额 = 成本 × 盈利系数；毛利 = 应计 - 成本；
+            # 收款 = 线下收款管理员登记。计算全程实际精度（round 6 去浮点噪声），
+            # 展示端才格式化——不用显示取整值参与计算
+            revenue = round(total_cost * COST_PROFIT_MULTIPLIER, 6)
+            profit = round(revenue - total_cost, 6)
             paid_total = float(sess.query(_func.coalesce(_func.sum(User.paid_amount), 0)).scalar() or 0)
             return {
                 "overview": {"total_cost": total_cost,
                              "revenue": revenue, "profit": profit,
                              "profit_rate": round(profit / revenue * 100, 1) if revenue else 0.0,
                              "multiplier": COST_PROFIT_MULTIPLIER,
-                             "paid_total": round(paid_total, 2),
-                             "outstanding": round(revenue - paid_total, 2),
+                             "paid_total": paid_total,
+                             "outstanding": round(revenue - paid_total, 6),
                              "cost_per_message": round(total_cost / max(int(msgs), 1), 6),
                              "messages": int(msgs), "calls": calls_total,
                              "cache_hit_rate": round(hit_total / prompt_total * 100, 1) if prompt_total else 0.0},

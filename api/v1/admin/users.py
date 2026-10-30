@@ -55,7 +55,9 @@ async def list_users(request: Request):
             # 财务口径（2026-10-30）：实际成本 + 系数成本（=成本×系数，应计）+
             # 收款金额；显示金额 = 系数成本 − 收款（前端计算）
             "cost": round(by_uid.get(u.id, {}).get("cost", 0), 4),
-            "billed": round(by_uid.get(u.id, {}).get("cost", 0) * COST_PROFIT_MULTIPLIER, 2),
+            # 系数成本保留实际精度（round 6 去浮点噪声），显示金额 = 系数成本 − 收款
+            # 由前端用实际值计算后再格式化（2026-10-30：计算不用显示取整值）
+            "billed": round(by_uid.get(u.id, {}).get("cost", 0) * COST_PROFIT_MULTIPLIER, 6),
             "calls": by_uid.get(u.id, {}).get("calls", 0),
             "paid": float(u.paid_amount or 0),
             "multiplier": COST_PROFIT_MULTIPLIER,

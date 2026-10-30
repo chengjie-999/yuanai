@@ -81,6 +81,100 @@ function MyUsageCard() {
   )
 }
 
+/* 本地 Agent 下载卡（2026-10-30）：普通用户下载入口——全部版本可下（默认标记）、
+   自服务安装码（生成即预绑定，安装后自动归属本账号）；管理员管理版本在后台上传。 */
+function AgentDownloadCard() {
+  const [data, setData] = useState<{ default_version: string; versions: any[] } | null>(null)
+  const [code, setCode] = useState<{ code: string; bound: boolean; message: string; machine_name?: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API_BASE}/agent/downloads`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setData)
+      .catch(() => {})
+    fetch(`${API_BASE}/agent/my-code`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setCode)
+      .catch(() => {})
+  }, [])
+
+  const resetCode = async () => {
+    if (busy) return
+    setBusy(true); setMsg('')
+    const res = await fetch(`${API_BASE}/agent/my-code`, { method: 'POST', headers: authHeaders() })
+    const d = await res.json().catch(() => ({}))
+    setBusy(false)
+    if (res.ok && d.code) { setCode({ code: d.code, bound: false, message: d.message }); setMsg('') }
+    else setMsg(d.detail || '重置失败')
+  }
+
+  const copyCode = async () => {
+    if (!code?.code) return
+    try { await navigator.clipboard.writeText(code.code) } catch { /* 忽略 */ }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <div style={C.card}>
+      <div style={C.title}>本地 Agent 下载 <span style={C.sub}>— 下载后在本机运行，数据在本机计算</span></div>
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-light)' }}>
+        {code?.bound ? (
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            本账号已绑定设备（{code.machine_name || ''}）——换电脑？
+            <button onClick={resetCode} disabled={busy}
+              style={{ marginLeft: 8, padding: '4px 12px', borderRadius: 6, border: '1px solid var(--accent)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12 }}>
+              {busy ? '生成中...' : '重置安装码'}
+            </button>
+          </div>
+        ) : code?.code ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>你的安装码</span>
+            <code style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: 'var(--accent)', background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 6 }}>{code.code}</code>
+            <button onClick={copyCode} title="复制" aria-label="复制"
+              style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-primary)' }}>
+              {copied ? '已复制' : '复制'}
+            </button>
+            <button onClick={resetCode} disabled={busy}
+              style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--accent)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12 }}>
+              {busy ? '生成中...' : '重新生成'}
+            </button>
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>安装码加载中...</div>
+        )}
+        {msg && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 6 }}>{msg}</div>}
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 8 }}>
+          使用流程：下载最新版本 → 双击运行 → 安装引导中粘贴上方安装码 → 完成（托盘常驻，可开关各 Agent）
+        </div>
+      </div>
+      <div style={{ padding: '14px 20px' }}>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, marginBottom: 8 }}>
+          版本列表（默认版本优先推荐）
+        </div>
+        {!data || data.versions.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>暂无可用版本，请联系管理员</div>
+        ) : (
+          data.versions.map((v) => (
+            <div key={v.version} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--border-light)', fontSize: 12.5 }}>
+              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>v{v.version}</span>
+              {v.version === data.default_version && (
+                <span style={{ fontSize: 11, color: '#fff', background: 'var(--accent)', padding: '1px 8px', borderRadius: 999 }}>默认</span>
+              )}
+              <span style={{ color: 'var(--text-muted)', flex: 1 }}>{(v.size / 1024 / 1024).toFixed(0)}MB · {v.uploaded_at?.slice(0, 10)}</span>
+              {v.note && <span style={{ color: 'var(--text-muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={v.note}>{v.note}</span>}
+              <a href={`/downloads/versions/${v.filename}`} style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>下载</a>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 const ROLE_LABELS: Record<string, string> = {
   orchestrator: '统筹 Agent',
   analysis: '数据分析 Agent',
@@ -220,6 +314,9 @@ export default function SettingsPage() {
 
         {/* ---- 我的用量（2026-10-30）：本人 API 成本，计费价 = 成本 × 盈利系数 ---- */}
         <MyUsageCard />
+
+        {/* ---- 本地 Agent 下载（2026-10-30）：版本列表 + 自服务安装码 ---- */}
+        <AgentDownloadCard />
 
         {/* ---- API Key（仅 admin：全局密钥，普通用户写删会覆盖全站模型调用）---- */}
         {isAdmin && (

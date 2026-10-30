@@ -275,6 +275,55 @@ class ActivityReport(BaseModel):
     detail: str = ""
 
 
+@router.get("/my-code")
+async def my_agent_code(request: Request):
+    """自服务安装码（2026-10-30，登录可见）：普通用户没有后台——下载后在此自取。
+    码生成时即预绑定 user_id（本机注册后自动归属该用户，无需管理员绑定）。"""
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    from db.session import get_db, AgentDevice
+    db = get_db()
+    with db.session() as sess:
+        bound = sess.query(AgentDevice).filter(AgentDevice.user_id == uid,
+                                               AgentDevice.agent_secret != "").first()
+        if bound:
+            return {"code": "", "bound": True,
+                    "machine_name": bound.machine_name or "已绑定的设备",
+                    "message": "本账号已绑定设备，无需新安装码（换电脑请重置）"}
+        pending = sess.query(AgentDevice).filter(AgentDevice.user_id == uid,
+                                                 AgentDevice.agent_secret == "").first()
+        if pending:
+            return {"code": pending.install_code, "bound": False,
+                    "message": "请在本机 Agent 安装引导中输入该安装码"}
+        # 生成新码（预绑定）
+        code = "YUAN-" + "-".join(secrets.token_hex(2).upper() for _ in range(3))
+        sess.add(AgentDevice(install_code=code, agent_secret="", user_id=uid))
+        sess.commit()
+        return {"code": code, "bound": False,
+                "message": "请在本机 Agent 安装引导中输入该安装码"}
+
+
+@router.post("/my-code")
+async def reset_my_agent_code(request: Request):
+    """重置安装码（2026-10-30）：生成新码并解绑旧设备（换电脑场景，旧电脑失效）"""
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    from db.session import get_db, AgentDevice
+    db = get_db()
+    with db.session() as sess:
+        # 解绑旧设备 + 清未用旧码
+        for dev in sess.query(AgentDevice).filter(AgentDevice.user_id == uid).all():
+            dev.user_id = None
+        code = "YUAN-" + "-".join(secrets.token_hex(2).upper() for _ in range(3))
+        sess.add(AgentDevice(install_code=code, agent_secret="", user_id=uid))
+        sess.commit()
+        from api.v1.agent.router import invalidate_bind_cache
+        invalidate_bind_cache(uid)
+        return {"code": code, "message": "新安装码已生成，旧设备已解绑（旧电脑将失效）"}
+
+
 @router.get("/downloads")
 async def agent_downloads(request: Request):
     """用户侧 Agent 下载清单（2026-10-30，登录可见）：全部版本 + 默认标记。

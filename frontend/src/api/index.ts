@@ -1,5 +1,42 @@
 export const API_BASE = '/api/v1'
 
+// ---- 全局 401 自动登出（2026-10-30 #24）：改密吊销/登录被踢/冻结等 401 后
+// 自动清 token 跳登录页并提示原因。fetch 全局包装零调用点改动（68+ 处直连
+// fetch 全部覆盖）；auth 端点与未带 token 的请求豁免。 ----
+let _authFailedHandler: ((detail: string) => void) | null = null
+
+export function setAuthFailedHandler(fn: ((detail: string) => void) | null) {
+  _authFailedHandler = fn
+}
+
+const _AUTH_PATH_SKIP = ['/api/v1/auth/']  // auth 端点自身 401（密码错误等）不触发全局登出
+
+function _wrapFetch() {
+  if ((window as any).__yuanFetchWrapped) return
+  ;(window as any).__yuanFetchWrapped = true
+  const _orig = window.fetch.bind(window) as (...a: any[]) => Promise<Response>
+  window.fetch = async (...args: any[]) => {
+    const res = await _orig(...args)
+    try {
+      if (res.status === 401 && _authFailedHandler && getToken()) {
+        const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '')
+        // auth 端点自身的 401（密码错误等）不走全局登出
+        if (!_AUTH_PATH_SKIP.some((p) => url.includes(p))) {
+          let detail = '登录状态已失效，请重新登录'
+          try {
+            const clone = res.clone()
+            const data = await clone.json()
+            if (typeof data?.detail === 'string' && data.detail) detail = data.detail
+          } catch { /* 非 JSON 用默认文案 */ }
+          _authFailedHandler(detail)
+        }
+      }
+    } catch { /* 包装逻辑异常不影响响应 */ }
+    return res
+  }
+}
+_wrapFetch()
+
 // 2026-10-19 修复：存储被禁用/受限环境裸读 localStorage 抛 SecurityError——
 // 模块初始化/Provider 处直接崩页；统一安全读
 function _safeGet(k: string): string | null {

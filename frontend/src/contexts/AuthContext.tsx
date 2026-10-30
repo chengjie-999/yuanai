@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
-import { checkToken, setStoredUser } from '../api'
+import { checkToken, setStoredUser, setAuthFailedHandler } from '../api'
 
 interface AuthState {
   token: string | null
@@ -74,6 +74,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
   }, [])
+
+  // 全局 401 自动登出（2026-10-30 #24）：改密吊销/登录被踢/冻结等——
+  // 任何请求 401 → 清 token → 登录页显示原因（LoginPage 读 loginError）
+  useEffect(() => {
+    setAuthFailedHandler((detail: string) => {
+      try { sessionStorage.setItem('loginError', detail) } catch { /* 忽略 */ }
+      logout()
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login'
+      }
+    })
+    return () => setAuthFailedHandler(null)
+  }, [logout])
 
   return (
     <AuthContext.Provider value={{ token, user, loading, login, logout, refresh, isAdmin: user?.role === 'admin' }}>

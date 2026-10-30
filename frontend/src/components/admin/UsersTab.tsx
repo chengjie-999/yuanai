@@ -97,6 +97,7 @@ export default function UsersTab() {
   }
   const handleDeletePayment = async (pid: number) => {
     if (!payUser) return
+    if (!window.confirm('确定删除这笔收款记录？该操作不可恢复。')) return
     const res = await fetch(`${API_BASE}/admin/users/${payUser.id}/payments/${pid}`, { method: 'DELETE', headers: headers() })
     if (res.ok) { loadPayments(payUser.id); fetchUsers() }
   }

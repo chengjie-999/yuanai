@@ -26,11 +26,16 @@ def upgrade():
             sa.Column('note', sa.String(200), nullable=False, server_default=''),
             sa.Column('created_at', sa.TIMESTAMP, server_default=sa.func.now()),
         )
-        # 既有单字段收款迁移为一条记录（无备注）
-        op.execute("INSERT INTO payment_records (user_id, amount) "
-                   "SELECT id, paid_amount FROM users WHERE paid_amount > 0")
+    # 数据迁移独立于建表守卫（2026-10-30 审查修复）：表若被 create_all 兜底
+    # 预建过（0020 事故同款路径），此处仍须迁移，否则删列即丢数据。
+    # 按用户 NOT EXISTS 去重 = 幂等（重跑不重复插入）。
     cols = [c["name"] for c in insp.get_columns('users')]
     if 'paid_amount' in cols:
+        op.execute(
+            "INSERT INTO payment_records (user_id, amount) "
+            "SELECT u.id, u.paid_amount FROM users u "
+            "WHERE u.paid_amount > 0 AND NOT EXISTS "
+            "(SELECT 1 FROM payment_records p WHERE p.user_id = u.id)")
         op.drop_column('users', 'paid_amount')
 
 

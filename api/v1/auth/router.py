@@ -169,7 +169,7 @@ def my_cost(request: Request):
     uid = getattr(request.state, "user_id", None)
     if not uid:
         raise HTTPException(status_code=401, detail="未登录")
-    from config.settings import COST_PROFIT_MULTIPLIER
+    from config.settings import COST_PROFIT_MULTIPLIER, ARREARS_LIMIT
     data = get_db().query_user_cost(uid)
     is_admin = getattr(request.state, "role", "") == "admin"
     # 2026-10-30：计算全程用实际金额（round 6 仅去浮点噪声），展示端才做金额格式化
@@ -185,6 +185,7 @@ def my_cost(request: Request):
         "billed_total": billed_total,
         "paid": paid,
         "outstanding": round(billed_total - paid, 6),
+        "arrears_limit": ARREARS_LIMIT,  # 欠费限制门槛（前端提示用）
         "month_calls": data["month_calls"],
         "total_calls": data["total_calls"],
     }

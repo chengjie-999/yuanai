@@ -263,6 +263,24 @@ def _ui_events(event: dict) -> list:
 _AUDIT_WARNING = "本条回复可能包含违规内容，已按平台规则移交人工复核处理。"
 
 
+def _check_arrears(user_id: int) -> str:
+    """欠费限制（2026-10-30 用户拍板）：显示金额（收款 − 系数成本）≤ -ARREARS_LIMIT
+    即欠费满门槛时限制使用。返回提示文案；None = 放行。异常静默放行。"""
+    from config.settings import ARREARS_LIMIT, COST_PROFIT_MULTIPLIER
+    if not user_id or ARREARS_LIMIT <= 0:
+        return None
+    try:
+        paid = _get_db().user_paid_totals([user_id]).get(user_id, 0.0)
+        cost = _get_db().query_user_cost(user_id)
+        owed = round(cost["total_cost"] * COST_PROFIT_MULTIPLIER - paid, 6)
+        if owed >= ARREARS_LIMIT:
+            return (f"账户欠费 ¥{owed:.2f}（显示金额 -¥{owed:.2f}），"
+                    f"已限制使用。请联系管理员缴费后恢复。")
+    except Exception:
+        return None
+    return None
+
+
 def _output_audit(user_id: int, session_id: str, text: str, kind: str = "chat") -> str:
     """输出侧审核：命中返回 hit 词（并已审计+落自动工单），未命中返回空串。"""
     from yuanai_core.pure.content_safety import check_content, audit_log
@@ -355,6 +373,11 @@ async def chat_stream(req: ChatRequest, request: Request):
             from api.v1.db_helpers import check_daily_quota
             if not check_daily_quota(f"msg:{user_id}", DAILY_MESSAGE_QUOTA):
                 raise HTTPException(status_code=429, detail=f"今日消息额度已用完（{DAILY_MESSAGE_QUOTA} 条/天），请明天再来")
+        # 欠费限制（2026-10-30）：显示金额 ≤ -20 时限制使用（admin 豁免）
+        if user_id and getattr(request.state, "role", "") != "admin":
+            _arrears_msg = _check_arrears(user_id)
+            if _arrears_msg:
+                raise HTTPException(status_code=403, detail=_arrears_msg)
 
         model = req.model
         # 图片识别（2026-10-16 收窄）：DeepSeek V4.1 Flash 原生支持图像输入，
@@ -597,6 +620,11 @@ async def claude_stream(req: ChatRequest, request: Request):
     username = getattr(request.state, "username", "")
     if role != "admin" and username not in CLAUDE_BRIDGE_ALLOWED_USERNAMES:
         raise HTTPException(status_code=403, detail="无权访问 Claude Code 桥接")
+    # 欠费限制（2026-10-30，admin 豁免）
+    if role != "admin":
+        _arrears_msg = _check_arrears(_get_user_id(request))
+        if _arrears_msg:
+            raise HTTPException(status_code=403, detail=_arrears_msg)
 
     try:
         user_id = _get_user_id(request)

@@ -366,6 +366,10 @@ COST_PROFIT_MULTIPLIER = float(_syscfg("cost_profit_multiplier"))
 # 单账号并发登录设备数上限（2026-10-30 用户拍板：5 台，超限踢最旧会话）
 MAX_LOGIN_SESSIONS = int(os.getenv("MAX_LOGIN_SESSIONS", "5"))
 
+# 欠费限制门槛（2026-10-30 用户拍板）：显示金额（收款 − 系数成本）≤ -ARREARS_LIMIT
+# 即欠费满该金额时限制聊天使用并提示缴费；0 = 不限制
+ARREARS_LIMIT = float(os.getenv("ARREARS_LIMIT", "20"))
+
 # ===================== 鉴权配置 =====================
 
 _jwt = os.getenv("JWT_SECRET_KEY")

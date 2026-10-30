@@ -105,9 +105,11 @@ export const fmtCostNeg4 = (v: number | null | undefined): string => {
   return n > 0 ? `-¥${fmtCost4(n)}` : '¥0.00'
 }
 
-/* 带符号金额（2026-10-30 显示金额余额口径）：负=欠费，正=余额，零=¥0.00 */
+/* 带符号金额（2026-10-30 显示金额余额口径）：负=欠费，正=余额，零=¥0.00；
+   |n|<0.0001 的浮点尘埃按零处理（避免显示 -¥0.000001 这类噪声） */
 export const fmtCostSigned = (v: number | null | undefined): string => {
   const n = Number(v) || 0
+  if (Math.abs(n) < 0.0001) return '¥0.00'
   if (n < 0) return `-¥${fmtCost(-n)}`
   return `¥${fmtCost(n)}`
 }

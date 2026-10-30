@@ -239,14 +239,14 @@ export function CostAnalyticsTab() {
       <DaysSwitch days={days} setDays={setDays} />
       {/* 财务管理指标（2026-10-30）：营收/成本(负)/毛利/毛利率 + 调用与缓存 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <StatCard label={`近${days}天营收`} value={`¥${fmtCost(ov.revenue)}`} color={C_GREEN}
-          sub={`显示金额 = 成本 × ${ov.multiplier ?? 1.8}`} />
+        <StatCard label={`近${days}天应计总额`} value={`¥${fmtCost(ov.revenue)}`} color={C_GREEN}
+          sub={`系数成本合计（实际成本 × ${ov.multiplier ?? 1.8}）`} />
         <StatCard label={`近${days}天成本`} value={fmtCostNeg4(ov.total_cost)} color={C_RED} sub="各模型定价折算" />
-        <StatCard label="毛利" value={`¥${fmtCost(ov.profit)}`} color={C_BLUE} sub="营收 - 成本" />
-        <StatCard label="毛利率" value={`${ov.profit_rate ?? 0}%`} color={C_GREEN} sub="毛利 / 营收" />
+        <StatCard label="毛利" value={`¥${fmtCost(ov.profit)}`} color={C_BLUE} sub="应计总额 - 成本" />
+        <StatCard label="毛利率" value={`${ov.profit_rate ?? 0}%`} color={C_GREEN} sub="毛利 / 应计总额" />
         <StatCard label="总收款" value={`¥${fmtCost(ov.paid_total)}`} color={C_GREEN}
           sub="线下收款，管理员在用户管理填写" />
-        <StatCard label="未收款" value={`¥${fmtCost(ov.outstanding)}`} color={C_ORANGE} sub="营收 - 总收款" />
+        <StatCard label="未收款" value={`¥${fmtCost(ov.outstanding)}`} color={C_ORANGE} sub="应计总额 - 总收款" />
         <StatCard label="LLM 调用次数" value={(ov.calls ?? 0).toLocaleString()} color={C_BLUE}
           sub="含对话/辅助任务/向量化/搜索" />
         <StatCard label="缓存命中率" value={`${ov.cache_hit_rate ?? 0}%`} color={C_GREEN}
@@ -333,7 +333,7 @@ export function CostAnalyticsTab() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
-                {['用户', 'ID', '调用次数', '实际成本(¥)', '显示金额(¥)', '收款(¥)'].map((h) => (
+                {['用户', 'ID', '调用次数', '实际成本(¥)', '收款(¥)', '显示金额(¥)'].map((h) => (
                   <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{h}</th>
                 ))}
               </tr>
@@ -345,8 +345,9 @@ export function CostAnalyticsTab() {
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>{u.user_id}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.calls}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{fmtCostNeg4(u.cost)}</td>
-                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{fmtCost(u.billed)}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--success)', fontWeight: 600 }}>{fmtCost(u.paid)}</td>
+                  {/* 显示金额 = 系数成本 − 收款（2026-10-30 换逻辑：与收款挂钩） */}
+                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{fmtCost(Math.max(u.billed - u.paid, 0))}</td>
                 </tr>
               ))}
               {(data?.users || []).length === 0 && (

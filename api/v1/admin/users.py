@@ -52,11 +52,13 @@ async def list_users(request: Request):
             "frozen_until": str(u.frozen_until)[:19] if u.frozen_until else None,
             "freeze_reason": u.freeze_reason or "",
             "create_time": str(u.create_time)[:19] if u.create_time else "",
-            # 财务口径（2026-10-30）：累计实际成本 + 显示金额（计费价）+ 收款金额
+            # 财务口径（2026-10-30）：实际成本 + 系数成本（=成本×系数，应计）+
+            # 收款金额；显示金额 = 系数成本 − 收款（前端计算）
             "cost": round(by_uid.get(u.id, {}).get("cost", 0), 4),
             "billed": round(by_uid.get(u.id, {}).get("cost", 0) * COST_PROFIT_MULTIPLIER, 2),
             "calls": by_uid.get(u.id, {}).get("calls", 0),
             "paid": float(u.paid_amount or 0),
+            "multiplier": COST_PROFIT_MULTIPLIER,
         } for u in users]
 @router.post("/users/revoke-tokens")
 async def revoke_user_tokens(req: FreezeRequest, request: Request):

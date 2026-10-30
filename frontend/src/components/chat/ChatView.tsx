@@ -162,11 +162,9 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
               出错后/停止后空泡）都显示吉祥物 + 推荐问题 */}
           {isEmpty && !loading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', marginTop: 6 }}>
-              {/* 空对话吉祥物：主页 logo 形象（渐变核心球） */}
+              {/* 空对话吉祥物：只显示主页 logo 形象，不加问候语（2026-10-31 用户拍板） */}
               <Mascot size={72} />
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 8, marginBottom: 12 }}>
-                我是小元AI，有什么可以帮你？
-              </div>
+              <div style={{ height: 12 }} />
             </div>
           )}
           {isEmpty && !loading && (

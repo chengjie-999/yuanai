@@ -208,3 +208,33 @@ def test_ensure_main_session_unique_constraint():
         sess.query(ChatSession).filter_by(user_id=uid).delete()
         sess.commit()
         sess.close()
+
+
+class TestFollowupSuggestions:
+    """追问预测（2026-10-31）：AI 预测用户接下来可能问的问题"""
+
+    def test_parse_three_items(self, monkeypatch):
+        import asyncio
+        from api.v1.chat.router import _followup_suggestions
+
+        class _FakeResp:
+            content = "1. 什么是数据清洗\n2. 怎么处理缺失值\n3. 有什么工具推荐"
+
+        class _FakeLLM:
+            def invoke(self, msgs):
+                return _FakeResp()
+
+        monkeypatch.setattr("yuanai_core.core.lc.get_llm", lambda *a, **k: _FakeLLM())
+        items = asyncio.run(_followup_suggestions("用户问了一些数据分析的问题，助手做了回答。" * 5))
+        assert items == ["什么是数据清洗", "怎么处理缺失值", "有什么工具推荐"]
+
+    def test_disabled_returns_empty(self, monkeypatch):
+        import asyncio
+        from api.v1.chat.router import _followup_suggestions
+        monkeypatch.setattr("config.settings.FOLLOWUP_SUGGEST_ENABLED", False)
+        assert asyncio.run(_followup_suggestions("足够长的对话内容" * 10)) == []
+
+    def test_short_text_returns_empty(self):
+        import asyncio
+        from api.v1.chat.router import _followup_suggestions
+        assert asyncio.run(_followup_suggestions("太短")) == []

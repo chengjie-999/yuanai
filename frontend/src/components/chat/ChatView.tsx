@@ -148,6 +148,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
               onFeedback={onFeedback}
               onReport={onReport}
               onRegenerate={onRegenerate}
+              onFollowup={onSuggest}
               onContinue={onContinue}
               onOpenPanel={onOpenPanel} />
           ))}

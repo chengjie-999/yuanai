@@ -556,6 +556,14 @@ export default function ChatPage({ user }: { user?: any }) {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], complianceWarning: true }; return last })
         return
       }
+      if (event.type === 'suggestions') {
+        // 追问预测（2026-10-31）：AI 预测用户接下来可能问的问题 → 挂气泡下可点追问
+        const items = (event.data?.items || []).filter((x: any) => typeof x === 'string').slice(0, 3)
+        if (items.length) {
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], suggestions: items }; return last })
+        }
+        return
+      }
       if (event.type === 'token') {
         // 时序交叉渲染：首个 token 时把累积思考快照为「最终思考」（回答前展示），
         // 之后 reasoning 字段复位（下一阶段重新累积）

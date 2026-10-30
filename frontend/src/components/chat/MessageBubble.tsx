@@ -275,7 +275,7 @@ function SvgBlock({ code }: { code: string }) {
   )
 }
 
-const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, autoRead, autoReadTick, onOpenPanel }: {
+const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, onFollowup, autoRead, autoReadTick, onOpenPanel }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
@@ -285,6 +285,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   onFeedback: (i: number, kind: 'like' | 'dislike') => void
   onReport?: (i: number) => void
   onRegenerate?: (i: number) => void
+  onFollowup?: (text: string) => void
   onContinue?: () => void
   autoRead?: boolean; autoReadTick?: number
   onOpenPanel?: (link: string) => void
@@ -786,6 +787,26 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             {/* 流式打字光标（通用 AI 对话方案，2026-10-25）：生成中文本末尾闪烁 */}
             {loading && isLast && !!msg.content && !msg.error && (
               <span className="stream-cursor" aria-hidden="true" />
+            )}
+            {/* 追问预测（2026-10-31 用户拍板）：AI 预测用户接下来可能问的问题——
+                普通/娱乐对话出现；coding（claude）与有工具调用的轮次不出 */}
+            {!isUser && !loading && onFollowup && (msg.suggestions?.length || 0) > 0
+              && !msg.toolCalls?.length && sender !== 'claude' && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                {(msg.suggestions || []).slice(0, 3).map((s) => (
+                  <button key={s} onClick={() => onFollowup(s)}
+                    style={{
+                      padding: '5px 12px', borderRadius: 999, fontSize: 12.5,
+                      border: '1px solid var(--border)', background: 'var(--bg-input)',
+                      color: 'var(--text-secondary)', cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
             )}
             {msg.error && (
               <div style={{

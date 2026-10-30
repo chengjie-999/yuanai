@@ -35,16 +35,6 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
         >
           <PlusIcon size={15} /> 新对话
         </button>
-        {/* 回收站入口（2026-10-30 软删除可恢复） */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 6 }}>
-          <button onClick={onOpenTrash} aria-label="回收站"
-            className="yuan-tip" data-tip="回收站（已删除的对话可恢复）"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px' }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}>
-            <TrashIcon size={13} /> 回收站
-          </button>
-        </div>
         <div style={{ position: 'relative', marginTop: 8 }}>
           <span style={{
             position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
@@ -127,6 +117,16 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
             ))}
           </div>
         ))}
+      </div>
+      {/* 回收站入口（2026-10-31 用户拍板：侧边栏最底端） */}
+      <div style={{ padding: '8px 12px 14px', borderTop: '1px solid var(--border-light)', flexShrink: 0 }}>
+        <button onClick={onOpenTrash} aria-label="回收站"
+          className="yuan-tip" data-tip="回收站（已删除的对话可恢复）"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', width: '100%' }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}>
+          <TrashIcon size={13} /> 回收站
+        </button>
       </div>
     </div>
   )

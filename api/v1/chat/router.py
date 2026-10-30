@@ -204,13 +204,16 @@ from api.v1.middleware import get_user_id as _get_user_id
 
 
 async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0,
-                      prefix_event: dict = None, session_id: str = ""):
+                      prefix_event: dict = None, session_id: str = "",
+                      suggest: bool = True):
     """Agent 事件队列 → SSE 流（300s 超时按每次事件重置；done/error 终止）
     B1-12：客户端中断（停止生成/关页）→ 通知本地 Agent 终止脚本子进程
     prefix_event：首个 SSE 事件前插入（模式自主路由的 mode_event）
-    session_id：C6 输出侧审核（done 前对全文审核，命中先发警告事件）"""
+    session_id：C6 输出侧审核（done 前对全文审核，命中先发警告事件）
+    suggest：追问预测（普通/娱乐对话 True；coding 桥接 False 不出现）"""
     from api.v1.agent.router import cleanup_pending
-    full_text = []  # C6：输出全文缓冲
+    full_text = []   # C6：输出全文缓冲
+    had_tools = False
     try:
         if prefix_event:
             yield f"data: {_sse(prefix_event)}\n\n"
@@ -223,12 +226,19 @@ async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0,
 
             if event.get("type") == "token" and isinstance(event.get("data"), str):
                 full_text.append(event["data"])
+            if event.get("type") == "tool_start":
+                had_tools = True
 
             if event.get("type") in ("done", "error"):
                 # C6 输出侧审核（2026-10-29）：流结束审核全文，命中 → 警告事件 + 自动工单
                 if event.get("type") == "done" and full_text:
                     if _output_audit(user_id, session_id, "".join(full_text), "bridge"):
                         yield f"data: {_sse({'type': 'compliance_warning', 'data': _AUDIT_WARNING})}\n\n"
+                    # 追问预测（2026-10-31）：普通/娱乐对话且无工具调用的轮次
+                    if suggest and not had_tools:
+                        items = await _followup_suggestions("".join(full_text))
+                        if items:
+                            yield f"data: {_sse({'type': 'suggestions', 'data': {'items': items}})}\n\n"
                 yield f"data: {_sse(event)}\n\n"
                 break
 
@@ -261,6 +271,51 @@ def _ui_events(event: dict) -> list:
 # 自动工单（人工复核队列）+ 前端 compliance_warning 警告卡。
 # v1 与输入侧同词库（高置信度关键词，宁可漏检不误伤）；语义审核接模型审核 API 挂账。
 _AUDIT_WARNING = "本条回复可能包含违规内容，已按平台规则移交人工复核处理。"
+
+
+_SUGGEST_PROMPT = (
+    "根据以上对话，推测用户接下来最可能问的 3 个问题。"
+    "只输出 3 行，每行 ≤20 字、不加序号不加解释，直接写问题本身。"
+    "问题要具体可执行，风格与用户当前对话一致。")
+
+
+async def _followup_suggestions(history_text: str) -> list:
+    """追问预测（2026-10-31 用户拍板）：对话完成时用 lite 模型预测用户接下来
+    可能问的 3 个问题 → SSE suggestions 事件 → 前端气泡下可点追问。
+    仅普通/娱乐对话（无工具调用的轮次）调用；任何异常静默返回空。"""
+    from config.settings import (FOLLOWUP_SUGGEST_ENABLED,
+                                 FOLLOWUP_SUGGEST_MODEL)
+    if not FOLLOWUP_SUGGEST_ENABLED:
+        return []
+    text = (history_text or "").strip()
+    if len(text) < 20:
+        return []
+    try:
+        import asyncio
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        def _invoke():
+            from yuanai_core.core.lc import get_llm
+            llm = get_llm(FOLLOWUP_SUGGEST_MODEL, temperature=0.7,
+                          streaming=False, max_tokens=120,
+                          usage_purpose="followup_suggest")
+            resp = llm.invoke([
+                SystemMessage("你是对话助手的追问预测器。"),
+                HumanMessage(f"对话内容：\n{text[-1500:]}\n\n{_SUGGEST_PROMPT}"),
+            ])
+            return str(resp.content or "")
+
+        out = await asyncio.wait_for(asyncio.to_thread(_invoke), timeout=12)
+        items = []
+        for line in out.splitlines():
+            s = line.strip().lstrip("0123456789.、-*· ").strip()
+            if s and len(s) <= 40:
+                items.append(s)
+            if len(items) >= 3:
+                break
+        return items
+    except Exception:
+        return []
 
 
 def _check_arrears(user_id: int) -> str:
@@ -511,7 +566,8 @@ async def chat_stream(req: ChatRequest, request: Request):
                 logger.info("chat/stream → Agent 桥接 (user=%s, req=%s)", user_id, bridged_request_id[:8])
                 queue = get_pending_queue(bridged_request_id)
                 return StreamingResponse(_bridge_sse(queue, bridged_request_id, user_id, mode_event,
-                                                     session_id=getattr(req, "session_id", "") or ""),
+                                                     session_id=getattr(req, "session_id", "") or "",
+                                                     suggest=(target != "claude")),  # coding 桥接不出现追问
                                          media_type="text/event-stream")
 
         # --- 回退：云端直接调用 LLM ---
@@ -575,16 +631,25 @@ async def chat_stream(req: ChatRequest, request: Request):
                 if mode_event:
                     yield f"data: {_sse(mode_event)}\n\n"
                 # 同名工具单轮最多调 3 次（防重复调用死循环）+ LangGraph 轮数上限
-                full_text = []  # C6：输出全文缓冲（流结束审核）
+                full_text = []   # C6：输出全文缓冲（流结束审核）
+                had_tools = False
                 async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
                     if event.get("type") == "token" and isinstance(event.get("data"), str):
                         full_text.append(event["data"])
+                    if event.get("type") == "tool_start":
+                        had_tools = True
                     for ui in _ui_events(event):
                         yield f"data: {_sse(ui)}\n\n"
                     yield f"data: {_sse(event)}\n\n"
                 # C6 输出侧审核（2026-10-29）：流结束审核全文，命中 → 警告事件 + 自动工单
                 if full_text and _output_audit(user_id, getattr(req, "session_id", "") or "", "".join(full_text), "cloud"):
                     yield f"data: {_sse({'type': 'compliance_warning', 'data': _AUDIT_WARNING})}\n\n"
+                # 追问预测（2026-10-31 用户拍板）：普通/娱乐对话且无工具调用的轮次——
+                # 云端直连路径（含娱乐模式）；coding 走 claude-stream 不经过此处
+                if full_text and not had_tools:
+                    items = await _followup_suggestions("".join(full_text))
+                    if items:
+                        yield f"data: {_sse({'type': 'suggestions', 'data': {'items': items}})}\n\n"
             except Exception as e:
                 # exc_info：异常来自哪一行一眼可见（曾出现「string indices must be integers」
                 # 无法定位——只打 str(e) 丢了堆栈）
@@ -688,7 +753,8 @@ async def claude_stream(req: ChatRequest, request: Request):
                             target_agent_id, user_id, req.session_id, bridged_request_id[:8])
                 queue = get_pending_queue(bridged_request_id)
                 return StreamingResponse(_bridge_sse(queue, bridged_request_id, target_agent_id,
-                                                     session_id=getattr(req, "session_id", "") or ""),
+                                                     session_id=getattr(req, "session_id", "") or "",
+                                                     suggest=False),  # claude-stream = coding，不出追问
                                          media_type="text/event-stream")
 
         # 回退：云端直接调用 LLM

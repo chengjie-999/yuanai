@@ -296,6 +296,11 @@ def reload_agent_models() -> None:
 # （_system_config）→ 默认；后台改完 reload_system_config 热更新。
 MEMORY_ENABLED = bool(_syscfg("memory_enabled"))                          # 压缩总开关
 MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-0-lite-260215")  # 折叠用模型
+
+# 追问预测（2026-10-31 用户拍板）：一轮对话完成后 AI 预测用户接下来可能问的问题
+# （普通/娱乐对话生效；coding 桥接与自动化工具轮次不出现）
+FOLLOWUP_SUGGEST_ENABLED = os.getenv("FOLLOWUP_SUGGEST_ENABLED", "1") == "1"
+FOLLOWUP_SUGGEST_MODEL = os.getenv("FOLLOWUP_SUGGEST_MODEL", "doubao-seed-2-0-lite-260215")
 MEMORY_WORKING_WINDOW = int(_syscfg("memory_working_window"))             # 工作记忆条数（最近 N 条永不折叠）
 MEMORY_TRIGGER_CHARS = int(_syscfg("memory_trigger_chars"))               # 触发阈值：会话总字数
 MEMORY_FOLD_MIN_MESSAGES = int(_syscfg("memory_fold_min_messages"))       # 单次折叠最小条数（烧钱护栏，设 1 = 字面口径）

@@ -21,6 +21,7 @@ export interface ChatMessage {
   stopped?: boolean // 用户手动停止生成（META 短键 sp）
   truncated?: boolean // 回答被 max_tokens 截断（U4 继续生成；META 短键 tr）
   complianceWarning?: boolean // C6 输出侧审核命中（2026-10-29）：气泡挂警告条，人工复核中
+  suggestions?: string[]      // 追问预测（2026-10-31）：AI 预测用户接下来可能问的问题（可点发送）
 }
 
 export interface ToolCall {

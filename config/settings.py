@@ -296,6 +296,8 @@ def reload_agent_models() -> None:
 # （_system_config）→ 默认；后台改完 reload_system_config 热更新。
 MEMORY_ENABLED = bool(_syscfg("memory_enabled"))                          # 压缩总开关
 MEMORY_MODEL = _model_with_override("MEMORY_MODEL", "memory_fold", "doubao-seed-2-0-lite-260215")  # 折叠用模型
+# 对话昵称生成模型（2026-10-31 用户拍板：直接用 deepseek-flash，不用豆包——本地豆包端点不通生成失败）
+TITLE_MODEL = _model_with_override("TITLE_MODEL", "title_gen", "deepseek-flash")
 
 # 追问预测（2026-10-31 用户拍板）：一轮对话完成后 AI 预测用户接下来可能问的问题
 # （普通/娱乐对话生效；coding 桥接与自动化工具轮次不出现）

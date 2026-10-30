@@ -4,6 +4,7 @@ import type { SessionInfo } from './helpers'
 import type { ReasoningEffort } from './ReasoningSelector'
 import { SUGGESTIONS, ENT_SUGGESTIONS } from '../../config/agents'
 import { ArrowDownIcon } from '../icons'
+import Mascot from '../Mascot'
 import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
@@ -154,6 +155,15 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
           ))}
           {/* 空对话推荐问题（豆包式：欢迎页已退场，登录直接落主对话，此处承接快捷入口）；
               E5：娱乐模式换娱乐话题卡 */}
+          {messages.length <= 1 && !loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', marginTop: 6 }}>
+              {/* 空对话吉祥物（2026-10-31 用户拍板：主对话刚降级为空/新对话时显示主页 logo 形象） */}
+              <Mascot size={72} />
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 8, marginBottom: 12 }}>
+                我是小元AI，有什么可以帮你？
+              </div>
+            </div>
+          )}
           {messages.length <= 1 && !loading && (
             <div className="chat-suggest-row" style={{
               display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4,

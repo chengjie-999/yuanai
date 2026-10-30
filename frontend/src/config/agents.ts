@@ -53,7 +53,7 @@ export const SUGGESTIONS: { text: string; desc: string }[] = [
   { text: '帮我搜索一下最新的AI大模型动态', desc: '联网搜索 · 最新资讯' },
   { text: '帮我制定一份本周的学习计划', desc: '计划拆分 · 云端直接完成' },
   { text: '写一篇数据分析入门指南', desc: '写作 · 云端直接完成' },
-  { text: '帮我解释一下什么是向量数据库', desc: '知识问答 · 云端直接完成' },
+  { text: '用 HTML 写一篇 500 字的文章', desc: 'HTML 直渲 · 云端直接完成' },
   { text: '帮我写一段爬虫的 Python 代码', desc: '代码生成 · 云端直接完成' },
   { text: '推荐几本学习数据分析的书', desc: '联网搜索 · 书单推荐' },
   { text: '帮我翻译一段英文', desc: '翻译 · 云端直接完成' },

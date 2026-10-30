@@ -638,18 +638,19 @@ async def chat_stream(req: ChatRequest, request: Request):
                         full_text.append(event["data"])
                     if event.get("type") == "tool_start":
                         had_tools = True
+                    if event.get("type") == "done":
+                        # 追问预测（2026-10-31 用户拍板）：done 之前发——普通/娱乐对话
+                        # 且无工具调用的轮次；前端 done 后不再处理后续事件
+                        if full_text and not had_tools:
+                            items = await _followup_suggestions("".join(full_text))
+                            if items:
+                                yield f"data: {_sse({'type': 'suggestions', 'data': {'items': items}})}\n\n"
                     for ui in _ui_events(event):
                         yield f"data: {_sse(ui)}\n\n"
                     yield f"data: {_sse(event)}\n\n"
                 # C6 输出侧审核（2026-10-29）：流结束审核全文，命中 → 警告事件 + 自动工单
                 if full_text and _output_audit(user_id, getattr(req, "session_id", "") or "", "".join(full_text), "cloud"):
                     yield f"data: {_sse({'type': 'compliance_warning', 'data': _AUDIT_WARNING})}\n\n"
-                # 追问预测（2026-10-31 用户拍板）：普通/娱乐对话且无工具调用的轮次——
-                # 云端直连路径（含娱乐模式）；coding 走 claude-stream 不经过此处
-                if full_text and not had_tools:
-                    items = await _followup_suggestions("".join(full_text))
-                    if items:
-                        yield f"data: {_sse({'type': 'suggestions', 'data': {'items': items}})}\n\n"
             except Exception as e:
                 # exc_info：异常来自哪一行一眼可见（曾出现「string indices must be integers」
                 # 无法定位——只打 str(e) 丢了堆栈）

@@ -129,7 +129,7 @@ function CodeBlock({ lang, text }: { lang: string; text: string }) {
           {folded ? '展开全部' : '收起'}
         </button>
       )}
-      {csv && (
+      {csv && hasNumericColumn(csv.headers, csv.rows) && (
         <>
           <div style={{
             borderTop: '1px solid var(--border-light)', background: 'var(--bg-secondary)',
@@ -171,6 +171,17 @@ function withAssetToken(src?: string): string | undefined {
    recharts 经 lazy 按需加载，不进主包 */
 const ChartPanel = React.lazy(() => import('./chat/TableChart'))
 
+
+/* 数值列判定（2026-10-31 用户拍板）：整列（剔除千分位/百分比/货币符后）
+   全部可解析为数值才算数值列——无数值列的表格不显示「图表化」 */
+function hasNumericColumn(headers: string[], rows: string[][]): boolean {
+  return headers.some((_, j) => {
+    const vals = rows.map((r) => String(r[j] ?? '').trim()).filter(Boolean)
+    if (vals.length === 0) return false
+    return vals.every((v) => !Number.isNaN(Number(v.replace(/[,%¥$，%￥]/g, ''))))
+  })
+}
+
 function TableBlock({ block }: { block: string }) {
   const [showChart, setShowChart] = useState(false)
   const lines = block.trim().split('\n').map((l) => l.trim()).filter((l) => l.includes('|'))
@@ -195,14 +206,16 @@ function TableBlock({ block }: { block: string }) {
           ))}
         </tbody>
       </table>
-      <div style={{ display: 'flex', alignItems: 'center', padding: '2px 0 6px' }}>
-        <button onClick={() => setShowChart((s) => !s)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
-                   color: 'var(--accent)', padding: '2px 4px', display: 'flex', alignItems: 'center', gap: 3 }}>
-          <BarChartIcon size={12} />
-          {showChart ? '收起图表' : '图表化'}
-        </button>
-      </div>
+      {hasNumericColumn(headers, rows) && (
+        <div style={{ display: 'flex', alignItems: 'center', padding: '2px 0 6px' }}>
+          <button onClick={() => setShowChart((s) => !s)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                     color: 'var(--accent)', padding: '2px 4px', display: 'flex', alignItems: 'center', gap: 3 }}>
+            <BarChartIcon size={12} />
+            {showChart ? '收起图表' : '图表化'}
+          </button>
+        </div>
+      )}
       {showChart && (
         <React.Suspense fallback={<div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '8px 0' }}>图表加载中…</div>}>
           <ChartPanel headers={headers} rows={rows} />

@@ -817,11 +817,17 @@ async def list_sessions(request: Request, own: bool = False):
 
 @router.delete("/session/{session_id}")
 async def delete_session(session_id: str, request: Request):
-    """删除会话"""
+    """删除会话。主对话（is_main）不可删除（2026-10-30）——
+    删除后当前页继续发消息会落孤儿数据，刷新又自动重建空主对话。"""
     try:
         db = _get_db()
         user_id = _get_user_id(request)
         _verify_session_owner(db, session_id, user_id)
+        from db.session import ChatSession
+        with db.session() as sess:
+            cur = sess.query(ChatSession).filter_by(session_id=session_id).first()
+            if cur and cur.is_main:
+                raise HTTPException(status_code=400, detail="主对话不可删除")
         db.delete_session(session_id)
         # 清除消息缓存（2026-10-19：此前 TTL 内仍可读已删除对话）
         from db.cache import clear_chat_cache

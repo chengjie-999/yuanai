@@ -125,6 +125,24 @@ class TestHistoryEnvelope:
         assert _fix_history_for_api(history) == history
 
 
+def test_main_session_cannot_be_deleted(client, auth_headers):
+    """主对话不可删除（2026-10-30 修复）：前端隐藏按钮 + 后端 400 拦截"""
+    if not auth_headers:
+        pytest.skip("需要有效登录凭据")
+    r = client.post("/api/v1/chat/main-session", headers=auth_headers)
+    assert r.status_code == 200
+    sid = r.json()["session_id"]
+    # 删除主对话 → 400
+    resp = client.delete(f"/api/v1/chat/session/{sid}", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "不可删除" in resp.json()["detail"]
+    # 普通会话仍可删除
+    create = client.post("/api/v1/chat/session/new", json={"title": "可删"}, headers=auth_headers)
+    assert create.status_code == 200
+    resp = client.delete(f"/api/v1/chat/session/{create.json()['session_id']}", headers=auth_headers)
+    assert resp.status_code == 200
+
+
 def test_main_session_idempotent(client, auth_headers):
     """主对话幂等：连续调用返回同一条（2026-10-19 唯一性修复）"""
     if not auth_headers:

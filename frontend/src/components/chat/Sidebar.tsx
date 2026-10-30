@@ -90,12 +90,16 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
                   ><EditIcon size={13} /></span>
-                  <span onClick={(e) => onDelete(e, s.session_id)} title="删除对话" aria-label="删除对话"
-                    className="chat-session-del"
-                    style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
-                  ><TrashIcon size={13} /></span>
+                  {/* 主对话不可删除（2026-10-30 修复）：删除后当前页继续发消息会落孤儿数据，
+                      刷新又自动重建——主对话是每用户唯一锚点，隐藏删除按钮 */}
+                  {!s.is_main && (
+                    <span onClick={(e) => onDelete(e, s.session_id)} title="删除对话" aria-label="删除对话"
+                      className="chat-session-del"
+                      style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+                    ><TrashIcon size={13} /></span>
+                  )}
                 </span>
               </div>
             ))}

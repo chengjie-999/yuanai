@@ -77,3 +77,17 @@ export const StatCard = ({ label, value, color, sub, trend }: {
 )
 
 export { headers, safeJson, API_BASE } from '../../api'
+
+/* 金额格式化（2026-10-30 全后台统一口径）：≥0.01 两位小数；更小的保留两位有效数字 */
+export const fmtCost = (v: number | null | undefined): string => {
+  const n = Number(v) || 0
+  if (n <= 0) return '0.00'
+  if (n >= 0.01) return n.toFixed(2)
+  return String(Number(n.toPrecision(2)))
+}
+
+/* 成本负值显示（财务口径 2026-10-30）：支出为负；0 显示 ¥0.00 不加负号 */
+export const fmtCostNeg = (v: number | null | undefined): string => {
+  const n = Number(v) || 0
+  return n > 0 ? `-¥${fmtCost(n)}` : '¥0.00'
+}

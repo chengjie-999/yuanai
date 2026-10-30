@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, badge, headers, API_BASE } from './shared'
+import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, badge, headers, API_BASE, fmtCost, fmtCostNeg } from './shared'
 import { freezeUser } from '../../api'
 import { XIcon } from '../icons'
 
@@ -149,10 +149,10 @@ export default function UsersTab() {
         <Card>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
-              {['ID', '用户名', '角色', '状态', '注册时间', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>{h}</th>)}
+              {['ID', '用户名', '角色', '状态', '注册时间', '累计成本(¥)', '累计显示(¥)', '操作'].map((h) => <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={6}><Empty msg={search ? '无匹配用户' : '暂无用户'} /></td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={8}><Empty msg={search ? '无匹配用户' : '暂无用户'} /></td></tr>}
               {filtered.map((u) => {
                 const isAdminRole = u.role === 'admin'; const isFrozen = u.frozen
                 return (
@@ -162,6 +162,9 @@ export default function UsersTab() {
                     <td style={{ padding: '10px 14px' }}>{isAdminRole ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>admin</span> : <span style={{ color: 'var(--text-secondary)' }}>user</span>}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>{isFrozen ? `冻结至 ${u.frozen_until?.slice(0, 10)}` : '正常'}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.create_time?.slice(0, 10)}</td>
+                    {/* 财务口径（2026-10-30）：累计实际成本为负、显示金额（计费价）为正 */}
+                    <td style={{ padding: '10px 14px', fontSize: 12 }}>{fmtCostNeg(u.cost)}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600 }}>{fmtCost(u.billed)}</td>
                     <td style={{ padding: '10px 14px' }}>
                       {!isAdminRole && <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         {isFrozen ? <button onClick={() => handleFreeze(u.id, 0)} title="解冻" aria-label="解冻" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--success)', border: '1px solid var(--success)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>解冻</button> : <FreezeBtn userId={u.id} onFreeze={handleFreeze} />}

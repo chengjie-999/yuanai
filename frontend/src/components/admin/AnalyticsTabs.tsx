@@ -1,19 +1,12 @@
 /* 多维度经营分析 — 对话 / 功能 / 留存 / 成本（盈利决策数据底座） */
 import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Cell } from 'recharts'
-import { Spinner, ErrorMsg, Card, StatCard, headers, API_BASE } from './shared'
+import { Spinner, ErrorMsg, Card, StatCard, headers, API_BASE, fmtCost, fmtCostNeg } from './shared'
 
 const C_BLUE = '#42a5f5'
 const C_GREEN = '#4caf50'
 const C_ORANGE = '#ffa726'
 const C_RED = '#ef5350'
-
-// 金额格式化（2026-10-30 与设置页「我的用量」同口径）：≥0.01 两位小数；更小的保留两位有效数字
-const fmtCost = (v: number): string => {
-  if (!v || v <= 0) return '0.00'
-  if (v >= 0.01) return v.toFixed(2)
-  return String(Number(v.toPrecision(2)))
-}
 
 function useAnalytics(scope: string, days: number) {
   const [data, setData] = useState<any>(null)
@@ -239,37 +232,45 @@ export function CostAnalyticsTab() {
   const ov = data?.overview || {}
   const purposes = (data?.purposes || []).map((p: any, i: number) => ({
     ...p, name: PURPOSE_LABELS[p.purpose] || p.purpose, fill: PURPOSE_COLORS[i % PURPOSE_COLORS.length],
+    cost_neg: p.cost ? -p.cost : 0,
   }))
   return (
     <div>
       <DaysSwitch days={days} setDays={setDays} />
-      {/* 指标体系：总成本 / 单条消息成本 / 缓存命中率 / 调用次数 */}
+      {/* 财务管理指标（2026-10-30）：营收/成本(负)/毛利/毛利率 + 调用与缓存 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <StatCard label={`近${days}天总成本`} value={`¥${ov.total_cost ?? 0}`} color={C_RED} sub="各模型定价折算" />
-        <StatCard label="单条消息成本" value={`¥${ov.cost_per_message ?? 0}`} color={C_ORANGE}
-          sub={`共 ${ov.messages ?? 0} 条消息`} />
-        <StatCard label="缓存命中率" value={`${ov.cache_hit_rate ?? 0}%`} color={C_GREEN}
-          sub="前缀缓存命中/输入总量（DeepSeek 自动缓存）" />
+        <StatCard label={`近${days}天营收`} value={`¥${fmtCost(ov.revenue)}`} color={C_GREEN}
+          sub={`显示金额 = 成本 × ${ov.multiplier ?? 1.8}`} />
+        <StatCard label={`近${days}天成本`} value={fmtCostNeg(ov.total_cost)} color={C_RED} sub="各模型定价折算" />
+        <StatCard label="毛利" value={`¥${fmtCost(ov.profit)}`} color={C_BLUE} sub="营收 - 成本" />
+        <StatCard label="毛利率" value={`${ov.profit_rate ?? 0}%`} color={C_GREEN} sub="毛利 / 营收" />
         <StatCard label="LLM 调用次数" value={(ov.calls ?? 0).toLocaleString()} color={C_BLUE}
           sub="含对话/辅助任务/向量化/搜索" />
+        <StatCard label="缓存命中率" value={`${ov.cache_hit_rate ?? 0}%`} color={C_GREEN}
+          sub="前缀缓存命中/输入总量（DeepSeek 自动缓存）" />
       </div>
 
-      {/* 日成本趋势 */}
+      {/* 日营收/成本趋势（成本按财务口径为负） */}
       <Card style={{ marginBottom: 16, padding: '20px 24px' }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px', color: 'var(--text-primary)' }}>日成本趋势（近{days}天，¥）</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px', color: 'var(--text-primary)' }}>日营收与成本趋势（近{days}天，¥）</h3>
         <ResponsiveContainer width="100%" height={180}>
-          <AreaChart data={data?.daily || []} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+          <AreaChart data={(data?.daily || []).map((d: any) => ({ ...d, cost_neg: d.cost ? -d.cost : 0 }))} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="costGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor={C_RED} stopOpacity={0.3} />
                 <stop offset="95%" stopColor={C_RED} stopOpacity={0.02} />
               </linearGradient>
+              <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={C_GREEN} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={C_GREEN} stopOpacity={0.02} />
+              </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis dataKey="date" fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} tickFormatter={(v) => String(v).slice(5)} />
             <YAxis fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [`¥${v}`, n === 'cost' ? '成本' : n]} />
-            <Area type="monotone" dataKey="cost" name="成本" stroke={C_RED} strokeWidth={2} fill="url(#costGrad)" />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [`¥${fmtCost(Math.abs(Number(v)))}`, n === 'cost_neg' ? '成本（负）' : '营收']} />
+            <Area type="monotone" dataKey="billed" name="营收" stroke={C_GREEN} strokeWidth={2} fill="url(#revGrad)" />
+            <Area type="monotone" dataKey="cost_neg" name="成本" stroke={C_RED} strokeWidth={2} fill="url(#costGrad)" />
           </AreaChart>
         </ResponsiveContainer>
       </Card>
@@ -282,8 +283,8 @@ export function CostAnalyticsTab() {
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             <XAxis dataKey="name" fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} interval={0} angle={-15} height={40} textAnchor="end" />
             <YAxis fontSize={10} stroke="var(--text-muted)" tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [`¥${v}（${n}）`, '成本']} />
-            <Bar dataKey="cost" name="成本(¥)" radius={[4, 4, 0, 0]}>
+            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [`${fmtCostNeg(v)}（${n}）`, '成本']} />
+            <Bar dataKey="cost_neg" name="成本(¥)" radius={[4, 4, 0, 0]}>
               {purposes.map((p: any, i: number) => <Cell key={i} fill={p.fill} />)}
             </Bar>
           </BarChart>
@@ -311,7 +312,7 @@ export function CostAnalyticsTab() {
                 <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.calls}</td>
                 <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{Math.round(m.prompt_tokens / Math.max(m.calls, 1)).toLocaleString()}</td>
                 <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{Math.round(m.completion_tokens / Math.max(m.calls, 1)).toLocaleString()}</td>
-                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{m.cost}</td>
+                <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{fmtCostNeg(m.cost)}</td>
                 <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.share ?? 0}%</td>
               </tr>
             ))}
@@ -340,7 +341,7 @@ export function CostAnalyticsTab() {
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.username}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>{u.user_id}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.calls}</td>
-                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{fmtCost(u.cost)}</td>
+                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{fmtCostNeg(u.cost)}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600 }}>{fmtCost(u.billed)}</td>
                 </tr>
               ))}

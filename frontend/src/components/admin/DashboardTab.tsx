@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { Spinner, ErrorMsg, Card, CardHeader, StatCard, headers, API_BASE } from './shared'
+import { Spinner, ErrorMsg, Card, CardHeader, StatCard, headers, API_BASE, fmtCostNeg } from './shared'
 
 const CHART_BLUE = '#42a5f5'
 const CHART_GREEN = '#4caf50'
@@ -87,7 +87,7 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
       } : null,
     },
     { label: '在线 Agent', value: onlineCount, color: '#26c6da', adminOnly: false, trend: null as null | { text: string; up: boolean } },
-    { label: '本月 API 成本', value: `¥${usage?.totals?.cost ?? '-'}`, color: '#ef5350', adminOnly: true, trend: null as null | { text: string; up: boolean } },
+    { label: '本月 API 成本', value: usage?.totals?.cost != null ? fmtCostNeg(usage.totals.cost) : '-', color: '#ef5350', adminOnly: true, trend: null as null | { text: string; up: boolean } },
     { label: '本月调用次数', value: usage?.totals?.calls ?? '-', color: '#78909c', adminOnly: true, trend: null as null | { text: string; up: boolean } },
     {
       label: '今日消息', value: data?.today_messages ?? '-', color: '#ef5350', adminOnly: false,
@@ -155,7 +155,7 @@ export default function DashboardTab({ isAdmin }: { isAdmin: boolean }) {
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.calls}</td>
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>{m.total_tokens.toLocaleString()}</td>
                   <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)', textAlign: 'right', fontWeight: 600 }}>
-                    {m.cost != null ? (m.cost < 0.01 ? m.cost.toFixed(4) : m.cost.toFixed(2)) : '未定价'}
+                    {m.cost != null ? fmtCostNeg(m.cost) : '未定价'}
                   </td>
                 </tr>
               ))}

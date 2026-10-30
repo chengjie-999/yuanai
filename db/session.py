@@ -2499,6 +2499,7 @@ class AgentDatabase:
         Python 折算」——成本依赖模型定价，先按 (维度, model) 聚合再逐行折算。"""
         from sqlalchemy import func as _func, text as _text
         from yuanai_core.usage import model_cost
+        from config.settings import COST_PROFIT_MULTIPLIER
         sess = self.Session()
         try:
             since = _text(f"DATE_SUB(CURDATE(), INTERVAL {int(days) - 1} DAY)")
@@ -2536,7 +2537,10 @@ class AgentDatabase:
                 e["tokens"] += int(r[5] or 0)
                 e["calls"] += int(r[4] or 0)
             daily = [{"date": d, "cost": round(v["cost"], 4), "tokens": v["tokens"],
-                      "calls": v["calls"]} for d, v in sorted(by_day.items())]
+                      "calls": v["calls"],
+                      # 财务口径（2026-10-30）：日营收 = 成本 × 盈利系数
+                      "billed": round(v["cost"] * COST_PROFIT_MULTIPLIER, 2)}
+                     for d, v in sorted(by_day.items())]
 
             # 用途维度（按 (purpose, model) 聚合后折算）
             purpose_rows = (base.with_entities(TokenUsage.purpose, TokenUsage.model,
@@ -2574,7 +2578,6 @@ class AgentDatabase:
                 uids = list(by_user.keys())
                 for u in sess.query(User.id, User.username).filter(User.id.in_(uids)).all():
                     names[u[0]] = u[1]
-            from config.settings import COST_PROFIT_MULTIPLIER
             users = [{"user_id": uid, "username": names.get(uid, f"用户#{uid}"),
                       "cost": round(v["cost"], 4),
                       "billed": round(v["cost"] * COST_PROFIT_MULTIPLIER, 2),
@@ -2586,8 +2589,15 @@ class AgentDatabase:
             prompt_total = sum(m["prompt_tokens"] for m in models)
             hit_total = int(base.with_entities(_func.sum(TokenUsage.cache_hit_tokens)).scalar() or 0)
             msgs = sess.query(_func.count(AIChat.id)).filter(AIChat.create_time >= since).scalar() or 0
+            # 财务管理指标（2026-10-30）：营收（显示金额）= 成本 × 盈利系数；
+            # 毛利 = 营收 - 成本；毛利率 = 毛利 / 营收
+            revenue = round(total_cost * COST_PROFIT_MULTIPLIER, 2)
+            profit = round(revenue - total_cost, 2)
             return {
                 "overview": {"total_cost": total_cost,
+                             "revenue": revenue, "profit": profit,
+                             "profit_rate": round(profit / revenue * 100, 1) if revenue else 0.0,
+                             "multiplier": COST_PROFIT_MULTIPLIER,
                              "cost_per_message": round(total_cost / max(int(msgs), 1), 6),
                              "messages": int(msgs), "calls": calls_total,
                              "cache_hit_rate": round(hit_total / prompt_total * 100, 1) if prompt_total else 0.0},

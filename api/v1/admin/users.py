@@ -27,9 +27,23 @@ class AdminCreateUser(BaseModel):
 async def list_users(request: Request):
     require_admin(request)
     db = get_db()
-    from db.session import User
+    from db.session import User, TokenUsage
     with db.session() as sess:
         users = sess.query(User).order_by(User.id).all()
+        # 每用户累计成本（2026-10-30 用户管理成本列）：按 (user, model) 聚合后折算
+        from sqlalchemy import func as _func
+        from yuanai_core.usage import model_cost
+        from config.settings import COST_PROFIT_MULTIPLIER
+        cost_rows = (sess.query(TokenUsage.user_id, TokenUsage.model,
+                                _func.sum(TokenUsage.prompt_tokens),
+                                _func.sum(TokenUsage.completion_tokens),
+                                _func.count(TokenUsage.id))
+                     .group_by(TokenUsage.user_id, TokenUsage.model).all())
+        by_uid = {}
+        for r in cost_rows:
+            e = by_uid.setdefault(int(r[0] or 0), {"cost": 0.0, "calls": 0})
+            e["cost"] += model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
+            e["calls"] += int(r[4] or 0)
         now = datetime.utcnow()
         return [{
             "id": u.id, "username": u.username, "display_name": u.display_name or "",
@@ -37,6 +51,10 @@ async def list_users(request: Request):
             "frozen": u.frozen_until is not None and u.frozen_until > now,
             "frozen_until": str(u.frozen_until)[:19] if u.frozen_until else None,
             "create_time": str(u.create_time)[:19] if u.create_time else "",
+            # 财务口径（2026-10-30）：累计实际成本 + 显示金额（计费价）
+            "cost": round(by_uid.get(u.id, {}).get("cost", 0), 4),
+            "billed": round(by_uid.get(u.id, {}).get("cost", 0) * COST_PROFIT_MULTIPLIER, 2),
+            "calls": by_uid.get(u.id, {}).get("calls", 0),
         } for u in users]
 @router.post("/users/revoke-tokens")
 async def revoke_user_tokens(req: FreezeRequest, request: Request):

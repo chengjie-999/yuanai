@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Navigate, Link } from 'react-router-dom'
-import { login, submitAppeal, agreeTerms } from '../api'
+import { login, submitAppeal, agreeTerms, register } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import Mascot from './Mascot'
@@ -22,7 +22,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [visible, setVisible] = useState(false)
-  const [focused, setFocused] = useState<'user' | 'pw' | null>(null)
+  const [focused, setFocused] = useState<'user' | 'pw' | 'pw2' | 'name' | null>(null)
   // C7 冻结申诉（2026-10-29）
   const [appealContact, setAppealContact] = useState('')
   const [appealReason, setAppealReason] = useState('')
@@ -32,6 +32,10 @@ export default function LoginPage() {
   const [agreed, setAgreed] = useState(() => {
     try { return localStorage.getItem('agreedTerms') === '1' } catch { return false }
   })
+  // 注册模式（2026-10-30 开放注册）
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [displayName, setDisplayName] = useState('')
+  const [regPw2, setRegPw2] = useState('')
 
   const userRef = useRef<HTMLInputElement>(null)
 
@@ -48,6 +52,7 @@ export default function LoginPage() {
 
   const handleSubmit = async () => {
     if (loading) return  // 防重复提交（连点登录按钮发多个请求）
+    if (mode === 'register') { await handleRegister(); return }
     const u = username.trim()
     if (!u || !password) { setError('请填写用户名和密码'); return }
     if (password.length < 8) { setError('密码至少 8 个字符'); return }
@@ -63,6 +68,31 @@ export default function LoginPage() {
       navigate('/chat', { replace: true })
     } catch (e: any) {
       setError(e.message || '操作失败')
+    }
+    setLoading(false)
+  }
+
+  // 注册（2026-10-30 开放）：本地校验 → 后端注册 → 自动登录进 /chat
+  const handleRegister = async () => {
+    const u = username.trim()
+    if (!u || !password) { setError('请填写用户名和密码'); return }
+    if (u.length < 3) { setError('用户名至少 3 个字符'); return }
+    if (password.length < 8) { setError('密码至少 8 个字符'); return }
+    if (password !== regPw2) { setError('两次输入的密码不一致'); return }
+    if (!agreed) { setError('请先阅读并同意《用户协议》与《隐私政策》'); return }
+    setLoading(true)
+    setError('')
+    try {
+      await register(u, password, displayName.trim(), true)  // 协议后端强制 + 留痕
+      // 注册成功自动登录（同一凭据）
+      const data = await login(u, password)
+      if (!data?.token) { setError('注册成功，请使用新账号登录'); setMode('login'); setLoading(false); return }
+      try { localStorage.setItem('agreedTerms', '1') } catch { /* 忽略 */ }
+      handleLogin(data.token, data.user, remember)
+      if (data.user?.theme && data.user.theme !== theme) setTheme(data.user.theme)
+      navigate('/chat', { replace: true })
+    } catch (e: any) {
+      setError(e.message || '注册失败')
     }
     setLoading(false)
   }
@@ -128,8 +158,8 @@ export default function LoginPage() {
         {/* 移动端显示的品牌标识 */}
         <div className="login-mobile-header">
           <Mascot size={56} />
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px' }}>欢迎回来</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>登录小元AI账号以继续</p>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px' }}>{mode === 'login' ? '欢迎回来' : '创建账号'}</h1>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>{mode === 'login' ? '登录小元AI账号以继续' : '注册后即可使用全部功能'}</p>
         </div>
 
         {/* 错误提示 */}
@@ -178,6 +208,26 @@ export default function LoginPage() {
           />
         </div>
 
+        {/* 注册模式：显示名（选填） */}
+        {mode === 'register' && (
+          <div className={`login-input-wrap ${focused === 'name' ? 'focused' : ''}`}>
+            <span className="login-input-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+            </span>
+            <input
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
+              onFocus={() => setFocused('name')}
+              onBlur={() => setFocused(null)}
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+              placeholder="显示名（选填）"
+              autoComplete="nickname"
+            />
+          </div>
+        )}
+
         {/* 密码 */}
         <div className={`login-input-wrap ${focused === 'pw' ? 'focused' : ''}`}>
           <span className="login-input-icon">
@@ -193,7 +243,7 @@ export default function LoginPage() {
             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
             type={showPw ? 'text' : 'password'}
             placeholder="密码（至少 8 位）"
-            autoComplete="current-password"
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
           />
           <button type="button" className="login-eye" onClick={() => setShowPw(!showPw)} tabIndex={-1}>
             {showPw ? (
@@ -210,20 +260,43 @@ export default function LoginPage() {
           </button>
         </div>
 
-        {/* 记住我 */}
-        <label className="login-remember">
-          <span className={`login-checkbox ${remember ? 'checked' : ''}`}>
-            {remember && (
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
+        {/* 注册模式：确认密码 */}
+        {mode === 'register' && (
+          <div className={`login-input-wrap ${focused === 'pw2' ? 'focused' : ''}`}>
+            <span className="login-input-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
-            )}
-          </span>
-          <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} style={{ display: 'none' }}/>
-          记住我
-        </label>
+            </span>
+            <input
+              value={regPw2}
+              onChange={e => setRegPw2(e.target.value)}
+              onFocus={() => setFocused('pw2')}
+              onBlur={() => setFocused(null)}
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+              type={showPw ? 'text' : 'password'}
+              placeholder="确认密码（至少 8 位）"
+              autoComplete="new-password"
+            />
+          </div>
+        )}
 
-        {/* C11 协议勾选（2026-10-29）：未勾选不可登录；登录后留痕（POST /auth/agree） */}
+        {/* 记住我（仅登录模式） */}
+        {mode === 'login' && (
+          <label className="login-remember">
+            <span className={`login-checkbox ${remember ? 'checked' : ''}`}>
+              {remember && (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              )}
+            </span>
+            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} style={{ display: 'none' }}/>
+            记住我
+          </label>
+        )}
+
+        {/* C11 协议勾选（2026-10-29）：未勾选不可登录/注册；登录后留痕（POST /auth/agree），注册后端强制 */}
         <label className="login-remember" style={{ marginTop: 10 }}>
           <span className={`login-checkbox ${agreed ? 'checked' : ''}`}>
             {agreed && (
@@ -243,19 +316,25 @@ export default function LoginPage() {
           </span>
         </label>
 
-        {/* 登录按钮 */}
+        {/* 提交按钮（登录/注册） */}
         <button className={`login-btn ${loading ? 'loading' : ''}`} onClick={handleSubmit} disabled={loading || !agreed}
           style={{ opacity: loading || !agreed ? 0.55 : 1 }}>
           {loading ? (
-            <><span className="login-spinner"/> 登录中...</>
-          ) : '登  录'}
+            <><span className="login-spinner"/> {mode === 'login' ? '登录中...' : '注册中...'}</>
+          ) : mode === 'login' ? '登  录' : '注  册'}
         </button>
 
-        {/* 注册提示 — 暂不开放注册，联系获取账号 */}
-        <p className="login-no-register">
-          暂不开放注册，需要账号请联系我获取
+        {/* 模式切换（2026-10-30 开放注册） */}
+        <p className="login-no-register" style={{ fontSize: 13 }}>
+          {mode === 'login' ? (
+            <>没有账号？<button onClick={() => { setMode('register'); setError(''); setRegPw2('') }}
+              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0 }}>立即注册</button></>
+          ) : (
+            <>已有账号？<button onClick={() => { setMode('login'); setError('') }}
+              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0 }}>去登录</button></>
+          )}
           <br />
-          <span>微信 <b>17852428208</b> · <a href="mailto:chengjie2017020@163.com">chengjie2017020@163.com</a></span>
+          <span style={{ fontSize: 12 }}>微信 <b>17852428208</b> · <a href="mailto:chengjie2017020@163.com">chengjie2017020@163.com</a></span>
         </p>
 
         {/* 忘记密码指引（2026-10-30）：无自助找回，管理员重置 */}

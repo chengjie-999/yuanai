@@ -299,16 +299,13 @@ export async function login(username: string, password: string) {
   }
 }
 
-export async function register(username: string, password: string) {
+export async function register(username: string, password: string, displayName: string = '', agreementAccepted: boolean = false) {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, display_name: displayName, agreement_accepted: agreementAccepted }),
   })
-  if (!res.ok) {
-    const err = await res.json()
-    throw new Error(err.detail || '注册失败')
-  }
+  if (!res.ok) throw new Error(await _errorDetail(res))
   return res.json()
 }
 

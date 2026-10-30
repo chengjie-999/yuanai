@@ -45,18 +45,54 @@ class AuthRequest(BaseModel):
 class RegisterRequest(AuthRequest):
     display_name: str = ""
     role: str = "user"
+    agreement_accepted: bool = False  # C11：协议勾选后端强制（注册即留痕 agreed_at）
 
 
 @router.post("/register")
-def register(req: RegisterRequest):
-    """注册新用户（REGISTER_OPEN=true 时开放，默认关闭由管理员创建）"""
+def register(req: RegisterRequest, request: Request):
+    """注册新用户（2026-10-30 开放：REGISTER_OPEN 默认 true，后台可关）。
+
+    强化（用户拍板：用户名不重复/合规/零 bug）：
+    - 协议勾选后端强制（未勾选 422），注册成功即写 agreed_at
+    - 用户名合规：拒绝含 admin/管理员（防冒充）+ 内容安全闸拦违规词
+    - 防刷：登录限流器 + 每 IP 每日 3 账号
+    - 唯一性：查重 + IntegrityError 兜底（并发同名注册不 500 不脏数据）
+    """
     from config.settings import REGISTER_OPEN
     if not REGISTER_OPEN:
         raise HTTPException(status_code=403, detail="注册功能暂不开放，请联系管理员创建账号")
+    if not req.agreement_accepted:
+        raise HTTPException(status_code=422, detail="请先阅读并同意《用户协议》与《隐私政策》")
+    ip = get_client_ip(request)
+    auth_limiter.check(ip)
+    from api.v1.db_helpers import consume_daily_quota
+    if not consume_daily_quota(f"register:{ip}", 3):
+        raise HTTPException(status_code=429, detail="注册过于频繁（每 IP 每日最多 3 个账号），请明天再试")
+    # 用户名合规（2026-10-30）：防冒充 + 内容安全闸
+    uname_low = req.username.lower()
+    if "admin" in uname_low or "管理员" in req.username:
+        raise HTTPException(status_code=400, detail="用户名不能包含 admin/管理员")
+    from yuanai_core.pure.content_safety import check_content, audit_log, BLOCK_MESSAGE
+    blocked, hit = check_content(req.username)
+    if blocked:
+        audit_log(0, "register", hit, req.username)
+        raise HTTPException(status_code=400, detail=BLOCK_MESSAGE)
     db = get_db()
-    result = db.register_user(req.username, req.password, role="user")
+    result = db.register_user(req.username, req.password,
+                              display_name=req.display_name or "", role="user")
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+    # 协议留痕（注册即接受）
+    try:
+        from db.session import User
+        with db.session() as sess:
+            u = sess.query(User).filter_by(id=result["id"]).first()
+            if u and not u.agreed_at:
+                u.agreed_at = datetime.utcnow()
+                sess.commit()
+    except Exception:
+        pass
+    logger.info("新用户注册: username=%s ip=%s", req.username, ip)
     return result
 
 

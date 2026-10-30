@@ -627,7 +627,9 @@ class AgentDatabase:
     # 用户操作
     # --------------------------------------------------------------------------
     def register_user(self, username: str, password: str, display_name: str = "", role: str = "user") -> dict:
-        """注册新用户"""
+        """注册新用户。用户名唯一性双层防线（2026-10-30）：
+        查重 + IntegrityError 兜底（并发同名同时注册 → 唯一索引拦下，
+        rollback 返回友好错误，不 500 不脏数据）"""
         import bcrypt as _bcrypt
         sess = self.Session()
         try:
@@ -642,7 +644,11 @@ class AgentDatabase:
                 role=role,
             )
             sess.add(user)
-            sess.commit()
+            try:
+                sess.commit()
+            except IntegrityError:
+                sess.rollback()
+                return {"error": "用户名已存在"}
             return {"id": user.id, "username": user.username, "role": user.role}
         finally:
             sess.close()

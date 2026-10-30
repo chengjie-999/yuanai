@@ -77,7 +77,8 @@ _DEFAULT_SYSTEM_CONFIG = {
     # 推理强度（DeepSeek 系列；low/medium/high）
     "reasoning_effort": "low",
     # 成本护栏
-    "register_open": False,
+    # 公开注册（2026-10-30 开放：默认开，后台「系统参数」可关；防刷限流兜底）
+    "register_open": True,
     "daily_message_quota": 50,
     "voice_enabled": True,
     # 用户侧成本展示的盈利系数（2026-10-30）：计费价 = 实际成本 × 系数；

@@ -72,3 +72,4 @@ utils/excel_env/
 downloads/version.json
 downloads/yuanai-agent.exe
 downloads/*.uploading
+downloads/versions/

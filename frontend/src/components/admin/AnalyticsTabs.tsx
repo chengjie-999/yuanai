@@ -237,6 +237,18 @@ export function CostAnalyticsTab() {
   return (
     <div>
       <DaysSwitch days={days} setDays={setDays} />
+      {/* 口径说明（2026-10-31 用户要求）：系数成本计算规则透明化 */}
+      <div style={{
+        padding: '10px 14px', marginBottom: 14, borderRadius: 8,
+        background: 'var(--accent-soft)', border: '1px solid var(--border-light)',
+        fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.8,
+      }}>
+        <b style={{ color: 'var(--text-primary)' }}>口径说明</b>
+        <div>· 实际成本 = 各模型 token 用量 × 模型定价（含按次计费）；</div>
+        <div>· <b style={{ color: 'var(--text-primary)' }}>系数成本 = Σ（每笔实际成本 × 该笔消费时刻的盈利系数快照）</b>——盈利系数在后台「设置 → 系统参数」修改（热更新），<b>只影响新消费，历史账单按消费时系数锁定不变</b>（当前系数 {ov.multiplier ?? '—'}）；</div>
+        <div>· 显示金额（每用户）= 收款 − 系数成本，负=欠费、正=余额；</div>
+        <div>· 欠费达阈值（后台「设置 → 系统参数 → 欠费限制」）自动限制使用。</div>
+      </div>
       {/* 财务管理指标（2026-10-30）：营收/成本(负)/毛利/毛利率 + 调用与缓存 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
         <StatCard label={`近${days}天应计总额`} value={`¥${fmtCost(ov.revenue)}`} color={C_GREEN}

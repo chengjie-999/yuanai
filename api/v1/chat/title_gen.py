@@ -25,7 +25,10 @@ def _is_auto_title(title: str, first_msg: str) -> bool:
     C 修复：兼容前端 50 字与后端 80 字两种截断口径（前端写 50、后端判 80
     曾致首条 >50 字时 AI 标题永不生成）。"""
     t = (title or "").strip()
-    if not t or t == "新对话":
+    # 「主对话」也是自动默认名（2026-10-31 用户拍板：置顶主对话昵称由 AI 自动生成，
+    # 不再永远叫「主对话」）；手动重命名后的标题不在本清单/非首条截断 → 永不覆盖
+    #（重命名优先级最高）
+    if not t or t in ("新对话", "主对话"):
         return True
     for cut in (50, 80):
         if t == first_msg[:cut] + ("..." if len(first_msg) > cut else ""):

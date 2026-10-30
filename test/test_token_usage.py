@@ -495,6 +495,9 @@ def test_title_is_auto_heuristic():
     assert _is_auto_title(long[:80] + "...", long) is True
     assert _is_auto_title("帮我分析销售数据", "帮我分析销售数据") is True   # 首条消息截断式 = 自动标题
     assert _is_auto_title("销售复盘报告", "帮我分析销售数据") is False     # 用户手改/已生成
+    # 2026-10-31 用户拍板：置顶主对话「主对话」默认名也是自动标题（AI 自动生成昵称）；
+    # 手动重命名后的标题永不覆盖（重命名优先级最高）
+    assert _is_auto_title("主对话", "任何") is True
     # C 修复：前端 50 字截断口径（含 ...）同样识别为自动标题
     long50 = "y" * 60
     assert _is_auto_title(long50[:50] + "...", long50) is True

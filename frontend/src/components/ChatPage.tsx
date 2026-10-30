@@ -335,7 +335,7 @@ export default function ChatPage({ user }: { user?: any }) {
           setCurrentSid(main.session_id)
           const history = await loadMessages(main.session_id)
           setMessages(history.length === 0
-            ? [{ role: 'assistant', content: '你好！有什么可以帮你的？' }]
+            ? []  // 空对话不再塞问候语（2026-10-31 用户拍板）：显示主页 logo 吉祥物 + 推荐问题
             : parseHistory(history))
           scrollToLatest()
         }
@@ -376,7 +376,7 @@ export default function ChatPage({ user }: { user?: any }) {
     // 新建普通对话并立即打开（登录已直接落主对话，新对话按钮=另开一个会话）
     const sid = await createSession()
     setCurrentSid(sid)
-    setMessages([{ role: 'assistant', content: '你好！有什么可以帮你的？' }])
+    setMessages([])  // 空对话显示吉祥物 logo（2026-10-31）
     setInput('')
     setImages([])
     setFeedbackState({})
@@ -419,7 +419,7 @@ export default function ChatPage({ user }: { user?: any }) {
     setFeedbackState(feedbackData)
     setEditingIndex(null)
     setMessages(history.length === 0
-      ? [{ role: 'assistant', content: '你好！有什么可以帮你的？' }]
+      ? []  // 空对话显示吉祥物 logo（2026-10-31）
       : parseHistory(history))
     scrollToLatest()  // 历史异步加载完成后补滚（时序缺口）
     if (isMobile) setSidebarOpen(false)  // P2：移动端选中会话后收起侧栏

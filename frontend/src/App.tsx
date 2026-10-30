@@ -126,7 +126,10 @@ function AppLayout() {
         </span>
         <nav style={{ display: 'flex', gap: 0 }}>
           <Link to="/chat" style={navLinkStyle('/chat')}>对话</Link>
-          <Link to="/chat/planet" style={navLinkStyle('/chat/planet')}>知识星球</Link>
+          {/* 知识星球暂不给普通用户展示（2026-10-31 用户拍板）：导航入口仅 admin */}
+          {isAdmin && (
+            <Link to="/chat/planet" style={navLinkStyle('/chat/planet')}>知识星球</Link>
+          )}
           {isAdmin && (
             <Link to="/chat/admin" style={navLinkStyle('/chat/admin')}>管理</Link>
           )}
@@ -195,7 +198,7 @@ function AppLayout() {
             <Route path="/agent/board/:key" element={<DashboardBoardPage />} />
             <Route path="/agent/medical" element={<MedicalPage />} />
             <Route path="/agent/records" element={<CollectionRecordsPage />} />
-            <Route path="/planet" element={<PlanetPage />} />
+            <Route path="/planet" element={isAdmin ? <PlanetPage /> : <Navigate to="/chat" replace />} />
             <Route path="/plan" element={<PlanPage />} />
             <Route path="/admin/*" element={
               <AdminRoute><AdminPage isAdmin={isAdmin} /></AdminRoute>

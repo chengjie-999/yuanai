@@ -86,6 +86,16 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                   </span>
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                  {/* 主对话降级（2026-10-30）：不清数据——转普通对话 + 自动新建空主对话；2026-10-31 用户拍板：位置放最前 */}
+                  {s.is_main && (
+                    <span onClick={(e) => { e.stopPropagation(); onDemoteMain(s.session_id) }}
+                      title="转为普通对话" aria-label="转为普通对话"
+                      className="yuan-tip" data-tip="转为普通对话（保留全部历史，自动新建空主对话）"
+                      style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+                    ><ArchiveIcon size={13} /></span>
+                  )}
                   {!s.is_main && (
                     <span onClick={(e) => onDelete(e, s.session_id)} title="删除对话" aria-label="删除对话"
                       className="chat-session-del"
@@ -106,16 +116,7 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                     style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
-                  ><EditIcon size={13} /></span>                  {/* 主对话降级（2026-10-30）：不清数据——转普通对话 + 自动新建空主对话 */}
-                  {s.is_main && (
-                    <span onClick={(e) => { e.stopPropagation(); onDemoteMain(s.session_id) }}
-                      title="转为普通对话" aria-label="转为普通对话"
-                      className="yuan-tip" data-tip="转为普通对话（保留全部历史，自动新建空主对话）"
-                      style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
-                    ><ArchiveIcon size={13} /></span>
-                  )}
+                  ><EditIcon size={13} /></span>
 
 
                   {/* 主对话不可删除（2026-10-30 修复）：删除后当前页继续发消息会落孤儿数据，

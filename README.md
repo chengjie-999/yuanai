@@ -175,7 +175,7 @@ skills/
 | Tab | 路由 | 内容 |
 |-----|------|------|
 | 仪表盘 | `/chat/admin/dashboard` | 用户数/会话数/消息数/在线Agent + 30天消息量图 |
-| 用户管理 | `/chat/admin/users` | 创建/冻结/删除用户 |
+| 用户管理 | `/chat/admin/users` | 创建/冻结/删除用户 + **重置密码**（忘记密码的账号管理员直接设新密码） |
 | Agent 状态 | `/chat/admin/agents` | 在线状态 + 4 个子 Agent 团队卡片 + 实时活动记录 |
 | 会话记录 | `/chat/admin/sessions` | 历史会话查询与查看 |
 | 模型配置 | `/chat/admin/models` | 已配置模型列表 |

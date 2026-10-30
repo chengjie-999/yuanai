@@ -257,7 +257,7 @@ data/                   数据目录
 | 分组 | 页面 | 路由 | 内容 |
 |------|------|------|------|
 | 概览 | 仪表盘 | `/admin/dashboard` | 用户数/会话数/消息数/在线Agent + 30天消息量图 |
-| 用户维度 | 用户管理 | `/admin/users` | 创建/冻结/删除用户 |
+| 用户维度 | 用户管理 | `/admin/users` | 创建/冻结/删除用户 + **重置密码**（`POST /admin/users/{id}/reset-password`，bcrypt 单向哈希不可反解显示，忘记密码直接重置 + token_version+1 吊销旧会话） |
 | 用户维度 | 会话记录 | `/admin/sessions` | 历史会话查询 |
 | Agent 维度 | Agent 状态 | `/admin/agents` | 在线状态 + 能力矩阵卡片 + 实时活动记录 |
 | Agent 维度 | Agent 管理 | `/admin/agent-devices` | 签发安装码、设备列表、一对一绑定、解绑/冻结 |

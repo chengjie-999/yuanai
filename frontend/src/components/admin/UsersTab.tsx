@@ -14,6 +14,7 @@ export default function UsersTab() {
   const [newPassword2, setNewPassword2] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [newRole, setNewRole] = useState('user')
+  const [notice, setNotice] = useState('')
 
   const fetchUsers = async () => {
     setLoading(true); setError('')
@@ -37,6 +38,18 @@ export default function UsersTab() {
     const data = await freezeUser(userId, days, reason)
     if (data.detail) { setError(data.detail); return }
     fetchUsers()
+  }
+  // 重置密码（2026-10-30）：新密码由管理员输入，成功后旧会话全部失效
+  const handleResetPw = async (userId: number, password: string) => {
+    setError('')
+    const res = await fetch(`${API_BASE}/admin/users/${userId}/reset-password`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers() },
+      body: JSON.stringify({ password }),
+    })
+    const data = await res.json()
+    if (!res.ok || data.detail) { setError(data.detail || '重置失败'); return false }
+    setNotice(data.message || '密码已重置')
+    return true
   }
   const handleDeleteUser = async (userId: number, username: string) => {
     if (!confirm(`确定删除用户 "${username}"？此操作不可恢复。`)) return
@@ -64,6 +77,12 @@ export default function UsersTab() {
   return (
     <>
       {error && <ErrorMsg msg={error} onRetry={fetchUsers} />}
+      {notice && !error && (
+        <div style={{ fontSize: 13, padding: '10px 14px', background: 'var(--success-soft)', color: 'var(--success)', borderRadius: 8, marginBottom: 12 }}>
+          {notice}
+          <button onClick={() => setNotice('')} title="关闭" aria-label="关闭" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--success)', float: 'right', padding: 0, lineHeight: 1.6, display: 'flex' }}><XIcon size={14} /></button>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         {!showCreate ? <button onClick={() => setShowCreate(true)} title="创建用户" aria-label="创建用户" style={btnPrimary}>+ 创建用户</button> : (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -132,8 +151,10 @@ export default function UsersTab() {
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>{isFrozen ? `冻结至 ${u.frozen_until?.slice(0, 10)}` : '正常'}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.create_time?.slice(0, 10)}</td>
                     <td style={{ padding: '10px 14px' }}>
-                      {!isAdminRole && <div style={{ display: 'flex', gap: 4 }}>
+                      {!isAdminRole && <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         {isFrozen ? <button onClick={() => handleFreeze(u.id, 0)} title="解冻" aria-label="解冻" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--success)', border: '1px solid var(--success)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>解冻</button> : <FreezeBtn userId={u.id} onFreeze={handleFreeze} />}
+                        {/* 重置密码（2026-10-30）：bcrypt 单向哈希无法显示原密码，管理员直接设新密码 */}
+                        <ResetPwBtn userId={u.id} onReset={handleResetPw} />
                         <button onClick={() => handleDeleteUser(u.id, u.username)} title="删除" aria-label="删除" style={btnDangerSm}>删除</button>
                       </div>}
                     </td>
@@ -144,6 +165,26 @@ export default function UsersTab() {
         </Card>
       )}
     </>
+  )
+}
+
+/* 重置密码（2026-10-30）：密码 bcrypt 单向哈希无法反解，管理员直接设新密码 */
+function ResetPwBtn({ userId, onReset }: { userId: number; onReset: (id: number, password: string) => Promise<boolean> }) {
+  const [open, setOpen] = useState(false); const [pw, setPw] = useState(''); const [busy, setBusy] = useState(false)
+  if (!open) return <button onClick={() => setOpen(true)} title="重置密码" aria-label="重置密码" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--accent)', border: '1px solid var(--accent)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>重置密码</button>
+  return (
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      <input value={pw} onChange={(e) => setPw(e.target.value)} placeholder="新密码（≥8位）" style={{ width: 120, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 12, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
+      <button onClick={async () => {
+        if (pw.length < 8) return
+        setBusy(true)
+        const ok = await onReset(userId, pw)
+        setBusy(false)
+        if (ok) { setOpen(false); setPw('') }
+      }} disabled={pw.length < 8 || busy} title="确定" aria-label="确定"
+        style={{ fontSize: 11, padding: '4px 8px', color: '#fff', background: 'var(--accent)', border: 'none', borderRadius: 4, cursor: pw.length >= 8 && !busy ? 'pointer' : 'default', opacity: pw.length >= 8 && !busy ? 1 : 0.55 }}>确定</button>
+      <button onClick={() => setOpen(false)} title="关闭" aria-label="关闭" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}><XIcon size={13} /></button>
+    </div>
   )
 }
 

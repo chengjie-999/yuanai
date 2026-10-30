@@ -1,7 +1,7 @@
 """后台管理 — 用户维度：列表/冻结/创建/删除"""
 
 from datetime import datetime, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Request
 from db.session import get_db
 from api.v1.middleware import require_admin
@@ -82,6 +82,30 @@ async def admin_create_user(req: AdminCreateUser, request: Request):
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+class ResetPasswordBody(BaseModel):
+    password: str = Field(..., min_length=8, max_length=64, description="新密码（最少 8 位）")
+
+
+@router.post("/users/{user_id}/reset-password")
+async def admin_reset_password(user_id: int, body: ResetPasswordBody, request: Request):
+    """管理员重置用户密码（2026-10-30）：密码 bcrypt 单向哈希无法反解显示，
+    忘记密码的账号由管理员直接重置。重置后 token_version+1 吊销旧会话。"""
+    require_admin(request)
+    db = get_db()
+    from db.session import User
+    import bcrypt as _bcrypt
+    with db.session() as sess:
+        user = sess.query(User).filter_by(id=user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if user.role == "admin":
+            raise HTTPException(status_code=400, detail="不能重置管理员密码")
+        user.password_hash = _bcrypt.hashpw(body.password.encode(), _bcrypt.gensalt()).decode()
+        user.token_version = (user.token_version or 0) + 1
+        sess.commit()
+        return {"ok": True, "message": f"已重置用户 {user.username} 的密码（旧登录会话已失效）"}
 
 
 @router.delete("/users/{user_id}")

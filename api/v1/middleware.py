@@ -101,6 +101,13 @@ async def auth_middleware(request: Request, call_next):
                 return JSONResponse(status_code=403, content={"detail": "账号已被冻结"})
             if payload and user and user.token_version and int(payload.get("tv") or 0) < user.token_version:
                 return JSONResponse(status_code=401, content={"detail": "token 已失效，请重新登录"})
+            # 并发登录数限制（2026-10-30）：仅登录签发的 token（sess 标记）校验——
+            # 超过 5 台时最旧会话被踢，此处 401；桥接/长令牌不带标记不受影响；
+            # Redis 故障 fail-open（不限流）
+            if payload and payload.get("sess") == 1:
+                from api.v1.auth.utils import is_login_session_valid
+                if not is_login_session_valid(request.state.user_id, payload.get("jti") or ""):
+                    return JSONResponse(status_code=401, content={"detail": "账号已在其他设备登录（最多 5 台），当前会话已下线，请重新登录"})
             # 2026-10-19 修复：admin 删除用户后 user 为 None 仍放行——JWT 过期前
             # 可以已删用户身份继续工作；补 401 收口
             if payload and not user:

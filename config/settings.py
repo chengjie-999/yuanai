@@ -363,6 +363,9 @@ OVERSEAS_LOOKUP_ENABLED = os.getenv("OVERSEAS_LOOKUP_ENABLED", "0") == "1"
 # env COST_PROFIT_MULTIPLIER 可覆盖
 COST_PROFIT_MULTIPLIER = float(_syscfg("cost_profit_multiplier"))
 
+# 单账号并发登录设备数上限（2026-10-30 用户拍板：5 台，超限踢最旧会话）
+MAX_LOGIN_SESSIONS = int(os.getenv("MAX_LOGIN_SESSIONS", "5"))
+
 # ===================== 鉴权配置 =====================
 
 _jwt = os.getenv("JWT_SECRET_KEY")

@@ -1,6 +1,7 @@
 import json as _json
 import logging
 import os as _os
+import time
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
@@ -112,7 +113,14 @@ def login(req: AuthRequest, request: Request):
     else:
         logger.info("登录成功: user=%s, ip=%s", user.username, ip)
 
-    token = create_token(user.id, user.role, user.username)
+    token = create_token(user.id, user.role, user.username, track_session=True)
+    # 并发登录数限制（2026-10-30）：登记本会话，超 5 台踢最旧（被踢设备下个请求 401）
+    from api.v1.auth.utils import register_login_session
+    _pl = verify_token(token) or {}
+    _exp = _pl.get("exp")
+    exp_ts = _exp if isinstance(_exp, (int, float)) else (
+        _exp.timestamp() if hasattr(_exp, "timestamp") else time.time() + 86400)
+    register_login_session(user.id, _pl.get("jti", ""), exp_ts)
     return {
         "token": token,
         "user": {

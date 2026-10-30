@@ -24,7 +24,7 @@ from PIL import Image, ImageDraw
 logger = logging.getLogger("agent.tray")
 
 # 当前版本（打包发布时更新；云端 downloads/version.json 由网页上传时写入）
-AGENT_VERSION = "1.0.0"
+AGENT_VERSION = "--help"
 
 
 def _ver_lt(a: str, b: str) -> bool:

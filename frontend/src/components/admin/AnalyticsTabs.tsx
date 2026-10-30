@@ -240,7 +240,7 @@ export function CostAnalyticsTab() {
       {/* 财务管理指标（2026-10-30）：营收/成本(负)/毛利/毛利率 + 调用与缓存 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
         <StatCard label={`近${days}天应计总额`} value={`¥${fmtCost(ov.revenue)}`} color={C_GREEN}
-          sub={`系数成本合计（实际成本 × ${ov.multiplier ?? 1.8}）`} />
+          sub="系数成本合计（按消费时系数快照）" />
         <StatCard label={`近${days}天成本`} value={fmtCostNeg4(ov.total_cost)} color={C_RED} sub="各模型定价折算" />
         <StatCard label="毛利" value={`¥${fmtCost(ov.profit)}`} color={C_BLUE} sub="应计总额 - 成本" />
         <StatCard label="毛利率" value={`${ov.profit_rate ?? 0}%`} color={C_GREEN} sub="毛利 / 应计总额" />
@@ -352,7 +352,7 @@ export function CostAnalyticsTab() {
                       {fmtCostSigned(u.paid - u.billed)}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {fmtCostNeg4(u.cost)} × {ov.multiplier ?? 1.8} → {fmtCostNeg4(u.billed)}
+                      实际成本 {fmtCostNeg4(u.cost)} → 系数成本 {fmtCostNeg4(u.billed)}
                     </div>
                   </td>
                 </tr>

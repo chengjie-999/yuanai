@@ -265,14 +265,15 @@ _AUDIT_WARNING = "本条回复可能包含违规内容，已按平台规则移�
 
 def _check_arrears(user_id: int) -> str:
     """欠费限制（2026-10-30 用户拍板）：显示金额（收款 − 系数成本）≤ -ARREARS_LIMIT
-    即欠费满门槛时限制使用。返回提示文案；None = 放行。异常静默放行。"""
-    from config.settings import ARREARS_LIMIT, COST_PROFIT_MULTIPLIER
+    即欠费满门槛时限制使用。返回提示文案；None = 放行。异常静默放行。
+    系数成本按消费时快照系数计算（改系数不影响历史欠费额）。"""
+    from config.settings import ARREARS_LIMIT
     if not user_id or ARREARS_LIMIT <= 0:
         return None
     try:
         paid = _get_db().user_paid_totals([user_id]).get(user_id, 0.0)
         cost = _get_db().query_user_cost(user_id)
-        owed = round(cost["total_cost"] * COST_PROFIT_MULTIPLIER - paid, 6)
+        owed = round(cost["billed_total"] - paid, 6)
         if owed >= ARREARS_LIMIT:
             return (f"账户欠费 ¥{owed:.2f}（显示金额 -¥{owed:.2f}），"
                     f"已限制使用。请联系管理员缴费后恢复。")

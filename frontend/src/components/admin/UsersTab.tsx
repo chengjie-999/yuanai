@@ -221,7 +221,7 @@ export default function UsersTab() {
                         {fmtCostSigned(u.paid - u.billed)}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        {fmtCostNeg4(u.cost)} × {u.multiplier ?? 1.8} → {fmtCostNeg4(u.billed)}
+                        实际成本 {fmtCostNeg4(u.cost)} → 系数成本 {fmtCostNeg4(u.billed)}
                       </div>
                     </td>
                     <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: 'var(--success)' }}>

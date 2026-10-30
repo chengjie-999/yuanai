@@ -30,19 +30,24 @@ async def list_users(request: Request):
     from db.session import User, TokenUsage
     with db.session() as sess:
         users = sess.query(User).order_by(User.id).all()
-        # 每用户累计成本（2026-10-30 用户管理成本列）：按 (user, model) 聚合后折算
+        # 每用户累计成本（2026-10-30 用户管理成本列）：按 (user, model, 系数快照)
+        # 聚合后折算——历史消费按写入时系数锁定，改系数只影响新消费
         from sqlalchemy import func as _func
         from yuanai_core.usage import model_cost
         from config.settings import COST_PROFIT_MULTIPLIER
         cost_rows = (sess.query(TokenUsage.user_id, TokenUsage.model,
                                 _func.sum(TokenUsage.prompt_tokens),
                                 _func.sum(TokenUsage.completion_tokens),
-                                _func.count(TokenUsage.id))
-                     .group_by(TokenUsage.user_id, TokenUsage.model).all())
+                                _func.count(TokenUsage.id),
+                                TokenUsage.multiplier)
+                     .group_by(TokenUsage.user_id, TokenUsage.model,
+                               TokenUsage.multiplier).all())
         by_uid = {}
         for r in cost_rows:
-            e = by_uid.setdefault(int(r[0] or 0), {"cost": 0.0, "calls": 0})
-            e["cost"] += model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
+            e = by_uid.setdefault(int(r[0] or 0), {"cost": 0.0, "calls": 0, "billed": 0.0})
+            c = model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
+            e["cost"] += c
+            e["billed"] += c * (float(r[5]) if r[5] is not None else COST_PROFIT_MULTIPLIER)
             e["calls"] += int(r[4] or 0)
         now = datetime.utcnow()
         # 累计收款（2026-10-30 逐笔记账：各笔之和）
@@ -54,12 +59,11 @@ async def list_users(request: Request):
             "frozen_until": str(u.frozen_until)[:19] if u.frozen_until else None,
             "freeze_reason": u.freeze_reason or "",
             "create_time": str(u.create_time)[:19] if u.create_time else "",
-            # 财务口径（2026-10-30）：实际成本 + 系数成本（=成本×系数，应计）+
+            # 财务口径（2026-10-30）：实际成本 + 系数成本（按消费时系数快照，应计）+
             # 累计收款；显示金额 = 系数成本 − 收款（前端计算）
             "cost": round(by_uid.get(u.id, {}).get("cost", 0), 4),
-            # 系数成本保留实际精度（round 6 去浮点噪声），显示金额 = 系数成本 − 收款
-            # 由前端用实际值计算后再格式化（2026-10-30：计算不用显示取整值）
-            "billed": round(by_uid.get(u.id, {}).get("cost", 0) * COST_PROFIT_MULTIPLIER, 6),
+            # 系数成本 = Σ 成本×写入时系数（round 6 去浮点噪声），改系数只影响新消费
+            "billed": round(by_uid.get(u.id, {}).get("billed", 0), 6),
             "calls": by_uid.get(u.id, {}).get("calls", 0),
             "paid": round(paid_totals.get(u.id, 0.0), 2),
             "multiplier": COST_PROFIT_MULTIPLIER,

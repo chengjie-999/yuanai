@@ -205,11 +205,12 @@ def my_cost(request: Request):
     uid = getattr(request.state, "user_id", None)
     if not uid:
         raise HTTPException(status_code=401, detail="未登录")
-    from config.settings import COST_PROFIT_MULTIPLIER, ARREARS_LIMIT
+    from config.settings import ARREARS_LIMIT, COST_PROFIT_MULTIPLIER
     data = get_db().query_user_cost(uid)
     is_admin = getattr(request.state, "role", "") == "admin"
-    # 2026-10-30：计算全程用实际金额（round 6 仅去浮点噪声），展示端才做金额格式化
-    billed_total = round(data["total_cost"] * COST_PROFIT_MULTIPLIER, 6)
+    # 盈利系数快照（2026-10-30）：billed 由 query_user_cost 按写入时系数锁定计算，
+    # 改系数只影响新消费；计算全程实际精度（round 6 仅去浮点噪声）
+    billed_total = data["billed_total"]
     # 累计收款（2026-10-30 逐笔记账）：线下收款管理员登记，各笔之和
     paid = 0.0
     try:
@@ -217,7 +218,7 @@ def my_cost(request: Request):
     except Exception:
         pass
     out = {
-        "billed_month": round(data["month_cost"] * COST_PROFIT_MULTIPLIER, 6),
+        "billed_month": data["billed_month"],
         "billed_total": billed_total,
         "paid": paid,
         "outstanding": round(billed_total - paid, 6),

@@ -101,7 +101,7 @@ class TestUserCost:
         assert "month_cost" not in d and "total_cost" not in d and "multiplier" not in d
 
     def test_admin_changes_multiplier_hot_reload(self, client, auth_headers, db, admin_jwt):
-        """管理员改盈利系数 → 热更新 → /auth/cost 立即反映（2026-10-30）"""
+        """管理员改盈利系数 → 热更新生效，但历史消费按快照锁定不变（2026-10-30）"""
         if not auth_headers:
             pytest.skip("需要有效登录凭据")
         import os as _os
@@ -112,14 +112,15 @@ class TestUserCost:
                 backup = f.read()
         ah = {"Authorization": f"Bearer {admin_jwt}"}
         try:
+            before = client.get("/api/v1/auth/cost", headers=ah).json()
             resp = client.put("/api/v1/admin/system-config",
                               json={"system_config": {"cost_profit_multiplier": 2.5}},
                               headers=ah)
             assert resp.status_code == 200
-            # admin 视角：真实成本 + 系数可见（计算用实际精度，round 6 去浮点噪声）
+            # admin 视角：真实成本 + 当前系数可见；历史 billed 不变（快照锁定）
             d = client.get("/api/v1/auth/cost", headers=ah).json()
             assert d["multiplier"] == pytest.approx(2.5)
-            assert d["billed_month"] == pytest.approx(round(d["month_cost"] * 2.5, 6))
+            assert d["billed_total"] == pytest.approx(before["billed_total"])
             # 普通用户视角：无真实成本字段
             u = client.get("/api/v1/auth/cost", headers=auth_headers).json()
             assert "month_cost" not in u and "multiplier" not in u

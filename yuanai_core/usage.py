@@ -48,11 +48,19 @@ def record_usage(user_id: int, model: str, purpose: str,
         if not (price and "per_call" in price):
             return  # 无用量数据（如旧模型响应缺 usage）不记账
     with _buffer_lock:
+        # 盈利系数快照（2026-10-30）：记录写入时刻的系数——之后改系数只影响
+        # 新消费，历史账单不变
+        try:
+            from config.settings import COST_PROFIT_MULTIPLIER
+            _multiplier = float(COST_PROFIT_MULTIPLIER)
+        except Exception:
+            _multiplier = 1.8
         _buffer.append({
             "user_id": user_id or 0, "model": model, "purpose": purpose,
             "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens, "source": source,
             "cache_hit_tokens": int(cache_hit_tokens or 0),
+            "multiplier": _multiplier,
         })
         if len(_buffer) >= MAX_BUFFER:
             _submit_flush(_drain_buffer())

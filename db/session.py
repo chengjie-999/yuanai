@@ -78,6 +78,7 @@ class TokenUsage(Base):
     total_tokens = Column(Integer, default=0)
     cache_hit_tokens = Column(Integer, default=0)  # 前缀缓存命中 token（迁移 0019）
     source = Column(String(16), default='cloud')
+    multiplier = Column(Numeric(5, 2), nullable=True)  # 盈利系数快照（2026-10-30，迁移 0025）
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -2617,15 +2618,23 @@ class AgentDatabase:
 
     def query_user_cost(self, user_id: int) -> dict:
         """用户本人 API 成本（2026-10-30，用户侧用量展示）：
-        本月 30 天 + 累计成本、调用次数（真实成本口径；盈利系数由展示层乘）。"""
+        本月 30 天 + 累计成本、调用次数（真实成本口径）。
+        盈利系数快照（2026-10-30）：按 (model, multiplier) 分组——
+        历史消费按写入时系数锁定，改系数只影响新消费。"""
         from sqlalchemy import func as _func, text as _text
         from yuanai_core.usage import model_cost
+        from config.settings import COST_PROFIT_MULTIPLIER
         sess = self.Session()
         try:
             def _agg(rows):
                 cost = sum(model_cost(r[0], int(r[1] or 0), int(r[2] or 0),
                                       calls=int(r[3] or 1)) for r in rows)
-                return round(cost, 4), sum(int(r[3] or 0) for r in rows)
+                billed = sum(model_cost(r[0], int(r[1] or 0), int(r[2] or 0),
+                                        calls=int(r[3] or 1))
+                             * (float(r[4]) if r[4] is not None else COST_PROFIT_MULTIPLIER)
+                             for r in rows)
+                calls = sum(int(r[3] or 0) for r in rows)
+                return round(cost, 4), round(billed, 6), calls
 
             month_rows = (sess.query(TokenUsage)
                           .filter(TokenUsage.user_id == user_id,
@@ -2633,19 +2642,22 @@ class AgentDatabase:
                           .with_entities(TokenUsage.model,
                                          _func.sum(TokenUsage.prompt_tokens),
                                          _func.sum(TokenUsage.completion_tokens),
-                                         _func.count(TokenUsage.id))
-                          .group_by(TokenUsage.model).all())
+                                         _func.count(TokenUsage.id),
+                                         TokenUsage.multiplier)
+                          .group_by(TokenUsage.model, TokenUsage.multiplier).all())
             total_rows = (sess.query(TokenUsage)
                           .filter(TokenUsage.user_id == user_id)
                           .with_entities(TokenUsage.model,
                                          _func.sum(TokenUsage.prompt_tokens),
                                          _func.sum(TokenUsage.completion_tokens),
-                                         _func.count(TokenUsage.id))
-                          .group_by(TokenUsage.model).all())
-            month_cost, month_calls = _agg(month_rows)
-            total_cost, total_calls = _agg(total_rows)
+                                         _func.count(TokenUsage.id),
+                                         TokenUsage.multiplier)
+                          .group_by(TokenUsage.model, TokenUsage.multiplier).all())
+            month_cost, month_billed, month_calls = _agg(month_rows)
+            total_cost, total_billed, total_calls = _agg(total_rows)
             return {"month_cost": month_cost, "month_calls": month_calls,
-                    "total_cost": total_cost, "total_calls": total_calls}
+                    "total_cost": total_cost, "total_calls": total_calls,
+                    "billed_month": month_billed, "billed_total": total_billed}
         finally:
             sess.close()
 
@@ -2678,25 +2690,28 @@ class AgentDatabase:
             for m in models:
                 m["share"] = round(m["cost"] / total_cost * 100, 1) if total_cost else 0.0
 
-            # 日维度（按 (日, model) 聚合后折算）
+            # 日维度（按 (日, model, 系数快照) 聚合后折算；改系数只影响新消费）
             daily_rows = (base.with_entities(_func.date(TokenUsage.create_time), TokenUsage.model,
                                              _func.sum(TokenUsage.prompt_tokens),
                                              _func.sum(TokenUsage.completion_tokens),
                                              _func.count(TokenUsage.id),
-                                             _func.sum(TokenUsage.total_tokens))
-                          .group_by(_func.date(TokenUsage.create_time), TokenUsage.model).all())
+                                             _func.sum(TokenUsage.total_tokens),
+                                             TokenUsage.multiplier)
+                          .group_by(_func.date(TokenUsage.create_time), TokenUsage.model,
+                                    TokenUsage.multiplier).all())
             by_day = {}
             for r in daily_rows:
                 d = str(r[0])
-                e = by_day.setdefault(d, {"cost": 0.0, "tokens": 0, "calls": 0})
-                e["cost"] += model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
+                e = by_day.setdefault(d, {"cost": 0.0, "tokens": 0, "calls": 0, "billed": 0.0})
+                c = model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
+                e["cost"] += c
+                e["billed"] += c * (float(r[6]) if r[6] is not None else COST_PROFIT_MULTIPLIER)
                 e["tokens"] += int(r[5] or 0)
                 e["calls"] += int(r[4] or 0)
             daily = [{"date": d, "cost": round(v["cost"], 4), "tokens": v["tokens"],
                       "calls": v["calls"],
-                      # 财务口径（2026-10-30）：日应计 = 成本 × 盈利系数（实际精度，
-                      # 展示端格式化）
-                      "billed": round(v["cost"] * COST_PROFIT_MULTIPLIER, 6)}
+                      # 日应计 = Σ 成本×写入时系数快照（实际精度，展示端格式化）
+                      "billed": round(v["billed"], 6)}
                      for d, v in sorted(by_day.items())]
 
             # 用途维度（按 (purpose, model) 聚合后折算）
@@ -2717,18 +2732,21 @@ class AgentDatabase:
                         ("calls", "prompt_tokens", "completion_tokens")}}
                         for k, v in sorted(by_purpose.items(), key=lambda x: -x[1]["cost"])]
 
-            # 用户维度（按 (user, model) 聚合后折算；用户名 JOIN）。
-            # 2026-10-30：展示每个用户的实际成本 + 显示金额（计费价 = 成本 × 盈利系数），
-            # 不再只取 Top10
+            # 用户维度（按 (user, model, 系数快照) 聚合后折算；用户名 JOIN）。
+            # 2026-10-30：每个用户实际成本 + 系数成本（写入时系数锁定）
             user_rows = (base.with_entities(TokenUsage.user_id, TokenUsage.model,
                                             _func.sum(TokenUsage.prompt_tokens),
                                             _func.sum(TokenUsage.completion_tokens),
-                                            _func.count(TokenUsage.id))
-                         .group_by(TokenUsage.user_id, TokenUsage.model).all())
+                                            _func.count(TokenUsage.id),
+                                            TokenUsage.multiplier)
+                         .group_by(TokenUsage.user_id, TokenUsage.model,
+                                   TokenUsage.multiplier).all())
             by_user = {}
             for r in user_rows:
-                e = by_user.setdefault(int(r[0] or 0), {"cost": 0.0, "calls": 0})
-                e["cost"] += model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
+                e = by_user.setdefault(int(r[0] or 0), {"cost": 0.0, "calls": 0, "billed": 0.0})
+                c = model_cost(r[1], int(r[2] or 0), int(r[3] or 0), calls=int(r[4] or 1))
+                e["cost"] += c
+                e["billed"] += c * (float(r[5]) if r[5] is not None else COST_PROFIT_MULTIPLIER)
                 e["calls"] += int(r[4] or 0)
             names = {}
             paid_by_uid = {}
@@ -2740,8 +2758,8 @@ class AgentDatabase:
                 paid_by_uid = self.user_paid_totals(uids)
             users = [{"user_id": uid, "username": names.get(uid, f"用户#{uid}"),
                       "cost": round(v["cost"], 4),
-                      # 实际精度（round 6 去浮点噪声）；显示金额 = billed − paid 由前端算
-                      "billed": round(v["cost"] * COST_PROFIT_MULTIPLIER, 6),
+                      # 系数成本快照口径（round 6 去浮点噪声）；显示金额 = billed − paid 由前端算
+                      "billed": round(v["billed"], 6),
                       "paid": paid_by_uid.get(uid, 0.0),
                       "calls": v["calls"]}
                      for uid, v in sorted(by_user.items(), key=lambda x: -x[1]["cost"])]
@@ -2751,10 +2769,10 @@ class AgentDatabase:
             prompt_total = sum(m["prompt_tokens"] for m in models)
             hit_total = int(base.with_entities(_func.sum(TokenUsage.cache_hit_tokens)).scalar() or 0)
             msgs = sess.query(_func.count(AIChat.id)).filter(AIChat.create_time >= since).scalar() or 0
-            # 财务管理指标（2026-10-30）：应计总额 = 成本 × 盈利系数；毛利 = 应计 - 成本；
-            # 收款 = 线下收款管理员登记。计算全程实际精度（round 6 去浮点噪声），
-            # 展示端才格式化——不用显示取整值参与计算
-            revenue = round(total_cost * COST_PROFIT_MULTIPLIER, 6)
+            # 财务管理指标（2026-10-30）：应计总额 = Σ 成本×写入时系数快照（日口径汇总）；
+            # 毛利 = 应计 - 成本；收款 = 线下收款管理员登记。计算全程实际精度
+            # （round 6 去浮点噪声），展示端才格式化——不用显示取整值参与计算
+            revenue = round(sum(v["billed"] for v in daily), 6)
             profit = round(revenue - total_cost, 6)
             paid_total = round(sum(self.user_paid_totals().values()), 2)  # 累计收款全量汇总
             return {
@@ -2786,6 +2804,7 @@ class AgentDatabase:
                     completion_tokens=r.get("completion_tokens") or 0,
                     total_tokens=r.get("total_tokens") or 0,
                     cache_hit_tokens=r.get("cache_hit_tokens") or 0,
+                    multiplier=r.get("multiplier"),  # 盈利系数快照（None = 存量回填前）
                     source=(r.get("source") or "cloud")[:16],
                 ))
             sess.commit()

@@ -618,3 +618,44 @@ def test_bridge_memory_endpoint(client, db, monkeypatch):
             sess.commit()
         finally:
             sess.close()
+
+
+class TestMultiplierSnapshot:
+    """盈利系数快照（2026-10-30 用户拍板）：历史消费锁定写入时系数，
+    改系数只影响新消费。"""
+
+    def test_billed_uses_per_row_multiplier(self, db, monkeypatch):
+        from db.session import TokenUsage
+        import config.settings as _s
+        monkeypatch.setattr(_s, "COST_PROFIT_MULTIPLIER", 9.9)  # 当前系数改大，历史不应变
+        r = db.register_user("__snapshot_test__", "test1234")
+        assert "error" not in r, r
+        uid = r["id"]
+        try:
+            sess = db.Session()
+            try:
+                sess.add(TokenUsage(user_id=uid, model="deepseek-flash",
+                                    prompt_tokens=100000, completion_tokens=0,
+                                    total_tokens=100000, multiplier=1.8))
+                sess.add(TokenUsage(user_id=uid, model="deepseek-flash",
+                                    prompt_tokens=100000, completion_tokens=0,
+                                    total_tokens=100000, multiplier=2.5))
+                sess.commit()
+            finally:
+                sess.close()
+            data = db.query_user_cost(uid)
+            # 两行成本相同（各 c）：billed = c*1.8 + c*2.5，与当前 9.9 无关
+            c = data["total_cost"] / 2
+            assert data["billed_total"] == pytest.approx(round(c * 1.8 + c * 2.5, 6))
+            assert data["billed_total"] < round(data["total_cost"] * 9.9, 6)
+        finally:
+            from db.session import User
+            sess = db.Session()
+            try:
+                sess.query(TokenUsage).filter_by(user_id=uid).delete()
+                u = sess.query(User).filter_by(id=uid).first()
+                if u:
+                    sess.delete(u)
+                sess.commit()
+            finally:
+                sess.close()

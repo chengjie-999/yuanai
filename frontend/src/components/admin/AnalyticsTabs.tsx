@@ -333,7 +333,7 @@ export function CostAnalyticsTab() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
-                {['用户', 'ID', '调用次数', '实际成本(¥)', '收款(¥)', '显示金额(¥)'].map((h) => (
+                {['用户', 'ID', '调用次数', '收款(¥)', '显示金额(¥)'].map((h) => (
                   <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{h}</th>
                 ))}
               </tr>
@@ -344,17 +344,21 @@ export function CostAnalyticsTab() {
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.username}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>{u.user_id}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{u.calls}</td>
-                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>{fmtCostNeg4(u.cost)}</td>
                   <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', color: 'var(--success)', fontWeight: 600 }}>{fmtCost(u.paid)}</td>
-                  {/* 显示金额 = 收款 − 系数成本（2026-10-30：负=欠费，正=余额） */}
-                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)', fontWeight: 600,
-                    color: (u.paid - u.billed) < 0 ? 'var(--danger)' : 'var(--success)' }}>
-                    {fmtCostSigned(u.paid - u.billed)}
+                  {/* 与用户管理同款（2026-10-30 用户拍板）：显示金额 = 收款 − 系数成本
+                      （负=欠费红/正=余额绿），副行完整换算一眼可验 */}
+                  <td style={{ padding: '8px 8px', borderBottom: '1px solid var(--border-light)' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: (u.paid - u.billed) < 0 ? 'var(--danger)' : 'var(--success)' }}>
+                      {fmtCostSigned(u.paid - u.billed)}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {fmtCostNeg4(u.cost)} × {ov.multiplier ?? 1.8} → {fmtCostNeg4(u.billed)}
+                    </div>
                   </td>
                 </tr>
               ))}
               {(data?.users || []).length === 0 && (
-                <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>暂无用量数据</td></tr>
+                <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>暂无用量数据</td></tr>
               )}
             </tbody>
           </table>

@@ -53,22 +53,25 @@ function MyUsageCard() {
   }, [])
 
   if (!data) return null
-  const stat = (label: string, value: string, sub: string) => (
+  const stat = (label: string, value: string, sub: string, color?: string) => (
     <div style={{ flex: 1, textAlign: 'center', padding: '4px 8px' }}>
-      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent)', lineHeight: 1.3 }}>{value}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: color || 'var(--accent)', lineHeight: 1.3 }}>{value}</div>
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{label}</div>
       <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>
     </div>
   )
+  const owe = data.paid - data.billed_total < 0
   return (
     <div style={C.card}>
       <div style={C.title}>我的用量 <span style={C.sub}>— 本人 API 成本（近 30 天）</span></div>
       <div style={{ display: 'flex', padding: '16px 12px' }}>
-        {/* 2026-10-30 口径：应计金额（系数成本=实际成本×盈利系数）− 收款 = 显示金额 */}
+        {/* 2026-10-30 口径（与用户管理同款）：显示金额 = 收款 − 系数成本，
+            欠费红/余额绿 */}
         {stat('本月应计', `¥${fmtCost(data.billed_month)}`, '')}
         {stat('累计应计', `¥${fmtCost(data.billed_total)}`, '')}
         {stat('累计已收', `¥${fmtCost(data.paid)}`, '')}
-        {stat('显示金额', `${fmtCostSigned(data.paid - data.billed_total)}`, (data.paid - data.billed_total) < 0 ? '负=欠费' : '正=余额')}
+        {stat('显示金额', `${fmtCostSigned(data.paid - data.billed_total)}`, owe ? '负=欠费' : '正=余额',
+          owe ? 'var(--danger)' : 'var(--success)')}
         {stat('本月调用', `${data.month_calls} 次`, `累计 ${data.total_calls} 次`)}
       </div>
     </div>

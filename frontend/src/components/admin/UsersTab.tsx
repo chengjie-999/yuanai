@@ -139,10 +139,10 @@ export default function UsersTab() {
       <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         {!showCreate ? <button onClick={() => setShowCreate(true)} title="创建用户" aria-label="创建用户" style={btnPrimary}>+ 创建用户</button> : (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="用户名（≥3 字符）" style={{ ...inputStyle, width: 140 }} />
+            <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="用户名（≥3 位，任意字符）" style={{ ...inputStyle, width: 140 }} />
             {/* 密码输入 — 带小眼睛明文切换；≥8 位与登录校验同口径 */}
             <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-              <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type={showPw ? 'text' : 'password'} placeholder="密码（≥8 位）" style={{ ...inputStyle, width: 130, paddingRight: 32 }} />
+              <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type={showPw ? 'text' : 'password'} placeholder="密码（≥8 位，任意字符）" style={{ ...inputStyle, width: 130, paddingRight: 32 }} />
               <button onClick={() => setShowPw(!showPw)} title={showPw ? '隐藏密码' : '显示密码'}
                 style={{ position: 'absolute', right: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-muted)', display: 'flex', lineHeight: 1 }}>
                 {showPw ? (
@@ -304,7 +304,7 @@ function ResetPwBtn({ userId, onReset }: { userId: number; onReset: (id: number,
   if (!open) return <button onClick={() => setOpen(true)} title="重置密码" aria-label="重置密码" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--accent)', border: '1px solid var(--accent)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>重置密码</button>
   return (
     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-      <input value={pw} onChange={(e) => setPw(e.target.value)} placeholder="新密码（≥8位）" style={{ width: 120, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 12, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
+      <input value={pw} onChange={(e) => setPw(e.target.value)} placeholder="新密码（≥8 位，任意字符）" style={{ width: 150, padding: '4px 6px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 12, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
       <button onClick={async () => {
         if (pw.length < 8) return
         setBusy(true)

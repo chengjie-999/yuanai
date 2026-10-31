@@ -77,6 +77,7 @@ export default function LoginPage() {
     const u = username.trim()
     if (!u || !password) { setError('请填写用户名和密码'); return }
     if (u.length < 3) { setError('用户名至少 3 个字符'); return }
+    if (/admin/i.test(u) || u.includes('管理员')) { setError('用户名不能包含 admin/管理员'); return }
     if (password.length < 8) { setError('密码至少 8 个字符'); return }
     if (password !== regPw2) { setError('两次输入的密码不一致'); return }
     if (!agreed) { setError('请先阅读并同意《用户协议》与《隐私政策》'); return }
@@ -203,10 +204,14 @@ export default function LoginPage() {
             onFocus={() => setFocused('user')}
             onBlur={() => setFocused(null)}
             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-            placeholder="用户名（至少 3 个字符）"
+            placeholder="用户名"
             autoComplete="username"
           />
         </div>
+        {/* 注册模式：用户名规则提示（不限制字符类型，仅长度 + 防冒充） */}
+        {mode === 'register' && (
+          <p className="login-field-hint">3 位以上，中文/字母/数字/符号均可；不能含 admin/管理员</p>
+        )}
 
         {/* 注册模式：显示名（选填） */}
         {mode === 'register' && (
@@ -242,7 +247,7 @@ export default function LoginPage() {
             onBlur={() => setFocused(null)}
             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
             type={showPw ? 'text' : 'password'}
-            placeholder="密码（至少 8 位）"
+            placeholder={mode === 'register' ? '密码（至少 8 位）' : '密码'}
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
           />
           <button type="button" className="login-eye" onClick={() => setShowPw(!showPw)} tabIndex={-1}>
@@ -259,6 +264,10 @@ export default function LoginPage() {
             )}
           </button>
         </div>
+        {/* 注册模式：密码规则提示（任意字符均可，仅限长度） */}
+        {mode === 'register' && (
+          <p className="login-field-hint">至少 8 位，任意字符均可（中文/字母/数字/符号）</p>
+        )}
 
         {/* 注册模式：确认密码 */}
         {mode === 'register' && (
@@ -275,7 +284,7 @@ export default function LoginPage() {
               onBlur={() => setFocused(null)}
               onKeyDown={e => e.key === 'Enter' && handleSubmit()}
               type={showPw ? 'text' : 'password'}
-              placeholder="确认密码（至少 8 位）"
+              placeholder="再次输入密码"
               autoComplete="new-password"
             />
           </div>
@@ -577,6 +586,13 @@ export default function LoginPage() {
           color: var(--text-primary);
         }
         .login-input-wrap input::placeholder { color: var(--text-muted); }
+        /* 注册模式：字段规则提示小字（紧贴输入框下方） */
+        .login-field-hint {
+          font-size: 12px;
+          color: var(--text-muted);
+          margin: -8px 2px 14px;
+          line-height: 1.5;
+        }
         .login-input-icon {
           padding: 0 8px 0 14px;
           color: var(--text-muted);

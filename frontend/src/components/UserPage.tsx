@@ -192,12 +192,12 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
         )}
         {pwStep === 1 && (
           <div>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 20px' }}>请输入新密码，至少 8 个字符</p>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 20px' }}>请输入新密码：至少 8 位，任意字符均可（中文/字母/数字/符号）</p>
             <div style={{ marginBottom: 16 }}>
               <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>新密码</div>
               <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
                 style={{ ...C.input, width: '100%', fontSize: 14, padding: '10px 14px' }}
-                placeholder="至少 8 个字符" autoFocus />
+                placeholder="至少 8 位，任意字符" autoFocus />
             </div>
             <div style={{ marginBottom: 20 }}>
               <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>确认新密码</div>

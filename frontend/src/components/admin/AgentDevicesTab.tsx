@@ -327,7 +327,7 @@ export default function AgentDevicesTab() {
       </Card>
 
       {/* 生成安装码 */}
-      <Card>
+      <Card style={{ padding: '16px 20px' }}>
         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>签发安装码</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>数量</span>
@@ -360,7 +360,7 @@ export default function AgentDevicesTab() {
       </Card>
 
       {/* 签发长令牌（2026-10-31：本地打包脚本 --upload 发布鉴权用） */}
-      <Card>
+      <Card style={{ padding: '16px 20px' }}>
         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>签发长令牌</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>用户</span>

@@ -296,14 +296,10 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   const [copied, setCopied] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
   const [draft, setDraft] = useState(msg.content)
-  // P1-3 思考块受控展开：流式期间保持展开（随 reasoning 增长可见），
-  // 完成后默认收起；用户手动折叠/展开后尊重其选择（不被后续 token 重置）
-  const [thinkOpen, setThinkOpen] = useState(false)
-  const userToggledRef = useRef(false)
-  useEffect(() => {
-    if (loading && isLast && !userToggledRef.current) setThinkOpen(true)
-    else if (!loading && !userToggledRef.current) setThinkOpen(false)
-  }, [loading, isLast, msg.reasoning?.length, msg.finalReasoning?.length, msg.toolCalls?.length])
+  // B（2026-11-03）：折叠区改为原生不受控 <details>——流式期间不渲染折叠区
+  // （走替换式实时面板），完成时挂载即默认收起，用户手动开合不受程序干扰。
+  // 受控 open + onToggle 有 React 已知坑（程序移除属性时 toggle 事件回读旧值，
+  // 折叠区反被撑开锁死），故彻底移除。
   // 朗读状态（AI 气泡）：获取中/播放中
   const [speaking, setSpeaking] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -760,8 +756,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 </div>
               ) : null
             ) : (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? (
-              <details open={thinkOpen} style={{ marginBottom: 8 }}
-                onToggle={(e) => { userToggledRef.current = true; setThinkOpen((e.target as HTMLDetailsElement).open) }}>
+              <details style={{ marginBottom: 8 }}>
                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none', outline: 'none' }}>
                   {msg.toolCalls?.length
                     ? `${(msg.reasoning || msg.finalReasoning) ? `思考${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''} · ` : ''}${msg.toolCalls.length} 次工具调用`

@@ -11,6 +11,7 @@ localStorage 记忆。管理员管理：后台设置页发布/删除。
 """
 import json
 import os
+import re
 import threading
 import uuid
 from datetime import datetime
@@ -74,9 +75,12 @@ def auto_deploy_announcement() -> None:
     """部署自动公告：后端启动时检测 git HEAD 变化（仅 git 仓库环境生效）"""
     try:
         import subprocess
+        # encoding 显式 UTF-8：commit message 按 UTF-8 存库，Windows/无 UTF-8 locale
+        # 的容器下 text=True 会按 GBK/ASCII 解码崩（errors=replace 兜底）
         head = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=root_path(),
-            capture_output=True, text=True, timeout=10).stdout.strip()
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=10).stdout.strip()
         if not head:
             return
         state_path = os.path.join(root_path(), "data", "deploy_state.json")
@@ -90,10 +94,31 @@ def auto_deploy_announcement() -> None:
         if last == head:
             return
         # 注意：add_announcement 内部自持 _LOCK——此处不得再包一层（非重入锁会死锁）
-        # A2 精简（2026-11-03 用户拍板）：公告面向普通用户，不展示 commit hash 等专业信息
+        # A2（2026-11-03 用户拍板）：公告 = 人话 + 有用信息——从提交历史提取本次
+        # 更新的条目（去掉 feat:/fix: 等技术前缀），不展示 commit hash
+        entries: list = []
+        try:
+            log_args = ["git", "log", "--pretty=format:%s"]
+            if last:
+                log_args += ["-n", "5", f"{last}..{head}"]
+            else:
+                log_args += ["-n", "3"]
+            out = subprocess.run(
+                log_args, cwd=root_path(),
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=10).stdout
+            for line in out.strip().split("\n")[:3]:
+                subject = re.sub(r"^[a-zA-Z]+(\([^)]*\))?:\s*", "", line.strip())
+                subject = re.sub(r"\s*Co-Authored-By:.*$", "", subject, flags=re.S)
+                if subject and subject not in entries:
+                    entries.append(subject[:60])
+        except Exception:
+            pass
+        content = ("本次更新：" + "；".join(f"{i + 1}、{e}" for i, e in enumerate(entries)) + "。") \
+            if entries else "新功能与体验优化已上线，欢迎体验！"
         add_announcement(
             "小元AI 平台已更新",
-            "小元AI 又有新变化：新功能与体验优化已上线，欢迎体验！",
+            content,
             kind="site", version=head[:8])
         os.makedirs(os.path.dirname(state_path), exist_ok=True)
         with open(state_path + ".tmp", "w", encoding="utf-8") as f:

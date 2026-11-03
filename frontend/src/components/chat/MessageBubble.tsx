@@ -9,7 +9,6 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { voiceTtsStream } from '../../api'
 import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, XIcon } from '../icons'
-import ZoomableImage from './ZoomableImage'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
 const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSProperties => ({
@@ -115,7 +114,7 @@ function InlineHtmlFrame({ html }: { html: string }) {
    2026-11-03 修复「放大是空的」：iframe 改用外层 flex:1+minHeight:0 包裹、
    内部 height:100% 的可靠填充（直接 flex:1 的 iframe 高度可能塌缩），
    zIndex 提到 9999 与图片查看器一致防遮挡 */
-function HtmlViewer({ html, onClose }: { html: string; onClose: () => void }) {
+function HtmlViewer({ html, onClose, title = 'HTML 全屏查看' }: { html: string; onClose: () => void; title?: string }) {
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.7)',
@@ -131,7 +130,7 @@ function HtmlViewer({ html, onClose }: { html: string; onClose: () => void }) {
           padding: '8px 14px', borderBottom: '1px solid var(--border)',
           background: 'var(--bg-secondary)',
         }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>HTML 全屏查看</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{title}</span>
           <button onClick={onClose} aria-label="关闭"
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4,
                      color: 'var(--text-muted)', display: 'flex', lineHeight: 1 }}>
@@ -221,9 +220,12 @@ function MermaidBlock({ code }: { code: string }) {
           {err ? `图表语法错误：${err}` : '图表渲染中…'}
         </div>
       )}
+      {/* 2026-11-03 修复「图表放大空白」：不再转 base64 走 <img>——img 模式下
+          浏览器不渲染 foreignObject（mermaid 节点文字都在里面）且忽略内嵌样式；
+          改 HtmlViewer 完整 HTML 环境直渲（与主视图同款），foreignObject/样式全生效 */}
       {zoom && svg && (
-        <ZoomableImage
-          src={`data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`}
+        <HtmlViewer title="图表全屏查看"
+          html={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;box-sizing:border-box;background:${isDark ? '#0b1220' : '#ffffff'}}svg{max-width:100%;max-height:calc(100vh - 48px)}</style></head><body>${svg}</body></html>`}
           onClose={() => setZoom(false)} />
       )}
     </div>
@@ -232,6 +234,7 @@ function MermaidBlock({ code }: { code: string }) {
 
 /* SVG 直渲（2026-10-26）：img + data URI——img 上下文不执行脚本，天然安全 */
 function SvgBlock({ code }: { code: string }) {
+  const { isDark } = useTheme()
   const [showSource, setShowSource] = useState(false)
   const [copied, setCopied] = useState(false)
   const [zoom, setZoom] = useState(false)
@@ -275,7 +278,13 @@ function SvgBlock({ code }: { code: string }) {
         <img src={uri} alt="SVG 图形" style={{ maxWidth: '100%', cursor: 'zoom-in' }}
           onClick={() => setZoom(true)} title="点击放大" />
       </div>
-      {zoom && <ZoomableImage src={uri} onClose={() => setZoom(false)} />}
+      {/* 与图表块同口径（2026-11-03）：放大走 HtmlViewer 直渲，img 模式会丢
+          内嵌样式；背景随主题 */}
+      {zoom && (
+        <HtmlViewer title="SVG 全屏查看"
+          html={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;box-sizing:border-box;background:${isDark ? '#0b1220' : '#ffffff'}}svg{max-width:100%;max-height:calc(100vh - 48px)}</style></head><body>${code}</body></html>`}
+          onClose={() => setZoom(false)} />
+      )}
     </div>
   )
 }

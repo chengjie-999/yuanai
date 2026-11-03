@@ -142,7 +142,10 @@ export function ZoomViewport({ children, onClose, initialScale }: {
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
       style={{
-        position: 'relative', flex: 1, minHeight: 0, minWidth: 0,
+        // 占满宿主全屏（宿主 backdrop 用 column 布局 + flex:1 高度拉伸；
+        // width 100% 补交叉轴）——容器若只有内容高度，放大后上下立即撞边
+        // 被 overflow:hidden 裁剪（2026-11-03「上下区域限制」根因）
+        position: 'relative', flex: 1, minHeight: 0, minWidth: 0, width: '100%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden', touchAction: 'none',
       }}
@@ -201,7 +204,8 @@ export default function ZoomableImage({ src, onClose }: Props) {
       onClick={() => onClose()}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
-        zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 9999, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden', touchAction: 'none',
       }}
     >

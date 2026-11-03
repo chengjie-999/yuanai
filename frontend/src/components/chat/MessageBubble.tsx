@@ -182,7 +182,8 @@ function SvgZoomViewer({ svg, dark, onClose }: { svg: string; dark: boolean; onC
   return (
     <div onClick={() => onClose()} style={{
       position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.8)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
       overflow: 'hidden', touchAction: 'none',
     }}>
       <button

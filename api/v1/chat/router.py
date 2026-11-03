@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 import base64
 import asyncio
@@ -97,13 +98,18 @@ except Exception:
 
 
 def _save_chat_image(session_id: str, data_url: str) -> str:
-    """将 base64 data URL 保存为文件，返回访问 URL。非 base64 原样返回。"""
+    """将 base64 data URL 保存为文件，返回访问 URL。非 base64 原样返回。
+
+    任何异常都不上抛（2026-11-04 事故）：曾因 `re.fullmatch` 在 try 外且
+    本模块缺 import re——NameError 直穿 /chat/save 的「先删全量再重建」，
+    整会话消息全部丢失。图片保存失败只降级为原样返回。
+    """
     if not data_url.startswith("data:"):
         return data_url  # 已经是文件 URL，跳过重复保存
-    # 路径穿越防护（2026-10-19）：session_id 必须是 UUID 形态，否则不落盘
-    if not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}", session_id or ""):
-        return data_url
     try:
+        # 路径穿越防护（2026-10-19）：session_id 必须是 UUID 形态，否则不落盘
+        if not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}", session_id or ""):
+            return data_url
         header, b64 = data_url.split(",", 1)
         ext = "png"
         if "image/jpeg" in header:

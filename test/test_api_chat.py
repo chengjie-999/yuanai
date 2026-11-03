@@ -84,6 +84,44 @@ class TestChatSave:
         }, headers=auth_headers)
         assert resp.status_code == 200
 
+    def test_save_message_with_image(self, client, auth_headers):
+        """保存带图片的消息（2026-11-04 事故锁死：缺 import re 曾致 NameError
+        直穿 save 全量重建，整会话消息丢失、/chat/save 500）"""
+        if not auth_headers:
+            pytest.skip("需要有效登录凭据")
+        create_resp = client.post("/api/v1/chat/session/new", json={
+            "title": "图片保存测试",
+        }, headers=auth_headers)
+        assert create_resp.status_code == 200
+        session_id = create_resp.json()["session_id"]
+
+        # 1x1 透明 PNG 的 data URL（真实前端形态）
+        tiny_png = ("data:image/png;base64,"
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+                    "AAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+        resp = client.post("/api/v1/chat/save", json={
+            "session_id": session_id,
+            "messages": [
+                {"role": "user", "content": "看看这张图", "images": [tiny_png]},
+                {"role": "assistant", "content": "收到图片", "sender": "orchestrator"},
+            ],
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+
+        # 图片应落盘为 /api/v1/chat/image/ 文件 URL，而非原样 data URL
+        msgs = client.post("/api/v1/chat/messages", json={
+            "session_id": session_id,
+        }, headers=auth_headers).json()
+        assert isinstance(msgs, list) and msgs
+        # 消息形态兼容两种：dict（含 images 键）或含图片 URL 的序列化内容
+        found = any(
+            ("/api/v1/chat/image/" in str(m)) or
+            (isinstance(m, dict) and any(
+                str(i).startswith("/api/v1/chat/image/") for i in (m.get("images") or [])))
+            for m in msgs
+        )
+        assert found, f"图片未落盘为文件 URL: {msgs}"
+
 
 class TestHistoryEnvelope:
     """信封协议纯函数：_fix_history_for_api 透传 + _env_of（零 LLM 零 DB）"""

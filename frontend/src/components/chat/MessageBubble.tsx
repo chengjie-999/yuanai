@@ -183,13 +183,18 @@ function SvgZoomViewer({ svg, dark, onClose }: { svg: string; dark: boolean; onC
         onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
       >✕</button>
       <ZoomViewport onClose={onClose}>
-        <div dangerouslySetInnerHTML={{ __html: svg }}
-          style={{
-            background: dark ? '#0b1220' : '#ffffff',
-            padding: 24, borderRadius: 8,
-            boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-            maxWidth: '90vw', maxHeight: '90vh', overflow: 'hidden',
-          }} />
+        {/* SVG 初始适配视口（2026-11-03 修复「放大有显示区域限制」）：mermaid/模型
+            生成的 SVG 带固定像素 width，直接渲会被容器裁剪；CSS !important 覆盖
+            固定尺寸、按 viewBox 等比适配 90vw/85vh（与图片 img 初始适配一致），
+            缩放交给外层 transform，无额外裁剪盒 */}
+        <div style={{
+          background: dark ? '#0b1220' : '#ffffff',
+          padding: 24, borderRadius: 8,
+          boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+        }}>
+          <style>{`svg{max-width:min(1200px,90vw)!important;max-height:85vh!important;width:auto!important;height:auto!important;display:block}`}</style>
+          <div dangerouslySetInnerHTML={{ __html: svg }} />
+        </div>
       </ZoomViewport>
     </div>
   )

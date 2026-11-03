@@ -9,6 +9,7 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { voiceTtsStream } from '../../api'
 import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, XIcon } from '../icons'
+import { ZoomViewport } from './ZoomableImage'
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
 const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSProperties => ({
@@ -137,10 +138,16 @@ function HtmlViewer({ html, onClose, title = 'HTML 全屏查看' }: { html: stri
             <XIcon size={16} />
           </button>
         </div>
-        <div style={{ flex: 1, minHeight: 0, background: '#fff' }}>
-          <iframe srcDoc={html} sandbox="allow-scripts" title="HTML 全屏查看"
-            style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
-        </div>
+        {/* 统一缩放体验（2026-11-03）：HTML/SVG 查看器与图片同款
+            滚轮缩放/拖拽/双击/捏合，iframe 完整文档直渲 */ }
+        <ZoomViewport onClose={onClose}>
+          <iframe srcDoc={html} sandbox="allow-scripts" title="全屏查看"
+            style={{
+              width: 'min(1180px, 95vw)', height: 'min(80vh, 850px)',
+              border: 'none', display: 'block', background: '#fff',
+              borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+            }} />
+        </ZoomViewport>
       </div>
     </div>
   )
@@ -213,7 +220,8 @@ function MermaidBlock({ code }: { code: string }) {
         }}>{code}</pre>
       )}
       {svg ? (
-        <div style={{ padding: 12, overflow: 'auto', display: 'flex', justifyContent: 'center' }}
+        <div onClick={() => setZoom(true)} title="点击放大" aria-label="点击放大图表"
+          style={{ padding: 12, overflow: 'auto', display: 'flex', justifyContent: 'center', cursor: 'zoom-in' }}
           dangerouslySetInnerHTML={{ __html: svg }} />
       ) : (
         <div style={{ padding: '16px 12px', fontSize: 12, color: err ? 'var(--danger)' : 'var(--text-muted)' }}>

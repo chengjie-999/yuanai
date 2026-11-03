@@ -1,11 +1,17 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 
-interface Props {
-  src: string
-  onClose: () => void
-}
+/* ============================================================
+   统一缩放/平移交互（2026-11-03 用户拍板：图片与 HTML/SVG 查看器同款体验）
 
-export default function ZoomableImage({ src, onClose }: Props) {
+   ZoomViewport：滚轮缩放（光标为中心）/ 拖拽平移 / 双击切换 2.5x / 移动端
+   双指捏合 / Esc 关闭 / 比例提示 + 重置按钮。children 放在 transform 容器内，
+   宿主只需提供尺寸确定的区域（flex:1 + minHeight:0 或固定宽高）。
+   ZoomableImage（图片）与 MessageBubble 的 HtmlViewer（HTML/SVG）共用。
+   ============================================================ */
+
+export function ZoomViewport({ children, onClose }: {
+  children: React.ReactNode; onClose: () => void
+}) {
   const [scale, setScale] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
@@ -16,7 +22,7 @@ export default function ZoomableImage({ src, onClose }: Props) {
 
   const clampScale = (s: number) => Math.max(0.3, Math.min(s, 10))
 
-  // 鼠标滚轮缩放
+  // 鼠标滚轮缩放（以光标位置为中心）
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.stopPropagation()
     const rect = containerRef.current?.getBoundingClientRect()
@@ -34,9 +40,9 @@ export default function ZoomableImage({ src, onClose }: Props) {
     })
   }, [])
 
-  // 鼠标拖拽平移
+  // 鼠标拖拽平移（缩放到 >1 时）
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if (scale <= 1) return  // 缩放到 ≤1 时不拖拽，点击关闭
+    if (scale <= 1) return
     e.stopPropagation()
     setDragging(true)
     lastPos.current = { x: e.clientX - offset.x, y: e.clientY - offset.y }
@@ -51,7 +57,7 @@ export default function ZoomableImage({ src, onClose }: Props) {
     setDragging(false)
   }, [])
 
-  // 点击背景关闭（未缩放时点击图片也关闭）
+  // 点击空白关闭（未缩放时）
   const onBackdropClick = useCallback((_e: React.MouseEvent) => {
     if (scale <= 1) onClose()
   }, [scale, onClose])
@@ -124,6 +130,64 @@ export default function ZoomableImage({ src, onClose }: Props) {
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
       style={{
+        position: 'relative', flex: 1, minHeight: 0, minWidth: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        overflow: 'hidden', touchAction: 'none',
+      }}
+    >
+      {/* 缩放比例提示 */}
+      {scale !== 1 && (
+        <div style={{
+          position: 'absolute', top: 12, left: 12, zIndex: 10,
+          background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 12,
+          padding: '4px 10px', borderRadius: 12,
+        }}>
+          {Math.round(scale * 100)}%
+        </div>
+      )}
+
+      {/* 重置按钮 */}
+      {scale !== 1 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setScale(1); setOffset({ x: 0, y: 0 }) }}
+          style={{
+            position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 10,
+            background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)',
+            borderRadius: 8, padding: '6px 16px', fontSize: 13, cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+        >重置缩放</button>
+      )}
+
+      {/* 内容（transform 缩放/平移） */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={onMouseDown}
+        onDoubleClick={onDoubleClick}
+        style={{
+          transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+          transition: dragging ? 'none' : 'transform 0.15s ease',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          maxWidth: '100%', maxHeight: '100%',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
+interface Props {
+  src: string
+  onClose: () => void
+}
+
+export default function ZoomableImage({ src, onClose }: Props) {
+  return (
+    <div
+      onClick={() => onClose()}
+      style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
         zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden', touchAction: 'none',
@@ -144,49 +208,21 @@ export default function ZoomableImage({ src, onClose }: Props) {
         onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
       >✕</button>
 
-      {/* 缩放比例提示 */}
-      {scale !== 1 && (
-        <div style={{
-          position: 'absolute', top: 20, left: 20, zIndex: 10,
-          background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 12,
-          padding: '4px 10px', borderRadius: 12,
-        }}>
-          {Math.round(scale * 100)}%
-        </div>
-      )}
-
-      {/* 重置按钮 */}
-      {scale !== 1 && (
-        <button
-          onClick={(e) => { e.stopPropagation(); setScale(1); setOffset({ x: 0, y: 0 }) }}
+      <ZoomViewport onClose={onClose}>
+        <img
+          src={src}
+          draggable={false}
           style={{
-            position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 10,
-            background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)',
-            borderRadius: 8, padding: '6px 16px', fontSize: 13, cursor: 'pointer',
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            borderRadius: 8,
+            boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+            cursor: 'grab',
+            userSelect: 'none',
+            pointerEvents: 'auto',
           }}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
-        >重置缩放</button>
-      )}
-
-      <img
-        src={src}
-        onClick={(e) => e.stopPropagation()}
-        onMouseDown={onMouseDown}
-        onDoubleClick={onDoubleClick}
-        draggable={false}
-        style={{
-          transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-          maxWidth: '90vw',
-          maxHeight: '90vh',
-          borderRadius: 8,
-          boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-          cursor: scale > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-in',
-          transition: dragging ? 'none' : 'transform 0.15s ease',
-          userSelect: 'none',
-          pointerEvents: 'auto',
-        }}
-      />
+        />
+      </ZoomViewport>
     </div>
   )
 }

@@ -9,9 +9,11 @@ import { useState, useRef, useCallback, useEffect } from 'react'
    ZoomableImage（图片）与 MessageBubble 的 HtmlViewer（HTML/SVG）共用。
    ============================================================ */
 
-export function ZoomViewport({ children, onClose }: {
+export function ZoomViewport({ children, onClose, initialScale }: {
   children: React.ReactNode; onClose: () => void
+  initialScale?: number  // 初始适配缩放（SVG 直渲：挂载测量固有尺寸后传入，≤1）
 }) {
+  const baseRef = useRef(1)
   const [scale, setScale] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
@@ -21,6 +23,16 @@ export function ZoomViewport({ children, onClose }: {
   const containerRef = useRef<HTMLDivElement>(null)
 
   const clampScale = (s: number) => Math.max(0.3, Math.min(s, 10))
+  const atBase = () => Math.abs(scale - baseRef.current) < 0.01
+
+  // 初始适配（SVG 测量结果异步到达）：重置到适配缩放
+  useEffect(() => {
+    if (initialScale && initialScale > 0 && initialScale <= 1) {
+      baseRef.current = initialScale
+      setScale(initialScale)
+      setOffset({ x: 0, y: 0 })
+    }
+  }, [initialScale])
 
   // 鼠标滚轮缩放（以光标位置为中心）
   const onWheel = useCallback((e: React.WheelEvent) => {
@@ -40,9 +52,9 @@ export function ZoomViewport({ children, onClose }: {
     })
   }, [])
 
-  // 鼠标拖拽平移（缩放到 >1 时）
+  // 鼠标拖拽平移（放大超过初始适配时）
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if (scale <= 1) return
+    if (atBase()) return
     e.stopPropagation()
     setDragging(true)
     lastPos.current = { x: e.clientX - offset.x, y: e.clientY - offset.y }
@@ -57,9 +69,9 @@ export function ZoomViewport({ children, onClose }: {
     setDragging(false)
   }, [])
 
-  // 点击空白关闭（未缩放时）
+  // 点击空白关闭（处于初始适配、未放大时）
   const onBackdropClick = useCallback((_e: React.MouseEvent) => {
-    if (scale <= 1) onClose()
+    if (atBase()) onClose()
   }, [scale, onClose])
 
   // 移动端触摸缩放
@@ -100,14 +112,14 @@ export function ZoomViewport({ children, onClose }: {
     }
   }, [])
 
-  // 双击切换缩放
+  // 双击切换缩放（回到初始适配 / 放大 2.5 倍）
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
-    if (scale > 1.1) {
-      setScale(1)
+    if (!atBase()) {
+      setScale(baseRef.current)
       setOffset({ x: 0, y: 0 })
     } else {
-      setScale(2.5)
+      setScale(baseRef.current * 2.5)
     }
   }, [scale])
 
@@ -135,8 +147,8 @@ export function ZoomViewport({ children, onClose }: {
         overflow: 'hidden', touchAction: 'none',
       }}
     >
-      {/* 缩放比例提示 */}
-      {scale !== 1 && (
+      {/* 缩放比例提示（偏离初始适配时显示） */}
+      {!atBase() && (
         <div style={{
           position: 'absolute', top: 12, left: 12, zIndex: 10,
           background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 12,
@@ -146,10 +158,10 @@ export function ZoomViewport({ children, onClose }: {
         </div>
       )}
 
-      {/* 重置按钮 */}
-      {scale !== 1 && (
+      {/* 重置按钮（回到初始适配） */}
+      {!atBase() && (
         <button
-          onClick={(e) => { e.stopPropagation(); setScale(1); setOffset({ x: 0, y: 0 }) }}
+          onClick={(e) => { e.stopPropagation(); setScale(baseRef.current); setOffset({ x: 0, y: 0 }) }}
           style={{
             position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 10,
             background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)',

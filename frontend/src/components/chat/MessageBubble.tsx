@@ -164,6 +164,21 @@ function HtmlViewer({ html, onClose, title = 'HTML 全屏查看' }: { html: stri
    不走 iframe：iframe 是独立文档，滚轮/拖拽事件不冒泡到宿主，缩放交互失效。
    安全性：innerHTML 注入的 <script> 不执行（HTML5 规范），与主视图同口径 */
 function SvgZoomViewer({ svg, dark, onClose }: { svg: string; dark: boolean; onClose: () => void }) {
+  // 初始适配（2026-11-03 定稿方案）：挂载后测量 SVG 固有尺寸（attribute 生效时的
+  // 渲染尺寸）→ fit = min(90vw/宽, 85vh/高, 1) 交给 ZoomViewport 作初始缩放。
+  // 不用 CSS 覆盖 SVG 尺寸——width/height:auto!important 会抹掉固有尺寸信息，
+  // 无 viewBox 的 SVG 直接塌缩（「白色方块」根因）；transform 缩放不动布局，
+  // 固有尺寸完整保留
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [fit, setFit] = useState<number | null>(null)
+  useEffect(() => {
+    const el = wrapRef.current?.querySelector('svg')
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const w = r.width || parseFloat(el.getAttribute('width') || '') || 1200
+    const h = r.height || parseFloat(el.getAttribute('height') || '') || 800
+    setFit(Math.min((window.innerWidth * 0.9) / w, (window.innerHeight * 0.85) / h, 1))
+  }, [svg])
   return (
     <div onClick={() => onClose()} style={{
       position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.8)',
@@ -182,19 +197,13 @@ function SvgZoomViewer({ svg, dark, onClose }: { svg: string; dark: boolean; onC
         onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
         onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
       >✕</button>
-      <ZoomViewport onClose={onClose}>
-        {/* SVG 初始适配视口（2026-11-03 修复「放大有显示区域限制」）：mermaid/模型
-            生成的 SVG 带固定像素 width，直接渲会被容器裁剪；CSS !important 覆盖
-            固定尺寸、按 viewBox 等比适配 90vw/85vh（与图片 img 初始适配一致），
-            缩放交给外层 transform，无额外裁剪盒 */}
-        <div style={{
-          background: dark ? '#0b1220' : '#ffffff',
-          padding: 24, borderRadius: 8,
-          boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-        }}>
-          <style>{`svg{max-width:min(1200px,90vw)!important;max-height:85vh!important;width:auto!important;height:auto!important;display:block}`}</style>
-          <div dangerouslySetInnerHTML={{ __html: svg }} />
-        </div>
+      <ZoomViewport onClose={onClose} initialScale={fit ?? 1}>
+        <div ref={wrapRef} dangerouslySetInnerHTML={{ __html: svg }}
+          style={{
+            background: dark ? '#0b1220' : '#ffffff',
+            padding: 24, borderRadius: 8,
+            boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+          }} />
       </ZoomViewport>
     </div>
   )

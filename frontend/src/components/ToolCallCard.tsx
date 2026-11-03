@@ -71,13 +71,15 @@ function ToolCallCard({ call }: { call: ToolCall }) {
   const cfg = statusConfig[call.status] || statusConfig.done
   const agent = toolLabel(call.name)
   const displayName = agent ? agent.label : call.name
+  // A1 精简（2026-11-03 用户拍板）：参数等专业细节默认隐藏，点击头部才展开；
+  // 有参数即视为可展开（不再只看结果长度）
   const [expanded, setExpanded] = useState(false)
   // 结果区图片点击放大（统一 ZoomableImage，2026-10-21 清洁2）
   const [zoomSrc, setZoomSrc] = useState<string | null>(null)
   const raw = call.result || ''
   const showBody = call.status === 'done' && !!raw
-  const expandable = showBody && raw.length > 160
-  const preview = expandable && !expanded ? raw.slice(0, 160).trim() + '…' : raw
+  const expandable = !!call.args || (showBody && raw.length > 160)
+  const preview = showBody && !expanded && raw.length > 160 ? raw.slice(0, 160).trim() + '…' : raw
 
   return (
     <>
@@ -86,7 +88,7 @@ function ToolCallCard({ call }: { call: ToolCall }) {
       border: agent ? `1px solid ${agent.color}44` : '1px solid var(--border)',
       overflow: 'hidden', fontSize: 13, background: 'var(--bg-tertiary)',
     }}>
-      {/* 头部：状态点 + 中文标签 + 状态（长结果可点击展开/收起） */}
+      {/* 头部：状态点 + 中文标签 + 状态（有参数/长结果可点击展开） */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '7px 12px',
@@ -113,8 +115,8 @@ function ToolCallCard({ call }: { call: ToolCall }) {
           </span>
         )}
       </div>
-      {/* 参数区：展示「它执行了什么」——bash 命令/文件路径直接显示，其他 JSON 原文 */}
-      {call.args && (
+      {/* 参数区（专业细节）：仅展开时显示——bash 命令/文件路径/JSON 原文 */}
+      {expanded && call.args && (
         <div style={{
           padding: '6px 12px', borderTop: '1px solid var(--border-light)',
           fontFamily: 'monospace', fontSize: 11.5, color: 'var(--text-muted)',
@@ -125,7 +127,7 @@ function ToolCallCard({ call }: { call: ToolCall }) {
         </div>
       )}
       {/* 结果区：markdown 渲染（搜索结果链接可点击、表格/列表正常排版），
-          默认折叠预览，点击头部展开（内部滚动） */}
+          收起时只预览 160 字，展开完整（内部滚动） */}
       {showBody && (
         <div style={{
           padding: '6px 12px 10px', borderTop: '1px solid var(--border-light)',

@@ -151,12 +151,14 @@ async def upload_agent_exe(request: Request, version: str = Form(""), note: str 
         _save_versions(data)
         _sync_version_json(data)
         # Agent 版本更新自动公告（2026-10-31 用户拍板：本地 Agent 更新也发一条）
+        # A2 精简（2026-11-03）：技术备注（note）面向管理员，不进用户公告——
+        # 用户看到的是「电脑端自动更新」的人话；note 保留在版本清单供后台查看
         try:
             from api.v1.announcements import add_announcement
             add_announcement(
-                f"本地 Agent 新版本 v{version} 已发布",
-                f"新增/修复内容：{(note or '—')[:200]}。托盘会自动更新；"
-                f"也可到「Agent 页」下载安装。",
+                f"电脑端小助手更新到 v{version}",
+                "已装小元AI 电脑端的用户会自动更新（重新打开即生效）；"
+                "还没装过？到「设置 → 本地 Agent 下载」一键获取。",
                 kind="agent", version=version)
         except Exception:
             pass

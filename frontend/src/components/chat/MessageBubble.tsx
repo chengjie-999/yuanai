@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { ChatMessage } from '../../types'
+import type { ChatMessage, ToolCall } from '../../types'
 import ToolCallCard from '../ToolCallCard'
 import TerminalView, { isTerminalCall } from './TerminalView'
 import MarkdownContent from '../MarkdownContent'
@@ -493,6 +493,34 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   // 编辑态用保存/取消替换操作行；空内容的占位/工具气泡不显示操作行
   const showActions = !editing && msg.content.trim().length > 0
 
+  // B 流式替换展示（2026-11-03 用户拍板）：生成中只显示当前进行中的一段——
+  // 当前思考 / 当前工具卡，新段替换旧段；完成后全部收进折叠区
+  const isStreaming = loading && isLast && msg.role === 'assistant'
+  const runningCalls = isStreaming ? (msg.toolCalls || []).filter((tc) => tc.status === 'running') : []
+  // 当前思考：正在累积的 reasoning → 当前执行工具的快照思考 → 首 token 前的最终思考
+  const liveReasoning = !isStreaming ? '' : (
+    (msg.reasoning && msg.reasoning.trim()) ? msg.reasoning
+      : runningCalls.length ? (runningCalls[runningCalls.length - 1].reasoning || '')
+      : (!msg.content ? (msg.finalReasoning || '') : '')
+  )
+  // 当前工具段：正在执行的调用（连续终端调用合并为一个面板）；
+  // 工具已全部完成、回答未开始且无新思考时，保留最后一段作过渡
+  const liveCalls: { kind: 'card' | 'terminal'; items: ToolCall[] }[] = (() => {
+    const all = msg.toolCalls || []
+    const src = runningCalls.length ? runningCalls
+      : (!msg.content && !liveReasoning && all.length) ? [all[all.length - 1]]
+      : []
+    const segs: { kind: 'card' | 'terminal'; items: ToolCall[] }[] = []
+    for (const tc of src) {
+      const last = segs[segs.length - 1]
+      if (isTerminalCall(tc) && last?.kind === 'terminal') last.items.push(tc)
+      else if (isTerminalCall(tc)) segs.push({ kind: 'terminal', items: [tc] })
+      else if (last?.kind === 'card') last.items.push(tc)
+      else segs.push({ kind: 'card', items: [tc] })
+    }
+    return segs
+  })()
+
   // 气泡内操作行（常显，按钮本体 0.65 → 1 hover 微反馈）
   const bubbleActions = showActions ? (
     <div className="msg-actions" style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', marginTop: 6, marginBottom: -4 }}>
@@ -705,14 +733,39 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 </div>
               </div>
             )}
-            {(msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? (
+            {/* B（2026-11-03 用户拍板）：流式期间思考/工具调用依次替换展示——
+                只显示当前进行中的一段（新段替换旧段，不堆叠）；完成后全部收进折叠区 */}
+            {isStreaming ? (
+              (liveReasoning || liveCalls.length || (!msg.content && (msg.toolCalls || []).length)) ? (
+                <div style={{ marginBottom: 8 }}>
+                  {liveReasoning && (
+                    <div style={{ marginBottom: 4 }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: 4 }}>
+                        思考中…
+                      </div>
+                      <div style={{ padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, maxHeight: 160, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+                        {liveReasoning}
+                      </div>
+                    </div>
+                  )}
+                  {liveCalls.map((seg, si) => seg.kind === 'terminal' ? (
+                    <TerminalView key={`live-t${si}`} calls={seg.items} defaultOpen />
+                  ) : (
+                    <div key={`live-c${si}`}>
+                      {seg.items.map((tc, j) => (
+                        <ToolCallCard key={j} call={tc} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            ) : (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? (
               <details open={thinkOpen} style={{ marginBottom: 8 }}
                 onToggle={(e) => { userToggledRef.current = true; setThinkOpen((e.target as HTMLDetailsElement).open) }}>
                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none', outline: 'none' }}>
-                  {loading && isLast && !msg.content ? '执行中...'
-                    : msg.toolCalls?.length
-                      ? `${(msg.reasoning || msg.finalReasoning) ? `思考${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''} · ` : ''}${msg.toolCalls.length} 次工具调用`
-                      : `思考过程${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''}`}
+                  {msg.toolCalls?.length
+                    ? `${(msg.reasoning || msg.finalReasoning) ? `思考${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''} · ` : ''}${msg.toolCalls.length} 次工具调用`
+                    : `思考过程${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''}`}
                 </summary>
                 {/* 旧消息：整段思考（时序交叉改造前的历史数据） */}
                 {msg.reasoning && (

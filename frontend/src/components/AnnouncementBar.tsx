@@ -81,7 +81,7 @@ export default function AnnouncementBar() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                     <span style={{ fontSize: 11, color: '#fff', padding: '1px 8px', borderRadius: 999,
                       background: a.kind === 'agent' ? 'var(--success)' : 'var(--accent)', flexShrink: 0 }}>
-                      {a.kind === 'agent' ? 'Agent 更新' : '平台更新'}
+                      {a.kind === 'agent' ? '电脑端更新' : '网站更新'}
                     </span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{a.title}</span>
                     <div style={{ flex: 1 }} />

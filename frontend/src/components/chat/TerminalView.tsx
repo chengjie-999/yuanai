@@ -41,9 +41,12 @@ function commandText(tc: ToolCall): string {
 
 const MAX_OUTPUT = 2000  // 显示截断（对齐工具输出回传上限）
 
-export default function TerminalView({ calls }: { calls: ToolCall[] }) {
-  const [collapsed, setCollapsed] = useState(false)
+/* A1 精简（2026-11-03 用户拍板）：终端面板默认折叠（命令/输出属专业细节）；
+   流式期间（当前正在执行的命令）由父层传 defaultOpen 展开显示当前活动 */
+export default function TerminalView({ calls, defaultOpen = false }: { calls: ToolCall[]; defaultOpen?: boolean }) {
+  const [collapsed, setCollapsed] = useState(!defaultOpen)
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+  const anyRunning = calls.some((tc) => tc.status === 'running')
 
   const copy = (idx: number, text: string) => {
     navigator.clipboard?.writeText(text).catch(() => { /* 剪贴板不可用时静默 */ })
@@ -57,7 +60,7 @@ export default function TerminalView({ calls }: { calls: ToolCall[] }) {
       background: 'var(--terminal-bg)', border: '1px solid var(--terminal-border)',
       fontSize: 12.5, color: 'var(--terminal-text)',
     }}>
-      {/* 头部：终端图标 + 命令数 + 折叠开关 */}
+      {/* 头部：终端图标 + 命令数 + 执行中指示 + 折叠开关 */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
         cursor: 'pointer', userSelect: 'none',
@@ -65,6 +68,18 @@ export default function TerminalView({ calls }: { calls: ToolCall[] }) {
       }} onClick={() => setCollapsed((c) => !c)}>
         <TerminalIcon size={14} style={{ color: 'var(--terminal-prompt)' }} />
         <span style={{ fontWeight: 600, fontSize: 12.5, flex: 1 }}>终端 · {calls.length} 条命令</span>
+        {anyRunning && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0,
+            fontSize: 11.5, color: 'var(--warning)',
+          }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%', background: 'var(--warning)',
+              animation: 'pulse 1s ease-in-out infinite',
+            }} />
+            执行中
+          </span>
+        )}
         <span style={{ display: 'flex', color: 'var(--text-muted)' }}>
           {collapsed ? <ChevronDownIcon size={13} /> : <ChevronUpIcon size={13} />}
         </span>

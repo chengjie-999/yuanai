@@ -90,9 +90,10 @@ def auto_deploy_announcement() -> None:
         if last == head:
             return
         # 注意：add_announcement 内部自持 _LOCK——此处不得再包一层（非重入锁会死锁）
+        # A2 精简（2026-11-03 用户拍板）：公告面向普通用户，不展示 commit hash 等专业信息
         add_announcement(
-            f"平台已更新（{head[:8]}）",
-            f"小元AI 服务已部署更新至 {head[:8]}，新功能与修复已上线。",
+            "小元AI 平台已更新",
+            "小元AI 又有新变化：新功能与体验优化已上线，欢迎体验！",
             kind="site", version=head[:8])
         os.makedirs(os.path.dirname(state_path), exist_ok=True)
         with open(state_path + ".tmp", "w", encoding="utf-8") as f:

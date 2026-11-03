@@ -8,8 +8,8 @@ import { AGENT_CONFIG } from '../../config/agents'
 import { useTheme } from '../../contexts/ThemeContext'
 import { voiceTtsStream } from '../../api'
 import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks } from './helpers'
-import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, XIcon, DownloadIcon } from '../icons'
-import { ZoomViewport } from './ZoomableImage'
+import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, DownloadIcon } from '../icons'
+import { ZoomViewer } from './ZoomableImage'
 
 /* 下载渲染内容（2026-11-04 用户要求）：Blob + a[download] 零依赖；
    C5 合规：AI 生成内容下载附显式标识注释（《标识办法》下载/导出须含标识） */
@@ -149,45 +149,20 @@ function InlineHtmlFrame({ html }: { html: string }) {
    zIndex 提到 9999 与图片查看器一致防遮挡 */
 function HtmlViewer({ html, onClose, title = 'HTML 全屏查看' }: { html: string; onClose: () => void; title?: string }) {
   // iframe 是独立文档，宿主滚轮事件不冒泡——注入内部缩放脚本（滚轮缩放 body.zoom
-  // + 双击切换 + 比例气泡），与其它查看器同款缩放体验（2026-11-03 用户拍板统一）
+  // + 双击切换 + 比例气泡）；外壳复用 ZoomViewer（2026-11-04 整体重构）
   const zoomed = React.useMemo(() => html.replace(
     /<\/head>/i,
     `<script>(function(){var s=1;function tip(){var t=document.getElementById('zTip')||(function(){var d=document.createElement('div');d.id='zTip';d.style.cssText='position:fixed;top:12px;left:12px;z-index:99999;background:rgba(0,0,0,.55);color:#fff;font:12px sans-serif;padding:4px 10px;border-radius:12px;pointer-events:none';document.body.appendChild(d);return d})();t.textContent=Math.round(s*100)+'%';t.style.display='block';clearTimeout(window.__zt);window.__zt=setTimeout(function(){t.style.display='none'},1200)}document.addEventListener('wheel',function(e){if(e.ctrlKey||e.metaKey)return;e.preventDefault();s=Math.max(.3,Math.min(10,s*(e.deltaY<0?1.12:1/1.12)));document.body.style.zoom=s;tip()},{passive:false});document.addEventListener('dblclick',function(e){if(e.target.closest('a,button,select,textarea,input'))return;s=s>1.1?1:2.5;document.body.style.zoom=s;tip()},{passive:true})})()</script></head>`,
   ), [html])
   return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.7)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
-    }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        width: 'min(1200px, 96vw)', height: 'min(90vh, 900px)', display: 'flex',
-        flexDirection: 'column', background: 'var(--bg-primary)', borderRadius: 12,
-        overflow: 'hidden', boxShadow: '0 12px 48px rgba(0,0,0,0.4)',
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '8px 14px', borderBottom: '1px solid var(--border)',
-          background: 'var(--bg-secondary)',
-        }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{title}</span>
-          <button onClick={onClose} aria-label="关闭"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-                     color: 'var(--text-muted)', display: 'flex', lineHeight: 1 }}>
-            <XIcon size={16} />
-          </button>
-        </div>
-        {/* 缩放：iframe 内部脚本（注入 wheel 缩放/双击切换）；拖拽平移 = iframe
-            原生滚动。宿主 ZoomViewport 对 iframe 无效（事件不冒泡） */}
-        <ZoomViewport onClose={onClose}>
-          <iframe srcDoc={zoomed} sandbox="allow-scripts" title="全屏查看"
-            style={{
-              width: 'min(1180px, 95vw)', height: 'min(80vh, 850px)',
-              border: 'none', display: 'block', background: '#fff',
-              borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-            }} />
-        </ZoomViewport>
-      </div>
-    </div>
+    <ZoomViewer onClose={onClose} title={title}>
+      <iframe srcDoc={zoomed} sandbox="allow-scripts" title="全屏查看"
+        style={{
+          width: 'min(1180px, 95vw)', height: 'min(80vh, 850px)',
+          border: 'none', display: 'block', background: '#fff',
+          borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+        }} />
+    </ZoomViewer>
   )
 }
 
@@ -196,49 +171,23 @@ function HtmlViewer({ html, onClose, title = 'HTML 全屏查看' }: { html: stri
    不走 iframe：iframe 是独立文档，滚轮/拖拽事件不冒泡到宿主，缩放交互失效。
    安全性：innerHTML 注入的 <script> 不执行（HTML5 规范），与主视图同口径 */
 function SvgZoomViewer({ svg, dark, onClose }: { svg: string; dark: boolean; onClose: () => void }) {
-  // 初始适配（2026-11-03 定稿方案）：挂载后测量 SVG 固有尺寸（attribute 生效时的
-  // 渲染尺寸）→ fit = min(90vw/宽, 85vh/高, 1) 交给 ZoomViewport 作初始缩放。
-  // 不用 CSS 覆盖 SVG 尺寸——width/height:auto!important 会抹掉固有尺寸信息，
-  // 无 viewBox 的 SVG 直接塌缩（「白色方块」根因）；transform 缩放不动布局，
-  // 固有尺寸完整保留
-  const wrapRef = useRef<HTMLDivElement>(null)
-  const [fit, setFit] = useState<number | null>(null)
-  useEffect(() => {
-    const el = wrapRef.current?.querySelector('svg')
-    if (!el) return
-    const r = el.getBoundingClientRect()
-    const w = r.width || parseFloat(el.getAttribute('width') || '') || 1200
-    const h = r.height || parseFloat(el.getAttribute('height') || '') || 800
-    setFit(Math.min((window.innerWidth * 0.9) / w, (window.innerHeight * 0.85) / h, 1))
-  }, [svg])
+  // 与图片同款 CSS 适配（2026-11-04 整体重构）：容器定宽给 width="100%" 的
+  // SVG 提供参照（无参照时塌缩 0 宽 = 白块根因）；svg{width:100%;height:auto}
+  // ——height:auto 在有 viewBox 时按比例，无 viewBox 时保底 150 高（可见不白）。
+  // 不写 width:auto（此前白块：auto 宽无参照直接塌缩）
   return (
-    <div onClick={() => onClose()} style={{
-      position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.8)',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      overflow: 'hidden', touchAction: 'none',
-    }}>
-      <button
-        onClick={(e) => { e.stopPropagation(); onClose() }}
-        style={{
-          position: 'absolute', top: 16, right: 16, zIndex: 10,
-          width: 36, height: 36, borderRadius: '50%',
-          border: 'none', background: 'rgba(255,255,255,0.15)',
-          color: '#fff', fontSize: 18, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
-        onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
-      >✕</button>
-      <ZoomViewport onClose={onClose} initialScale={fit ?? 1}>
-        <div ref={wrapRef} dangerouslySetInnerHTML={{ __html: svg }}
-          style={{
-            background: dark ? '#0b1220' : '#ffffff',
-            padding: 24, borderRadius: 8,
-            boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-          }} />
-      </ZoomViewport>
-    </div>
+    <ZoomViewer onClose={onClose}>
+      <div className="svz-viewer" style={{
+        width: 'min(90vw, 1200px)',
+        background: dark ? '#0b1220' : '#ffffff',
+        padding: 24, borderRadius: 8,
+        boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+      }}>
+        {/* scoped 类名：style 标签是全局的，裸 svg 选择器会波及页面其它 SVG */}
+        <style>{`.svz-viewer svg{width:100%!important;height:auto!important;max-height:85vh!important;display:block}`}</style>
+        <div dangerouslySetInnerHTML={{ __html: svg }} />
+      </div>
+    </ZoomViewer>
   )
 }
 

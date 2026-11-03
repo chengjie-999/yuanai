@@ -111,11 +111,14 @@ function InlineHtmlFrame({ html }: { html: string }) {
 }
 
 /* 全屏查看器（2026-10-29）：HTML 渲染结果像图片一样放大查看——
-   沙箱 iframe 保持 allow-scripts 隔离，不给越界新标签（blob 同源脚本 XSS 风险） */
+   沙箱 iframe 保持 allow-scripts 隔离，不给越界新标签（blob 同源脚本 XSS 风险）。
+   2026-11-03 修复「放大是空的」：iframe 改用外层 flex:1+minHeight:0 包裹、
+   内部 height:100% 的可靠填充（直接 flex:1 的 iframe 高度可能塌缩），
+   zIndex 提到 9999 与图片查看器一致防遮挡 */
 function HtmlViewer({ html, onClose }: { html: string; onClose: () => void }) {
   return (
     <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)',
+      position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.7)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
@@ -135,8 +138,10 @@ function HtmlViewer({ html, onClose }: { html: string; onClose: () => void }) {
             <XIcon size={16} />
           </button>
         </div>
-        <iframe srcDoc={html} sandbox="allow-scripts" title="HTML 全屏查看"
-          style={{ flex: 1, width: '100%', border: 'none' }} />
+        <div style={{ flex: 1, minHeight: 0, background: '#fff' }}>
+          <iframe srcDoc={html} sandbox="allow-scripts" title="HTML 全屏查看"
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
+        </div>
       </div>
     </div>
   )

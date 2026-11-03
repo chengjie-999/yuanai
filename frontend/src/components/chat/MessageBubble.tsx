@@ -8,8 +8,29 @@ import { AGENT_CONFIG } from '../../config/agents'
 import { useTheme } from '../../contexts/ThemeContext'
 import { voiceTtsStream } from '../../api'
 import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks } from './helpers'
-import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, XIcon } from '../icons'
+import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, XIcon, DownloadIcon } from '../icons'
 import { ZoomViewport } from './ZoomableImage'
+
+/* 下载渲染内容（2026-11-04 用户要求）：Blob + a[download] 零依赖；
+   C5 合规：AI 生成内容下载附显式标识注释（《标识办法》下载/导出须含标识） */
+function downloadContent(filename: string, content: string, mime: string) {
+  const blob = new Blob([content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/* 下载文件名时间戳（浏览器运行时）：2026-11-04-15-30-20 形态 */
+function downloadTs(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`
+}
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
 const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSProperties => ({
@@ -94,6 +115,17 @@ function InlineHtmlFrame({ html }: { html: string }) {
             color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex',
           }}>
           {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+        </button>
+        {/* 下载（2026-11-04 用户要求）：自包含完整 HTML（含主题适配），打开即所见 */}
+        <button onClick={() => downloadContent(
+          `xiaoyuan-html-${downloadTs()}.html`,
+          `<!-- 内容由 AI 生成 -->\n${srcDoc}`, 'text/html')}
+          className="yuan-tip" data-tip="下载 HTML 文件" aria-label="下载 HTML 文件"
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+            color: 'var(--text-muted)', display: 'flex',
+          }}>
+          <DownloadIcon size={13} />
         </button>
       </div>
       {showSource && (
@@ -268,6 +300,17 @@ function MermaidBlock({ code }: { code: string }) {
                    color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex' }}>
           {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
         </button>
+        {/* 下载渲染结果 SVG（2026-11-04 用户要求；svg 渲染完成才可下载） */}
+        {svg && (
+          <button onClick={() => downloadContent(
+            `xiaoyuan-chart-${downloadTs()}.svg`,
+            `<!-- 内容由 AI 生成 -->\n${svg}`, 'image/svg+xml')}
+            className="yuan-tip" data-tip="下载 SVG 图表" aria-label="下载 SVG 图表"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                     color: 'var(--text-muted)', display: 'flex' }}>
+            <DownloadIcon size={13} />
+          </button>
+        )}
       </div>
       {showSource && (
         <pre style={{
@@ -326,6 +369,15 @@ function SvgBlock({ code }: { code: string }) {
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
                    color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex' }}>
           {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+        </button>
+        {/* 下载 SVG（2026-11-04 用户要求） */}
+        <button onClick={() => downloadContent(
+          `xiaoyuan-svg-${downloadTs()}.svg`,
+          `<!-- 内容由 AI 生成 -->\n${code}`, 'image/svg+xml')}
+          className="yuan-tip" data-tip="下载 SVG 文件" aria-label="下载 SVG 文件"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                   color: 'var(--text-muted)', display: 'flex' }}>
+          <DownloadIcon size={13} />
         </button>
       </div>
       {showSource && (

@@ -41,6 +41,18 @@ def _tool_output_str(output) -> str:
     return str(output or "")
 
 
+# 工具输出回传/落库/塞回模型的上限（2026-11-03 修复「消息丢失」事故：fetch_url
+# 抓 5MB 网页全文 → 巨型 output 落 META 击穿 ai_chat.content TEXT 64KB → save 500）
+TOOL_OUTPUT_CAP_CHARS = 20 * 1024
+
+
+def _cap_tool_output(text: str) -> str:
+    """统一截断工具输出：防 DB 爆 + 防模型上下文爆炸（与 Agent 侧 20K 口径一致）"""
+    if len(text) <= TOOL_OUTPUT_CAP_CHARS:
+        return text
+    return text[:TOOL_OUTPUT_CAP_CHARS] + "\n…(输出过长已截断)"
+
+
 def _convert_tools_to_openai(tools: List[BaseTool]) -> list:
     result = []
     for t in tools:
@@ -312,6 +324,7 @@ async def _deepseek_agent_stream(
                 for img_url in img_urls:
                     yield {"type": "image", "data": img_url}
                 clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', result_str)
+                clean_output = _cap_tool_output(clean_output)
 
                 yield {
                     "type": "tool_end",
@@ -470,6 +483,7 @@ async def stream_agent_events(
                 for img_url in img_urls:
                     yield {"type": "image", "data": img_url}
                 clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', output)
+                clean_output = _cap_tool_output(clean_output)
                 yield {"type": "tool_end", "data": {"name": event.get("name", "未知工具"), "output": clean_output, "sender": "orchestrator"}}
         yield {
             "type": "done",
@@ -552,6 +566,7 @@ async def stream_agent_with_messages(
                 for img_url in img_urls:
                     yield {"type": "image", "data": img_url}
                 clean_output = re.sub(r',?data:image/\w+;base64,[A-Za-z0-9+/=]+', '', output)
+                clean_output = _cap_tool_output(clean_output)
                 yield {"type": "tool_end", "data": {"name": event.get("name", "未知工具"), "output": clean_output, "sender": "orchestrator"}}
         yield {
             "type": "done",

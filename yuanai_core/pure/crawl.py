@@ -4,6 +4,10 @@ from typing import Dict, List
 
 # fetch_url 响应上限（S1.4：parse_html 只用前段文本，防大响应打爆内存）
 FETCH_URL_MAX_BYTES = 5 * 1024 * 1024
+# 返回模型的文本上限（2026-11-03 修复「消息丢失」事故）：5MB 全文塞给模型毫无
+# 意义——上下文爆炸烧 token，且巨型 tool result 落 META 曾击穿 ai_chat.content
+# （TEXT 64KB）导致 /chat/save 500、刷新后最新消息消失
+FETCH_URL_RETURN_CHARS = 50 * 1024
 
 
 def fetch_url(url: str, retype: str = "text") -> str:
@@ -18,10 +22,10 @@ def fetch_url(url: str, retype: str = "text") -> str:
     result = guarded_get(url, timeout=15, max_bytes=FETCH_URL_MAX_BYTES)
     result.raise_for_status()
     if retype == "json":
-        return result.text
+        return result.text[:FETCH_URL_RETURN_CHARS]
     elif retype == "content":
         return base64.b64encode(result.content).decode()
-    return result.text
+    return result.text[:FETCH_URL_RETURN_CHARS]
 
 
 def parse_html(html: str) -> Dict:

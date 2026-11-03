@@ -116,6 +116,12 @@ function InlineHtmlFrame({ html }: { html: string }) {
    内部 height:100% 的可靠填充（直接 flex:1 的 iframe 高度可能塌缩），
    zIndex 提到 9999 与图片查看器一致防遮挡 */
 function HtmlViewer({ html, onClose, title = 'HTML 全屏查看' }: { html: string; onClose: () => void; title?: string }) {
+  // iframe 是独立文档，宿主滚轮事件不冒泡——注入内部缩放脚本（滚轮缩放 body.zoom
+  // + 双击切换 + 比例气泡），与其它查看器同款缩放体验（2026-11-03 用户拍板统一）
+  const zoomed = React.useMemo(() => html.replace(
+    /<\/head>/i,
+    `<script>(function(){var s=1;function tip(){var t=document.getElementById('zTip')||(function(){var d=document.createElement('div');d.id='zTip';d.style.cssText='position:fixed;top:12px;left:12px;z-index:99999;background:rgba(0,0,0,.55);color:#fff;font:12px sans-serif;padding:4px 10px;border-radius:12px;pointer-events:none';document.body.appendChild(d);return d})();t.textContent=Math.round(s*100)+'%';t.style.display='block';clearTimeout(window.__zt);window.__zt=setTimeout(function(){t.style.display='none'},1200)}document.addEventListener('wheel',function(e){if(e.ctrlKey||e.metaKey)return;e.preventDefault();s=Math.max(.3,Math.min(10,s*(e.deltaY<0?1.12:1/1.12)));document.body.style.zoom=s;tip()},{passive:false});document.addEventListener('dblclick',function(e){if(e.target.closest('a,button,select,textarea,input'))return;s=s>1.1?1:2.5;document.body.style.zoom=s;tip()},{passive:true})})()</script></head>`,
+  ), [html])
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.7)',
@@ -138,10 +144,10 @@ function HtmlViewer({ html, onClose, title = 'HTML 全屏查看' }: { html: stri
             <XIcon size={16} />
           </button>
         </div>
-        {/* 统一缩放体验（2026-11-03）：HTML/SVG 查看器与图片同款
-            滚轮缩放/拖拽/双击/捏合，iframe 完整文档直渲 */ }
+        {/* 缩放：iframe 内部脚本（注入 wheel 缩放/双击切换）；拖拽平移 = iframe
+            原生滚动。宿主 ZoomViewport 对 iframe 无效（事件不冒泡） */}
         <ZoomViewport onClose={onClose}>
-          <iframe srcDoc={html} sandbox="allow-scripts" title="全屏查看"
+          <iframe srcDoc={zoomed} sandbox="allow-scripts" title="全屏查看"
             style={{
               width: 'min(1180px, 95vw)', height: 'min(80vh, 850px)',
               border: 'none', display: 'block', background: '#fff',
@@ -149,6 +155,42 @@ function HtmlViewer({ html, onClose, title = 'HTML 全屏查看' }: { html: stri
             }} />
         </ZoomViewport>
       </div>
+    </div>
+  )
+}
+
+/* SVG 全屏查看（2026-11-03 用户拍板「跟上传图片一样的缩放能力」）：
+   SVG 直渲 + ZoomViewport——与图片完全同款滚轮缩放/拖拽/双击/捏合。
+   不走 iframe：iframe 是独立文档，滚轮/拖拽事件不冒泡到宿主，缩放交互失效。
+   安全性：innerHTML 注入的 <script> 不执行（HTML5 规范），与主视图同口径 */
+function SvgZoomViewer({ svg, dark, onClose }: { svg: string; dark: boolean; onClose: () => void }) {
+  return (
+    <div onClick={() => onClose()} style={{
+      position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.8)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      overflow: 'hidden', touchAction: 'none',
+    }}>
+      <button
+        onClick={(e) => { e.stopPropagation(); onClose() }}
+        style={{
+          position: 'absolute', top: 16, right: 16, zIndex: 10,
+          width: 36, height: 36, borderRadius: '50%',
+          border: 'none', background: 'rgba(255,255,255,0.15)',
+          color: '#fff', fontSize: 18, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+        onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+      >✕</button>
+      <ZoomViewport onClose={onClose}>
+        <div dangerouslySetInnerHTML={{ __html: svg }}
+          style={{
+            background: dark ? '#0b1220' : '#ffffff',
+            padding: 24, borderRadius: 8,
+            boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+            maxWidth: '90vw', maxHeight: '90vh', overflow: 'hidden',
+          }} />
+      </ZoomViewport>
     </div>
   )
 }
@@ -228,13 +270,9 @@ function MermaidBlock({ code }: { code: string }) {
           {err ? `图表语法错误：${err}` : '图表渲染中…'}
         </div>
       )}
-      {/* 2026-11-03 修复「图表放大空白」：不再转 base64 走 <img>——img 模式下
-          浏览器不渲染 foreignObject（mermaid 节点文字都在里面）且忽略内嵌样式；
-          改 HtmlViewer 完整 HTML 环境直渲（与主视图同款），foreignObject/样式全生效 */}
+      {/* SVG 直渲 + 统一缩放（2026-11-03）：与图片同款滚轮缩放/拖拽/双击/捏合 */}
       {zoom && svg && (
-        <HtmlViewer title="图表全屏查看"
-          html={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;box-sizing:border-box;background:${isDark ? '#0b1220' : '#ffffff'}}svg{max-width:100%;max-height:calc(100vh - 48px)}</style></head><body>${svg}</body></html>`}
-          onClose={() => setZoom(false)} />
+        <SvgZoomViewer svg={svg} dark={isDark} onClose={() => setZoom(false)} />
       )}
     </div>
   )
@@ -286,12 +324,9 @@ function SvgBlock({ code }: { code: string }) {
         <img src={uri} alt="SVG 图形" style={{ maxWidth: '100%', cursor: 'zoom-in' }}
           onClick={() => setZoom(true)} title="点击放大" />
       </div>
-      {/* 与图表块同口径（2026-11-03）：放大走 HtmlViewer 直渲，img 模式会丢
-          内嵌样式；背景随主题 */}
+      {/* 与图表块同口径（2026-11-03）：SVG 直渲 + 统一缩放 */}
       {zoom && (
-        <HtmlViewer title="SVG 全屏查看"
-          html={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;box-sizing:border-box;background:${isDark ? '#0b1220' : '#ffffff'}}svg{max-width:100%;max-height:calc(100vh - 48px)}</style></head><body>${code}</body></html>`}
-          onClose={() => setZoom(false)} />
+        <SvgZoomViewer svg={code} dark={isDark} onClose={() => setZoom(false)} />
       )}
     </div>
   )

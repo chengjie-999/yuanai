@@ -261,6 +261,7 @@ data/                   数据目录
 1. **跨文件复制私有 helper 必漏 import**：照抄 `_get_db/_verify_session_owner` 用法却不带定义 → 运行时 NameError，py_compile 查不出。复制后立即 grep 验证每个名字在本模块可解析，或提共享模块。
 2. **mount-only useEffect 冻结 props 闭包**：长生命周期 RTC 回调必须走 `propsRef.current = props` 每帧刷新模式（VoiceCall 已示范），否则 loading 守卫失效、会话反复新建。
 3. **同一数据实体只允许一条写入路径**：新增写路径前先问幂等键在哪。
+4. **工具输出全链路必须有截断上限**（2026-11-03 消息消失事故）：fetch_url 抓 5MB 网页全文 → 云端直连 tool_end 无截断落 META → 击穿 ai_chat.content TEXT(64KB) → /chat/save 500 → 刷新后消息消失。凡新工具先问「最坏输出多大」，回传/落库/塞回模型三处都要截断（chat.py `_cap_tool_output` 20K + crawl.py 50K 双保险，迁移 0026 列扩 MEDIUMTEXT 兜底）。
 
 ## 后台管理
 

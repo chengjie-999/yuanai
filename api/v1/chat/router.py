@@ -39,6 +39,22 @@ def _sse(obj) -> str:
             return {k: _clean(x) for k, x in v.items()}
         return v
     return json.dumps(_clean(obj), ensure_ascii=False)
+
+
+def _gate_audit(user_id, mark: str, data: dict) -> None:
+    """V1-2 审批分层审计：L2 ask / L2 denied / L3 blocked 落盘（data/logs/tool_gate.log）。
+    失败静默——审计不得影响主链路。"""
+    try:
+        from yuanai_core.pure.beijing_time import beijing_now
+        line = (f"{beijing_now().strftime('%Y-%m-%d %H:%M:%S')} user={user_id or 0} "
+                f"{mark} tool={data.get('tool_name') or data.get('name', '')} "
+                f"decision={data.get('decision_id', '')} args={str(data.get('args', ''))[:300]}")
+        log_path = os.path.join(root_path(), "data", "logs", "tool_gate.log")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
 _CHAT_IMG_DIR = os.path.join(root_path(), "data", "chat_images")
 
 # 云端直连（本地 Agent 离线）专用系统提示——整段重写、去委派化。
@@ -414,6 +430,20 @@ def _langchain_from_items(items: list, prompt: str, images, system_content: str)
 async def chat_stream(req: ChatRequest, request: Request):
     """SSE 流式聊天（优先走本地 Agent，离线时回退到云端直接调用）"""
     try:
+        # V1-2 审批决议请求：云端直连审批卡的 approve/deny 回传（流还挂在原请求上，
+        # 此处只配对决议，立即返回空流——不查内容安全、不烧配额、不走 LLM）
+        if req.decision and isinstance(req.decision, dict):
+            from api.v1.chat.approvals import resolve_decision
+            did = req.decision.get("decision_id", "")
+            ok = resolve_decision(did, bool(req.decision.get("approve")))
+            logger.info("chat/stream 审批决议: %s approve=%s → %s",
+                        did[:8], bool(req.decision.get("approve")), "配对成功" if ok else "无挂起审批（超时/迟到）")
+
+            async def _decision_stream():
+                yield f"data: {_sse({'type': 'done', 'data': {'decision_resolved': ok}})}\n\n"
+
+            return StreamingResponse(_decision_stream(), media_type="text/event-stream")
+
         # C6 内容安全闸（2026-10-29）：输入侧关键词拦截 + 审计
         user_id = _get_user_id(request)
         from yuanai_core.pure.content_safety import check_content, audit_log, BLOCK_MESSAGE
@@ -637,9 +667,18 @@ async def chat_stream(req: ChatRequest, request: Request):
                 if mode_event:
                     yield f"data: {_sse(mode_event)}\n\n"
                 # 同名工具单轮最多调 3 次（防重复调用死循环）+ LangGraph 轮数上限
+                # V1-2 审批分层：云端直连工具链过 gate（L2 审批卡 / L3 拦截 / L0-L1 无感）
+                from yuanai_core.pure.tool_gate import gate as _tool_gate
+                from api.v1.chat.approvals import await_decision as _await_decision
                 full_text = []   # C6：输出全文缓冲（流结束审核）
                 had_tools = False
-                async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
+                async for event in stream_agent_events(
+                        llm, input_messages, limited_tools(all_tools),
+                        gate_fn=_tool_gate, gate_wait=_await_decision):
+                    if event.get("type") == "approval" and (event.get("data") or {}).get("source") == "cloud":
+                        _gate_audit(user_id, "L2 ask", event["data"])
+                    if event.get("type") == "tool_end" and (event.get("data") or {}).get("gate"):
+                        _gate_audit(user_id, event["data"]["gate"], event["data"])
                     if event.get("type") == "token" and isinstance(event.get("data"), str):
                         full_text.append(event["data"])
                     if event.get("type") == "tool_start":
@@ -681,6 +720,20 @@ async def claude_stream(req: ChatRequest, request: Request):
     访问控制：仅 admin 或 CLAUDE_BRIDGE_ALLOWED_USERNAMES 白名单用户。
     """
     from config.settings import CLAUDE_BRIDGE_AGENT_ID, CLAUDE_BRIDGE_ALLOWED_USERNAMES
+
+    # V1-2 审批决议：云端直连审批（本端回退分支）的决议在云端注册表配对——
+    # 桥接审批（agent 端 _wait_decision）不在表内，放行继续转发，互不干扰
+    if req.decision and isinstance(req.decision, dict):
+        from api.v1.chat.approvals import resolve_decision
+        did = req.decision.get("decision_id", "")
+        ok = resolve_decision(did, bool(req.decision.get("approve")))
+        if ok:
+            logger.info("claude-stream 云端审批决议: %s approve=%s 配对成功", did[:8])
+
+            async def _decision_stream():
+                yield f"data: {_sse({'type': 'done', 'data': {'decision_resolved': True}})}\n\n"
+
+            return StreamingResponse(_decision_stream(), media_type="text/event-stream")
 
     # C6 内容安全闸（2026-10-29）
     from yuanai_core.pure.content_safety import check_content, audit_log, BLOCK_MESSAGE
@@ -785,8 +838,17 @@ async def claude_stream(req: ChatRequest, request: Request):
         async def event_stream():
             try:
                 from yuanai_core.core.chat import limited_tools
+                # V1-2 审批分层：云端直连工具链过 gate（同 /stream 回退）
+                from yuanai_core.pure.tool_gate import gate as _tool_gate
+                from api.v1.chat.approvals import await_decision as _await_decision
                 full_text = []  # C6：输出全文缓冲（流结束审核）
-                async for event in stream_agent_events(llm, input_messages, limited_tools(all_tools)):
+                async for event in stream_agent_events(
+                        llm, input_messages, limited_tools(all_tools),
+                        gate_fn=_tool_gate, gate_wait=_await_decision):
+                    if event.get("type") == "approval" and (event.get("data") or {}).get("source") == "cloud":
+                        _gate_audit(user_id, "L2 ask", event["data"])
+                    if event.get("type") == "tool_end" and (event.get("data") or {}).get("gate"):
+                        _gate_audit(user_id, event["data"]["gate"], event["data"])
                     if event.get("type") == "token" and isinstance(event.get("data"), str):
                         full_text.append(event["data"])
                     for ui in _ui_events(event):

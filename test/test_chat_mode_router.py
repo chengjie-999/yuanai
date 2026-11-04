@@ -82,7 +82,7 @@ def _fake_cloud_llm(monkeypatch, chat_router, agent_router, forward_fn, stream_e
     def _fake_get_llm(*a, **kw):
         return object()
 
-    async def _fake_stream(llm, messages, tools):
+    async def _fake_stream(llm, messages, tools, **kwargs):
         captured["system"] = messages[0]["content"]
         for ev in stream_events:
             yield ev

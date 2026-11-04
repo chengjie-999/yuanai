@@ -168,7 +168,7 @@ export default function ChatPage({ user }: { user?: any }) {
   const [claudeOnline, setClaudeOnline] = useState(false)
   const [statusKnown, setStatusKnown] = useState(false)
   // Claude Code 桥接待审批命令
-  const [pendingApproval, setPendingApproval] = useState<{ decision_id: string; tool_name: string; command: string } | null>(null)
+  const [pendingApproval, setPendingApproval] = useState<{ decision_id: string; tool_name: string; command: string; claude: boolean } | null>(null)
   // 消息点赞（下标 → 已赞）与修改编辑态（消息下标，null = 非编辑态）
   const [feedback, setFeedbackState] = useState<Record<number, { liked: boolean; disliked: boolean }>>({})
   // 自动朗读（默认开启，与顶部栏喇叭/设置页开关共享 useAutoRead 同步）
@@ -688,7 +688,9 @@ export default function ChatPage({ user }: { user?: any }) {
           })
         }
       } else if (event.type === 'approval') {
-        setPendingApproval({ decision_id: event.data.decision_id, tool_name: event.data.tool_name, command: event.data.command })
+        // source=cloud → 云端直连审批（决议回 /chat/stream）；否则 Claude 桥接审批
+        // （决议回 /chat/claude-stream，沿用既有链路）
+        setPendingApproval({ decision_id: event.data.decision_id, tool_name: event.data.tool_name, command: event.data.command, claude: event.data.source !== 'cloud' })
       } else if (event.type === 'truncated') {
         // U4 继续生成（2026-10-25）：回答撞 max_tokens 被截断——标记气泡显示「继续生成」
         setMessages((prev) => {
@@ -940,14 +942,14 @@ export default function ChatPage({ user }: { user?: any }) {
     else setReportError('提交失败，请稍后重试')
   }
 
-  // 审批决议：走 Claude 桥接专用流，body 带 decision
+  // 审批决议：Claude 桥接审批走 claude-stream；云端直连审批（V1-2 gate）走 /stream
   const handleDecision = (approve: boolean) => {
     const pa = pendingApproval
     setPendingApproval(null)
     if (!pa || !currentSid) return
     streamChat(
       { model, temperature: 0.7, prompt: '', history: [], system_prompt: sysPrompt,
-        session_id: currentSid, decision: { decision_id: pa.decision_id, approve }, claude: true },
+        session_id: currentSid, decision: { decision_id: pa.decision_id, approve }, claude: pa.claude },
       () => {}, () => {},
       () => { setLoading(false) },
     )

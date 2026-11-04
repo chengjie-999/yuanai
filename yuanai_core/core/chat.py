@@ -1,9 +1,10 @@
 import os
 import re
 import json
+import uuid
 import logging
 import asyncio
-from typing import List, AsyncGenerator, Dict, Any
+from typing import List, AsyncGenerator, Dict, Any, Optional, Callable
 
 from openai import AsyncOpenAI
 from langchain_core.messages import (
@@ -12,6 +13,7 @@ from langchain_core.messages import (
 from langchain_core.tools import BaseTool
 
 from yuanai_core.core.lc import get_langgraph_agent, current_reasoning_effort
+from yuanai_core.pure import tool_gate
 from yuanai_core.pure.dsml import DsmlStreamFilter
 
 
@@ -20,6 +22,19 @@ logger = logging.getLogger(__name__)
 def _is_deepseek_v4(model_name: str) -> bool:
     # V4.1 Flash 新 ID 为 deepseek-flash（v4-flash 已退役路由至它）；v4-flash 保留兼容旧配置
     return model_name in ('deepseek-flash', 'deepseek-v4-flash', 'deepseek-v4-pro')
+
+
+async def _invoke_tool(tool_func, tc_name: str, tc_args) -> str:
+    """工具调用统一封装：120s 超时 + 异常转消息（V1-2 gate 直执行路径复用）"""
+    try:
+        result = await asyncio.wait_for(
+            tool_func.ainvoke(tc_args), timeout=120
+        )
+        return result.content if hasattr(result, "content") else str(result)
+    except asyncio.TimeoutError:
+        return f"工具 {tc_name} 执行超时（超过120秒）"
+    except Exception as e:
+        return f"工具执行出错: {e}"
 
 
 def _tool_output_str(output) -> str:
@@ -137,8 +152,13 @@ async def _deepseek_agent_stream(
         input_messages: List[Dict[str, Any]],
         tools: List[BaseTool],
         model_name: str,
+        gate_fn: Optional[Callable] = None,
+        gate_wait: Optional[Callable] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
-    """DeepSeek V4 专用 agent：用 openai 客户端直接控制消息格式"""
+    """DeepSeek V4 专用 agent：用 openai 客户端直接控制消息格式。
+
+    gate_fn(tool_name, args) → {level, ask, block, reason}（V1-2 云端直连护栏；
+    本地调用不传 = 无感）。gate_wait(decision_id) → "approve"/"deny"/None（超时）。"""
     api_key = llm.openai_api_key.get_secret_value() if hasattr(llm.openai_api_key, 'get_secret_value') else str(llm.openai_api_key)
     base_url = llm.openai_api_base if hasattr(llm, 'openai_api_base') else "https://api.deepseek.com/beta"
     temperature = llm.temperature if hasattr(llm, 'temperature') else 0.7
@@ -306,16 +326,40 @@ async def _deepseek_agent_stream(
                 yield {"type": "tool_start", "data": {"name": tc_name, "sender": "orchestrator", "args": tc_args}}
 
                 tool_func = tools_by_name.get(tc_name)
+                gate_mark = ""   # V1-2 审计标记（"L2 ask"/"L2 denied"/"L3 blocked"）
                 if tool_func:
-                    try:
-                        result = await asyncio.wait_for(
-                            tool_func.ainvoke(tc_args), timeout=120
-                        )
-                        result_str = result.content if hasattr(result, "content") else str(result)
-                    except asyncio.TimeoutError:
-                        result_str = f"工具 {tc_name} 执行超时（超过120秒）"
-                    except Exception as e:
-                        result_str = f"工具执行出错: {e}"
+                    # V1-2 审批分层（云端直连护栏）：L2 审批卡 / L3 拦截 / L0-L1 无感。
+                    # gate_fn 未传（本地模式）整段跳过，行为与旧版完全一致。
+                    gate_verdict = gate_fn(tc_name, tc_args) if gate_fn else None
+                    if gate_verdict and gate_verdict.get("block"):
+                        gate_mark = "L3 blocked"
+                        logger.warning("工具拦截(L3): %s args=%s", tc_name, tc_args)
+                        result_str = f"{tool_gate.BLOCK_MESSAGE}（原因：{gate_verdict.get('reason', '')}）"
+                    elif gate_verdict and gate_verdict.get("ask"):
+                        gate_mark = "L2 ask"
+                        decision_id = uuid.uuid4().hex[:12]
+                        yield {"type": "approval", "data": {
+                            "decision_id": decision_id,
+                            "tool_name": tc_name,
+                            "command": (json.dumps(tc_args, ensure_ascii=False)
+                                        if isinstance(tc_args, dict) else str(tc_args))[:500],
+                            "source": "cloud",  # 前端据此路由决议请求（非 Claude 桥接）
+                            "reason": gate_verdict.get("reason", ""),
+                        }}
+                        decision = None
+                        if gate_wait:
+                            decision = await gate_wait(decision_id)
+                        if decision == "approve":
+                            logger.info("工具审批通过(L2): %s args=%s", tc_name, tc_args)
+                            gate_mark = ""
+                            result_str = await _invoke_tool(tool_func, tc_name, tc_args)
+                        else:
+                            gate_mark = "L2 denied"
+                            logger.info("工具审批拒绝/超时(L2): %s args=%s", tc_name, tc_args)
+                            result_str = ("审批未通过（用户拒绝或超时），操作未执行。" if decision == "deny"
+                                          else "审批等待超时，操作未执行（安全优先）。")
+                    else:
+                        result_str = await _invoke_tool(tool_func, tc_name, tc_args)
                 else:
                     result_str = f"未找到工具: {tc_name}"
 
@@ -328,7 +372,8 @@ async def _deepseek_agent_stream(
 
                 yield {
                     "type": "tool_end",
-                    "data": {"name": tc_name, "output": clean_output, "sender": "orchestrator"},
+                    "data": {"name": tc_name, "output": clean_output, "sender": "orchestrator",
+                             **({"gate": gate_mark} if gate_mark else {})},
                 }
 
                 messages.append({
@@ -377,6 +422,45 @@ def dsml_saw_block(filters: Dict[str, Any], run_id: str) -> bool:
     """本轮是否剥过完整 DSML 工具调用块（配合『无结构化 tool_call 则报错』）"""
     pair = filters.get(run_id)
     return bool(pair and (pair[0].saw_block or pair[1].saw_block))
+
+
+def _gated_tools(tools: List[BaseTool], gate_fn: Callable) -> List[BaseTool]:
+    """V1-2 LangGraph 路径的 gate 包装：工具在 runtime 内执行、事件流无法交互审批——
+    L2/L3 一律 fail-closed 拒绝（消息引导模型改用别的方式）；L0/L1 原样直执行。"""
+    from langchain_core.tools import StructuredTool
+
+    wrapped = []
+    for t in tools:
+        name = t.name
+
+        def _check(kwargs):
+            v = gate_fn(name, kwargs or {})
+            if v.get("block"):
+                return f"{tool_gate.BLOCK_MESSAGE}（原因：{v.get('reason', '')}）"
+            if v.get("ask"):
+                return tool_gate.NO_APPROVAL_CHANNEL_MESSAGE
+            return None
+
+        def _run_tool(**kwargs):
+            g = _check(kwargs)
+            if g is not None:
+                return g
+            return t.invoke(kwargs)
+
+        async def _arun_tool(**kwargs):
+            g = _check(kwargs)
+            if g is not None:
+                return g
+            return await t.ainvoke(kwargs)
+
+        wrapped.append(StructuredTool(
+            name=t.name,
+            description=t.description,
+            args_schema=t.args_schema,
+            func=_run_tool,
+            coroutine=_arun_tool,
+        ))
+    return wrapped
 
 
 def limited_tools(tools: List[BaseTool], max_calls_per_tool: int = 3) -> List[BaseTool]:
@@ -432,17 +516,26 @@ async def stream_agent_events(
         input_messages: List[Dict[str, Any]],
         tools: List[Any],
         max_tool_rounds: int = 8,
+        gate_fn: Optional[Callable] = None,
+        gate_wait: Optional[Callable] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """流式 Agent 入口，DeepSeek V4 走专用通道。
-    max_tool_rounds：LangGraph 路径的模型↔工具最大轮数（防工具循环跑满 25 步）"""
+    max_tool_rounds：LangGraph 路径的模型↔工具最大轮数（防工具循环跑满 25 步）
+
+    V1-2 gate_fn/gate_wait（云端直连护栏，本地不传 = 无感）：
+    - DeepSeek 路径：L2 交互审批（审批卡 + 等待决议）、L3 拦截、L0/L1 直执行
+    - LangGraph 路径：工具在 runtime 内执行无法交互 → L2/L3 fail-closed 拒绝（消息引导）"""
     model_name = llm.model_name if hasattr(llm, 'model_name') else ""
 
     if _is_deepseek_v4(model_name):
-        async for event in _deepseek_agent_stream(llm, input_messages, tools, model_name):
+        async for event in _deepseek_agent_stream(llm, input_messages, tools, model_name,
+                                                  gate_fn=gate_fn, gate_wait=gate_wait):
             yield event
         return
 
     # Doubao 等模型：走原来的 LangGraph agent（recursion_limit 约束工具循环轮数）
+    if gate_fn:
+        tools = _gated_tools(tools, gate_fn)
     agent = get_langgraph_agent(llm, tools)
     config = {"recursion_limit": max_tool_rounds * 2 + 4}
     full_response = ""

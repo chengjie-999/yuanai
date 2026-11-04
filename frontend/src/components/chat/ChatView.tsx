@@ -20,7 +20,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   model: string; setModel: (v: string) => void
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   autoRead: boolean; autoReadTick: number
-  pendingApproval: { decision_id: string; tool_name: string; command: string } | null
+  pendingApproval: { decision_id: string; tool_name: string; command: string; claude: boolean } | null
   handleDecision: (approve: boolean) => void
   likes: Record<number, { liked: boolean; disliked: boolean }>
   editingIndex: number | null

@@ -88,11 +88,24 @@ class TestAnnouncements:
                 self.stdout = out
                 self.stderr = ""
 
-        heads = iter(["abc12345", "abc12345", "def67890"])
-        monkeypatch.setattr(_sp, "run", lambda *a, **k: _R(next(heads)))
+        # auto_deploy_announcement 每次调用两次 subprocess.run（rev-parse + log），
+        # mock 按命令分派，不能用单迭代器（A2 加 git log 后错位致测试挂）
+        rev_heads = iter(["abc12345", "abc12345", "def67890"])
+
+        def _fake_run(args, **k):
+            if "rev-parse" in args:
+                return _R(next(rev_heads))
+            if "log" in args:
+                return _R("feat: 修复聊天问题\nfix: 公告优化")
+            raise AssertionError(f"意外命令: {args}")
+
+        monkeypatch.setattr(_sp, "run", _fake_run)
         ann.auto_deploy_announcement()  # 首次 → 发一条
         ann.auto_deploy_announcement()  # 同 commit → 不发
         assert len(ann._load()) == 1
+        # A2 说人话：去掉 feat:/fix: 技术前缀
+        assert "修复聊天问题" in ann._load()[0]["content"]
+        assert "feat:" not in ann._load()[0]["content"]
         ann.auto_deploy_announcement()  # 新 commit → 再发一条
         assert len(ann._load()) == 2
         assert all(a["kind"] == "site" for a in ann._load())

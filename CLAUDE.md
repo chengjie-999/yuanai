@@ -427,6 +427,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - Agent 专用工具：`agent/tools/` 递归扫描，38 个（浏览器/审核/Cookie/截图）
 - 工具总计：39 共享 + 38 专用 = 80 个，按 Agent 角色精准分配
 - 分析脚本：9 个，输出协议：`__IMAGES__` + `__HTML__` + `__RESULT__`
+- **文件工具云边口径 + 写入回读校验（V1-1，2026-11-05）**：路径口径单点实现于 `utils/safe.py`——`resolve_within`（外部路径归一化为 base 下相对路径、拒穿越）/ `normalize_save_filename`（写工具剥离 data/file/csv 合法前缀）/ `verified_write`（写后回读比对，不一致抛 IOError 上游收到异常）；`save_data_csv` 成功消息返回规范相对路径 `data/file/csv/x.csv`（模型回读即中，不再双拼 data/ 读不回）；`read_data_file`/`list_data_files` 同走 `resolve_within`（`yuanai_core/pure/files.py` `_data_rel` 剥 data/ 前缀）。**新写/读工具禁止自带路径校验实现**（曾致本地能跑云端报「非法文件名」/NoneType pydantic 校验错）
 - **联网搜索（2026-10-17 接入官方 API）**：`yuanai_core/pure/web_search.py` 三级兜底——DeepSeek 官方 Search（`POST /v1/tools/search`，结构化结果+权威评级+长摘要，免费过渡期至 11-01 后 5 元/千次成功计费）→ Bing 国内 → DDG 兜底；`_search_deepseek` 复用 DEEPSEEK_API_KEY 鉴权
 
 ### 耗时工具约定（2026-10-22 用户拍板：耗时任务异步化）

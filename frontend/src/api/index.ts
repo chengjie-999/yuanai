@@ -346,6 +346,46 @@ export async function register(username: string, password: string, displayName: 
   return res.json()
 }
 
+// R1' 邮箱验证码登录（2026-11-05）：发送验证码（公开端点，60s 冷却）
+export async function sendEmailCode(email: string) {
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}/auth/email-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+  } catch {
+    throw new Error('网络连接失败，请检查网络后重试')
+  }
+  if (!res.ok) throw new Error(await _errorDetail(res))
+  try {
+    return await res.json()
+  } catch {
+    throw new Error('服务响应异常，请稍后重试')
+  }
+}
+
+// R1' 邮箱验证码登录（注册登录合一）：验证码正确 → 登录/自动注册 → 自动登录
+export async function emailLogin(email: string, code: string, agreementAccepted: boolean = false) {
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}/auth/email-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code, agreement_accepted: agreementAccepted }),
+    })
+  } catch {
+    throw new Error('网络连接失败，请检查网络后重试')
+  }
+  if (!res.ok) throw new Error(await _errorDetail(res))
+  try {
+    return await res.json()
+  } catch {
+    throw new Error('服务响应异常，请稍后重试（若持续出现，请联系管理员）')
+  }
+}
+
 export async function checkToken(): Promise<{ valid: boolean; user?: any; detail?: string }> {
   const token = getToken()
   if (!token) return { valid: false }

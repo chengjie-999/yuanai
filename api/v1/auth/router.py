@@ -1,6 +1,7 @@
 import json as _json
 import logging
 import os as _os
+import re
 import time
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
@@ -165,6 +166,75 @@ def login(req: AuthRequest, request: Request):
             "role": user.role,
             "display_name": user.display_name or user.username,
             "theme": user.theme or "",
+        },
+    }
+
+
+# ===================== R1' 邮箱验证码登录（2026-11-05，注册登录合一） =====================
+
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+
+
+class EmailCodeRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=190)
+
+
+class EmailLoginRequest(EmailCodeRequest):
+    code: str = Field(..., min_length=6, max_length=6)
+    agreement_accepted: bool = False  # C11：自动注册时协议勾选强制留痕
+
+
+@router.post("/email-code")
+async def send_email_code_endpoint(req: EmailCodeRequest, request: Request):
+    """发送邮箱验证码（公开端点）。防刷护栏：SMTP 未配置 503；60s 冷却 429；
+    每邮箱每日 10 条 429；错 5 次作废在验证接口。"""
+    email = req.email.strip().lower()
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=422, detail="邮箱格式不正确")
+    from api.v1.auth.email_code import smtp_configured, check_cooldown, \
+        consume_send_quota, send_email_code
+    if not smtp_configured():
+        raise HTTPException(status_code=503, detail="邮箱验证码服务未配置，请使用用户名密码登录")
+    ip = get_client_ip(request)
+    auth_limiter.check(ip)
+    cd = check_cooldown(email)
+    if cd > 0:
+        raise HTTPException(status_code=429, detail=f"发送过于频繁，请 {cd} 秒后再试")
+    if not consume_send_quota(email):
+        raise HTTPException(status_code=429, detail="今日验证码发送次数已达上限（10 条），请明天再试")
+    try:
+        result = await send_email_code(email)
+    except Exception as e:
+        logger.error("验证码邮件发送失败: email=%s err=%s", email, e)
+        raise HTTPException(status_code=502, detail="验证码邮件发送失败，请稍后重试")
+    logger.info("验证码已发送: email=%s ip=%s", email, ip)
+    return {"ok": True, **result}
+
+
+@router.post("/email-login")
+def email_login_endpoint(req: EmailLoginRequest, request: Request):
+    """邮箱验证码登录（注册登录合一，公开端点）：
+    验证码正确 → 用户存在=直接登录 / 不存在=自动注册（协议勾选强制）→ 自动登录。"""
+    email = req.email.strip().lower()
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=422, detail="邮箱格式不正确")
+    ip = get_client_ip(request)
+    auth_limiter.check(ip)
+    from api.v1.auth.email_code import email_login
+    result = email_login(email, req.code.strip(), req.agreement_accepted)
+    if "error" in result:
+        status = 422 if result.get("agreement_required") else (
+            403 if result.get("frozen") else 401)
+        raise HTTPException(status_code=status, detail=result["error"])
+    return {
+        "token": result["token"],
+        "is_new": result["is_new"],
+        "user": {
+            "id": result["user_id"],
+            "username": result["username"],
+            "display_name": result["display_name"],
+            "role": "user",
+            "theme": "",
         },
     }
 

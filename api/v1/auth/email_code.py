@@ -1,0 +1,209 @@
+# -*- coding: utf-8 -*-
+"""邮箱验证码登录（R1'，2026-11-05）——注册登录合一，零资质先行通道。
+
+短信通道（火山 SMS）资质到位后同构并轨（同款验证码逻辑，仅发送介质不同）。
+
+防刷护栏（与功能同日上线，不可裸奔）：
+- 同邮箱 60s 冷却（Redis TTL）
+- 每邮箱每日 10 条（Redis 日配额，复用 quota 基建）
+- 验证码错 5 次作废（需重新发码）
+- 验证码 Redis 存 5 分钟（TTL），恒定时间比对
+- 发送接口本身受全局 API 限流（60 次/60s/IP）
+"""
+import hashlib
+import hmac
+import logging
+import secrets
+import smtplib
+import time
+from datetime import datetime
+from email.header import Header
+from email.mime.text import MIMEText
+
+from db.session import get_db
+from api.v1.auth.utils import create_token, verify_token, register_login_session
+
+logger = logging.getLogger(__name__)
+
+CODE_TTL = 300          # 验证码有效期 5 分钟
+COOLDOWN = 60           # 同邮箱发送冷却 60s
+DAILY_SEND_LIMIT = 10   # 每邮箱每日发送上限
+MAX_TRY = 5             # 错误次数上限（超限作废）
+
+_CODE_KEY = "emailcode:{email}"
+_CD_KEY = "emailcode:cd:{email}"
+_TRY_KEY = "emailcode:try:{email}"
+
+
+def smtp_configured() -> bool:
+    """SMTP 是否完整配置（未配置时发送端点 503）"""
+    from config.settings import (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD,
+                                 EMAIL_LOGIN_ENABLED)
+    return bool(EMAIL_LOGIN_ENABLED and SMTP_HOST and SMTP_PORT
+                and SMTP_USER and SMTP_PASSWORD)
+
+
+def _rds():
+    """Redis 客户端（测试可 monkeypatch 为内存 stub）"""
+    from db.redis_client import get_redis
+    return get_redis()
+
+
+def _gen_code() -> str:
+    return str(secrets.randbelow(10 ** 6)).zfill(6)
+
+
+def _send_email(to: str, code: str) -> None:
+    """SMTP 发送验证码邮件（同步阻塞，调用方放线程池）。失败抛异常。"""
+    from config.settings import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, \
+        SMTP_FROM, SMTP_USE_SSL
+    subject = "【小元AI】邮箱验证码"
+    body = (f"您好！\n\n您的验证码是：{code}\n"
+            f"验证码 5 分钟内有效，请勿泄露给他人。\n\n"
+            "如果不是您本人操作，请忽略本邮件。\n\n—— 小元AI")
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["Subject"] = Header(subject, "utf-8")
+    msg["From"] = SMTP_FROM or SMTP_USER
+    msg["To"] = to
+    if SMTP_USE_SSL:
+        server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15)
+    else:
+        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15)
+        server.starttls()
+    try:
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(SMTP_USER, [to], msg.as_string())
+    finally:
+        try:
+            server.quit()
+        except Exception:
+            pass
+
+
+async def send_email_code(email: str) -> dict:
+    """发送验证码（已过冷却/限额检查）。返回 {cooldown} 秒数。"""
+    import asyncio
+    rds = _rds()
+    code = _gen_code()
+    rds.set(_CODE_KEY.format(email=email), code, ex=CODE_TTL)
+    rds.set(_TRY_KEY.format(email=email), 0, ex=CODE_TTL)
+    await asyncio.to_thread(_send_email, email, code)
+    rds.set(_CD_KEY.format(email=email), 1, ex=COOLDOWN)
+    return {"cooldown": COOLDOWN}
+
+
+def check_cooldown(email: str) -> int:
+    """返回剩余冷却秒数（0 = 可发送）。Redis 故障降级放行。"""
+    try:
+        rds = _rds()
+        if rds.get(_CD_KEY.format(email=email)):
+            return max(0, int(rds.ttl(_CD_KEY.format(email=email)) or 1))
+    except Exception:
+        pass
+    return 0
+
+
+def verify_email_code(email: str, code: str) -> bool:
+    """验证码校验：恒定时间比对 + 错 5 次作废。True=通过。"""
+    rds = _rds()
+    try_count = 0
+    try:
+        try_count = int(rds.get(_TRY_KEY.format(email=email)) or 0)
+    except Exception:
+        pass
+    stored = rds.get(_CODE_KEY.format(email=email))
+    if not stored or try_count >= MAX_TRY:
+        return False
+    if not hmac.compare_digest(str(stored), str(code)):
+        # 错误次数 +1（与验证码同 TTL）；达到上限即作废
+        new_try = try_count + 1
+        rds.set(_TRY_KEY.format(email=email), new_try, ex=CODE_TTL)
+        if new_try >= MAX_TRY:
+            rds.delete(_CODE_KEY.format(email=email))
+        return False
+    # 验证通过：一次性消费（防重放）
+    rds.delete(_CODE_KEY.format(email=email))
+    rds.delete(_TRY_KEY.format(email=email))
+    return True
+
+
+def consume_send_quota(email: str, limit: int = DAILY_SEND_LIMIT) -> bool:
+    """每日发送配额消耗（Redis 日配额，失败降级放行）。"""
+    from api.v1.db_helpers import consume_daily_quota
+    return consume_daily_quota(f"emailcode:{email}", limit)
+
+
+def _gen_username(email: str) -> str:
+    """自动分配用户名：确定性生成（同邮箱反复请求同结果，幂等）"""
+    h = hashlib.md5(email.strip().lower().encode("utf-8")).hexdigest()
+    return f"u_{h[:10]}"
+
+
+def _gen_display_name(email: str) -> str:
+    """自动分配昵称：小元用户_xxxx"""
+    h = hashlib.md5(email.strip().lower().encode("utf-8")).hexdigest()
+    return f"小元用户_{h[:4]}"
+
+
+def _token_for(user) -> str:
+    """签发令牌 + 登录会话登记（与 /auth/login 同口径，含 5 台设备限制）"""
+    token = create_token(user.id, user.role, user.username, track_session=True)
+    _pl = verify_token(token) or {}
+    _exp = _pl.get("exp")
+    exp_ts = _exp if isinstance(_exp, (int, float)) else (
+        _exp.timestamp() if hasattr(_exp, "timestamp") else time.time() + 86400)
+    register_login_session(user.id, _pl.get("jti", ""), exp_ts)
+    return token
+
+
+def email_login(email: str, code: str, agreement_accepted: bool = False) -> dict:
+    """验证码登录（注册登录合一）：
+    用户存在 → 直接登录；不存在 → 自动注册（协议勾选强制留痕）→ 自动登录。
+    返回 {"token", "user_id", "username", "is_new", ...} 或 {"error", ...}。"""
+    if not verify_email_code(email, code):
+        return {"error": "验证码错误或已失效"}
+
+    from db.session import User
+    db = get_db()
+    with db.session() as sess:
+        user = sess.query(User).filter_by(email=email.strip().lower()).first()
+        if user is None:
+            # 自动注册：协议勾选后端强制（未勾选 422），注册即留痕 agreed_at
+            if not agreement_accepted:
+                return {"error": "请先阅读并同意《用户协议》与《隐私政策》", "agreement_required": True}
+            username = _gen_username(email)
+            # 唯一性兜底：撞库概率极低，重名时换后缀
+            if sess.query(User).filter_by(username=username).first():
+                username = f"{username}_{secrets.token_hex(2)}"
+            password = secrets.token_urlsafe(16)  # 随机密码：验证码即登录方式，用户不可见
+            import bcrypt as _bcrypt
+            user = User(username=username, email=email.strip().lower(),
+                        password_hash=_bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode(),
+                        display_name=_gen_display_name(email),
+                        role="user", agreed_at=datetime.utcnow())
+            sess.add(user)
+            sess.commit()
+            sess.refresh(user)
+            is_new = True
+            logger.info("邮箱验证码自动注册: username=%s email=%s", username, email)
+        else:
+            is_new = False
+            if not user.agreed_at:
+                user.agreed_at = datetime.utcnow()
+                sess.commit()
+
+    # 冻结检查（C7）：与密码登录同口径
+    if user.frozen_until and user.frozen_until > datetime.utcnow():
+        days = (user.frozen_until - datetime.utcnow()).days
+        reason = (user.freeze_reason or "").strip()
+        detail = f"账号已被冻结，剩余 {days} 天"
+        if reason:
+            detail += f"。冻结原因：{reason}"
+        detail += "。如有异议可通过申诉入口提交申诉。"
+        return {"error": detail, "frozen": True}
+
+    db.reset_login_attempts(user.id)
+    logger.info("邮箱验证码登录成功: user=%s email=%s is_new=%s",
+                user.username, email, is_new)
+    return {"token": _token_for(user), "user_id": user.id, "username": user.username,
+            "display_name": user.display_name or user.username, "is_new": is_new}

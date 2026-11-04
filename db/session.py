@@ -167,6 +167,8 @@ class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
+    # R1' 邮箱验证码登录（2026-11-05）：邮箱=登录凭据（唯一可空，迁移 0027）
+    email = Column(String(190), unique=True, nullable=True, index=True)
     password_hash = Column(String(200), nullable=False)
     display_name = Column(String(50), default='')
     role = Column(String(20), default='user')

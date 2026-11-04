@@ -360,6 +360,19 @@ REGISTER_OPEN = bool(_syscfg("register_open"))   # 公开注册开关（默认�
 DAILY_MESSAGE_QUOTA = int(_syscfg("daily_message_quota"))  # 每用户每日消息配额（admin 不限；0 = 不限）
 VOICE_ENABLED = bool(_syscfg("voice_enabled"))    # 语音通话/朗读功能总开关
 
+# ===================== 邮箱验证码登录（R1'，2026-11-05，零资质先行） =====================
+# SMTP 未完整配置时 /auth/email-code 返回 503（与 VOICE_ENABLED 同模式）。
+# QQ 邮箱：SMTP_HOST=smtp.qq.com SMTP_PORT=465 SMTP_USER=<邮箱> SMTP_PASSWORD=<授权码>
+# 网易免费企业邮：SMTP_HOST=smtp.ym.163.com 同上。SMTP_USE_SSL=0 时走 587+STARTTLS。
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("SMTP_FROM", "")            # 发件人显示名+地址（空 = SMTP_USER）
+SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "1") == "1"
+# 邮箱登录总开关（默认跟随 SMTP 配置；显式 EMAIL_LOGIN_ENABLED=0 可强制关闭）
+EMAIL_LOGIN_ENABLED = os.getenv("EMAIL_LOGIN_ENABLED", "") != "0"
+
 # ===================== C9 数据出境开关（2026-10-29，合规审计第 10 条） =====================
 # 自定义模型 base_url 白名单：默认仅境内端点 + 本机联调；env 可追加（逗号分隔）。
 # OVERSEAS_BASE_URL_ALLOWED=1 时才放行任意境外端点（默认关 = fail-closed 拒路由）。

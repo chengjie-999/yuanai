@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Navigate, Link } from 'react-router-dom'
-import { login, submitAppeal, agreeTerms, register } from '../api'
+import { login, submitAppeal, agreeTerms, register, sendEmailCode, emailLogin } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import Mascot from './Mascot'
@@ -32,10 +32,14 @@ export default function LoginPage() {
   const [agreed, setAgreed] = useState(() => {
     try { return localStorage.getItem('agreedTerms') === '1' } catch { return false }
   })
-  // 注册模式（2026-10-30 开放注册）
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+  // 注册模式（2026-10-30 开放注册）+ 邮箱验证码模式（R1' 2026-11-05）
+  const [mode, setMode] = useState<'login' | 'register' | 'email'>('login')
   const [displayName, setDisplayName] = useState('')
   const [regPw2, setRegPw2] = useState('')
+  const [email, setEmail] = useState('')
+  const [emailCode, setEmailCode] = useState('')
+  const [codeCountdown, setCodeCountdown] = useState(0)
+  const [codeSending, setCodeSending] = useState(false)
 
   const userRef = useRef<HTMLInputElement>(null)
 
@@ -53,6 +57,7 @@ export default function LoginPage() {
   const handleSubmit = async () => {
     if (loading) return  // 防重复提交（连点登录按钮发多个请求）
     if (mode === 'register') { await handleRegister(); return }
+    if (mode === 'email') { await handleEmailSubmit(); return }
     const u = username.trim()
     if (!u || !password) { setError('请填写用户名和密码'); return }
     if (password.length < 8) { setError('密码至少 8 个字符'); return }
@@ -94,6 +99,52 @@ export default function LoginPage() {
       navigate('/chat', { replace: true })
     } catch (e: any) {
       setError(e.message || '注册失败')
+    }
+    setLoading(false)
+  }
+
+  // R1' 邮箱验证码：发送验证码（60s 冷却倒计时）
+  const handleEmailSend = async () => {
+    const em = email.trim()
+    if (!em) { setError('请先填写邮箱地址'); return }
+    if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(em)) { setError('邮箱格式不正确'); return }
+    if (codeCountdown > 0 || codeSending) return
+    setCodeSending(true)
+    setError('')
+    try {
+      await sendEmailCode(em)
+      setCodeCountdown(60)
+    } catch (e: any) {
+      setError(e.message || '验证码发送失败')
+    }
+    setCodeSending(false)
+  }
+
+  // 倒计时（60s → 0 可重发）
+  useEffect(() => {
+    if (codeCountdown <= 0) return
+    const t = setTimeout(() => setCodeCountdown(c => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [codeCountdown])
+
+  // R1' 邮箱验证码登录（注册登录合一，自动登录）
+  const handleEmailSubmit = async () => {
+    const em = email.trim()
+    if (!em || !emailCode.trim()) { setError('请填写邮箱和验证码'); return }
+    if (emailCode.trim().length !== 6) { setError('验证码为 6 位数字'); return }
+    if (!agreed) { setError('请先阅读并同意《用户协议》与《隐私政策》'); return }
+    setLoading(true)
+    setError('')
+    try {
+      const data = await emailLogin(em, emailCode.trim(), true)
+      if (!data?.token) { setError('登录失败，服务器返回异常'); setLoading(false); return }
+      try { localStorage.setItem('agreedTerms', '1') } catch { /* 忽略 */ }
+      handleLogin(data.token, data.user, remember)
+      agreeTerms()  // C11：协议接受留痕（自动注册已留痕，此处幂等）
+      if (data.user?.theme && data.user.theme !== theme) setTheme(data.user.theme)
+      navigate('/chat', { replace: true })
+    } catch (e: any) {
+      setError(e.message || '登录失败')
     }
     setLoading(false)
   }
@@ -159,9 +210,25 @@ export default function LoginPage() {
         {/* 移动端显示的品牌标识 */}
         <div className="login-mobile-header">
           <Mascot size={56} />
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px' }}>{mode === 'login' ? '欢迎回来' : '创建账号'}</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>{mode === 'login' ? '登录小元AI账号以继续' : '注册后即可使用全部功能'}</p>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px' }}>{mode === 'register' ? '创建账号' : '欢迎回来'}</h1>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>{mode === 'register' ? '注册后即可使用全部功能' : '登录小元AI账号以继续'}</p>
         </div>
+
+        {/* 登录方式双 tab（R1' 2026-11-05）：密码登录 / 验证码登录 */}
+        {mode !== 'register' && (
+          <div className="login-tabs" role="tablist">
+            <button role="tab" aria-selected={mode === 'login'}
+              className={`login-tab ${mode === 'login' ? 'active' : ''}`}
+              onClick={() => { setMode('login'); setError('') }}>
+              密码登录
+            </button>
+            <button role="tab" aria-selected={mode === 'email'}
+              className={`login-tab ${mode === 'email' ? 'active' : ''}`}
+              onClick={() => { setMode('email'); setError('') }}>
+              验证码登录
+            </button>
+          </div>
+        )}
 
         {/* 错误提示 */}
         <div className={`login-error ${error ? 'show' : ''}`}>
@@ -190,7 +257,55 @@ export default function LoginPage() {
           </div>
         )}
 
+        {/* R1' 邮箱验证码模式：邮箱 + 验证码 */}
+        {mode === 'email' && (
+          <>
+            <div className={`login-input-wrap ${focused === 'user' ? 'focused' : ''}`}>
+              <span className="login-input-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>
+                </svg>
+              </span>
+              <input
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                onFocus={() => setFocused('user')}
+                onBlur={() => setFocused(null)}
+                onKeyDown={e => e.key === 'Enter' && handleEmailSubmit()}
+                placeholder="邮箱地址"
+                type="email"
+                autoComplete="email"
+              />
+            </div>
+            <div className={`login-input-wrap ${focused === 'pw' ? 'focused' : ''}`}>
+              <span className="login-input-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </span>
+              <input
+                value={emailCode}
+                onChange={e => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onFocus={() => setFocused('pw')}
+                onBlur={() => setFocused(null)}
+                onKeyDown={e => e.key === 'Enter' && handleEmailSubmit()}
+                placeholder="6 位验证码"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+              />
+              <button type="button" className="login-code-btn"
+                onClick={handleEmailSend}
+                disabled={codeCountdown > 0 || codeSending}
+                tabIndex={-1}>
+                {codeSending ? '发送中...' : codeCountdown > 0 ? `${codeCountdown}s 后重发` : '发送验证码'}
+              </button>
+            </div>
+            <p className="login-field-hint">未注册的邮箱验证通过后将自动创建账号</p>
+          </>
+        )}
+
         {/* 用户名 */}
+        {mode !== 'email' && (
         <div className={`login-input-wrap ${focused === 'user' ? 'focused' : ''}`}>
           <span className="login-input-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -208,6 +323,7 @@ export default function LoginPage() {
             autoComplete="username"
           />
         </div>
+        )}
         {/* 注册模式：用户名规则提示（不限制字符类型，仅长度 + 防冒充） */}
         {mode === 'register' && (
           <p className="login-field-hint">3 位以上，中文/字母/数字/符号均可；不能含 admin/管理员</p>
@@ -234,6 +350,7 @@ export default function LoginPage() {
         )}
 
         {/* 密码 */}
+        {mode !== 'email' && (<>
         <div className={`login-input-wrap ${focused === 'pw' ? 'focused' : ''}`}>
           <span className="login-input-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -289,6 +406,7 @@ export default function LoginPage() {
             />
           </div>
         )}
+        </>)}
 
         {/* 记住我（仅登录模式） */}
         {mode === 'login' && (
@@ -325,22 +443,25 @@ export default function LoginPage() {
           </span>
         </label>
 
-        {/* 提交按钮（登录/注册） */}
+        {/* 提交按钮（登录/注册/验证码登录） */}
         <button className={`login-btn ${loading ? 'loading' : ''}`} onClick={handleSubmit} disabled={loading || !agreed}
           style={{ opacity: loading || !agreed ? 0.55 : 1 }}>
           {loading ? (
-            <><span className="login-spinner"/> {mode === 'login' ? '登录中...' : '注册中...'}</>
-          ) : mode === 'login' ? '登  录' : '注  册'}
+            <><span className="login-spinner"/> {mode === 'register' ? '注册中...' : '登录中...'}</>
+          ) : mode === 'register' ? '注  册' : mode === 'email' ? '登录 / 注册' : '登  录'}
         </button>
 
-        {/* 模式切换（2026-10-30 开放注册） */}
+        {/* 模式切换（2026-10-30 开放注册；2026-11-05 加邮箱验证码） */}
         <p className="login-no-register" style={{ fontSize: 13 }}>
           {mode === 'login' ? (
             <>没有账号？<button onClick={() => { setMode('register'); setError(''); setRegPw2('') }}
               style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0 }}>立即注册</button></>
-          ) : (
+          ) : mode === 'register' ? (
             <>已有账号？<button onClick={() => { setMode('login'); setError('') }}
               style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0 }}>去登录</button></>
+          ) : (
+            <>使用密码登录？<button onClick={() => { setMode('login'); setError('') }}
+              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0 }}>切换</button></>
           )}
           <br />
           <span style={{ fontSize: 12 }}>微信 <b>17852428208</b> · <a href="mailto:chengjie2017020@163.com">chengjie2017020@163.com</a></span>
@@ -516,6 +637,51 @@ export default function LoginPage() {
           display: none;
           text-align: center;
           margin-bottom: 28px;
+        }
+
+        /* 登录方式双 tab（R1'） */
+        .login-tabs {
+          display: flex;
+          background: var(--bg-tertiary);
+          border-radius: 8px;
+          padding: 3px;
+          margin-bottom: 18px;
+          gap: 3px;
+        }
+        .login-tab {
+          flex: 1;
+          padding: 8px 0;
+          border: none;
+          border-radius: 6px;
+          background: transparent;
+          color: var(--text-secondary);
+          font-size: 13.5px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .login-tab.active {
+          background: var(--bg-input);
+          color: var(--text-primary);
+          font-weight: 600;
+          box-shadow: 0 1px 4px var(--shadow-sm);
+        }
+
+        /* 验证码发送按钮 */
+        .login-code-btn {
+          margin-right: 8px;
+          padding: 6px 10px;
+          border: none;
+          border-radius: 6px;
+          background: var(--accent-soft);
+          color: var(--accent);
+          font-size: 12.5px;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: opacity 0.15s;
+        }
+        .login-code-btn:disabled {
+          cursor: default;
+          opacity: 0.6;
         }
         .login-logo-sm {
           width: 44px; height: 44px; border-radius: 12px;

@@ -233,6 +233,7 @@ data/                   数据目录
 ## 2026-10-30 晚批次（任务 #17-#24 全部完成，用户定时开工指令）
 
 - **注册开放**：register_open 默认 True；注册端点强化（协议后端强制+agreed_at、admin 词/违规词拦截、每 IP 3 账号/日、IntegrityError 兜底）；前端登录页注册模式+自动登录
+- **邮箱验证码登录 R1'（2026-11-05，零资质先行）**：`api/v1/auth/email_code.py` 注册登录合一（`POST /auth/email-code` 发码 + `/auth/email-login` 登录；公开端点入 middleware PUBLIC_PATHS）——输邮箱发码（SMTP 未配置 503）→ 输码 → 存在=登录 / 不存在=自动注册（协议勾选强制留痕 agreed_at、用户名 `u_{md5前10}` 确定性分配、昵称「小元用户_xxxx」、随机密码不可见）→ 自动登录（5 台设备限制同口径）；防刷护栏同日上线（60s 冷却 / 每日 10 条每邮箱 / 错 5 次作废 / 一次性消费防重放 / Redis TTL 5 分钟）；登录页双 tab（密码/验证码）；users.email 列（迁移 0027，唯一可空）；SMTP_* 配置见 .env.example；隐私政策第一清单已加邮箱。短信通道资质到位后并轨（火山 SMS，验证码逻辑同构）
 - **Agent 多版本管理**：上传不再覆盖——downloads/versions/ 多版本共存 + versions.json 清单（default_version）；后台版本卡（上传版本号+备注/设默认/删除）；version.json 兼容同步指向默认（客户端自动更新零改动）
 - **用户下载入口**：设置页「本地 Agent 下载」卡（版本列表+自服务安装码——生成即预绑定 user_id，注册即绑定）；小元身份卡含下载指引段
 - **yuan --update**：终端下载默认版本（sha256 fail-closed、明文远程拒绝）

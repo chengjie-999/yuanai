@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
-import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, reportMessage, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken, authHeaders } from '../api'
+import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, reportMessage, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken, authHeaders, shareSession } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
@@ -451,6 +451,21 @@ export default function ChatPage({ user }: { user?: any }) {
         flashNotice(data?.detail || '昵称生成失败')
       }
     } catch { flashNotice('昵称生成失败，请重试') }
+  }
+
+  // V1-4 分享（2026-11-06）：生成公开链接并复制；已分享则重新生成（幂等覆盖）
+  const handleShareSession = async (sid: string) => {
+    try {
+      const { url } = await shareSession(sid)
+      const full = window.location.origin + url
+      try { await navigator.clipboard.writeText(full) } catch { /* 忽略 */ }
+      window.alert(`分享链接已生成并复制：
+${full}
+
+任何访客均可查看（含 AI 生成标识）。取消分享可再次点击分享按钮。`)
+    } catch (e: any) {
+      window.alert(e.message || '分享失败，请重试')
+    }
   }
 
   const handleRenameSession = async (sid: string, oldTitle: string) => {
@@ -1004,7 +1019,7 @@ export default function ChatPage({ user }: { user?: any }) {
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}
-        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} onDemoteMain={handleDemoteMain} onOpenTrash={openTrash} onGenTitle={handleGenTitle} />
+        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} onDemoteMain={handleDemoteMain} onOpenTrash={openTrash} onGenTitle={handleGenTitle} onShare={handleShareSession} />
 
       {sidebarOpen && <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 

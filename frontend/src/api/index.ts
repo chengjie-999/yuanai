@@ -417,6 +417,24 @@ export async function checkToken(): Promise<{ valid: boolean; user?: any; detail
   } catch { return { valid: false } }
 }
 
+// V1-4 会话分享（2026-11-06）：分享=服务端渲染静态页（含 AI 标识+举报入口）；
+// 返回 {url}；取消分享即下线
+export async function shareSession(session_id: string): Promise<{ url: string }> {
+  const res = await fetch(`${API_BASE}/chat/share/${session_id}`, {
+    method: 'POST', headers: { ...authHeaders() },
+  })
+  if (!res.ok) throw new Error(await _errorDetail(res))
+  return res.json()
+}
+
+export async function unshareSession(session_id: string) {
+  const res = await fetch(`${API_BASE}/chat/share/${session_id}`, {
+    method: 'DELETE', headers: { ...authHeaders() },
+  })
+  if (!res.ok) throw new Error(await _errorDetail(res))
+  return res.json()
+}
+
 // ---- Sessions ----
 export async function createSession(title?: string): Promise<string> {
   const res = await fetch(`${API_BASE}/chat/session/new`, {

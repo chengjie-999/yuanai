@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import type { SessionInfo } from './helpers'
 import { groupSessions } from './helpers'
-import { PlusIcon, TrashIcon, PinIcon, SearchIcon, EditIcon, ArchiveIcon, SparklesIcon } from '../icons'
+import { PlusIcon, TrashIcon, PinIcon, SearchIcon, EditIcon, ArchiveIcon, SparklesIcon, LinkIcon } from '../icons'
 
-export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete, onRename, onDemoteMain, onOpenTrash, onGenTitle }: {
+export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete, onRename, onDemoteMain, onOpenTrash, onGenTitle, onShare }: {
   sessions: SessionInfo[]; currentSid: string; sidebarOpen: boolean; isMobile: boolean
   onNewSession: () => void; onSelect: (sid: string) => void; onDelete: (e: React.MouseEvent, sid: string) => void
   onRename: (sid: string, title: string) => void
   onDemoteMain: (sid: string) => void
   onGenTitle: (sid: string) => void
+  onShare: (sid: string) => void
   onOpenTrash: () => void
 }) {
   // U3 侧栏会话搜索（2026-10-25）：按标题客户端过滤
@@ -117,6 +118,14 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
                   ><EditIcon size={13} /></span>
+                  {/* V1-4 分享（2026-11-06）：点击即生成公开链接并复制 */}
+                  <span onClick={(e) => { e.stopPropagation(); onShare(s.session_id) }}
+                    title="分享对话" aria-label="分享对话"
+                    className="yuan-tip" data-tip="分享对话（生成公开链接）"
+                    style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+                  ><LinkIcon size={13} /></span>
 
 
                   {/* 主对话不可删除（2026-10-30 修复）：删除后当前页继续发消息会落孤儿数据，

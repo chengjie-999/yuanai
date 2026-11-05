@@ -172,24 +172,32 @@ function AgentDownloadCard() {
             刷新
           </button>
         </div>
-        {/* 默认版本醒目下载入口（2026-10-30 用户反馈：无版本时也要有明确入口） */}
+        {/* 默认版本醒目下载入口（2026-10-30 用户反馈：无版本时也要有明确入口）；
+            T2（2026-11-06）：有自服务安装码时走带码下载——文件名内嵌安装码，
+            首启零输码零弹窗静默注册；无码保持原静态下载 */}
         {data && data.default_version ? (() => {
           const d = data.versions.find((v) => v.version === data.default_version)
+          const withCode = !!code?.code && !code.bound
           return d ? (
-            // T2（2026-11-06）：有自服务安装码时走带码下载——文件名内嵌安装码，
-            // 首启零输码零弹窗静默注册；无码保持原静态下载
-            <a href={code?.code && !code.bound
-              ? `/api/v1/agent/download-exe?code=${encodeURIComponent(code.code)}`
-              : `/downloads/versions/${d.filename}`} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              padding: '10px 18px', borderRadius: 8, background: 'var(--accent)', color: '#fff',
-              textDecoration: 'none', fontSize: 13.5, fontWeight: 600, marginBottom: 10,
-            }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-              </svg>
-              下载默认版本 v{d.version}（{(d.size / 1024 / 1024).toFixed(0)}MB）
-            </a>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <a href={withCode
+                ? `/api/v1/agent/download-exe?code=${encodeURIComponent(code!.code)}`
+                : `/downloads/versions/${d.filename}`} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                padding: '10px 18px', borderRadius: 8, background: 'var(--accent)', color: '#fff',
+                textDecoration: 'none', fontSize: 13.5, fontWeight: 600, marginBottom: 6,
+              }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                </svg>
+                下载默认版本 v{d.version}（{(d.size / 1024 / 1024).toFixed(0)}MB）
+              </a>
+              {withCode && (
+                <div style={{ fontSize: 11.5, color: 'var(--success)', marginBottom: 8 }}>
+                  已绑定你的账号：文件名内嵌安装码，双击后自动注册，无需手动输入
+                </div>
+              )}
+            </div>
           ) : null
         })() : null}
         {!data || data.versions.length === 0 ? (
@@ -205,7 +213,10 @@ function AgentDownloadCard() {
               )}
               <span style={{ color: 'var(--text-muted)', flex: 1 }}>{(v.size / 1024 / 1024).toFixed(0)}MB · {v.uploaded_at?.slice(0, 10)}</span>
               {v.note && <span style={{ color: 'var(--text-muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={v.note}>{v.note}</span>}
-              <a href={`/downloads/versions/${v.filename}`} style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>下载</a>
+              <a href={(code?.code && !code.bound && v.version === data.default_version)
+                ? `/api/v1/agent/download-exe?code=${encodeURIComponent(code.code)}`
+                : `/downloads/versions/${v.filename}`}
+                style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>下载</a>
             </div>
           ))
         )}

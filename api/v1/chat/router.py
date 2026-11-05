@@ -561,7 +561,8 @@ async def chat_stream(req: ChatRequest, request: Request):
         # 动态记忆收尾——记忆折叠变化不击穿整条 system 前缀缓存
         if user_id:
             from db.session import get_db
-            memory = get_db().get_user_memory(user_id)
+            # V1-3 命中统计：对话注入点 mark_hit=True（零命中 90 天归档判定）
+            memory = get_db().get_user_memory(user_id, mark_hit=True)
             if memory:
                 system_prompt = f"{system_prompt}\n\n关于当前用户的已知信息（请用它来个性化回复）：\n{memory}"
 
@@ -652,7 +653,7 @@ async def chat_stream(req: ChatRequest, request: Request):
         if user_id:
             from db.session import get_db as _db
             try:
-                mem = _db().get_user_memory(user_id)
+                mem = _db().get_user_memory(user_id, mark_hit=True)  # V1-3 注入点命中统计
                 if mem:
                     offline_prompt += (f"\n\n关于当前用户的已知信息（请用它来个性化回复）：\n{mem}")
             except Exception:

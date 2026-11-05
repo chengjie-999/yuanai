@@ -16,8 +16,10 @@ from yuanai_core import memory_store as store  # noqa: E402
 
 @pytest.fixture
 def memdir(tmp_path, monkeypatch):
-    """把 store 的 root_path 指到临时目录，隔离 data/.yuan/"""
-    monkeypatch.setattr(store, "root_path", lambda: str(tmp_path))
+    """把 utils.data_path.root_path 指到临时目录，隔离 data/.yuan/
+    （V1-3 起 memory_store 惰性导入 root_path——模块级 patch 不再生效）"""
+    import utils.data_path
+    monkeypatch.setattr(utils.data_path, "root_path", lambda: str(tmp_path))
     return tmp_path
 
 

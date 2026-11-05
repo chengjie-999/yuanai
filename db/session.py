@@ -813,11 +813,12 @@ class AgentDatabase:
         finally:
             sess.close()
 
-    def get_user_memory(self, user_id: int) -> str:
-        """获取用户记忆（data/.yuan/ 文件存储；首次读时把旧字段懒迁移为文件）"""
+    def get_user_memory(self, user_id: int, mark_hit: bool = False) -> str:
+        """获取用户记忆（data/.yuan/ 文件存储；首次读时把旧字段懒迁移为文件）。
+        mark_hit=True（对话注入点）：更新命中统计（V1-3 零命中 90 天归档判定）。"""
         from yuanai_core import memory_store
 
-        facts = memory_store.load_facts(user_id)
+        facts = memory_store.load_facts(user_id, mark_hit=mark_hit)
         if facts:
             return "\n".join(facts)
         # 懒迁移：目录为空且旧 users.memory 字段有值 → 导出为文件并清空旧字段
@@ -888,11 +889,12 @@ class AgentDatabase:
         finally:
             sess.close()
 
-    def merge_user_memory(self, user_id: int, new_lines: list, max_items: int, max_chars: int) -> dict:
+    def merge_user_memory(self, user_id: int, new_lines: list, max_items: int, max_chars: int,
+                          session_id: str = "", turn: int = 0) -> dict:
         """把折叠出的新事实合并进长期记忆（data/.yuan/ 文件存储，per-user 锁）
 
-        只追加 + 双向去重（升级语义）+ 超限丢最旧，逻辑在 yuanai_core.memory.merge_facts。
-        返回 {"added": int, "total": int}。
+        只追加 + 双向去重（升级语义：V1-3 显式替代链）+ 超限丢最旧，
+        逻辑在 yuanai_core.memory.merge_facts。返回 {"added": int, "total": int}。
         """
         from yuanai_core import memory_store
 
@@ -900,7 +902,7 @@ class AgentDatabase:
             return {"added": 0, "total": 0}
         return memory_store.add_facts(user_id, new_lines,
                                       max_items=max_items, max_chars=max_chars,
-                                      source="fold")
+                                      source="fold", session_id=session_id, turn=turn)
 
     def delete_user_memory_line(self, user_id: int, line: str) -> dict:
         """按行文本删除一条记忆（精确匹配 → 唯一子串匹配；多条命中不误删）

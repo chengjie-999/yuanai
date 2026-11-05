@@ -31,7 +31,8 @@ def test_memory_requires_bound_device(monkeypatch):
 def test_memory_ignores_arbitrary_user_id(monkeypatch, tmp_path):
     """绑定设备 + 伪造他人 user_id → 实际操作绑定用户自己的记忆"""
     import yuanai_core.memory_store as store
-    monkeypatch.setattr(store, "root_path", lambda: str(tmp_path))
+    import utils.data_path as _udp
+    monkeypatch.setattr(_udp, "root_path", lambda: str(tmp_path))  # V1-3 惰性导入
     monkeypatch.setattr(ar, "_verify_agent_secret", lambda aid, secret: True)
     monkeypatch.setattr(ar, "resolve_agent_uid", lambda aid: 42)  # 设备绑定用户 42
     import db.session as dbs

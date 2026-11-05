@@ -108,8 +108,10 @@ def run_memory_fold(session_id: str, user_id: int,
         return {"skipped": res["reason"]}
 
     # 6) 合并记忆（空 facts = 遗忘，正常前进游标）+ 游标前进（max 语义防并发回退）
+    # V1-3：折叠来源记录 session_id/turn（条目事件化 source 细化）
     if res["facts"]:
-        db.merge_user_memory(user_id, res["facts"], MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS)
+        db.merge_user_memory(user_id, res["facts"], MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS,
+                             session_id=session_id, turn=folded)
     db.upsert_session_memory_state(session_id, user_id, folded + res["k"])
     logger.info("记忆折叠完成: sid=%s folded=%d facts=%d", session_id, res["k"], len(res["facts"]))
     return {"folded": res["k"], "facts": len(res["facts"])}

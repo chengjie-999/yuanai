@@ -106,7 +106,8 @@ def org_env(tmp_path, monkeypatch):
     """记忆目录 + 审计日志都隔离到 tmp（.yuan 经 memory_store.root_path，audit 经 utils.data_path）"""
     import yuanai_core.memory_store as store
     import utils.data_path as dp
-    monkeypatch.setattr(store, "root_path", lambda: str(tmp_path))
+    import utils.data_path as _udp
+    monkeypatch.setattr(_udp, "root_path", lambda: str(tmp_path))  # V1-3 惰性导入
     monkeypatch.setattr(dp, "root_path", lambda: str(tmp_path))
     return tmp_path
 

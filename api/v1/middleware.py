@@ -17,7 +17,8 @@ PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", 
                  "/api/v1/docs/agreement",  # C11：协议公开端点（登录前可读）
                  "/api/v1/auth/appeal",  # C7：冻结申诉公开端点（被冻结用户无法登录）
                  "/api/v1/auth/email-code",   # R1'：邮箱验证码发送（登录前）
-                 "/api/v1/auth/email-login"]  # R1'：邮箱验证码登录（注册登录合一）
+                 "/api/v1/auth/email-login",  # R1'：邮箱验证码登录（注册登录合一）
+                 "/api/v1/auth/user-avatar"]  # 用户头像公开端点（uid 白名单，非敏感）
 
 
 def is_public(path: str) -> bool:

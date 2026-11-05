@@ -228,10 +228,11 @@ def email_login(email: str, code: str, agreement_accepted: bool = False) -> dict
             # 唯一性兜底：撞库概率极低，重名时换后缀
             if sess.query(User).filter_by(username=username).first():
                 username = f"{username}_{secrets.token_hex(2)}"
-            password = secrets.token_urlsafe(16)  # 随机密码：验证码即登录方式，用户不可见
-            import bcrypt as _bcrypt
+            # password_hash 空串 = 无密码（2026-11-06 用户拍板）：验证码是唯一登录
+            # 方式；用户可在个人页「设置密码」后转为密码登录（authenticate_user
+            # 对空 hash 直接拒绝，不会误放行）
             user = User(username=username, email=email.strip().lower(),
-                        password_hash=_bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode(),
+                        password_hash="",
                         display_name=_gen_display_name(email),
                         role="user", agreed_at=datetime.utcnow())
             sess.add(user)
@@ -259,4 +260,5 @@ def email_login(email: str, code: str, agreement_accepted: bool = False) -> dict
     logger.info("邮箱验证码登录成功: user=%s email=%s is_new=%s",
                 user.username, email, is_new)
     return {"token": _token_for(user), "user_id": user.id, "username": user.username,
-            "display_name": user.display_name or user.username, "is_new": is_new}
+            "display_name": user.display_name or user.username, "is_new": is_new,
+            "avatar": user.avatar or "", "has_password": bool(user.password_hash)}

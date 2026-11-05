@@ -169,6 +169,8 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False, index=True)
     # R1' 邮箱验证码登录（2026-11-05）：邮箱=登录凭据（唯一可空，迁移 0027）
     email = Column(String(190), unique=True, nullable=True, index=True)
+    # 头像（2026-11-06，迁移 0028）：公开 URL 相对路径；空 = 前端默认首字圆
+    avatar = Column(String(255), nullable=False, server_default="")
     password_hash = Column(String(200), nullable=False)
     display_name = Column(String(50), default='')
     role = Column(String(20), default='user')
@@ -747,7 +749,10 @@ class AgentDatabase:
         sess = self.Session()
         try:
             user = sess.query(User).filter_by(username=username).first()
-            if user and _bcrypt.checkpw(password.encode(), user.password_hash.encode()):
+            # R1'（2026-11-06）：邮箱注册用户 password_hash 为空串（未设置密码，
+            # 验证码是唯一登录方式）——checkpw 对空串会抛 ValueError，先守卫
+            if user and user.password_hash and \
+                    _bcrypt.checkpw(password.encode(), user.password_hash.encode()):
                 return user
             return None
         finally:
@@ -1589,17 +1594,21 @@ class AgentDatabase:
             sess.close()
 
     def change_password(self, user_id: int, old_password: str, new_password: str) -> tuple:
-        """修改密码，返回 (成功, 错误消息)"""
+        """修改密码，返回 (成功, 错误消息)。
+
+        R1'（2026-11-06）两态：password_hash 为空（邮箱注册未设密码）→ 首次
+        设置密码，old_password 忽略；已有密码 → 必须校验原密码。"""
         import bcrypt as _bcrypt
         sess = self.Session()
         try:
             user = sess.query(User).filter_by(id=user_id).first()
             if not user:
                 return False, "用户不存在"
-            if not _bcrypt.checkpw(old_password.encode(), user.password_hash.encode()):
-                return False, "原密码错误"
             if len(new_password) < 8:
                 return False, "新密码至少 8 个字符"
+            if user.password_hash:
+                if not _bcrypt.checkpw(old_password.encode(), user.password_hash.encode()):
+                    return False, "原密码错误"
             user.password_hash = _bcrypt.hashpw(new_password.encode(), _bcrypt.gensalt()).decode()
             # 2026-10-19 修复：改密后旧 JWT 全部继续有效（吊销机制未接上）——
             # token_version +1，携带旧 tv 的 token 立即失效

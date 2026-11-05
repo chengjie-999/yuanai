@@ -171,9 +171,17 @@ function AppLayout() {
           </Link>
           <Link to="/chat/user" style={{
             fontSize: 13, color: 'var(--accent)', cursor: 'pointer', textDecoration: 'none',
-            whiteSpace: 'nowrap',
+            whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6,
             borderBottom: location.pathname === '/chat/user' ? '1px solid var(--accent)' : '1px solid transparent',
-          }}>{user?.display_name || user?.username}</Link>
+          }}>
+            {user?.avatar && (
+              <img src={user.avatar} alt="" style={{
+                width: 22, height: 22, borderRadius: '50%', objectFit: 'cover',
+                border: '1px solid var(--border)',
+              }} />
+            )}
+            {user?.display_name || user?.username}
+          </Link>
           <Link to="/chat/settings" style={{
             fontSize: 13, color: location.pathname === '/chat/settings' ? 'var(--text-primary)' : 'var(--text-secondary)',
             cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap',

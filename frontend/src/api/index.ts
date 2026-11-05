@@ -222,11 +222,25 @@ export async function updateProfile(display_name: string) {
   return res.json()
 }
 
+// R1'（2026-11-06）：old_password 可空——邮箱注册用户首次「设置密码」无原密码
 export async function changePassword(old_password: string, new_password: string) {
   const res = await fetch(`${API_BASE}/auth/password`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ old_password, new_password }),
+  })
+  if (!res.ok) throw new Error(await _errorDetail(res))
+  return res.json()
+}
+
+// 上传头像（multipart，字段名 avatar）→ 返回 { avatar }
+export async function uploadAvatar(file: File): Promise<{ avatar: string }> {
+  const fd = new FormData()
+  fd.append('avatar', file)
+  const res = await fetch(`${API_BASE}/auth/avatar`, {
+    method: 'POST',
+    headers: { ...authHeaders() },
+    body: fd,
   })
   if (!res.ok) throw new Error(await _errorDetail(res))
   return res.json()

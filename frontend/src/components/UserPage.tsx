@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { updateProfile, changePassword, deleteAccount } from '../api'
+import { updateProfile, changePassword, deleteAccount, uploadAvatar } from '../api'
 import { useIsMobile } from '../hooks/useIsMobile'
 import Modal from './Modal'
 
@@ -41,6 +41,8 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
   }
   const [name, setName] = useState(user?.display_name || '')
   const [nameMsg, setNameMsg] = useState('')
+  // R1'（2026-11-06）：邮箱注册用户无密码 → 「设置密码」跳过原密码步骤
+  const hasPw = !!user?.has_password
   // password flow
   const [showPw, setShowPw] = useState(false)
   const [pwStep, setPwStep] = useState(0) // 0=old, 1=new+confirm, 2=done
@@ -49,6 +51,23 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
   const [confirmPw, setConfirmPw] = useState('')
   const [pwMsg, setPwMsg] = useState('')
   const [pwErr, setPwErr] = useState(false)
+  // 头像上传
+  const [avatarUpdating, setAvatarUpdating] = useState(false)
+  const avatarFileRef = useRef<HTMLInputElement>(null)
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!file || avatarUpdating) return
+    if (file.size > 2 * 1024 * 1024) { window.alert('图片过大（≤2MB）'); return }
+    setAvatarUpdating(true)
+    try {
+      await uploadAvatar(file)
+      refresh()  // 重新拉用户信息（含新头像 URL）
+    } catch (e: any) {
+      window.alert(e.message || '头像上传失败')
+    } finally {
+      setAvatarUpdating(false)
+    }
+  }
 
   const handleSaveName = async () => {
     if (!name.trim()) return
@@ -62,6 +81,9 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
 
   const resetPw = () => { setShowPw(false); setPwStep(0); setOldPw(''); setNewPw(''); setConfirmPw(''); setPwMsg(''); setPwErr(false) }
 
+  // 打开密码抽屉：无密码用户（邮箱注册）直接进新密码步骤
+  const openPw = () => { setPwStep(hasPw ? 0 : 1); setShowPw(true) }
+
   const handlePwNext = () => {
     setPwErr(false); setPwMsg('')
     if (!oldPw) { setPwMsg('请输入原密码'); setPwErr(true); return }
@@ -74,7 +96,7 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
     if (newPw.length < 8) { setPwMsg('新密码至少 8 个字符'); setPwErr(true); return }
     if (newPw !== confirmPw) { setPwMsg('两次输入的密码不一致'); setPwErr(true); return }
     try {
-      await changePassword(oldPw, newPw)
+      await changePassword(hasPw ? oldPw : '', newPw)
       setPwStep(2)
     } catch (e: any) { setPwMsg(e.message || '修改失败'); setPwErr(true) }
   }
@@ -86,12 +108,25 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
         {/* ---- 个人信息 ---- */}
         <div style={C.card}>
           <div style={{ padding: '32px', textAlign: 'center', borderBottom: '1px solid var(--border-light)' }}>
-            <div style={{
-              width: 64, height: 64, borderRadius: '50%', background: 'var(--accent)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 12px', color: '#fff', fontSize: 24, fontWeight: 700,
-            }}>
-              {(user?.username || 'U')[0].toUpperCase()}
+            {/* 头像（2026-11-06 用户拍板：可上传图片作头像）——点击上传，无头像时显示首字圆 */}
+            <input ref={avatarFileRef} type="file" accept="image/*" style={{ display: 'none' }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAvatarUpload(f); e.target.value = '' }} />
+            <div onClick={() => !avatarUpdating && avatarFileRef.current?.click()} title="点击上传头像" aria-label="点击上传头像"
+              style={{
+                width: 72, height: 72, borderRadius: '50%', background: 'var(--accent)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 12px', color: '#fff', fontSize: 26, fontWeight: 700,
+                cursor: 'pointer', overflow: 'hidden', position: 'relative',
+                opacity: avatarUpdating ? 0.5 : 1, transition: 'opacity 0.15s',
+              }}>
+              {user?.avatar ? (
+                <img src={user.avatar} alt="头像" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                (user?.display_name || user?.username || 'U')[0].toUpperCase()
+              )}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+              {avatarUpdating ? '上传中…' : '点击头像可上传图片（≤2MB，自动裁为正方形）'}
             </div>
             <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px' }}>{user?.display_name || user?.username}</h2>
             <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>@{user?.username}</span>
@@ -140,12 +175,12 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
           </div>
         </div>
 
-        {/* ---- 修改密码 ---- */}
-        <button onClick={() => setShowPw(true)} style={{
+        {/* ---- 修改/设置密码（R1' 两态：无密码=设置，有密码=修改） ---- */}
+        <button onClick={openPw} style={{
           width: '100%', padding: '12px 0', borderRadius: 10,
           border: '1px solid var(--border)', background: 'var(--bg-primary)',
           cursor: 'pointer', fontSize: 14, color: 'var(--text-secondary)',
-        }}>修改密码</button>
+        }}>{hasPw ? '修改密码' : '设置密码'}</button>
 
         {/* ---- 退出 ---- */}
         <button onClick={onLogout} style={{
@@ -169,16 +204,17 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
 
       {/* ---- 修改密码侧边抽屉（共享 Modal mode=right） ---- */}
       <Modal open={showPw} mode="right" onClose={resetPw}
-        title={pwStep === 2 ? '修改完成' : pwStep === 1 ? '设置新密码' : '修改密码'}
+        title={pwStep === 2 ? (hasPw ? '修改完成' : '设置完成')
+          : pwStep === 1 ? (hasPw ? '设置新密码' : '设置密码') : '修改密码'}
         footer={pwStep !== 2 ? (
           <>
-            <button onClick={pwStep === 0 ? resetPw : () => { setPwStep(0); setPwMsg('') }}
+            <button onClick={pwStep === 0 || !hasPw ? resetPw : () => { setPwStep(0); setPwMsg('') }}
               style={{ padding: '10px 24px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
-              {pwStep === 0 ? '取消' : '上一步'}
+              {pwStep === 0 || !hasPw ? '取消' : '上一步'}
             </button>
             <button onClick={pwStep === 0 ? handlePwNext : handlePwSubmit}
               style={{ ...C.btn, fontSize: 14, padding: '10px 24px' }}>
-              {pwStep === 0 ? '下一步' : '确认修改'}
+              {pwStep === 0 ? '下一步' : (hasPw ? '确认修改' : '确认设置')}
             </button>
           </>
         ) : (
@@ -199,7 +235,10 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
         )}
         {pwStep === 1 && (
           <div>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 20px' }}>请输入新密码：至少 8 位，任意字符均可（中文/字母/数字/符号）</p>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 20px' }}>
+              {hasPw ? '请输入新密码：至少 8 位，任意字符均可（中文/字母/数字/符号）'
+                : '首次设置密码：设置后即可用「密码登录」方式登录；至少 8 位，任意字符均可'}
+            </p>
             <div style={{ marginBottom: 16 }}>
               <div style={{ ...C.label, marginBottom: 6, fontSize: 14 }}>新密码</div>
               <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
@@ -223,7 +262,7 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
               </svg>
             </div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>密码修改成功</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{hasPw ? '密码修改成功' : '密码设置成功'}</div>
             <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
               为安全起见，改密后所有旧登录已失效——请使用新密码重新登录。
             </div>

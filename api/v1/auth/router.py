@@ -166,6 +166,8 @@ def login(req: AuthRequest, request: Request):
             "role": user.role,
             "display_name": user.display_name or user.username,
             "email": user.email or "",
+            "avatar": user.avatar or "",
+            "has_password": bool(user.password_hash),
             "theme": user.theme or "",
         },
     }
@@ -235,6 +237,8 @@ def email_login_endpoint(req: EmailLoginRequest, request: Request):
             "username": result["username"],
             "display_name": result["display_name"],
             "email": email,
+            "avatar": result.get("avatar", ""),
+            "has_password": result.get("has_password", False),
             "role": "user",
             "theme": "",
         },
@@ -355,7 +359,8 @@ class ProfileUpdate(BaseModel):
 
 
 class PasswordUpdate(BaseModel):
-    old_password: str
+    # R1'（2026-11-06）：邮箱注册用户无密码——设置密码时 old_password 可空
+    old_password: str = ""
     # 与登录校验同口径（2026-10-30）：<8 位的新密码改完就登不上，端点层直接拒
     new_password: str = Field(..., min_length=8, max_length=64)
 
@@ -377,15 +382,81 @@ def update_profile(req: ProfileUpdate, request: Request):
 
 @router.put("/password")
 def update_password(req: PasswordUpdate, request: Request):
-    """修改密码"""
+    """修改/设置密码（R1' 两态，2026-11-06）：
+    邮箱注册用户无密码 → 首次设置（old_password 忽略）；
+    已有密码 → 必须校验原密码。改密后 token_version+1 全部旧会话失效。"""
     uid = getattr(request.state, 'user_id', None)
     if not uid:
         raise HTTPException(status_code=401, detail="未登录")
     db = get_db()
-    ok, err = db.change_password(uid, req.old_password, req.new_password)
+    ok, err = db.change_password(uid, req.old_password or "", req.new_password)
     if not ok:
         raise HTTPException(status_code=400, detail=err)
     return {"ok": True}
+
+
+# ===================== 用户头像（2026-11-06 用户拍板：可上传图片作头像） =====================
+
+_AVATAR_DIR = _os.path.join(_root_path(), "data", "user_avatars")
+_AVATAR_MAX_BYTES = 2 * 1024 * 1024   # 2MB 上限
+_AVATAR_SIZE = 256                    # 统一压缩到 256x256
+
+
+@router.post("/avatar")
+async def upload_avatar(request: Request):
+    """上传头像（登录用户，multipart file 字段名 avatar）：
+    PIL 校验真实图片 → 压缩到 256x256 PNG → data/user_avatars/{uid}.png →
+    users.avatar 存带版本参数的公开 URL（缓存刷新）。"""
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    form = await request.form()
+    file = form.get("avatar")
+    # 注意：request.form() 返回 starlette.datastructures.UploadFile，与
+    # fastapi.datastructures.UploadFile 不同类（新版 FastAPI 拆分）——
+    # isinstance 必失败，用鸭子类型判断
+    if not file or not hasattr(file, "read"):
+        raise HTTPException(status_code=400, detail="请选择图片文件（字段名 avatar）")
+    data = await file.read()
+    if len(data) > _AVATAR_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="图片过大（≤2MB）")
+    try:
+        from PIL import Image
+        import io as _io
+        img = Image.open(_io.BytesIO(data))
+        img.verify()  # 真实图片校验（防伪装文件）
+        img = Image.open(_io.BytesIO(data))
+        img = img.convert("RGB")
+        img.thumbnail((_AVATAR_SIZE, _AVATAR_SIZE))
+    except Exception:
+        raise HTTPException(status_code=400, detail="图片格式不支持或已损坏（支持 jpg/png/webp 等常见格式）")
+    _os.makedirs(_AVATAR_DIR, exist_ok=True)
+    img.save(_os.path.join(_AVATAR_DIR, f"{uid}.png"), "PNG")
+    import time as _time
+    # auth 路由前缀 /auth → 公开路径 /api/v1/auth/user-avatar/{uid}（middleware 白名单）
+    avatar_url = f"/api/v1/auth/user-avatar/{uid}?v={int(_time.time())}"
+    db = get_db()
+    with db.session() as sess:
+        from db.session import User
+        u = sess.query(User).filter_by(id=uid).first()
+        if not u:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        u.avatar = avatar_url
+        sess.commit()
+    logger.info("头像已更新: user=%s", uid)
+    return {"ok": True, "avatar": avatar_url}
+
+
+@router.get("/user-avatar/{uid}")
+def get_user_avatar(uid: int):
+    """头像公开端点（uid 整数白名单天然防穿越；PNG 统一格式）"""
+    if uid <= 0 or uid > 10 ** 9:
+        raise HTTPException(status_code=404, detail="头像不存在")
+    path = _os.path.join(_AVATAR_DIR, f"{uid}.png")
+    if not _os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="头像不存在")
+    from fastapi.responses import FileResponse
+    return FileResponse(path, media_type="image/png")
 
 
 # ===================== 长期记忆（透明可编辑） =====================
@@ -636,6 +707,8 @@ def check_token(req: TokenCheck):
             "role": user.role,
             "display_name": user.display_name or user.username,
             "email": user.email or "",
+            "avatar": user.avatar or "",
+            "has_password": bool(user.password_hash),
             "theme": user.theme or "",
         },
     }

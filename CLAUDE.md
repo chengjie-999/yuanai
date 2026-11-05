@@ -327,6 +327,12 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **长任务小窗（2026-10-16）**：@面板 Claude/自动化行「小窗」按钮 → 新建独立会话持久定向该智能体（dmTargets localStorage），不占主对话截断（@Claude 走 claude-stream 天然不截断；@自动化 后端截断放宽 200 条）；automation 加 10s 心跳进度（聊天气泡进度条可见）；主对话截断提示附各说话人归档计数
 - 验证：`python -m agent.verify_claude_bridge`（离线断言 agent→token→tool→done + 会话续接）
 
+## 第二批（2026-11-06：T5 LLM 代理 + V1-3 记忆事件化 + T2 免输码注册）
+
+- **T5 用户 Agent LLM 云端代理（544c0b1）**：普通用户本机无 key 的 Agent 可用前置——`POST /api/v1/agent/llm/chat/completions` OpenAI 兼容代理（设备凭据鉴权 + 模型白名单 + 欠费 403 + 流式透传 + 强制 include_usage → record_usage purpose=agent_llm 落绑定用户）；lc.get_llm 无本地 key 时自动回退（identity.server_url + agent_secret），代理模式不挂本地记账回调防双计
+- **V1-3 记忆条目事件化（2abf23d）**：facts.jsonl v3（id/session_id/turn/supersedes 链/last_hit/hit_count/status）；只归档不删除（delete/rewrite/apply 移除行 archived）；淘汰三步 run_maintenance（superseded 7 天/零命中 90 天/相似 0.9 冲突队列 conflicts.jsonl）；注入点 mark_hit（60s 节流）；RLock 防死锁
+- **T2 免输码自动注册**：`GET /api/v1/agent/download-exe?code=` 文件名内嵌预绑定安装码（码归属校验），Agent 首启从自身 exe 文件名解析静默注册（register_device），输码弹窗仅兜底；AgentPage 下载按钮有码时自动走带码下载
+
 ## 知识星球（三级知识库）
 
 用户个人知识库：**知识星球（主题域）→ 思维导图 → 线性笔记 markdown**，页面 `/chat/planet`（登录后，按用户隔离）。

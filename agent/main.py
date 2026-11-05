@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import json
 import logging
+import re
 import signal
 import socket
 import sys
@@ -53,17 +54,52 @@ def load_identity() -> dict:
         return {}
 
 
-def do_install(server_url: str, install_code: str):
-    """安装注册：消费安装码 → 云端注册设备 → 保存身份文件"""
+# T2 免输码自动注册（2026-11-06）：下载文件名内嵌预绑定安装码
+# yuanai-agent-v{版本}_{安装码}.exe → 首启从自身文件名解析 → 静默注册；
+# 文件名被改/码失效 → 输码弹窗兜底
+_EXE_CODE_RE = re.compile(r"yuanai-agent-v[\w.\-]+_([A-Z0-9][A-Z0-9\-]{5,63})\.exe$", re.IGNORECASE)
+
+
+def install_code_from_exe_name() -> str:
+    """从自身 exe 文件名解析安装码（sys.executable 与 argv[0] 双查——快捷方式
+    启动时 argv[0] 可能已改名，安装目录里的真实 exe 名才是下载原名）"""
+    for candidate in (getattr(sys, "executable", ""), sys.argv[0] if sys.argv else ""):
+        m = _EXE_CODE_RE.search(os.path.basename(candidate or ""))
+        if m:
+            return m.group(1).upper()
+    return ""
+
+
+def register_device(server_url: str, install_code: str) -> dict:
+    """设备注册核心（do_install 与托盘静默注册共用）：消费安装码 → 保存身份。
+    失败抛异常（调用方决定 exit / 兜底弹窗）。"""
     # server-url 是 ws(s):// 形式（Agent 连接用），HTTP 调用需转 http(s)://
     http_base = server_url.replace("wss://", "https://").replace("ws://", "http://")
+    payload = json.dumps({"install_code": install_code,
+                          "machine_name": socket.gethostname()}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{http_base}/api/v1/agent/register",
+        data=payload, headers={"Content-Type": "application/json"}, method="POST",
+    )
+    resp = json.loads(urllib.request.urlopen(req, timeout=30).read().decode("utf-8"))
+
+    os.makedirs(os.path.dirname(IDENTITY_FILE), exist_ok=True)
+    identity = {
+        "server_url": server_url,
+        "agent_id": resp["agent_id"],
+        "agent_secret": resp["agent_secret"],
+        "machine_name": resp.get("machine_name", socket.gethostname()),
+    }
+    with open(IDENTITY_FILE, "w", encoding="utf-8") as f:
+        json.dump(identity, f, ensure_ascii=False, indent=2)
+    return identity
+
+
+def do_install(server_url: str, install_code: str):
+    """安装注册（CLI 语义）：消费安装码 → 云端注册设备 → 保存身份文件。
+    失败打印原因并 exit（托盘模式请用 register_device + 兜底弹窗）。"""
     try:
-        payload = json.dumps({"install_code": install_code, "machine_name": socket.gethostname()}).encode("utf-8")
-        req = urllib.request.Request(
-            f"{http_base}/api/v1/agent/register",
-            data=payload, headers={"Content-Type": "application/json"}, method="POST",
-        )
-        resp = json.loads(urllib.request.urlopen(req, timeout=30).read().decode("utf-8"))
+        identity = register_device(server_url, install_code)
     except urllib.error.HTTPError as e:
         try:
             detail = json.loads(e.read().decode("utf-8")).get("detail", str(e))
@@ -75,17 +111,8 @@ def do_install(server_url: str, install_code: str):
         print(f"安装失败（网络或服务异常）: {e}")
         sys.exit(1)
 
-    os.makedirs(os.path.dirname(IDENTITY_FILE), exist_ok=True)
-    identity = {
-        "server_url": server_url,
-        "agent_id": resp["agent_id"],
-        "agent_secret": resp["agent_secret"],
-        "machine_name": resp.get("machine_name", socket.gethostname()),
-    }
-    with open(IDENTITY_FILE, "w", encoding="utf-8") as f:
-        json.dump(identity, f, ensure_ascii=False, indent=2)
     print("=" * 50)
-    print(f"安装成功！本机已注册为 Agent #{resp['agent_id']}（{identity['machine_name']}）")
+    print(f"安装成功！本机已注册为 Agent #{identity['agent_id']}（{identity['machine_name']}）")
     print(f"身份已保存: {IDENTITY_FILE}")
     print("下一步: 云端后台管理 → Agent 管理，把该设备绑定到用户账号")
     print("=" * 50)

@@ -173,7 +173,11 @@ function AgentDownloadCard() {
         {data && data.default_version ? (() => {
           const d = data.versions.find((v) => v.version === data.default_version)
           return d ? (
-            <a href={`/downloads/versions/${d.filename}`} style={{
+            // T2（2026-11-06）：有自服务安装码时走带码下载——文件名内嵌安装码，
+            // 首启零输码零弹窗静默注册；无码保持原静态下载
+            <a href={code?.code && !code.bound
+              ? `/api/v1/agent/download-exe?code=${encodeURIComponent(code.code)}`
+              : `/downloads/versions/${d.filename}`} style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '10px 18px', borderRadius: 8, background: 'var(--accent)', color: '#fff',
               textDecoration: 'none', fontSize: 13.5, fontWeight: 600, marginBottom: 10,

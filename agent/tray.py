@@ -748,14 +748,29 @@ def main():
     )
     logging.getLogger("websockets").setLevel(logging.WARNING)
 
-    # 傻瓜引导：无身份时弹窗输入安装码自动注册（注册失败/取消则退出）
-    from agent.main import load_identity
+    # 傻瓜引导（T2 2026-11-06）：无身份时先试文件名内嵌安装码静默注册
+    # （零输码零弹窗），失败/无码才弹输码窗兜底；注册失败/取消则退出
+    from agent.main import load_identity, install_code_from_exe_name, register_device
     identity = load_identity()
     if not identity.get("agent_id") or not identity.get("agent_secret"):
-        if not _install_dialog(args.server_url):
-            logger.info("用户取消安装，进程退出")
-            sys.exit(0)
-        identity = load_identity()
+        code = install_code_from_exe_name()
+        if code:
+            try:
+                register_device(args.server_url, code)
+                identity = load_identity()
+                logger.info("已从下载文件名自动注册: %s", code[:8] + "***")
+                try:
+                    import tkinter.messagebox as _mb
+                    _mb.showinfo("注册成功", "本机 Agent 已自动注册并开始运行！\n\n图标会常驻任务栏右下角。")
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.warning("静默注册失败（转弹窗兜底）: %s", str(e)[:120])
+        if not identity.get("agent_id") or not identity.get("agent_secret"):
+            if not _install_dialog(args.server_url):
+                logger.info("用户取消安装，进程退出")
+                sys.exit(0)
+            identity = load_identity()
 
     agent_id = args.agent_id or str(identity.get("agent_id") or "1")
     agent_token = args.agent_token or identity.get("agent_secret", "") or ""

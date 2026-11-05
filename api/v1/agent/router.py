@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import secrets
 from datetime import datetime
 from typing import Dict
@@ -334,6 +335,41 @@ async def agent_downloads(request: Request):
     from api.v1.admin.agent_devices import _load_versions
     data = _load_versions()
     return {"default_version": data.get("default_version", ""), "versions": data["versions"]}
+
+
+@router.get("/download-exe")
+async def agent_download_exe(request: Request, code: str = ""):
+    """T2 免输码自动注册（2026-11-06）：带码下载——文件名内嵌预绑定安装码
+    yuanai-agent-v{版本}_{安装码}.exe，Agent 首启从自身文件名解析静默注册。
+
+    安全：码必须预绑定当前登录用户（my-code/后台签发时 user_id 归属）；
+    文件本身是静态目录同一份 exe，仅 Content-Disposition 文件名不同——
+    不扩大暴露面（码本就一次消费）。"""
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    code = (code or "").strip().upper()
+    from db.session import get_db, AgentDevice
+    from api.v1.admin.agent_devices import _load_versions, _downloads_dir
+    if code:
+        with get_db().session() as sess:
+            dev = sess.query(AgentDevice).filter_by(install_code=code).first()
+            if not dev or (dev.user_id or 0) != uid:
+                raise HTTPException(status_code=403, detail="安装码不属于当前账号")
+    data = _load_versions()
+    default = next((v for v in data["versions"]
+                    if v["version"] == data.get("default_version")), None)
+    if not default and data["versions"]:
+        default = data["versions"][-1]
+    if not default:
+        raise HTTPException(status_code=404, detail="暂无可用版本")
+    fpath = os.path.join(_downloads_dir(), "versions", default["filename"])
+    if not os.path.isfile(fpath):
+        raise HTTPException(status_code=404, detail="版本文件不存在")
+    fname = default["filename"] if not code else         f"yuanai-agent-v{default['version']}_{code}.exe"
+    from fastapi.responses import FileResponse
+    return FileResponse(fpath, media_type="application/octet-stream",
+                        filename=fname)
 
 
 @router.post("/activity")

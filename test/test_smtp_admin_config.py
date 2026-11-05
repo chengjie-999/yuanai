@@ -245,6 +245,42 @@ def test_smtp_test_send_cooldown(client, admin_jwt, models_file_backup, no_env_s
     assert "秒" in r2.json()["detail"]
 
 
+# ---------------- 发件人显示名编码（中文头安全） ----------------
+
+def test_send_email_from_header_chinese_display_name(monkeypatch, models_file_backup, no_env_smtp):
+    """from_addr「小元AI <x@163.com>」中文显示名经 Header 编码——非 ASCII 头
+    直接发会 UnicodeEncodeError（默认预填即该形态）"""
+    import smtplib
+    from api.v1.models_file import write_models_file
+    write_models_file({"_smtp": {"host": "smtp.163.com", "port": 465,
+                                 "user": "chengjie2017020@163.com", "password": "PW",
+                                 "from_addr": "小元AI <chengjie2017020@163.com>", "use_ssl": True}})
+    from api.v1.auth import email_code as ec
+
+    captured = {}
+
+    class _FakeSMTP:
+        def __init__(self, host, port, timeout=None):
+            pass
+
+        def login(self, u, p):
+            pass
+
+        def sendmail(self, frm, to, msg):
+            captured["msg"] = msg
+
+        def quit(self):
+            pass
+
+    monkeypatch.setattr(smtplib, "SMTP_SSL", _FakeSMTP)
+    ec._send_email("to@163.com", "123456")
+    msg = captured["msg"]
+    assert "chengjie2017020@163.com" in msg
+    # 显示名已编码为 =?utf-8?...?=（原始中文不进邮件头）
+    assert "小元AI" not in msg
+    assert "=?utf-8?" in msg
+
+
 # ---------------- 授权码加密落盘（安全） ----------------
 
 def test_smtp_password_encrypted_at_rest(monkeypatch, models_file_backup):

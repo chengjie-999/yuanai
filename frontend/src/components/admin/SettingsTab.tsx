@@ -114,8 +114,17 @@ export default function SettingsTab() {
   }
 
   // ---- 邮箱验证码 SMTP 配置（R1' 2026-11-05：后台热配置，零服务器操作） ----
+  // 默认值预填（2026-11-06 用户拍板）：163 平台邮箱，只需粘贴授权码即可保存
+  const SMTP_DEFAULTS = {
+    host: 'smtp.163.com',
+    port: 465,
+    user: 'chengjie2017020@163.com',
+    password: '',
+    from_addr: '小元AI <chengjie2017020@163.com>',
+    use_ssl: true,
+  }
   const [smtp, setSmtp] = useState<any>(null)
-  const [smtpForm, setSmtpForm] = useState({ host: '', port: 465, user: '', password: '', from_addr: '', use_ssl: true })
+  const [smtpForm, setSmtpForm] = useState(SMTP_DEFAULTS)
   const [smtpMsg, setSmtpMsg] = useState('')
   const [smtpSaving, setSmtpSaving] = useState(false)
   const [testTo, setTestTo] = useState('')
@@ -130,10 +139,11 @@ export default function SettingsTab() {
           setSmtp(d)
           setSmtpForm((p) => ({
             ...p,
+            // 后端已有配置则显示实际值；未配置保持默认预填
             host: d.host || p.host,
             port: d.port || 465,
-            user: d.user || '',
-            from_addr: d.from_addr || '',
+            user: d.user || p.user,
+            from_addr: d.from_addr || p.from_addr,
             use_ssl: d.use_ssl !== false,
             // 密码不回传，输入框始终空 = 保持原密码
           }))

@@ -64,7 +64,14 @@ def _send_email(to: str, code: str, subject: str = "【小元AI】邮箱验证�
                 "如果不是您本人操作，请忽略本邮件。\n\n—— 小元AI")
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = Header(subject, "utf-8")
-    msg["From"] = cfg["from_addr"] or cfg["user"]
+    # 发件人：支持「显示名 <地址>」形态（中文显示名经 Header 编码，
+    # 否则非 ASCII 头直接发会 UnicodeEncodeError）
+    from email.utils import parseaddr, formataddr
+    _display, _addr = parseaddr(cfg["from_addr"] or cfg["user"])
+    if _display:
+        msg["From"] = formataddr((str(Header(_display, "utf-8")), _addr))
+    else:
+        msg["From"] = _addr or cfg["user"]
     msg["To"] = to
     if cfg["use_ssl"]:
         server = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=15)

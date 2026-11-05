@@ -2,13 +2,15 @@
 
 import os
 import base64
-from pydantic import BaseModel
+import logging
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from db.session import get_db
 from api.v1.middleware import require_admin
 from utils.data_path import root_path
 from api.v1.models_file import read_models_file as _read_models_file, write_models_file as _write_models_file
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["admin"])  # 无 prefix：由主 router 统一加 /admin
 
 
@@ -512,6 +514,109 @@ _SYSTEM_CONFIG_SCHEMA = {
 
 class SystemConfigUpdate(BaseModel):
     system_config: dict
+
+
+# ===================== 邮箱验证码 SMTP 配置（R1' 后台热配置，2026-11-05） =====================
+# 用户拍板「不用手动配服务器」：管理员在后台设置页粘贴邮箱+授权码即生效
+# （models.json `_smtp`，password 与 _apikeys 同套透明加密；env 优先于后台配置）。
+
+class SmtpConfigBody(BaseModel):
+    host: str = Field("", max_length=100)
+    port: int = Field(465, ge=1, le=65535)
+    user: str = Field("", max_length=190)
+    password: str = Field("", max_length=200)   # 留空 = 保持原密码不变
+    from_addr: str = Field("", max_length=190)
+    use_ssl: bool = True
+
+
+def _smtp_status() -> dict:
+    """当前生效配置（密码脱敏）+ 加密状态（明文落盘风险明示给 UI）"""
+    from config.settings import get_smtp_config
+    cfg = get_smtp_config()
+    has_pw = bool(cfg["password"])
+    return {
+        "configured": bool(cfg["host"] and cfg["user"] and has_pw),
+        "host": cfg["host"],
+        "port": cfg["port"],
+        "user": cfg["user"],
+        "has_password": has_pw,
+        "password_masked": (cfg["password"][:4] + "****" + cfg["password"][-4:])
+                           if has_pw and len(cfg["password"]) > 8 else "****",
+        "from_addr": cfg["from_addr"],
+        "use_ssl": cfg["use_ssl"],
+        # 安全状态：ENCRYPTION_PASSWORD 未配置时授权码明文落盘（与 _apikeys 同口径告警）
+        "encryption_enabled": bool(os.getenv("ENCRYPTION_PASSWORD", "")),
+        # env 覆盖时后台表单只读提示（选择链 env 优先）
+        "env_override": bool(os.getenv("SMTP_HOST", "")),
+    }
+
+
+@router.get("/smtp-config")
+async def get_smtp_config_endpoint(request: Request):
+    """邮箱验证码配置读（管理员）——密码永不回传，只回脱敏态"""
+    require_admin(request)
+    return _smtp_status()
+
+
+@router.put("/smtp-config")
+async def put_smtp_config(body: SmtpConfigBody, request: Request):
+    """邮箱验证码配置写（管理员）：写 models.json `_smtp`，热生效无需重启。
+    密码留空 = 保持原密码；保存前提 = host/user/密码（新旧皆可）齐全。"""
+    require_admin(request)
+    host = body.host.strip()
+    user = body.user.strip()
+    if not host or not user:
+        raise HTTPException(status_code=400, detail="发信服务器与邮箱账号不能为空")
+    data = _read_models_file()
+    old = data.get("_smtp") or {}
+    old_pw = old.get("password", "") if isinstance(old, dict) else ""
+    if not body.password.strip() and not old_pw:
+        raise HTTPException(status_code=400, detail="请填写授权码（163/QQ 邮箱的 SMTP 授权码，非登录密码）")
+    data["_smtp"] = {
+        "host": host,
+        "port": body.port,
+        "user": user,
+        "password": body.password.strip() or old_pw,
+        "from_addr": body.from_addr.strip(),
+        "use_ssl": body.use_ssl,
+    }
+    _write_models_file(data)
+    logger.info("SMTP 配置已更新（后台热配置）: host=%s user=%s", host, user)
+    return {"ok": True, "status": _smtp_status()}
+
+
+@router.post("/smtp-config/test")
+async def test_smtp_config(req: dict, request: Request):
+    """发送测试邮件（管理员）：验证配置连通性。60s 冷却防误触连发。"""
+    require_admin(request)
+    to = str((req or {}).get("email", "")).strip()
+    if not to or "@" not in to:
+        raise HTTPException(status_code=422, detail="请填写测试收件邮箱")
+    # 冷却护栏：测试发送 60s 一次（Redis 不可用降级放行）
+    uid = getattr(request.state, "user_id", 0)
+    try:
+        from db.redis_client import get_redis
+        rds = get_redis()
+        cd_key = f"smtptest:{uid}"
+        if rds.get(cd_key):
+            remaining = max(0, int(rds.ttl(cd_key) or 1))
+            raise HTTPException(status_code=429, detail=f"测试发送过于频繁，请 {remaining} 秒后再试")
+        rds.set(cd_key, 1, ex=60)
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+    from api.v1.auth.email_code import smtp_configured, send_test_email
+    if not smtp_configured():
+        raise HTTPException(status_code=503, detail="SMTP 尚未配置（先在下方保存邮箱与授权码）")
+    import asyncio
+    try:
+        await asyncio.to_thread(send_test_email, to)
+    except Exception as e:
+        logger.error("SMTP 测试发送失败: to=%s err=%s", to, e)
+        raise HTTPException(status_code=502, detail=f"测试邮件发送失败：{str(e)[:120]}（请核对授权码/SSL 端口）")
+    logger.info("SMTP 测试邮件已发送: to=%s", to)
+    return {"ok": True, "message": f"测试邮件已发送至 {to}，请查收（可能在垃圾箱）"}
 
 
 @router.get("/system-config")

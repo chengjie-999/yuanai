@@ -36,11 +36,11 @@ _TRY_KEY = "emailcode:try:{email}"
 
 
 def smtp_configured() -> bool:
-    """SMTP 是否完整配置（未配置时发送端点 503）"""
-    from config.settings import (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD,
-                                 EMAIL_LOGIN_ENABLED)
-    return bool(EMAIL_LOGIN_ENABLED and SMTP_HOST and SMTP_PORT
-                and SMTP_USER and SMTP_PASSWORD)
+    """SMTP 是否完整配置（env 或后台热配置；未配置时发送端点 503）"""
+    from config.settings import EMAIL_LOGIN_ENABLED, get_smtp_config
+    cfg = get_smtp_config()
+    return bool(EMAIL_LOGIN_ENABLED and cfg["host"] and cfg["port"]
+                and cfg["user"] and cfg["password"])
 
 
 def _rds():
@@ -53,31 +53,39 @@ def _gen_code() -> str:
     return str(secrets.randbelow(10 ** 6)).zfill(6)
 
 
-def _send_email(to: str, code: str) -> None:
-    """SMTP 发送验证码邮件（同步阻塞，调用方放线程池）。失败抛异常。"""
-    from config.settings import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, \
-        SMTP_FROM, SMTP_USE_SSL
-    subject = "【小元AI】邮箱验证码"
-    body = (f"您好！\n\n您的验证码是：{code}\n"
-            f"验证码 5 分钟内有效，请勿泄露给他人。\n\n"
-            "如果不是您本人操作，请忽略本邮件。\n\n—— 小元AI")
+def _send_email(to: str, code: str, subject: str = "【小元AI】邮箱验证码",
+                body: str = "") -> None:
+    """SMTP 发送邮件（同步阻塞，调用方放线程池）。失败抛异常。"""
+    from config.settings import get_smtp_config
+    cfg = get_smtp_config()
+    if not body:
+        body = (f"您好！\n\n您的验证码是：{code}\n"
+                f"验证码 5 分钟内有效，请勿泄露给他人。\n\n"
+                "如果不是您本人操作，请忽略本邮件。\n\n—— 小元AI")
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = Header(subject, "utf-8")
-    msg["From"] = SMTP_FROM or SMTP_USER
+    msg["From"] = cfg["from_addr"] or cfg["user"]
     msg["To"] = to
-    if SMTP_USE_SSL:
-        server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15)
+    if cfg["use_ssl"]:
+        server = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=15)
     else:
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15)
+        server = smtplib.SMTP(cfg["host"], cfg["port"], timeout=15)
         server.starttls()
     try:
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(SMTP_USER, [to], msg.as_string())
+        server.login(cfg["user"], cfg["password"])
+        server.sendmail(cfg["user"], [to], msg.as_string())
     finally:
         try:
             server.quit()
         except Exception:
             pass
+
+
+def send_test_email(to: str) -> None:
+    """后台「发送测试邮件」：验证配置连通性（失败抛异常，端点转 502）"""
+    _send_email(to, "000000",
+                subject="【小元AI】邮件配置测试",
+                body="您好！\n\n这是一封测试邮件——收到即表示邮箱验证码登录功能配置成功。\n\n—— 小元AI")
 
 
 async def send_email_code(email: str) -> dict:

@@ -113,6 +113,59 @@ export default function SettingsTab() {
     loadAnns()
   }
 
+  // ---- 邮箱验证码 SMTP 配置（R1' 2026-11-05：后台热配置，零服务器操作） ----
+  const [smtp, setSmtp] = useState<any>(null)
+  const [smtpForm, setSmtpForm] = useState({ host: '', port: 465, user: '', password: '', from_addr: '', use_ssl: true })
+  const [smtpMsg, setSmtpMsg] = useState('')
+  const [smtpSaving, setSmtpSaving] = useState(false)
+  const [testTo, setTestTo] = useState('')
+  const [testMsg, setTestMsg] = useState('')
+  const [testSending, setTestSending] = useState(false)
+
+  const loadSmtp = () => {
+    fetch(`${API_BASE}/admin/smtp-config`, { headers: headers() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d) {
+          setSmtp(d)
+          setSmtpForm((p) => ({
+            ...p,
+            host: d.host || p.host,
+            port: d.port || 465,
+            user: d.user || '',
+            from_addr: d.from_addr || '',
+            use_ssl: d.use_ssl !== false,
+            // 密码不回传，输入框始终空 = 保持原密码
+          }))
+        }
+      })
+      .catch(() => {})
+  }
+  useEffect(() => { loadSmtp() }, [])
+
+  const saveSmtp = async () => {
+    setSmtpSaving(true); setSmtpMsg('')
+    const res = await fetch(`${API_BASE}/admin/smtp-config`, {
+      method: 'PUT', headers: headers(),
+      body: JSON.stringify(smtpForm),
+    })
+    const d = await safeJson(res)
+    if (!res.ok) { setSmtpMsg(d?.detail || '保存失败') } else { setSmtpMsg('已保存，立即生效'); loadSmtp() }
+    setSmtpSaving(false)
+  }
+
+  const sendSmtpTest = async () => {
+    if (!testTo.trim()) { setTestMsg('请填写测试收件邮箱'); return }
+    setTestSending(true); setTestMsg('')
+    const res = await fetch(`${API_BASE}/admin/smtp-config/test`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ email: testTo.trim() }),
+    })
+    const d = await safeJson(res)
+    if (!res.ok) { setTestMsg(d?.detail || '发送失败') } else { setTestMsg(d?.message || '已发送') }
+    setTestSending(false)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* 更新公告（2026-10-31）：发布/列表/删除；部署与 Agent 版本更新会自动发布 */}
@@ -157,6 +210,63 @@ export default function SettingsTab() {
           ))}
         </div>
       </Card>
+      {/* 邮箱验证码登录（R1' 2026-11-05）：SMTP 后台热配置——粘贴邮箱+授权码即生效，
+          零服务器操作；授权码加密存储、GET 永不回传；测试发送 60s 冷却 */}
+      <Card>
+        <CardHeader title="邮箱验证码登录" />
+        <div style={{ padding: '4px 20px 10px', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.7 }}>
+          用户输自己邮箱收验证码登录（未注册自动注册）。此处配置平台发件邮箱：163/QQ 邮箱在网页开启 SMTP 服务后获得「授权码」
+          （mail.163.com → 设置 → POP3/SMTP/IMAP；授权码 ≠ 登录密码）。
+          {smtp && !smtp.configured && <span style={{ color: 'var(--warning)' }}> 当前未配置，验证码登录返回 503，密码登录不受影响。</span>}
+          {smtp && smtp.configured && <span style={{ color: 'var(--success)' }}> 当前已配置（{smtp.user}）。</span>}
+        </div>
+        {smtp && smtp.env_override && (
+          <div style={{ margin: '0 20px 10px', padding: '8px 12px', borderRadius: 6, background: 'var(--warning-soft)', border: '1px solid var(--warning)', fontSize: 12, color: 'var(--warning)' }}>
+            服务器环境变量 SMTP_HOST 已设置（env 优先于本页），表单仅供查看。
+          </div>
+        )}
+        {smtp && smtp.configured && !smtp.encryption_enabled && (
+          <div style={{ margin: '0 20px 10px', padding: '8px 12px', borderRadius: 6, background: 'var(--warning-soft)', border: '1px solid var(--warning)', fontSize: 12, color: 'var(--warning)' }}>
+            提示：服务器未配置 ENCRYPTION_PASSWORD，授权码将以明文存储于服务器数据文件（不影响功能；建议后续在 .env 补配以加密落盘）。
+          </div>
+        )}
+        <div style={{ padding: '10px 20px', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: '1px solid var(--border-light)' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={smtpForm.host} onChange={(e) => setSmtpForm((p) => ({ ...p, host: e.target.value }))}
+              placeholder="发信服务器（如 smtp.163.com）" style={{ ...input, flex: 1, minWidth: 180 }} />
+            <input type="number" value={smtpForm.port} onChange={(e) => setSmtpForm((p) => ({ ...p, port: Number(e.target.value) }))}
+              placeholder="端口 465" style={{ ...input, maxWidth: 90 }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={smtpForm.use_ssl} onChange={(e) => setSmtpForm((p) => ({ ...p, use_ssl: e.target.checked }))} />
+              SSL
+            </label>
+          </div>
+          <input value={smtpForm.user} onChange={(e) => setSmtpForm((p) => ({ ...p, user: e.target.value }))}
+            placeholder="发件邮箱（如 chengjie2017020@163.com）" style={input} />
+          <input type="password" value={smtpForm.password} onChange={(e) => setSmtpForm((p) => ({ ...p, password: e.target.value }))}
+            placeholder={smtp?.has_password ? '授权码（留空 = 保持原密码不变）' : '授权码（SMTP 授权码，非登录密码）'}
+            autoComplete="new-password" style={input} />
+          <input value={smtpForm.from_addr} onChange={(e) => setSmtpForm((p) => ({ ...p, from_addr: e.target.value }))}
+            placeholder='发件人显示名（如 小元AI <noreply@你的域名>，可留空）' style={input} />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button onClick={saveSmtp} disabled={smtpSaving}
+              style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: 13, opacity: smtpSaving ? 0.6 : 1 }}>
+              保存配置
+            </button>
+            {smtpMsg && <span style={{ fontSize: 12, color: smtpMsg.includes('已保存') ? 'var(--accent)' : 'var(--danger)' }}>{smtpMsg}</span>}
+          </div>
+        </div>
+        <div style={{ padding: '12px 20px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input value={testTo} onChange={(e) => setTestTo(e.target.value)}
+            placeholder="测试收件邮箱" style={{ ...input, minWidth: 180 }} />
+          <button onClick={sendSmtpTest} disabled={testSending}
+            style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12.5, opacity: testSending ? 0.6 : 1 }}>
+            发送测试邮件
+          </button>
+          {testMsg && <span style={{ fontSize: 12, color: testMsg.includes('失败') || testMsg.includes('频繁') ? 'var(--danger)' : 'var(--success)' }}>{testMsg}</span>}
+        </div>
+      </Card>
+
       {/* 2026-10-19 清理：日志级别/错误通知/自动收起侧栏三个开关全项目无
           消费方（仅写 localStorage）——移除误导性控件 */}
       <Card>

@@ -362,8 +362,10 @@ VOICE_ENABLED = bool(_syscfg("voice_enabled"))    # 语音通话/朗读功能总
 
 # ===================== 邮箱验证码登录（R1'，2026-11-05，零资质先行） =====================
 # SMTP 未完整配置时 /auth/email-code 返回 503（与 VOICE_ENABLED 同模式）。
-# QQ 邮箱：SMTP_HOST=smtp.qq.com SMTP_PORT=465 SMTP_USER=<邮箱> SMTP_PASSWORD=<授权码>
-# 网易免费企业邮：SMTP_HOST=smtp.ym.163.com 同上。SMTP_USE_SSL=0 时走 587+STARTTLS。
+# 两种配置方式（选择链：env 优先 → 后台「设置 → 邮箱验证码」热配置，用户拍板
+# 2026-11-05「不用手动配服务器」——后台粘贴邮箱+授权码即生效，零服务器操作）：
+#   env：QQ SMTP_HOST=smtp.qq.com / 163 SMTP_HOST=smtp.163.com，SMTP_PASSWORD=授权码
+#   后台：写 models.json `_smtp`（password 随 _apikeys 同套透明加密）
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
 SMTP_USER = os.getenv("SMTP_USER", "")
@@ -372,6 +374,35 @@ SMTP_FROM = os.getenv("SMTP_FROM", "")            # 发件人显示名+地址（
 SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "1") == "1"
 # 邮箱登录总开关（默认跟随 SMTP 配置；显式 EMAIL_LOGIN_ENABLED=0 可强制关闭）
 EMAIL_LOGIN_ENABLED = os.getenv("EMAIL_LOGIN_ENABLED", "") != "0"
+
+
+def get_smtp_config() -> dict:
+    """SMTP 配置选择链：env 优先（生产语义）→ 后台 models.json `_smtp` 热配置。
+    返回 {"host","port","user","password","from_addr","use_ssl"}（未配置字段为空）。
+    懒加载 models_file 避免导入环；热配置保存后立即生效（无需重启）。"""
+    cfg = {
+        "host": SMTP_HOST,
+        "port": SMTP_PORT,
+        "user": SMTP_USER,
+        "password": SMTP_PASSWORD,
+        "from_addr": SMTP_FROM,
+        "use_ssl": SMTP_USE_SSL,
+    }
+    if cfg["host"] and cfg["user"] and cfg["password"]:
+        return cfg
+    try:
+        from api.v1.models_file import read_models_file
+        smtp = read_models_file().get("_smtp") or {}
+        if isinstance(smtp, dict) and smtp.get("host") and smtp.get("user") and smtp.get("password"):
+            cfg["host"] = smtp.get("host") or ""
+            cfg["port"] = int(smtp.get("port") or 465)
+            cfg["user"] = smtp.get("user") or ""
+            cfg["password"] = smtp.get("password") or ""
+            cfg["from_addr"] = smtp.get("from_addr") or smtp.get("user") or ""
+            cfg["use_ssl"] = bool(smtp.get("use_ssl", True))
+    except Exception:
+        pass  # models.json 缺失/解密失败 → 视为未配置（503 兜底）
+    return cfg
 
 # ===================== C9 数据出境开关（2026-10-29，合规审计第 10 条） =====================
 # 自定义模型 base_url 白名单：默认仅境内端点 + 本机联调；env 可追加（逗号分隔）。

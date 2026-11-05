@@ -49,11 +49,25 @@ def read_models_file() -> dict:
                 if value:
                     logger.warning("models.json 存在明文 API Key（%s），下次写入将自动加密", provider)
         data["_apikeys"] = out
+    # _smtp（R1' 后台热配置，2026-11-05）：password 字段透明加解密
+    smtp = data.get("_smtp")
+    if isinstance(smtp, dict):
+        pw = smtp.get("password")
+        if isinstance(pw, dict) and "encrypted_data" in pw:
+            if not _pwd():
+                raise RuntimeError("未设置 ENCRYPTION_PASSWORD，无法解密 _smtp 密文")
+            from utils.sensitive_data import decrypt_sensitive_data
+            smtp = dict(smtp)
+            smtp["password"] = decrypt_sensitive_data(pw, _pwd())
+            data["_smtp"] = smtp
+        elif isinstance(pw, str) and pw:
+            logger.warning("models.json 存在明文 SMTP 密码，下次写入将自动加密")
     return data
 
 
 def write_models_file(data: dict):
-    """写 models.json；_apikeys 明文在 ENCRYPTION_PASSWORD 存在时自动加密"""
+    """写 models.json；_apikeys 与 _smtp.password 明文在 ENCRYPTION_PASSWORD
+    存在时自动加密"""
     d = dict(data)
     keys = d.get("_apikeys")
     if isinstance(keys, dict):
@@ -66,6 +80,15 @@ def write_models_file(data: dict):
             }
         elif keys:
             logger.warning("未设置 ENCRYPTION_PASSWORD，_apikeys 以明文写入（生产必须配置）")
+    smtp = d.get("_smtp")
+    if isinstance(smtp, dict) and isinstance(smtp.get("password"), str) and smtp.get("password"):
+        if _pwd():
+            from utils.sensitive_data import encrypt_sensitive_data
+            smtp = dict(smtp)
+            smtp["password"] = encrypt_sensitive_data(smtp["password"], _pwd())
+            d["_smtp"] = smtp
+        else:
+            logger.warning("未设置 ENCRYPTION_PASSWORD，_smtp.password 以明文写入（生产必须配置）")
     os.makedirs(os.path.dirname(_MODELS_PATH), exist_ok=True)
     tmp = _MODELS_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:

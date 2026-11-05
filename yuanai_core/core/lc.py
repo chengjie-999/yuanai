@@ -40,6 +40,29 @@ def _get_stored_key(provider: str) -> str | None:
     return None
 
 
+def _agent_proxy_endpoint():
+    """T5（2026-11-06）用户 Agent 云端代理：本机无 API key 时，LLM 走云端
+    OpenAI 兼容代理（identity.server_url + agent_secret）。云端进程无 identity
+    文件 → 返回 None 不受影响；有 key 的开发机不进入此分支（直连优先）。"""
+    try:
+        import json, os
+        from utils.data_path import root_path
+        path = os.path.join(root_path(), "data", "agent_identity.json")
+        if not os.path.exists(path):
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            ident = json.load(f)
+        server = str(ident.get("server_url") or "").strip()
+        secret = str(ident.get("agent_secret") or "").strip()
+        if not server or not secret:
+            return None
+        # identity 里可能是 ws:// 地址（ws_client 用），代理需 http(s)
+        server = server.replace("ws://", "http://").replace("wss://", "https://")
+        return (server.rstrip("/") + "/api/v1/agent/llm", secret)
+    except Exception:
+        return None
+
+
 def call_llm(
         messages: List[Union[SystemMessage, HumanMessage]],
         model_name: str = "deepseek-flash",
@@ -89,6 +112,15 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
         kwargs["stream_usage"] = True
     if model in dsllm:
         ds_api_key = _get_stored_key("DeepSeek") or get_api_key('dsllm')
+        ds_base_url = "https://api.deepseek.com/beta"
+        # T5（2026-11-06）：本机无 key → 走云端代理（用户 Agent 默认链路）；
+        # 代理模式下不挂本地记账回调——云端代理统一记账，防双计
+        via_proxy = False
+        if not ds_api_key:
+            _proxy = _agent_proxy_endpoint()
+            if _proxy:
+                ds_base_url, ds_api_key = _proxy
+                via_proxy = True
         extra_params = {}
         # 推理强度（模型升级弹性化）：按前缀匹配而非硬编码 id——
         # 新版本（deepseek-4.1 等）加入 models.json 后自动生效；
@@ -101,22 +133,29 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
                 extra_params["extra_body"] = {"reasoning_effort": effort}
         return ChatOpenAI(
             api_key=ds_api_key,
-            base_url="https://api.deepseek.com/beta",
+            base_url=ds_base_url,
             model=model,
             # B4 截断根因之一（2026-10-29）：未设 max_tokens 时网关默认 4096，
             # 长回答被 finish_reason=length 硬切；显式给足（deepseek 系上限 8K）
             max_tokens=kwargs.pop("max_tokens", 8192),
-            callbacks=kwargs.pop("callbacks", None) or [_usage_cb(model, usage_purpose)],
+            callbacks=kwargs.pop("callbacks", None) or ([] if via_proxy else [_usage_cb(model, usage_purpose)]),
             **kwargs,
             **extra_params,
         )
     elif model in seed:
         seed_api_key = _get_stored_key("Doubao") or get_api_key('seed')
+        seed_base_url = "https://ark.cn-beijing.volces.com/api/v3"
+        via_proxy = False
+        if not seed_api_key:
+            _proxy = _agent_proxy_endpoint()
+            if _proxy:
+                seed_base_url, seed_api_key = _proxy
+                via_proxy = True
         return ChatOpenAI(
             api_key=seed_api_key,
-            base_url="https://ark.cn-beijing.volces.com/api/v3",
+            base_url=seed_base_url,
             model=model,
-            callbacks=kwargs.pop("callbacks", None) or [_usage_cb(model, usage_purpose)],
+            callbacks=kwargs.pop("callbacks", None) or ([] if via_proxy else [_usage_cb(model, usage_purpose)]),
             **kwargs,
         )
     else:

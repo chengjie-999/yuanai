@@ -20,6 +20,7 @@ from api.v1.admin.router import router as admin_router
 from api.v1.data.router import router as data_router
 from api.v1.knowledge.router import router as knowledge_router
 from api.v1.agent.router import router as agent_router
+from api.v1.agent.llm_proxy import router as llm_proxy_router
 from api.v1.analysis.rfm import router as rfm_router
 from api.v1.monitor.router import router as monitor_router
 from api.v1.medical.router import router as medical_router
@@ -88,6 +89,7 @@ app.include_router(planet_router, prefix="", tags=["planet"])
 app.include_router(planet_sync_router, tags=["agent-planet"])
 app.include_router(plan_router, prefix="", tags=["plan"])
 app.include_router(plan_sync_router, tags=["agent-plan"])
+app.include_router(llm_proxy_router, tags=["agent-llm"])  # T5：用户 Agent LLM 云端代理
 
 app.middleware("http")(rate_limit_middleware)  # 先限流
 app.middleware("http")(auth_middleware)        # 再鉴权

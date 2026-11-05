@@ -139,6 +139,9 @@ def test_smtp_empty_password_keeps_old(client, admin_jwt, models_file_backup, no
 
 
 def test_smtp_put_requires_host_user_password(client, admin_jwt, models_file_backup, no_env_smtp):
+    # 显式清空（本地可能有真实后台配置，空密码=保旧的分支会误通过）
+    from api.v1.models_file import write_models_file
+    write_models_file({})
     h = {"Authorization": f"Bearer {admin_jwt}"}
     r1 = client.put("/api/v1/admin/smtp-config", json={"host": "", "user": "x", "password": "p"}, headers=h)
     assert r1.status_code == 400
@@ -180,6 +183,9 @@ def test_get_smtp_config_falls_back_to_admin(monkeypatch, models_file_backup, no
 
 
 def test_get_smtp_config_empty(monkeypatch, models_file_backup, no_env_smtp):
+    # 本地 models.json 可能已有真实后台配置（热配置）——显式清空构造未配置态
+    from api.v1.models_file import write_models_file
+    write_models_file({})
     import config.settings as s
     cfg = s.get_smtp_config()
     assert cfg["host"] == "" and cfg["password"] == ""
@@ -189,7 +195,9 @@ def test_get_smtp_config_empty(monkeypatch, models_file_backup, no_env_smtp):
 
 # ---------------- 测试发送端点 ----------------
 
-def test_smtp_test_send_invalid_and_unconfigured(client, admin_jwt, models_file_backup, no_env_smtp):
+def test_smtp_test_send_invalid_and_unconfigured(client, admin_jwt, models_file_backup, no_env_smtp, fake_redis, monkeypatch):
+    from api.v1.auth import email_code as ec
+    monkeypatch.setattr(ec, "smtp_configured", lambda: False)  # 显式未配置态
     h = {"Authorization": f"Bearer {admin_jwt}"}
     r1 = client.post("/api/v1/admin/smtp-config/test", json={"email": "bad"}, headers=h)
     assert r1.status_code == 422
@@ -275,10 +283,22 @@ def test_send_email_from_header_chinese_display_name(monkeypatch, models_file_ba
     monkeypatch.setattr(smtplib, "SMTP_SSL", _FakeSMTP)
     ec._send_email("to@163.com", "123456")
     msg = captured["msg"]
-    assert "chengjie2017020@163.com" in msg
-    # 显示名已编码为 =?utf-8?...?=（原始中文不进邮件头）
-    assert "小元AI" not in msg
-    assert "=?utf-8?" in msg
+    from_line = [l for l in msg.splitlines() if l.startswith("From:")][0]
+    assert "chengjie2017020@163.com" in from_line
+    # 头内显示名已编码为 =?utf-8?...?=（原始中文不进 From 头）
+    assert "小元AI" not in from_line
+    assert "=?utf-8?" in from_line
+    # multipart/alternative：纯文本兜底 + HTML 大字验证码（part 内容 base64 编码，
+    # 用 email 解析器解码后再断言）
+    import email as _email
+    parsed = _email.message_from_string(msg)
+    assert parsed.get_content_type() == "multipart/alternative"
+    parts = parsed.get_payload()
+    types = {p.get_content_type() for p in parts}
+    assert {"text/plain", "text/html"} <= types
+    html_part = next(p for p in parts if p.get_content_type() == "text/html")
+    html = html_part.get_payload(decode=True).decode("utf-8")
+    assert "123456" in html and "letter-spacing:10px" in html
 
 
 # ---------------- 授权码加密落盘（安全） ----------------

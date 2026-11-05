@@ -40,7 +40,10 @@ export default function UsersTab() {
   const filtered = useMemo(() => {
     if (!search.trim()) return users
     const q = search.toLowerCase()
-    return users.filter((u) => u.username?.toLowerCase().includes(q) || String(u.id).includes(q))
+    return users.filter((u) => u.username?.toLowerCase().includes(q)
+      || u.display_name?.toLowerCase().includes(q)
+      || u.email?.toLowerCase().includes(q)
+      || String(u.id).includes(q))
   }, [users, search])
 
   const handleFreeze = async (userId: number, days: number, reason: string = '') => {
@@ -191,7 +194,9 @@ export default function UsersTab() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ background: 'var(--bg-tertiary)' }}>
               <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>ID</th>
-              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>用户名</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>昵称</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>账号</th>
+              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>邮箱</th>
               <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>角色</th>
               <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>状态</th>
               <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>注册时间</th>
@@ -201,13 +206,15 @@ export default function UsersTab() {
               <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '2px solid var(--border)' }}>操作</th>
             </tr></thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={8}><Empty msg={search ? '无匹配用户' : '暂无用户'} /></td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={10}><Empty msg={search ? '无匹配用户' : '暂无用户'} /></td></tr>}
               {filtered.map((u) => {
                 const isAdminRole = u.role === 'admin'; const isFrozen = u.frozen
                 return (
                   <tr key={u.id} style={{ borderBottom: '1px solid var(--border-light)', opacity: isFrozen ? 0.5 : 1 }}>
                     <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{u.id}</td>
-                    <td style={{ padding: '10px 14px', color: 'var(--text-primary)', fontWeight: 600 }}>{u.username}{isAdminRole && badge('管理员', 'var(--accent)')}{isFrozen && badge('已冻结', 'var(--danger)')}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-primary)', fontWeight: 600 }}>{u.display_name || '—'}{isAdminRole && badge('管理员', 'var(--accent)')}{isFrozen && badge('已冻结', 'var(--danger)')}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: 12.5 }}>{u.username}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: 12.5 }}>{u.email || '—'}</td>
                     <td style={{ padding: '10px 14px' }}>{isAdminRole ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>admin</span> : <span style={{ color: 'var(--text-secondary)' }}>user</span>}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}
                       title={isFrozen && u.freeze_reason ? `冻结原因：${u.freeze_reason}` : undefined}>

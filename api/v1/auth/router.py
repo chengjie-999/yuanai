@@ -165,6 +165,7 @@ def login(req: AuthRequest, request: Request):
             "username": user.username,
             "role": user.role,
             "display_name": user.display_name or user.username,
+            "email": user.email or "",
             "theme": user.theme or "",
         },
     }
@@ -233,6 +234,7 @@ def email_login_endpoint(req: EmailLoginRequest, request: Request):
             "id": result["user_id"],
             "username": result["username"],
             "display_name": result["display_name"],
+            "email": email,
             "role": "user",
             "theme": "",
         },
@@ -633,6 +635,7 @@ def check_token(req: TokenCheck):
             "username": user.username,
             "role": user.role,
             "display_name": user.display_name or user.username,
+            "email": user.email or "",
             "theme": user.theme or "",
         },
     }

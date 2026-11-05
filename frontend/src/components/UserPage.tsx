@@ -104,6 +104,13 @@ export default function UserPage({ user, onLogout }: { user: any; onLogout: () =
           </div>
           <div style={C.row}>
             <div>
+              <div style={C.label}>邮箱</div>
+              <div style={C.hint}>验证码登录的收件邮箱（密码登录账号可能为空）</div>
+            </div>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{user?.email || '—'}</span>
+          </div>
+          <div style={C.row}>
+            <div>
               <div style={C.label}>角色</div>
             </div>
             <span style={{

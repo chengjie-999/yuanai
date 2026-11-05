@@ -54,15 +54,21 @@ def _gen_code() -> str:
 
 
 def _send_email(to: str, code: str, subject: str = "【小元AI】邮箱验证码",
-                body: str = "") -> None:
-    """SMTP 发送邮件（同步阻塞，调用方放线程池）。失败抛异常。"""
+                body_plain: str = "", body_html: str = "") -> None:
+    """SMTP 发送邮件（同步阻塞，调用方放线程池）。失败抛异常。
+
+    multipart/alternative：纯文本兜底 + HTML 品牌版（验证码大字高亮——
+    2026-11-06 用户拍板「验证码不够显著」）。
+    """
     from config.settings import get_smtp_config
     cfg = get_smtp_config()
-    if not body:
-        body = (f"您好！\n\n您的验证码是：{code}\n"
-                f"验证码 5 分钟内有效，请勿泄露给他人。\n\n"
-                "如果不是您本人操作，请忽略本邮件。\n\n—— 小元AI")
-    msg = MIMEText(body, "plain", "utf-8")
+    if not body_plain:
+        body_plain = (f"您好！\n\n您的验证码是：{code}\n"
+                      f"验证码 5 分钟内有效，请勿泄露给他人。\n\n"
+                      "如果不是您本人操作，请忽略本邮件。\n\n—— 小元AI")
+        body_html = _code_email_html(code)
+    from email.mime.multipart import MIMEMultipart
+    msg = MIMEMultipart("alternative")
     msg["Subject"] = Header(subject, "utf-8")
     # 发件人：支持「显示名 <地址>」形态（中文显示名经 Header 编码，
     # 否则非 ASCII 头直接发会 UnicodeEncodeError）
@@ -73,6 +79,8 @@ def _send_email(to: str, code: str, subject: str = "【小元AI】邮箱验证�
     else:
         msg["From"] = _addr or cfg["user"]
     msg["To"] = to
+    msg.attach(MIMEText(body_plain, "plain", "utf-8"))
+    msg.attach(MIMEText(body_html, "html", "utf-8"))
     if cfg["use_ssl"]:
         server = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=15)
     else:
@@ -88,11 +96,41 @@ def _send_email(to: str, code: str, subject: str = "【小元AI】邮箱验证�
             pass
 
 
+def _code_email_html(code: str) -> str:
+    """验证码邮件 HTML：大字验证码居中高亮（品牌蓝），5 分钟有效 + 防泄露提示"""
+    return f"""\
+<div style="max-width:480px;margin:0 auto;font-family:'PingFang SC','Microsoft YaHei',sans-serif;
+            background:#f8fafc;border-radius:12px;padding:32px 28px;text-align:center;">
+  <div style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:4px;">小元AI</div>
+  <div style="font-size:13px;color:#64748b;margin-bottom:24px;">邮箱验证码</div>
+  <div style="font-size:14px;color:#334155;margin-bottom:16px;">您好！您的验证码是</div>
+  <div style="font-size:34px;font-weight:800;letter-spacing:10px;color:#2563eb;
+              background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;
+              padding:18px 12px;margin-bottom:16px;">{code}</div>
+  <div style="font-size:12.5px;color:#64748b;line-height:1.8;">
+    验证码 5 分钟内有效，请勿泄露给他人。<br/>
+    如果不是您本人操作，请忽略本邮件。
+  </div>
+  <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;
+              font-size:12px;color:#94a3b8;">—— 小元AI</div>
+</div>"""
+
+
 def send_test_email(to: str) -> None:
     """后台「发送测试邮件」：验证配置连通性（失败抛异常，端点转 502）"""
     _send_email(to, "000000",
                 subject="【小元AI】邮件配置测试",
-                body="您好！\n\n这是一封测试邮件——收到即表示邮箱验证码登录功能配置成功。\n\n—— 小元AI")
+                body_plain="您好！\n\n这是一封测试邮件——收到即表示邮箱验证码登录功能配置成功。\n\n—— 小元AI",
+                body_html="""\
+<div style="max-width:480px;margin:0 auto;font-family:'PingFang SC','Microsoft YaHei',sans-serif;
+            background:#f8fafc;border-radius:12px;padding:32px 28px;text-align:center;">
+  <div style="font-size:18px;font-weight:700;color:#0f172a;">小元AI</div>
+  <div style="font-size:14px;color:#334155;margin:16px 0;">
+    这是一封测试邮件——收到即表示邮箱验证码登录功能配置成功。
+  </div>
+  <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;
+              font-size:12px;color:#94a3b8;">—— 小元AI</div>
+</div>""")
 
 
 async def send_email_code(email: str) -> dict:

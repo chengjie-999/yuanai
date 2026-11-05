@@ -173,7 +173,7 @@ function AppLayout() {
             fontSize: 13, color: 'var(--accent)', cursor: 'pointer', textDecoration: 'none',
             whiteSpace: 'nowrap',
             borderBottom: location.pathname === '/chat/user' ? '1px solid var(--accent)' : '1px solid transparent',
-          }}>{user?.username || user?.display_name}</Link>
+          }}>{user?.display_name || user?.username}</Link>
           <Link to="/chat/settings" style={{
             fontSize: 13, color: location.pathname === '/chat/settings' ? 'var(--text-primary)' : 'var(--text-secondary)',
             cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap',

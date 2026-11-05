@@ -76,8 +76,11 @@ def _put_code(rds, email, code="123456"):
 
 # ---------------- 发送端点 ----------------
 
-def test_send_code_503_when_smtp_unconfigured(client):
-    resp = client.post("/api/v1/auth/email-code", json={"email": "a@example.com"})
+def test_send_code_503_when_smtp_unconfigured(client, monkeypatch):
+    # 本地 models.json 可能已有真实 SMTP 配置（后台热配置）——显式模拟未配置态，
+    # 不依赖全局状态；503 分支在限流器之前（未配置时不得消耗限流/配额）
+    monkeypatch.setattr(ec, "smtp_configured", lambda: False)
+    resp = client.post("/api/v1/auth/email-code", json={"email": _mk_user_email()})
     assert resp.status_code == 503
 
 

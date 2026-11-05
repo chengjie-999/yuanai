@@ -54,6 +54,7 @@ async def list_users(request: Request):
         paid_totals = db.user_paid_totals([u.id for u in users])
         return [{
             "id": u.id, "username": u.username, "display_name": u.display_name or "",
+            "email": u.email or "",
             "role": u.role,
             "frozen": u.frozen_until is not None and u.frozen_until > now,
             "frozen_until": str(u.frozen_until)[:19] if u.frozen_until else None,

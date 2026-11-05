@@ -374,6 +374,8 @@ SMTP_FROM = os.getenv("SMTP_FROM", "")            # 发件人显示名+地址（
 SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "1") == "1"
 # 邮箱登录总开关（默认跟随 SMTP 配置；显式 EMAIL_LOGIN_ENABLED=0 可强制关闭）
 EMAIL_LOGIN_ENABLED = os.getenv("EMAIL_LOGIN_ENABLED", "") != "0"
+# N1 一账号多设备（2026-11-06）：每用户可绑定设备上限（换电脑零迁移）
+AGENT_MAX_DEVICES_PER_USER = int(os.getenv("AGENT_MAX_DEVICES_PER_USER", "10"))
 # 站点地址（验证码邮件「一键填入」链接用；本地联调可设 http://localhost:5173）
 SITE_BASE_URL = os.getenv("SITE_BASE_URL", "https://cjyuanai.cn").rstrip("/")
 

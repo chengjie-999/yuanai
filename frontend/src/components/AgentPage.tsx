@@ -78,7 +78,7 @@ const _C = {
    自服务安装码（生成即预绑定，安装后自动归属本账号）；管理员管理版本在后台上传。 */
 function AgentDownloadCard() {
   const [data, setData] = useState<{ default_version: string; versions: any[] } | null>(null)
-  const [code, setCode] = useState<{ code: string; bound: boolean; message: string; machine_name?: string } | null>(null)
+  const [code, setCode] = useState<{ code: string; bound: boolean; message: string; machine_name?: string; device_count?: number; max_devices?: number; machine_names?: string[] } | null>(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [copied, setCopied] = useState(false)
@@ -124,7 +124,8 @@ function AgentDownloadCard() {
       <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-light)' }}>
         {code?.bound ? (
           <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-            本账号已绑定设备（{code.machine_name || ''}）——换电脑？
+            本账号已绑定 {code.device_count || '多'} 台设备（上限 {code.max_devices || 10} 台：
+            {code.machine_names?.join('、') || ''}）——换新电脑请先在后台解绑旧设备。
             <button onClick={resetCode} disabled={busy}
               style={{ marginLeft: 8, padding: '4px 12px', borderRadius: 6, border: '1px solid var(--accent)', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12 }}>
               {busy ? '生成中...' : '重置安装码'}
@@ -132,7 +133,9 @@ function AgentDownloadCard() {
           </div>
         ) : code?.code ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>你的安装码</span>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              你的安装码{code.device_count ? `（本账号已绑定 ${code.device_count} 台设备，新码用于另一台电脑）` : ''}
+            </span>
             <code style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: 'var(--accent)', background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 6 }}>{code.code}</code>
             <button onClick={copyCode} title="复制" aria-label="复制"
               style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-primary)' }}>

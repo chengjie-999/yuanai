@@ -193,7 +193,7 @@ _bind_cache: Dict[int, tuple] = {}
 
 
 def _get_bound_agent_id(user_id: int) -> str | None:
-    """查询该用户一对一绑定的启用设备 id"""
+    """查询该用户绑定的启用设备 id（N1 多设备：在线设备优先，否则最近活跃）"""
     now = time.time()
     hit = _bind_cache.get(user_id)
     if hit and now - hit[1] < 30:
@@ -202,8 +202,22 @@ def _get_bound_agent_id(user_id: int) -> str | None:
         from db.session import get_db, AgentDevice
         db = get_db()
         with db.session() as sess:
-            dev = sess.query(AgentDevice).filter_by(user_id=user_id, enabled=1).first()
-            result = str(dev.id) if dev else None
+            devs = (sess.query(AgentDevice)
+                    .filter(AgentDevice.user_id == user_id, AgentDevice.enabled == 1,
+                            AgentDevice.agent_secret != "")
+                    .all())
+            result = None
+            if devs:
+                # 在线设备优先（_agents 内存表）
+                for dev in devs:
+                    if _get_connected(str(dev.id)):
+                        result = str(dev.id)
+                        break
+                if not result:
+                    # 全部离线：选最近活跃（last_seen 最新；从未心跳按 id 最新）
+                    devs_sorted = sorted(
+                        devs, key=lambda d: (d.last_seen or d.create_time or datetime.min), reverse=True)
+                    result = str(devs_sorted[0].id)
         _bind_cache[user_id] = (result, now)
         return result
     except Exception as e:
@@ -286,22 +300,32 @@ async def my_agent_code(request: Request):
     from db.session import get_db, AgentDevice
     db = get_db()
     with db.session() as sess:
-        bound = sess.query(AgentDevice).filter(AgentDevice.user_id == uid,
-                                               AgentDevice.agent_secret != "").first()
-        if bound:
-            return {"code": "", "bound": True,
-                    "machine_name": bound.machine_name or "已绑定的设备",
-                    "message": "本账号已绑定设备，无需新安装码（换电脑请重置）"}
+        # N1（2026-11-06）：一账号多设备——设备数未达上限即可再发码（换电脑零迁移）
+        from config.settings import AGENT_MAX_DEVICES_PER_USER
+        bound_devs = sess.query(AgentDevice).filter(AgentDevice.user_id == uid,
+                                                    AgentDevice.agent_secret != "").all()
         pending = sess.query(AgentDevice).filter(AgentDevice.user_id == uid,
                                                  AgentDevice.agent_secret == "").first()
         if pending:
             return {"code": pending.install_code, "bound": False,
+                    "device_count": len(bound_devs),
+                    "max_devices": AGENT_MAX_DEVICES_PER_USER,
+                    "machine_names": [d.machine_name or f"设备{d.id}" for d in bound_devs],
                     "message": "请在本机 Agent 安装引导中输入该安装码"}
+        if len(bound_devs) >= AGENT_MAX_DEVICES_PER_USER:
+            return {"code": "", "bound": True,
+                    "device_count": len(bound_devs),
+                    "max_devices": AGENT_MAX_DEVICES_PER_USER,
+                    "machine_names": [d.machine_name or f"设备{d.id}" for d in bound_devs],
+                    "message": f"已绑定 {len(bound_devs)} 台设备（上限 {AGENT_MAX_DEVICES_PER_USER} 台）——换新电脑请先在后台解绑旧设备"}
         # 生成新码（预绑定）
         code = "YUAN-" + "-".join(secrets.token_hex(2).upper() for _ in range(3))
         sess.add(AgentDevice(install_code=code, agent_secret="", user_id=uid))
         sess.commit()
         return {"code": code, "bound": False,
+                "device_count": len(bound_devs),
+                "max_devices": AGENT_MAX_DEVICES_PER_USER,
+                "machine_names": [d.machine_name or f"设备{d.id}" for d in bound_devs],
                 "message": "请在本机 Agent 安装引导中输入该安装码"}
 
 

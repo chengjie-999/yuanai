@@ -276,10 +276,13 @@ async def bind_agent_device(req: AgentBindRequest, request: Request):
             raise HTTPException(status_code=404, detail="用户不存在")
         if dev.user_id and dev.user_id != req.user_id:
             raise HTTPException(status_code=400, detail=f"该设备已绑定用户 {dev.user_id}，请先解绑")
-        other = sess.query(AgentDevice).filter(AgentDevice.user_id == req.user_id,
-                                               AgentDevice.id != req.agent_id).first()
-        if other:
-            raise HTTPException(status_code=400, detail=f"该用户已绑定设备 {other.id}（一对一）")
+        # N1（2026-11-06）：一账号多设备——只限设备数上限，不再一对一
+        from config.settings import AGENT_MAX_DEVICES_PER_USER
+        count = sess.query(AgentDevice).filter(AgentDevice.user_id == req.user_id,
+                                               AgentDevice.agent_secret != "").count()
+        if count >= AGENT_MAX_DEVICES_PER_USER:
+            raise HTTPException(status_code=400,
+                                detail=f"该用户已绑定 {count} 台设备（上限 {AGENT_MAX_DEVICES_PER_USER} 台），请先解绑不用的设备")
         dev.user_id = req.user_id
         sess.commit()
         from api.v1.agent.router import invalidate_bind_cache

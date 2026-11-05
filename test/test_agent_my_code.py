@@ -58,7 +58,8 @@ class TestMyAgentCode:
         finally:
             sess.close()
 
-    def test_bound_device_shows_bound(self, client, db, code_user):
+    def test_bound_device_issues_code_for_more_devices(self, client, db, code_user):
+        """N1（2026-11-06）一账号多设备：已绑 1 台 → 仍发新码（换电脑零迁移）"""
         from api.v1.auth.utils import create_token
         from db.session import AgentDevice
         import uuid as _uuid
@@ -73,7 +74,8 @@ class TestMyAgentCode:
             sess.close()
         h = {"Authorization": f"Bearer {create_token(code_user, 'user')}"}
         d = client.get("/api/v1/agent/my-code", headers=h).json()
-        assert d["bound"] is True and d["code"] == ""
+        assert d["bound"] is False and d["code"].startswith("YUAN-")
+        assert d["device_count"] == 1
 
     def test_reset_code_unbinds_old(self, client, db, code_user):
         from api.v1.auth.utils import create_token

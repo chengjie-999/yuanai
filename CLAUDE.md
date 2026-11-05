@@ -333,6 +333,12 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **V1-3 记忆条目事件化（2abf23d）**：facts.jsonl v3（id/session_id/turn/supersedes 链/last_hit/hit_count/status）；只归档不删除（delete/rewrite/apply 移除行 archived）；淘汰三步 run_maintenance（superseded 7 天/零命中 90 天/相似 0.9 冲突队列 conflicts.jsonl）；注入点 mark_hit（60s 节流）；RLock 防死锁
 - **T2 免输码自动注册**：`GET /api/v1/agent/download-exe?code=` 文件名内嵌预绑定安装码（码归属校验），Agent 首启从自身 exe 文件名解析静默注册（register_device），输码弹窗仅兜底；AgentPage 下载按钮有码时自动走带码下载
 
+## 第三批（2026-11-06：N3 三态 / N1 多设备 / V1-4 分享）
+
+- **N3 云端/本地三态（f2a8b79）**：ChatRequest.chat_backend（auto/cloud/local）；cloud 跳过桥接、local 离线 SSE 报错不回退；用户命令 route_chat_backend 关键词判定 → backend_event；模型工具 set_chat_backend（L1）拦截发事件；前端输入区「云端/自动/本机」分段开关（localStorage 持久化）；_bridge_sse prefix_events 列表
+- **N1 一账号多设备（61ffb32）**：绑定放开一对一（AGENT_MAX_DEVICES_PER_USER 默认 10 env 可配）；桥接选设备在线优先/最近活跃（只算已注册设备，pending 码不计）；my-code 设备数未满再发码（换电脑零迁移）
+- **V1-4 会话静态产物化分享（3846ab4）**：POST /chat/share/{sid} 服务端渲染自包含静态 HTML（canonical/robots/C5 AI 标识/C7 举报入口/HTML 转义/剥 META）落 data/shares/ → 公开 GET /api/v1/share/{sid} 可抓取；DELETE 取消分享下线；前端侧栏分享图标一键生成+复制链接。**注意：分享需 nginx 部署后 HTTPS 域名 canonical 才准确（canonical 用相对路径挂账）**
+
 ## 知识星球（三级知识库）
 
 用户个人知识库：**知识星球（主题域）→ 思维导图 → 线性笔记 markdown**，页面 `/chat/planet`（登录后，按用户隔离）。

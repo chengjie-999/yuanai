@@ -301,6 +301,21 @@ def test_send_email_from_header_chinese_display_name(monkeypatch, models_file_ba
     assert "123456" in html and "letter-spacing:10px" in html
 
 
+# ---------------- 邮件一键填码链接（hash 传参防日志泄露） ----------------
+
+def test_magic_link_puts_code_in_hash():
+    from api.v1.auth.email_code import _magic_link, _code_email_html
+    link = _magic_link("to@163.com", "123456")
+    # 验证码/邮箱放 hash 片段——不进服务器与 nginx 访问日志（query 会落日志）
+    assert link.startswith("https://cjyuanai.cn/login#")
+    assert "code=123456" in link
+    assert "email=to%40163.com" in link
+    assert "?code=" not in link
+    html = _code_email_html("to@163.com", "123456")
+    assert "一键填入验证码" in html
+    assert link in html
+
+
 # ---------------- 授权码加密落盘（安全） ----------------
 
 def test_smtp_password_encrypted_at_rest(monkeypatch, models_file_backup):

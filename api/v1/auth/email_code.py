@@ -65,8 +65,9 @@ def _send_email(to: str, code: str, subject: str = "【小元AI】邮箱验证�
     if not body_plain:
         body_plain = (f"您好！\n\n您的验证码是：{code}\n"
                       f"验证码 5 分钟内有效，请勿泄露给他人。\n\n"
+                      f"也可点击链接一键填入：{_magic_link(to, code)}\n\n"
                       "如果不是您本人操作，请忽略本邮件。\n\n—— 小元AI")
-        body_html = _code_email_html(code)
+        body_html = _code_email_html(to, code)
     from email.mime.multipart import MIMEMultipart
     msg = MIMEMultipart("alternative")
     msg["Subject"] = Header(subject, "utf-8")
@@ -96,8 +97,18 @@ def _send_email(to: str, code: str, subject: str = "【小元AI】邮箱验证�
             pass
 
 
-def _code_email_html(code: str) -> str:
-    """验证码邮件 HTML：大字验证码居中高亮（品牌蓝），5 分钟有效 + 防泄露提示"""
+def _magic_link(to: str, code: str) -> str:
+    """一键填码链接：验证码放 URL hash（不进服务器/nginx 访问日志，安全性好于
+    query 参数）；登录页解析 hash 自动填入邮箱与验证码"""
+    import urllib.parse
+    from config.settings import SITE_BASE_URL
+    return f"{SITE_BASE_URL}/login#email={urllib.parse.quote(to)}&code={code}"
+
+
+def _code_email_html(to: str, code: str) -> str:
+    """验证码邮件 HTML：大字验证码居中高亮（品牌蓝）+ 一键填入链接按钮
+    （邮件客户端禁用 JS，无法直接复制到剪贴板——一键填码比复制还省一步）"""
+    link = _magic_link(to, code)
     return f"""\
 <div style="max-width:480px;margin:0 auto;font-family:'PingFang SC','Microsoft YaHei',sans-serif;
             background:#f8fafc;border-radius:12px;padding:32px 28px;text-align:center;">
@@ -106,7 +117,10 @@ def _code_email_html(code: str) -> str:
   <div style="font-size:14px;color:#334155;margin-bottom:16px;">您好！您的验证码是</div>
   <div style="font-size:34px;font-weight:800;letter-spacing:10px;color:#2563eb;
               background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;
-              padding:18px 12px;margin-bottom:16px;">{code}</div>
+              padding:18px 12px;margin-bottom:20px;">{code}</div>
+  <a href="{link}" style="display:inline-block;padding:12px 28px;border-radius:8px;
+              background:#2563eb;color:#ffffff;font-size:14px;font-weight:600;
+              text-decoration:none;margin-bottom:18px;">一键填入验证码</a>
   <div style="font-size:12.5px;color:#64748b;line-height:1.8;">
     验证码 5 分钟内有效，请勿泄露给他人。<br/>
     如果不是您本人操作，请忽略本邮件。

@@ -50,7 +50,7 @@ export const SCRIPT_LABELS: Record<string, string> = {
 // 普通用户（本地 Agent 可能未安装/离线）点任意一条都能直接得到完整结果；
 // 脚本分析/自动化等本地能力不再出现在推荐位，由用户主动发起）
 export const SUGGESTIONS: { text: string; desc: string }[] = [
-  { text: '帮我搜索一下最新的AI大模型动态', desc: '联网搜索 · 最新资讯' },
+  { text: '当前大模型Agent能力排名', desc: '联网搜索 · 最新资讯' },
   { text: '帮我制定一份本周的学习计划', desc: '计划拆分 · 云端直接完成' },
   { text: '写一篇数据分析入门指南', desc: '写作 · 云端直接完成' },
   { text: '用 HTML 写一篇 500 字的文章', desc: 'HTML 直渲 · 云端直接完成' },

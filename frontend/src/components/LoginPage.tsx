@@ -52,6 +52,22 @@ export default function LoginPage() {
   useEffect(() => {
     const msg = sessionStorage.getItem('loginError')
     if (msg) { setError(msg); sessionStorage.removeItem('loginError') }
+    // 邮件「一键填入验证码」链接（hash 传参：email + code）→ 自动填入并切到验证码 tab
+    try {
+      const hash = window.location.hash.replace(/^#/, '')
+      if (hash) {
+        const params = new URLSearchParams(hash)
+        const em = params.get('email') || ''
+        const cd = params.get('code') || ''
+        if (em && /^\d{6}$/.test(cd)) {
+          setEmail(em)
+          setEmailCode(cd)
+          setMode('email')
+          // 清掉 hash，避免验证码残留在地址栏
+          history.replaceState(null, '', window.location.pathname + window.location.search)
+        }
+      }
+    } catch { /* 解析失败忽略 */ }
   }, [])
 
   const handleSubmit = async () => {
@@ -126,6 +142,19 @@ export default function LoginPage() {
     const t = setTimeout(() => setCodeCountdown(c => c - 1), 1000)
     return () => clearTimeout(t)
   }, [codeCountdown])
+
+  // 粘贴验证码（从剪贴板提取 6 位数字；仅 https/localhost 等安全上下文可用）
+  const handlePasteCode = async () => {
+    try {
+      if (!navigator.clipboard?.readText) { setError('当前环境不支持读取剪贴板，请手动输入验证码'); return }
+      const text = await navigator.clipboard.readText()
+      const m = text.match(/\d{6}/)
+      if (m) { setEmailCode(m[0]); setError('') }
+      else { setError('剪贴板里没有找到 6 位验证码') }
+    } catch {
+      setError('读取剪贴板失败，请手动输入验证码')
+    }
+  }
 
   // R1' 邮箱验证码登录（注册登录合一，自动登录）
   const handleEmailSubmit = async () => {
@@ -293,6 +322,12 @@ export default function LoginPage() {
                 inputMode="numeric"
                 autoComplete="one-time-code"
               />
+              <button type="button" className="login-paste-btn" onClick={handlePasteCode} tabIndex={-1}
+                title="粘贴验证码" aria-label="粘贴验证码">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+              </button>
               <button type="button" className="login-code-btn"
                 onClick={handleEmailSend}
                 disabled={codeCountdown > 0 || codeSending}
@@ -683,6 +718,19 @@ export default function LoginPage() {
           cursor: default;
           opacity: 0.6;
         }
+        /* 粘贴验证码按钮（剪贴板读取需安全上下文，不支持时由代码降级提示） */
+        .login-paste-btn {
+          margin-right: 6px;
+          padding: 7px;
+          border: none;
+          border-radius: 6px;
+          background: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          display: flex;
+          transition: color 0.15s;
+        }
+        .login-paste-btn:hover { color: var(--accent); }
         .login-logo-sm {
           width: 44px; height: 44px; border-radius: 12px;
           background: var(--accent); color: #fff;

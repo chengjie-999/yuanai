@@ -17,7 +17,7 @@ const TARGET_AGENTS = [
   { key: 'claude', desc: '本机代码、终端、Git 任务' },
 ]
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, entMode, toggleEntMode, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice }: {
   input: string; setInput: (v: string | ((p: string) => string)) => void; loading: boolean; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
@@ -27,6 +27,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   localOnline: boolean; claudeOnline: boolean
   onStartVoiceCall: () => void
   entMode: boolean; toggleEntMode: () => void
+  chatBackend: 'auto' | 'cloud' | 'local'; setChatBackend: (v: 'auto' | 'cloud' | 'local') => void
   targetAgent: string; setTargetAgent: (v: string) => void
   onOpenDirectChat: (target: string) => void
   onStop: () => void
@@ -406,6 +407,21 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                     background: entMode ? 'var(--accent-light)' : 'transparent', color: entMode ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
                   娱乐
                 </button>
+              </div>
+              {/* N3 云端/本地三态开关（2026-11-06）：auto=本机优先 / cloud=强制云端 / local=强制本机；
+                  娱乐模式强制云端，开关禁用 */}
+              <div className="yuan-tip"
+                data-tip={entMode ? '娱乐模式固定走云端' : (chatBackend === 'auto' ? '自动：本机优先，离线回退云端' : chatBackend === 'cloud' ? '云端：强制走云端，不走本机 Agent' : '本机：强制本机 Agent（离线会报错）')}
+                aria-label="执行后端切换"
+                style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden', fontSize: 12, flexShrink: 0, opacity: entMode ? 0.5 : 1 }}>
+                {(['cloud', 'auto', 'local'] as const).map((b) => (
+                  <button key={b} onClick={() => { if (!entMode) setChatBackend(b) }} aria-label={b === 'cloud' ? '云端' : b === 'auto' ? '自动' : '本机'}
+                    style={{ border: 'none', cursor: entMode ? 'default' : 'pointer', padding: '3px 10px', fontWeight: 600,
+                      background: (!entMode && chatBackend === b) ? 'var(--accent-light)' : 'transparent',
+                      color: (!entMode && chatBackend === b) ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
+                    {b === 'cloud' ? '云端' : b === 'auto' ? '自动' : '本机'}
+                  </button>
+                ))}
               </div>
               <ModelSelector model={model} onChange={setModel} />
               <ReasoningSelector effort={effort} setEffort={setEffort} />

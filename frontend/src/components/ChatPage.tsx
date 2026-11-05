@@ -128,6 +128,14 @@ export default function ChatPage({ user }: { user?: any }) {
   const [entMode, setEntMode] = useState(() => {
     try { return localStorage.getItem('entertainmentMode') === '1' } catch { return false }
   })
+  // N3 云端/本地三态（2026-11-06）：auto=本机优先离线回退 / cloud=强制云端 / local=强制本机
+  const [chatBackend, setChatBackendState] = useState<'auto' | 'cloud' | 'local'>(() => {
+    try { const v = localStorage.getItem('chatBackend'); return v === 'cloud' || v === 'local' ? v : 'auto' } catch { return 'auto' }
+  })
+  const setChatBackend = (v: 'auto' | 'cloud' | 'local') => {
+    setChatBackendState(v)
+    try { localStorage.setItem('chatBackend', v) } catch { /* 忽略 */ }
+  }
   const prevChatModeRef = useRef<'local' | 'cloud' | 'claude'>('local')
   const toggleEntMode = () => {
     const next = !entMode
@@ -546,7 +554,11 @@ export default function ChatPage({ user }: { user?: any }) {
       // 旁路守卫（P1-1）：流式期间会话已切换/停止 → 丢弃迟到事件，防跨会话写入
       const s = streamRef.current
       if (!s || s.sid !== sidRef.current) return
-      if (event.type === 'mode_event') {
+      if (event.type === 'backend_event') {
+        // N3：模型/用户命令切换执行后端 → 分段开关跟随
+        const b = event.data?.backend
+        if (b === 'auto' || b === 'cloud' || b === 'local') setChatBackend(b)
+      } else if (event.type === 'mode_event') {
         // 模式自主路由（2026-10-22）：后端模型判定切换娱乐/工作 → 分段开关跟随
         const m = event.data?.mode
         if (m === 'entertainment' || m === 'work') {
@@ -783,7 +795,8 @@ export default function ChatPage({ user }: { user?: any }) {
     const controller = streamChat(
       { model, temperature: 0.7, prompt, images: sentImages, history, system_prompt: sysPrompt,
         session_id: sid, claude: isClaude, force_cloud: !isClaude && (chatMode === 'cloud' || entMode),
-        reasoning_effort: effort, target_agent: target || undefined, chat_mode: entMode ? 'entertainment' : 'work' },
+        reasoning_effort: effort, target_agent: target || undefined, chat_mode: entMode ? 'entertainment' : 'work',
+        chat_backend: entMode ? 'cloud' : chatBackend },
       onEvent, onError,
       () => {
         const s = streamRef.current
@@ -1065,6 +1078,7 @@ export default function ChatPage({ user }: { user?: any }) {
       )}
       <ChatView
             messages={messages} loading={loading} user={user}
+            chatBackend={chatBackend} setChatBackend={setChatBackend}
             setExpandedImage={setExpandedImage}
             input={input} setInput={setInput} handleSend={handleSend}
             images={images} setImages={setImages}

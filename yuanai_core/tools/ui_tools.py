@@ -16,3 +16,14 @@ def set_theme(theme: str) -> str:
     if theme not in ("dark", "light"):
         return "theme 参数必须是 'dark' 或 'light'"
     return f"已将界面切换为{'暗色' if theme == 'dark' else '亮色'}模式"
+
+@tool
+def set_chat_backend(backend: str) -> str:
+    """切换执行后端（云端/本机）。backend 参数只能是 'auto'（自动：本机优先，离线回退云端）、
+    'cloud'（强制云端，不用本机 Agent）或 'local'（强制本机 Agent，离线会报错）。
+    用户要求「切到云端」「用我的电脑执行」「恢复自动」等执行位置偏好时调用。"""
+    if backend not in ("auto", "cloud", "local"):
+        return "backend 参数必须是 'auto'、'cloud' 或 'local'"
+    label = {"auto": "自动（本机优先）", "cloud": "云端", "local": "本机"}[backend]
+    return f"已将执行后端切换为：{label}"
+

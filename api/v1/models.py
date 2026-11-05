@@ -18,6 +18,9 @@ class ChatRequest(BaseModel):
     reasoning_effort: str = Field("low", description="推理强度：low 快答 / medium 标准 / high 深思（聊天框滑块）")
     target_agent: str = Field("", description="@指定智能体：analysis/collection/automation/claude/orchestrator；空=统筹自行路由")
     chat_mode: str = Field("work", description="产品模式：work=工作（云+本地Agent）/ entertainment=娱乐（纯云端，强制跳过本地 Agent 桥接）")
+    # N3（2026-11-06）：云端/本地三态——auto=现状（桥接优先离线回退）/ cloud=强制云端 /
+    # local=强制本机（Agent 离线报错不回退）；娱乐模式强制 cloud；与 chat_mode 正交
+    chat_backend: str = Field("auto", description="执行后端：auto / cloud / local")
 
 
 class ToolRequest(BaseModel):

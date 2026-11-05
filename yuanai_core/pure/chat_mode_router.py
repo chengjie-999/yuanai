@@ -99,3 +99,43 @@ def route_chat_mode(text: str, current_mode: str, llm_fallback: bool | None = No
         return current_mode
     judged = _llm_judge(text)
     return judged if judged in ("work", "entertainment") else current_mode
+
+# ==================== N3 云端/本地三态路由（2026-11-06） ====================
+
+BACKEND_CLOUD_SIGNALS = (
+    "切到云端", "切换到云端", "云端模式", "用云端", "走云端", "云上执行", "不用我电脑",
+    "不要用我电脑", "云端执行", "cloud", "仅云端", "强制云端",
+)
+
+BACKEND_LOCAL_SIGNALS = (
+    "用我的电脑", "用我电脑", "本机执行", "本地执行", "本地模式", "本机模式",
+    "用本地", "走本地", "电脑执行", "电脑上执行", "本地智能体", "local", "强制本地",
+    "电脑来", "电脑跑",
+)
+
+BACKEND_AUTO_SIGNALS = (
+    "自动模式", "自动切换", "恢复自动", "auto", "自动选择",
+)
+
+
+def route_chat_backend(text: str, current_backend: str) -> str:
+    """判定本轮消息的执行后端：'auto' / 'cloud' / 'local'。
+
+    单向切换语义：只在与当前相反方向的信号占优时切换；信号抵消或无信号
+    保持现状（与 route_chat_mode 同构）。云/本地信号同时出现（如「用我电脑
+    还是云端？」）按抵消处理。
+    """
+    text = re.sub(r"\s+", "", text or "")
+    if not text:
+        return current_backend
+    cloud = sum(text.count(w) for w in BACKEND_CLOUD_SIGNALS)
+    local = sum(text.count(w) for w in BACKEND_LOCAL_SIGNALS)
+    auto = sum(text.count(w) for w in BACKEND_AUTO_SIGNALS)
+    if auto and auto >= cloud and auto >= local:
+        return "auto"
+    if cloud > local:
+        return "cloud"
+    if local > cloud:
+        return "local"
+    return current_backend
+

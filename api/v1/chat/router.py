@@ -226,19 +226,20 @@ from api.v1.middleware import get_user_id as _get_user_id
 
 
 async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0,
-                      prefix_event: dict = None, session_id: str = "",
+                      prefix_events: list = None, session_id: str = "",
                       suggest: bool = True):
     """Agent 事件队列 → SSE 流（300s 超时按每次事件重置；done/error 终止）
     B1-12：客户端中断（停止生成/关页）→ 通知本地 Agent 终止脚本子进程
-    prefix_event：首个 SSE 事件前插入（模式自主路由的 mode_event）
+    prefix_events：首个 SSE 事件前插入（mode_event / backend_event，N3）
     session_id：C6 输出侧审核（done 前对全文审核，命中先发警告事件）
     suggest：追问预测（普通/娱乐对话 True；coding 桥接 False 不出现）"""
     from api.v1.agent.router import cleanup_pending
     full_text = []   # C6：输出全文缓冲
     had_tools = False
     try:
-        if prefix_event:
-            yield f"data: {_sse(prefix_event)}\n\n"
+        for _pe in (prefix_events or []):
+            if _pe:
+                yield f"data: {_sse(_pe)}\n\n"
         while True:
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=300)
@@ -279,13 +280,17 @@ async def _bridge_sse(queue: asyncio.Queue, request_id: str, user_id: int = 0,
 
 
 def _ui_events(event: dict) -> list:
-    """set_theme 工具调用 → theme_event（前端切换明暗主题；工具自身继续正常执行返回）"""
+    """UI 联动工具拦截：set_theme → theme_event；set_chat_backend → backend_event
+    （工具自身继续正常执行返回，真实切换由前端事件执行）"""
     if event.get("type") == "tool_start":
         data = event.get("data") or {}
         args = data.get("args") or {}
         if data.get("name") == "set_theme" and isinstance(args, dict) \
                 and args.get("theme") in ("dark", "light"):
             return [{"type": "theme_event", "data": {"theme": args["theme"]}}]
+        if data.get("name") == "set_chat_backend" and isinstance(args, dict) \
+                and args.get("backend") in ("auto", "cloud", "local"):
+            return [{"type": "backend_event", "data": {"backend": args["backend"]}}]
     return []
 
 
@@ -500,6 +505,22 @@ async def chat_stream(req: ChatRequest, request: Request):
             if decided != ("entertainment" if ent_mode else "work"):
                 ent_mode = decided == "entertainment"
                 mode_event = {"type": "mode_event", "data": {"mode": decided}}
+        # N3 云端/本地三态（2026-11-06）：auto=现状（优先桥接，离线回退云端）/
+        # cloud=强制云端不桥接 / local=强制本机（离线报错不回退）。
+        # 用户命令（「切到云端」「用我的电脑」）与模型工具 set_chat_backend 双入口；
+        # 娱乐模式天然纯云端（强制 cloud）；与 chat_mode 正交。
+        backend = getattr(req, "chat_backend", "auto") or "auto"
+        if backend not in ("auto", "cloud", "local"):
+            backend = "auto"
+        if ent_mode:
+            backend = "cloud"
+        backend_event = None
+        if not target:
+            from yuanai_core.pure.chat_mode_router import route_chat_backend
+            decided_backend = route_chat_backend(req.prompt or "", backend)
+            if decided_backend != backend:
+                backend = decided_backend
+                backend_event = {"type": "backend_event", "data": {"backend": backend}}
 
         history = []
         # 信封数组：与 history 锁步构建（system 首项 + 截断说明 + 历史各项 + 末位 prompt 项），
@@ -577,8 +598,8 @@ async def chat_stream(req: ChatRequest, request: Request):
         current_user_id.set(user_id if user_id else 0)
         current_session_id.set(getattr(req, "session_id", "") or "")
 
-        # --- 尝试走本地 Agent WebSocket 桥接（云端模式 force_cloud / 娱乐模式时跳过） ---
-        if user_id and not req.force_cloud and not ent_mode:
+        # --- 尝试走本地 Agent WebSocket 桥接（N3：cloud 强制跳过；local 必须桥接） ---
+        if user_id and not req.force_cloud and backend != "cloud":
             from api.v1.agent.router import forward_to_agent, get_pending_queue, cleanup_pending
             import uuid as _uuid
 
@@ -602,10 +623,19 @@ async def chat_stream(req: ChatRequest, request: Request):
             if bridged_request_id:
                 logger.info("chat/stream → Agent 桥接 (user=%s, req=%s)", user_id, bridged_request_id[:8])
                 queue = get_pending_queue(bridged_request_id)
-                return StreamingResponse(_bridge_sse(queue, bridged_request_id, user_id, mode_event,
+                return StreamingResponse(_bridge_sse(queue, bridged_request_id, user_id,
+                                                     [mode_event, backend_event],
                                                      session_id=getattr(req, "session_id", "") or "",
                                                      suggest=(target != "claude")),  # coding 桥接不出现追问
                                          media_type="text/event-stream")
+            if backend == "local":
+                # 本地模式（N3）：本机 Agent 离线 → 明确报错，不回退云端
+                logger.info("chat/stream 本地模式 Agent 离线 → 拒绝回退 (user=%s)", user_id)
+
+                async def _local_offline_stream():
+                    yield f"data: {_sse({'type': 'error', 'data': '本地模式：本机 Agent 当前离线。请先启动电脑上的小元AI Agent，或切换到云端/自动模式。'})}\n\n"
+
+                return StreamingResponse(_local_offline_stream(), media_type="text/event-stream")
 
         # --- 回退：云端直接调用 LLM ---
         logger.info("chat/stream → 云端直接调用 (user=%s, agent offline)", user_id)
@@ -667,6 +697,8 @@ async def chat_stream(req: ChatRequest, request: Request):
             try:
                 if mode_event:
                     yield f"data: {_sse(mode_event)}\n\n"
+                if backend_event:
+                    yield f"data: {_sse(backend_event)}\n\n"
                 # 同名工具单轮最多调 3 次（防重复调用死循环）+ LangGraph 轮数上限
                 # V1-2 审批分层：云端直连工具链过 gate（L2 审批卡 / L3 拦截 / L0-L1 无感）
                 from yuanai_core.pure.tool_gate import gate as _tool_gate

@@ -39,6 +39,7 @@ _L1 = {
     "save_crawl_data",      # 采集数据落盘
     "save_data_csv",        # CSV 落盘（verified_write 校验）
     "set_theme",            # UI 偏好，可逆
+    "set_chat_backend",     # N3 执行后端偏好，可逆
     "transform_dataset",    # 生成新数据集，可删
 }
 

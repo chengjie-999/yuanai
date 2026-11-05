@@ -690,6 +690,7 @@ export function streamChat(
     reasoning_effort?: 'low' | 'medium' | 'high'
     target_agent?: string
     chat_mode?: 'work' | 'entertainment'
+    chat_backend?: 'auto' | 'cloud' | 'local'  // N3 执行后端三态
   },
   onEvent: (event: any) => void,
   onError: (error: string) => void,

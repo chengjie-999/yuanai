@@ -435,23 +435,8 @@ export default function ChatPage({ user }: { user?: any }) {
 
   // U2 会话重命名（2026-10-25）：prompt 输入新标题 → 后端归属校验更新 →
   // 刷新列表；改名后 /chat/save 的自动标题不会覆盖（_is_auto_title 不命中）
-  // 自动生成对话昵称（2026-10-31 用户拍板：侧栏删除按钮后的星光图标显式触发，
-  // 覆盖任意当前标题；自动生成链路仍不覆盖手动重命名）
-  const handleGenTitle = async (sid: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/chat/generate-title`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ session_id: sid }),
-      })
-      const data = await res.json()
-      if (res.ok && data.title) {
-        refreshSessions()
-        flashNotice(`已生成昵称：${data.title}`)
-      } else {
-        flashNotice(data?.detail || '昵称生成失败')
-      }
-    } catch { flashNotice('昵称生成失败，请重试') }
-  }
+  // 会话昵称：首轮对话结束后 AI 自动生成（/chat/save fire-and-forget；
+  // 2026-11-06 用户拍板去掉侧栏手动星光按钮）
 
   // V1-4 分享（2026-11-06）：生成公开链接并复制；已分享则重新生成（幂等覆盖）
   const handleShareSession = async (sid: string) => {
@@ -1019,7 +1004,7 @@ ${full}
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}
-        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} onDemoteMain={handleDemoteMain} onOpenTrash={openTrash} onGenTitle={handleGenTitle} onShare={handleShareSession} />
+        onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} onDemoteMain={handleDemoteMain} onOpenTrash={openTrash} onShare={handleShareSession} />
 
       {sidebarOpen && <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 

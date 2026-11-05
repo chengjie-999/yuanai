@@ -44,6 +44,17 @@ export default function InputArea({ input, setInput, loading, handleSend, images
     }
   }, [input])
   const [uploading, setUploading] = useState(false)
+  // 模式菜单（2026-11-06 用户拍板：工作/娱乐 + 云端/本机两开关收进菜单，输入区不拥挤）
+  const [modeMenuOpen, setModeMenuOpen] = useState(false)
+  const modeMenuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!modeMenuOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node)) setModeMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [modeMenuOpen])
   const [uploadType, setUploadType] = useState<'image' | 'dataset'>('image')
   const [uploadErr, setUploadErr] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -393,35 +404,58 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              {/* E1 娱乐模式开关：工作=现状（云+本地Agent）/ 娱乐=纯云端陪伴式对话 */}
-              <div className="yuan-tip" data-tip={entMode ? '娱乐模式：纯云端陪伴式对话（不走本地 Agent）' : '切换娱乐模式：纯云端陪伴式对话'}
-                aria-label="工作/娱乐模式切换"
-                style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden', fontSize: 12, flexShrink: 0 }}>
-                <button onClick={() => { if (entMode) toggleEntMode() }} aria-label="工作模式"
-                  style={{ border: 'none', cursor: entMode ? 'pointer' : 'default', padding: '3px 10px', fontWeight: 600,
-                    background: entMode ? 'transparent' : 'var(--accent-light)', color: entMode ? 'var(--text-secondary)' : 'var(--accent)', transition: 'all 0.15s' }}>
-                  工作
+              {/* 模式菜单（2026-11-06 用户拍板：工作/娱乐 + 云端/本机收进菜单，
+                  输入区按钮不拥挤——按钮显示当前模式摘要，点击展开） */}
+              <div ref={modeMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
+                <button onClick={() => setModeMenuOpen((o) => !o)}
+                  aria-label="对话模式与执行位置"
+                  className="yuan-tip" data-tip="对话模式与执行位置"
+                  style={{ border: '1px solid var(--border)', borderRadius: 999, background: 'none',
+                    cursor: 'pointer', padding: '3px 10px', fontSize: 12, fontWeight: 600,
+                    color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {entMode ? '娱乐' : '工作'}·{entMode ? '云端' : (chatBackend === 'auto' ? '自动' : chatBackend === 'cloud' ? '云端' : '本机')}
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
                 </button>
-                <button onClick={() => { if (!entMode) toggleEntMode() }} aria-label="娱乐模式"
-                  style={{ border: 'none', cursor: entMode ? 'default' : 'pointer', padding: '3px 10px', fontWeight: 600,
-                    background: entMode ? 'var(--accent-light)' : 'transparent', color: entMode ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
-                  娱乐
-                </button>
-              </div>
-              {/* N3 云端/本地三态开关（2026-11-06）：auto=本机优先 / cloud=强制云端 / local=强制本机；
-                  娱乐模式强制云端，开关禁用 */}
-              <div className="yuan-tip"
-                data-tip={entMode ? '娱乐模式固定走云端' : (chatBackend === 'auto' ? '自动：本机优先，离线回退云端' : chatBackend === 'cloud' ? '云端：强制走云端，不走本机 Agent' : '本机：强制本机 Agent（离线会报错）')}
-                aria-label="执行后端切换"
-                style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden', fontSize: 12, flexShrink: 0, opacity: entMode ? 0.5 : 1 }}>
-                {(['cloud', 'auto', 'local'] as const).map((b) => (
-                  <button key={b} onClick={() => { if (!entMode) setChatBackend(b) }} aria-label={b === 'cloud' ? '云端' : b === 'auto' ? '自动' : '本机'}
-                    style={{ border: 'none', cursor: entMode ? 'default' : 'pointer', padding: '3px 10px', fontWeight: 600,
-                      background: (!entMode && chatBackend === b) ? 'var(--accent-light)' : 'transparent',
-                      color: (!entMode && chatBackend === b) ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
-                    {b === 'cloud' ? '云端' : b === 'auto' ? '自动' : '本机'}
-                  </button>
-                ))}
+                {modeMenuOpen && (
+                  <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 30,
+                    background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 10,
+                    boxShadow: 'var(--shadow-md)', padding: '12px 14px', minWidth: 190, fontSize: 12.5 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>对话模式</div>
+                    <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 999,
+                      overflow: 'hidden', marginBottom: 12 }}>
+                      <button onClick={() => { if (entMode) toggleEntMode(); setModeMenuOpen(false) }} aria-label="工作模式"
+                        style={{ flex: 1, border: 'none', cursor: entMode ? 'pointer' : 'default', padding: '5px 0', fontWeight: 600,
+                          background: entMode ? 'transparent' : 'var(--accent-light)', color: entMode ? 'var(--text-secondary)' : 'var(--accent)', transition: 'all 0.15s' }}>
+                        工作
+                      </button>
+                      <button onClick={() => { if (!entMode) toggleEntMode(); setModeMenuOpen(false) }} aria-label="娱乐模式"
+                        style={{ flex: 1, border: 'none', cursor: entMode ? 'default' : 'pointer', padding: '5px 0', fontWeight: 600,
+                          background: entMode ? 'var(--accent-light)' : 'transparent', color: entMode ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
+                        娱乐
+                      </button>
+                    </div>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                      执行位置{entMode && <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>（娱乐模式固定云端）</span>}
+                    </div>
+                    <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 999,
+                      overflow: 'hidden', opacity: entMode ? 0.5 : 1 }}>
+                      {(['cloud', 'auto', 'local'] as const).map((b) => (
+                        <button key={b} onClick={() => { if (!entMode) { setChatBackend(b); setModeMenuOpen(false) } }}
+                          aria-label={b === 'cloud' ? '云端' : b === 'auto' ? '自动' : '本机'}
+                          style={{ flex: 1, border: 'none', cursor: entMode ? 'default' : 'pointer', padding: '5px 0', fontWeight: 600,
+                            background: (!entMode && chatBackend === b) ? 'var(--accent-light)' : 'transparent',
+                            color: (!entMode && chatBackend === b) ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
+                          {b === 'cloud' ? '云端' : b === 'auto' ? '自动' : '本机'}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                      自动：本机优先，离线回退云端；云端：不走本机 Agent；本机：强制本机（离线报错）
+                    </div>
+                  </div>
+                )}
               </div>
               <ModelSelector model={model} onChange={setModel} />
               <ReasoningSelector effort={effort} setEffort={setEffort} />

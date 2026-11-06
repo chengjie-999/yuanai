@@ -32,7 +32,10 @@ class PaymentCreate(BaseModel):
 
 
 class PaymentSubmit(BaseModel):
-    note: str = Field("", max_length=200)
+    # 对账凭证：转账账号尾号（金额=订单金额系统已知、时间=提交时间系统记录，
+    # 用户只需填尾号——2026-11-06 用户拍板）
+    tail: str = Field(..., min_length=3, max_length=20, description="转账账号尾号（如 8888）")
+    note: str = Field("", max_length=100, description="补充备注（选填）")
 
 
 @router.post("/auth/payments")
@@ -66,10 +69,12 @@ async def submit_payment(pid: int, req: PaymentSubmit, request: Request):
         if not p:
             raise HTTPException(status_code=404, detail="订单不存在")
         if p.status != "pending":
-            raise HTTPException(status_code=400, detail="该订单已处理，无需重复提交")
-        p.note = (req.note or "").strip()[:200]
+            raise HTTPException(status_code=400, detail="该订单已处理，请重新生成订单")
+        tail = (req.tail or "").strip()
+        note = (req.note or "").strip()
+        p.note = (f"尾号:{tail[:20]}" + (f" 备注:{note[:100]}" if note else ""))[:200]
         sess.commit()
-    return {"ok": True, "message": "已提交，管理员确认后额度到账（通常几分钟内）"}
+    return {"ok": True, "message": "已提交，管理员对账确认后额度到账（通常几分钟内）"}
 
 
 @router.get("/auth/payments")

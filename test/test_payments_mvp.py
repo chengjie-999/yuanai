@@ -86,20 +86,22 @@ def test_payment_order_and_confirm_flow(client, db, users):
     assert db.user_paid_totals([uid]).get(uid, 0) == 0
     # 提交转账信息
     r = client.post(f"/api/v1/auth/payments/{pid}/submit",
-                    json={"note": "微信转账 50 元 尾号8888"}, headers=h)
+                    json={"tail": "8888"}, headers=h)
     assert r.status_code == 200
-    # 重复提交 → 400（已处理前再次提交可覆盖？——本实现允许 pending 重复提交更新备注，
-    # 改断言为允许更新）
+    # pending 重复提交 = 更新对账信息（允许）
     r2 = client.post(f"/api/v1/auth/payments/{pid}/submit",
-                     json={"note": "补充：10:23 转账"}, headers=h)
+                     json={"tail": "8888", "note": "10:23 转账"}, headers=h)
     assert r2.status_code == 200
+    # 缺尾号 → 422
+    assert client.post(f"/api/v1/auth/payments/{pid}/submit",
+                       json={"note": "x"}, headers=h).status_code == 422
     # 后台确认 → 计入收款
     r = client.post(f"/api/v1/admin/payments/{pid}/confirm", headers=ah)
     assert r.status_code == 200
     assert db.user_paid_totals([uid]).get(uid, 0) == 50.0
     # 确认后提交 → 400
     r = client.post(f"/api/v1/auth/payments/{pid}/submit",
-                    json={"note": "x"}, headers=h)
+                    json={"tail": "8888"}, headers=h)
     assert r.status_code == 400
 
 
@@ -124,7 +126,7 @@ def test_payment_ownership(client, users):
     # 别人提交 → 404
     other = users["__pay_admin__"][1]
     r2 = client.post(f"/api/v1/auth/payments/{pid}/submit",
-                     json={"note": "x"}, headers=_h(other))
+                     json={"tail": "8888"}, headers=_h(other))
     assert r2.status_code == 404
     # 未登录 → 401
     assert client.post("/api/v1/auth/payments", json={"amount": 50}).status_code == 401

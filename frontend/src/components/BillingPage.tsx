@@ -23,6 +23,7 @@ export default function BillingPage() {
   const [cost, setCost] = useState<any>(null)
   const [amount, setAmount] = useState(50)
   const [order, setOrder] = useState<any>(null)
+  const [tail, setTail] = useState('')
   const [note, setNote] = useState('')
   const [submitMsg, setSubmitMsg] = useState('')
   const [records, setRecords] = useState<any[]>([])
@@ -53,9 +54,13 @@ export default function BillingPage() {
 
   const submitNote = async () => {
     if (!order) return
+    if (!tail.trim() || tail.trim().length < 3) {
+      setSubmitMsg('请填写转账账号尾号（用于管理员对账）')
+      return
+    }
     const res = await fetch(`${API_BASE}/auth/payments/${order.id}/submit`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ tail: tail.trim(), note }),
     })
     const d = await res.json().catch(() => ({}))
     setSubmitMsg(res.ok ? (d.message || '已提交') : (d.detail || '提交失败'))
@@ -115,8 +120,14 @@ export default function BillingPage() {
                     收款码尚未配置——请联系管理员上传（后台「设置 → 收款码」）
                   </div>
                 )}
-                <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200}
-                  placeholder="转账后填写：转账金额/时间/尾号（如：微信转 50 元 10:23 尾号8888）"
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  转账 ¥{order.amount} 后填写付款账号<b>尾号</b>（金额与时间由系统记录）
+                </div>
+                <input value={tail} onChange={(e) => setTail(e.target.value)} maxLength={20}
+                  placeholder="付款账号尾号（必填，如 8888）"
+                  style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
+                <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={100}
+                  placeholder="补充备注（选填）"
                   style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)' }} />
                 <button onClick={submitNote} style={{ ...C.btn }}>我已转账，提交确认</button>
               </div>

@@ -164,7 +164,7 @@ function AgentDownloadCard() {
         {/* 使用指南（2026-10-30 用户拍板：图形 + yuan/yuancc 终端两套入口） */}
         <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.9 }}>
           <b style={{ color: 'var(--text-primary)' }}>使用指南</b>
-          <div>① <b>图形安装（推荐）</b>：下载默认版本（文件名已内嵌安装码）→ 双击运行 → 自动注册完成（托盘常驻，可开关各 Agent；文件名被改才会弹码框）</div>
+          <div>① <b>图形安装（推荐）</b>：点上方「下载默认版本」→ 双击运行 → 自动注册完成（托盘常驻，可开关各 Agent；改过文件名才会要求输入码）</div>
           <div>② <b>终端安装（开发者，本机需 Python 3.10+ 环境）</b>：</div>
           <div style={{ fontFamily: 'monospace', fontSize: 11.5, paddingLeft: 18, color: 'var(--text-primary)' }}>
             yuan --install &lt;安装码&gt;&nbsp;&nbsp;注册本机设备（之后 yuan 自动联动云端）
@@ -205,7 +205,7 @@ function AgentDownloadCard() {
               </a>
               {withCode && (
                 <div style={{ fontSize: 11.5, color: 'var(--success)', marginBottom: 8 }}>
-                  已绑定你的账号：文件名内嵌安装码，双击后自动注册，无需手动输入
+                  已绑定你的账号：双击安装后自动注册，不用输入任何码
                 </div>
               )}
             </div>

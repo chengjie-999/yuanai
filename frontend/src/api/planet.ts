@@ -1,5 +1,5 @@
 /* 知识星球 API — 星球/导图/笔记/导入任务/检索 */
-import { API_BASE, getToken, authHeaders } from './index'
+import { API_BASE, getToken, authHeaders, uploadFile } from './index'
 
 
 async function req<T = any>(path: string, init?: RequestInit): Promise<T> {
@@ -36,10 +36,7 @@ export function deleteMap(mid: number) { return req(`/planet/maps/${mid}`, { met
 
 /** 批量导入：files 与相对路径平行对齐（webkitdirectory 文件夹） */
 export function importMaps(pid: number, files: File[], paths: string[]) {
-  const form = new FormData()
-  files.forEach((f) => form.append('files', f))
-  paths.forEach((p) => form.append('paths', p))
-  return req(`/planet/${pid}/import`, { method: 'POST', body: form })
+  return uploadFile(`/planet/${pid}/import`, { files }, { paths })
 }
 
 export function convertMap(mid: number) { return req(`/planet/maps/${mid}/convert`, { method: 'POST' }) }

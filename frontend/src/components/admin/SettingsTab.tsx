@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Card, CardHeader, headers, safeJson, API_BASE } from './shared'
+import { uploadFile } from '../../api'
 
 const row: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -230,12 +231,13 @@ export default function SettingsTab() {
           <input type="file" accept="image/*" onChange={async (e) => {
             const f = e.target.files?.[0]
             if (!f) return
-            const fd = new FormData()
-            fd.append('qr', f)
-            const res = await fetch(`${API_BASE}/admin/payment-qr`, { method: 'POST', headers: headers(), body: fd })
-            const d = await safeJson(res)
-            setSmtpMsg('')
-            setTestMsg(res.ok ? '收款码已更新' : (d?.detail || '上传失败'))
+            try {
+              await uploadFile('/admin/payment-qr', { qr: f })
+              setSmtpMsg('')
+              setTestMsg('收款码已更新')
+            } catch (err: any) {
+              setTestMsg(err.message || '上传失败')
+            }
             e.target.value = ''
           }} style={{ fontSize: 12.5 }} />
           <img src={`/api/v1/payment-qr?t=${Date.now()}`} alt="收款码预览"

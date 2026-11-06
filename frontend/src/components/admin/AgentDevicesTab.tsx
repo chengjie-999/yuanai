@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Spinner, Empty, ErrorMsg, Card, btnPrimary, btnDangerSm, inputStyle, headers, API_BASE } from './shared'
-import { getToken } from '../../api'
+import { uploadFileWithProgress } from '../../api'
 import { useAuth } from '../../contexts/AuthContext'
 import { PackageIcon } from '../icons'
 
@@ -81,29 +81,23 @@ export default function AgentDevicesTab() {
 
   const uploadExeFile = (f: File) => {
     setUploadBusy(true); setUploadPct(0); setUploadMsg('')
-    const fd = new FormData()
-    fd.append('version', upVersion.trim())  // 留空 = 后端自动按上传时间生成版本号
-    fd.append('note', upNote.trim())
-    fd.append('file', f)
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${API_BASE}/admin/agent-exe-upload`)
-    xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
-    xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable) setUploadPct(Math.round((ev.loaded / ev.total) * 100))
-    }
-    xhr.onload = () => {
+    // 统一上传收口（2026-11-06）：大文件走进度版（XHR onprogress）
+    uploadFileWithProgress(
+      '/admin/agent-exe-upload',
+      { file: f },
+      { version: upVersion.trim(), note: upNote.trim() },  // version 留空 = 后端自动生成
+      (pct) => setUploadPct(pct),
+    ).then((data: any) => {
       setUploadBusy(false)
-      try {
-        const data = JSON.parse(xhr.responseText)
-        if (xhr.status === 200 && data.ok) {
-          setUploadMsg(`✓ 已发布 v${data.version}（${(data.size / 1024 / 1024).toFixed(0)}MB）`)
-          setUpVersion(''); setUpNote('')
-          loadVersions()
-        } else setUploadMsg(data.detail || '上传失败')
-      } catch { setUploadMsg(`上传失败 HTTP ${xhr.status}`) }
-    }
-    xhr.onerror = () => { setUploadBusy(false); setUploadMsg('上传失败，网络错误') }
-    xhr.send(fd)
+      if (data.ok) {
+        setUploadMsg(`已发布 v${data.version}（${(data.size / 1024 / 1024).toFixed(0)}MB）`)
+        setUpVersion(''); setUpNote('')
+        loadVersions()
+      } else setUploadMsg(data.detail || '上传失败')
+    }).catch((err: any) => {
+      setUploadBusy(false)
+      setUploadMsg(err.message || '上传失败，网络错误')
+    })
   }
 
   const handleSetDefault = async (version: string) => {

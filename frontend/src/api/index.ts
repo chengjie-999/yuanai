@@ -233,17 +233,73 @@ export async function changePassword(old_password: string, new_password: string)
   return res.json()
 }
 
+// ==================== 统一上传收口（2026-11-06 用户拍板） ====================
+// 全部 multipart 上传走这两个函数——绝不手动带 Content-Type（浏览器自动加
+// multipart boundary；手动设置会覆盖成 JSON 导致后端 form 解析失败，已踩坑
+// 两次：头像/收款码）。错误解析统一 _errorDetail；大文件用进度版（XHR）。
+
+export async function uploadFile<T = any>(
+  url: string,
+  files: Record<string, File | File[]>,
+  extra: Record<string, string | string[]> = {},
+): Promise<T> {
+  const fd = new FormData()
+  for (const [k, v] of Object.entries(files)) {
+    if (Array.isArray(v)) v.forEach((f) => fd.append(k, f))
+    else fd.append(k, v)
+  }
+  for (const [k, v] of Object.entries(extra)) {
+    if (Array.isArray(v)) v.forEach((x) => fd.append(k, x))
+    else fd.append(k, v)
+  }
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${url}`, { method: 'POST', headers: authHeaders(), body: fd })
+  } catch {
+    throw new Error('网络连接失败，请检查网络后重试')
+  }
+  if (!res.ok) throw new Error(await _errorDetail(res))
+  try { return await res.json() } catch { return {} as T }
+}
+
+/** 带进度上传（大文件，如 Agent exe 200MB——fetch 无上传进度） */
+export function uploadFileWithProgress(
+  url: string,
+  files: Record<string, File | File[]>,
+  extra: Record<string, string | string[]> = {},
+  onProgress?: (pct: number) => void,
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData()
+    for (const [k, v] of Object.entries(files)) {
+      if (Array.isArray(v)) v.forEach((f) => fd.append(k, f))
+      else fd.append(k, v)
+    }
+    for (const [k, v] of Object.entries(extra)) {
+      if (Array.isArray(v)) v.forEach((x) => fd.append(k, x))
+      else fd.append(k, v)
+    }
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_BASE}${url}`)
+    xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable && onProgress) onProgress(Math.round((ev.loaded / ev.total) * 100))
+    }
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText)
+        if (xhr.status >= 200 && xhr.status < 300) resolve(data)
+        else reject(new Error(typeof data?.detail === 'string' ? data.detail : `上传失败（HTTP ${xhr.status}）`))
+      } catch { reject(new Error('服务响应异常，请稍后重试')) }
+    }
+    xhr.onerror = () => reject(new Error('网络连接失败，请检查网络后重试'))
+    xhr.send(fd)
+  })
+}
+
 // 上传头像（multipart，字段名 avatar）→ 返回 { avatar }
 export async function uploadAvatar(file: File): Promise<{ avatar: string }> {
-  const fd = new FormData()
-  fd.append('avatar', file)
-  const res = await fetch(`${API_BASE}/auth/avatar`, {
-    method: 'POST',
-    headers: { ...authHeaders() },
-    body: fd,
-  })
-  if (!res.ok) throw new Error(await _errorDetail(res))
-  return res.json()
+  return uploadFile('/auth/avatar', { avatar: file })
 }
 
 // ---- Models ----
@@ -852,15 +908,7 @@ export async function deleteCrawlRecord(id: number): Promise<boolean> {
 
 // ---- Datasets ----
 export async function uploadDataset(file: File): Promise<any> {
-  const form = new FormData()
-  form.append('file', file)
-  try {
-    const res = await fetch(`${API_BASE}/data/upload`, {
-      method: 'POST', headers: authHeaders(), body: form,
-    })
-    if (!res.ok) throw new Error((await res.json()).detail || 'upload failed')
-    return await res.json()
-  } catch (e: any) { throw e }
+  return uploadFile('/data/upload', { file })
 }
 
 export async function fetchDatasets(): Promise<any[]> {

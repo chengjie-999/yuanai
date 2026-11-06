@@ -1055,7 +1055,7 @@ class AgentDatabase:
             p = PaymentRecord(user_id=user_id,
                               amount=Decimal(str(amount)).quantize(Decimal("0.01")),
                               note=(note or "")[:200],
-                              status=status if status in ("confirmed", "pending", "created", "rejected") else "confirmed")
+                              status=status if status in ("confirmed", "pending", "created", "rejected", "cancelled") else "confirmed")
             sess.add(p)
             sess.commit()
             return p.id
@@ -1077,12 +1077,31 @@ class AgentDatabase:
             cur = p.status or "confirmed"
             if cur == "confirmed":
                 return "already"
-            if cur == "rejected" and status != "confirmed":
+            if cur in ("rejected", "cancelled") and status != "confirmed":
                 return "already"
+            if cur == "cancelled":
+                return "already"  # 已取消终态，不可复活
             # created 直接确认/驳回：管理员直调 API 的兜底路径（正常流程用户先提交）
             p.status = status
             if note:
                 p.note = (note or "")[:200]
+            sess.commit()
+            return "ok"
+        finally:
+            sess.close()
+
+    def cancel_user_payment(self, payment_id: int, user_id: int) -> str:
+        """用户取消自己的订单（created/pending → cancelled；终态不可取消）。
+        返回 "ok" / "not_found" / "already"——与 set_payment_status 同口径。"""
+        sess = self.Session()
+        try:
+            p = sess.query(PaymentRecord).filter_by(id=payment_id, user_id=user_id).first()
+            if not p:
+                return "not_found"
+            cur = p.status or "confirmed"
+            if cur not in ("created", "pending"):
+                return "already"
+            p.status = "cancelled"
             sess.commit()
             return "ok"
         finally:

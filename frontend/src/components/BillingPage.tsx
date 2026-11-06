@@ -18,6 +18,7 @@ const STATUS_LABEL: Record<string, { t: string; c: string }> = {
   pending: { t: '待确认', c: 'var(--warning)' },
   confirmed: { t: '已到账', c: 'var(--success)' },
   rejected: { t: '已驳回', c: 'var(--danger)' },
+  cancelled: { t: '已取消', c: 'var(--text-muted)' },
 }
 
 export default function BillingPage() {
@@ -53,6 +54,17 @@ export default function BillingPage() {
     setOrder(d)
     setQrOk(true)  // 管理员可能刚上传收款码——重新探测
     load()
+  }
+
+  const cancelOrder = async (pid: number) => {
+    if (!window.confirm('确定取消该订单？取消后需重新生成订单。')) return
+    try {
+      await fetch(`${API_BASE}/auth/payments/${pid}/cancel`, { method: 'POST', headers: authHeaders() })
+      setOrder(null)
+      setTail(''); setNote('')
+      setSubmitMsg('订单已取消')
+      load()
+    } catch { setSubmitMsg('取消失败，请重试') }
   }
 
   const submitNote = async () => {
@@ -113,8 +125,15 @@ export default function BillingPage() {
               <button onClick={createOrder} style={{ ...C.btn, width: '100%' }}>生成充值订单（¥{amount}）</button>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  订单号 <b style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>#{order.id}</b> · ¥{order.amount} · 请转账后提交
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  订单号 <b style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>#{order.id}</b> · ¥{order.amount}
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, color: STATUS_LABEL[order.status]?.c || 'var(--text-muted)', background: 'var(--bg-tertiary)' }}>
+                    {STATUS_LABEL[order.status]?.t || order.status}
+                  </span>
+                  <button onClick={() => cancelOrder(order.id)}
+                    style={{ marginLeft: 'auto', padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 11.5 }}>
+                    取消订单
+                  </button>
                 </div>
                 {qrOk ? (
                   <div style={{ textAlign: 'center' }}>
@@ -165,8 +184,14 @@ export default function BillingPage() {
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 20px', borderBottom: '1px solid var(--border-light)', fontSize: 13 }}>
                 <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>¥{r.amount.toFixed(2)}</span>
                 <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, color: s.c, background: 'var(--bg-tertiary)' }}>{s.t}</span>
-                <span style={{ color: 'var(--text-muted)', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.note || ''}</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.note}>{r.note || ''}</span>
                 <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>{r.created_at?.slice(5, 16)}</span>
+                {(r.status === 'created' || r.status === 'pending') && (
+                  <button onClick={() => cancelOrder(r.id)}
+                    style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 11.5, whiteSpace: 'nowrap' }}>
+                    取消
+                  </button>
+                )}
               </div>
             )
           })}

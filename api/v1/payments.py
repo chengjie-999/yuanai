@@ -81,6 +81,21 @@ async def submit_payment(pid: int, req: PaymentSubmit, request: Request):
     return {"ok": True, "message": "已提交，管理员对账确认后额度到账（通常几分钟内）"}
 
 
+@router.post("/auth/payments/{pid}/cancel")
+async def cancel_payment(pid: int, request: Request):
+    """用户取消自己的订单（created/pending → cancelled；不进队列不计收款）。
+    「订单直接不发送」：cancelled 订单从任何确认队列消失（本来 created 就不在队列）。"""
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    r = get_db().cancel_user_payment(pid, uid)
+    if r == "not_found":
+        raise HTTPException(status_code=404, detail="订单不存在")
+    if r == "already":
+        raise HTTPException(status_code=409, detail="订单已处理，无法取消")
+    return {"ok": True, "message": "订单已取消"}
+
+
 @router.get("/auth/payments")
 async def my_payments(request: Request, limit: int = 50):
     """我的充值记录（新→旧）"""

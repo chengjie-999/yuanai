@@ -7,7 +7,7 @@ import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { useTheme } from '../../contexts/ThemeContext'
 import { voiceTtsStream } from '../../api'
-import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks, fmtTokens, fmtCostSmall } from './helpers'
+import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks, fmtTokens } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, DownloadIcon } from '../icons'
 import { ZoomViewer } from './ZoomableImage'
 
@@ -828,8 +828,10 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                   ))}
                 </div>
               ) : null
-            ) : (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? (
-              <details style={{ marginBottom: 8 }}>
+            ) : (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length || msg.usage) ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                {(msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? (
+                <details style={{ flex: '1 1 auto', minWidth: 0 }}>
                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none', outline: 'none' }}>
                   {msg.toolCalls?.length
                     ? `${(msg.reasoning || msg.finalReasoning) ? `思考${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''} · ` : ''}${msg.toolCalls.length} 次工具调用`
@@ -885,7 +887,17 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                     {msg.finalReasoning}
                   </div>
                 )}
-              </details>
+                </details>
+                ) : null}
+                {/* 本次消耗（2026-11-06 用户拍板）：气泡上方与折叠按钮同行；
+                    费用不对普通用户展示（成本是平台口径，我的用量卡/后台可见） */}
+                {msg.usage && (msg.usage.prompt_tokens || msg.usage.completion_tokens) ? (
+                  <span style={{ flexShrink: 0, marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    消耗 {fmtTokens(msg.usage.prompt_tokens + msg.usage.completion_tokens)} tokens
+                    {msg.usage.cache_hit_tokens ? ` · 缓存命中 ${fmtTokens(msg.usage.cache_hit_tokens)}` : ''}
+                  </span>
+                ) : null}
+              </div>
             ) : null}
             {/* HTML 直渲（2026-10-26）：流式期间走纯 markdown（逐 token 正则切分有
                 性能成本），完成后按段切分——```html 围栏与完整 HTML 文档进沙箱
@@ -1014,20 +1026,6 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 {msg.htmls.map((url, j) => (
                   <HtmlFrame key={j} url={url} title={`交互图表 ${j + 1}`} />
                 ))}
-              </div>
-            )}
-            {/* 本次消耗脚注（2026-11-06）：思考时长 · token 消耗 · 计费价成本——
-                Claude Code /cost 风格；usage_event 仅云端直连有，历史消息无数据不显示 */}
-            {!isUser && msg.content && !msg.error && (msg.usage || msg.reasoningTime) && (
-              <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                {msg.reasoningTime ? <span>思考时长 {msg.reasoningTime}s</span> : null}
-                {msg.usage ? (
-                  <span>消耗 {fmtTokens(msg.usage.prompt_tokens + msg.usage.completion_tokens)} tokens
-                    {msg.usage.cache_hit_tokens ? ` · 缓存命中 ${fmtTokens(msg.usage.cache_hit_tokens)}` : ''}
-                  </span>
-                ) : null}
-                {msg.usage && typeof msg.usage.cost === 'number' && msg.usage.cost > 0
-                  ? <span>≈¥{fmtCostSmall(msg.usage.cost)}</span> : null}
               </div>
             )}
             {bubbleActions}

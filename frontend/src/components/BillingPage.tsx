@@ -13,6 +13,7 @@ const C = {
 
 const AMOUNTS = [10, 50, 100]
 const STATUS_LABEL: Record<string, { t: string; c: string }> = {
+  created: { t: '待转账', c: 'var(--text-muted)' },
   pending: { t: '待确认', c: 'var(--warning)' },
   confirmed: { t: '已到账', c: 'var(--success)' },
   rejected: { t: '已驳回', c: 'var(--danger)' },
@@ -109,7 +110,7 @@ export default function BillingPage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  订单号 <b style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>#{order.id}</b> · ¥{order.amount} · 待确认
+                  订单号 <b style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>#{order.id}</b> · ¥{order.amount} · 请转账后提交
                 </div>
                 {qrOk ? (
                   <img src={`/api/v1/payment-qr?t=${order.id}`} alt="收款码"

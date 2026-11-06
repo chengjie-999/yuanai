@@ -48,10 +48,12 @@ async def create_payment(req: PaymentCreate, request: Request):
     if amount not in PAY_AMOUNTS:
         raise HTTPException(status_code=400, detail=f"仅支持以下充值档位：{'/'.join(str(a) for a in PAY_AMOUNTS)} 元")
     db = get_db()
-    pid = db.add_payment(uid, amount, "", status="pending")
+    # created = 订单已生成但用户尚未提交转账（不进管理员确认队列——2026-11-06
+    # 用户拍板「等他提交订单再发送订单确认」）；提交后 → pending 才出现在队列
+    pid = db.add_payment(uid, amount, "", status="created")
     if not pid:
         raise HTTPException(status_code=404, detail="用户不存在")
-    return {"ok": True, "id": pid, "amount": amount, "status": "pending",
+    return {"ok": True, "id": pid, "amount": amount, "status": "created",
             "qr": "/api/v1/payment-qr",
             "message": "请使用微信/支付宝扫描收款码转账，完成后在下方提交转账信息"}
 
@@ -68,11 +70,13 @@ async def submit_payment(pid: int, req: PaymentSubmit, request: Request):
         p = sess.query(PaymentRecord).filter_by(id=pid, user_id=uid).first()
         if not p:
             raise HTTPException(status_code=404, detail="订单不存在")
-        if p.status != "pending":
+        if p.status not in ("created", "pending"):
             raise HTTPException(status_code=400, detail="该订单已处理，请重新生成订单")
         tail = (req.tail or "").strip()
         note = (req.note or "").strip()
         p.note = (f"尾号:{tail[:20]}" + (f" 备注:{note[:100]}" if note else ""))[:200]
+        # 提交转账信息 → 进入管理员确认队列
+        p.status = "pending"
         sess.commit()
     return {"ok": True, "message": "已提交，管理员对账确认后额度到账（通常几分钟内）"}
 

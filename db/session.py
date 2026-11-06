@@ -1055,7 +1055,7 @@ class AgentDatabase:
             p = PaymentRecord(user_id=user_id,
                               amount=Decimal(str(amount)).quantize(Decimal("0.01")),
                               note=(note or "")[:200],
-                              status=status if status in ("confirmed", "pending", "rejected") else "confirmed")
+                              status=status if status in ("confirmed", "pending", "created", "rejected") else "confirmed")
             sess.add(p)
             sess.commit()
             return p.id
@@ -1079,6 +1079,7 @@ class AgentDatabase:
                 return "already"
             if cur == "rejected" and status != "confirmed":
                 return "already"
+            # created 直接确认/驳回：管理员直调 API 的兜底路径（正常流程用户先提交）
             p.status = status
             if note:
                 p.note = (note or "")[:200]

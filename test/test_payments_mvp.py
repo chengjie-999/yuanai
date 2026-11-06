@@ -81,13 +81,17 @@ def test_payment_order_and_confirm_flow(client, db, users):
     r = client.post("/api/v1/auth/payments", json={"amount": 50}, headers=h)
     assert r.status_code == 200
     pid = r.json()["id"]
-    assert r.json()["status"] == "pending"
+    assert r.json()["status"] == "created"  # 生成订单 ≠ 提交转账
+    # created 不进管理员确认队列
+    from db.session import PaymentRecord
+    assert not any(x["id"] == pid for x in db.list_pending_payments())
     # 待确认不计入收款总额
     assert db.user_paid_totals([uid]).get(uid, 0) == 0
-    # 提交转账信息
+    # 提交转账信息 → pending → 出现在队列
     r = client.post(f"/api/v1/auth/payments/{pid}/submit",
                     json={"tail": "8888"}, headers=h)
     assert r.status_code == 200
+    assert any(x["id"] == pid for x in db.list_pending_payments())
     # pending 重复提交 = 更新对账信息（允许）
     r2 = client.post(f"/api/v1/auth/payments/{pid}/submit",
                      json={"tail": "8888", "note": "10:23 转账"}, headers=h)

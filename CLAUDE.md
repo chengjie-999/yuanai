@@ -150,6 +150,15 @@ data/                   数据目录
 - **面板入口规范（2026-10-17 用户拍板，对话中生成的面板统一此形态）**：计划/分析看板/自动化等子页面入口 = **合并框**——左侧彩色「打开面板」按钮 + 右侧明文链接（monospace，点击复制完整 URL，可直接浏览器打开）；子页面窗口（桌面浮窗可拖动+右下角缩放 / 移动全屏浮层 / 浏览器独立路由）三形态布局统一：标题栏只留「返回对话」+ 浏览器式明文地址栏（点击复制）。新增面板入口一律复用 MessageBubble 的 pageLink 合并框渲染
 - **查看器统一规范（2026-11-03 用户拍板「都统一一下」定稿）**：**原则=交互统一一套组件，渲染各自最优**。① 静态视觉内容（图片/图表块/SVG 图形）**点击内容本身放大**（cursor: zoom-in + 悬浮提示），缩放一律走 `ZoomViewport`（`frontend/src/components/chat/ZoomableImage.tsx` 导出）——滚轮以光标为中心/拖拽平移/双击/移动端捏合/比例提示+重置/Esc；② SVG 类（图表/SVG 图形）放大用 `SvgZoomViewer`：SVG **直渲 DOM** + ZoomViewport + **JS 初始适配**（挂载测量 SVG 固有尺寸 → initialScale=min(90vw/宽, 85vh/高, 1)，ZoomViewport 以此为基准缩放，重置也回此值）——**不走 iframe**（独立文档事件不冒泡宿主，缩放失效）；**禁止 CSS 覆盖 SVG 尺寸**（width/height:auto!important 抹掉固有尺寸、无 viewBox 时塌缩成白块——2026-11-03 已踩坑）；直渲安全（innerHTML 注入 script 不执行）；**缩放容器必须占满全屏**（宿主 backdrop 用 `flexDirection:column` + ZoomViewport `flex:1` 高度拉伸——否则容器高度退化为内容高度，放大后上下立即撞边裁剪，「上下区域限制」2026-11-03 已踩坑）③ 交互内容（HTML 渲染块）保留「放大」按钮，iframe 注入 wheel 缩放+双击脚本（body.zoom）；④ **新增查看器一律复用 ZoomViewport/SvgZoomViewer，禁止自带缩放实现**
 
+## UI 实现自检清单（2026-11-06 用户批评「总踩低级陷阱」后立规——新页面/新入口交付前逐项自检）
+
+1. **flex 可滚容器禁用 `justifyContent: center`**——内容溢出时上下同时裁剪、滚不到底部（充值页按钮消失事故）。居中用子元素 `margin: '0 auto'`
+2. **multipart 上传一律走 `uploadFile`/`uploadFileWithProgress`**（api/index.ts 单点）——禁止手写 FormData + fetch，禁止手动带 Content-Type（浏览器自动加 boundary，手动覆盖导致后端 form 解析失败，已踩两次）
+3. **新子页面双形态注册**：App.tsx 页面级路由 + ChatPage resolvePanel 浮窗面板，两个都要注册（/chat/billing 只注册一半致 404 事故）
+4. **图片放大一律复用 ZoomableImage**（ZoomViewport 统一缩放），禁止自写放大弹层
+5. **可滚页面容器**：外层 `overflowY: auto` + 内容 `minHeight: 0`；flex 列布局检查父级是否给了确定高度
+6. 新增端点：middleware 公开/放行白名单、main.py include、gate 登记、测试四件套同批完成
+
 ## 配色与设计规范（2026-10-18 用户拍板：全前端统一，应用界面不搞首页式花哨）
 
 **分层原则**：营销页（LandingPage/登录页）可以花哨——渐变标题、神经元背景、光晕球、玻璃拟态、入场动画；**应用界面（聊天/后台/各面板/设置）一律克制**——纯色分层 + 微交互，不做渐变铺底、不做装饰动画。

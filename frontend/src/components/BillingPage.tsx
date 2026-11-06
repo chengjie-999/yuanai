@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { API_BASE, authHeaders } from '../api'
 import { useIsMobile } from '../hooks/useIsMobile'
+import ZoomableImage from './chat/ZoomableImage'
 
 const C = {
   card: { background: 'var(--bg-primary)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' } as const,
@@ -29,6 +30,7 @@ export default function BillingPage() {
   const [submitMsg, setSubmitMsg] = useState('')
   const [records, setRecords] = useState<any[]>([])
   const [qrOk, setQrOk] = useState(true)
+  const [expandedQr, setExpandedQr] = useState(false)
 
   const load = () => {
     fetch(`${API_BASE}/auth/cost`, { headers: authHeaders() })
@@ -73,8 +75,10 @@ export default function BillingPage() {
   const fmt = (v: number) => (Math.abs(v) < 0.0001 ? '¥0.00' : `${v < 0 ? '-' : ''}¥${Math.abs(v) >= 0.01 ? Math.abs(v).toFixed(2) : String(Number(Math.abs(v).toPrecision(2)))}`)
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', background: 'var(--bg-secondary)', padding: isMobile ? '16px 12px' : '32px 20px', display: 'flex', justifyContent: 'center' }}>
-      <div style={{ maxWidth: 560, width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg-secondary)', padding: isMobile ? '16px 12px' : '28px 20px 40px', display: 'flex' }}>
+      {/* margin auto 居中：flex justifyContent:center 在内容溢出时会上下同时
+          裁剪、滚不到底部按钮（2026-11-06 用户反馈修） */}
+      <div style={{ maxWidth: 560, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* 余额 */}
         <div style={C.card}>
           <div style={C.title}>账户额度</div>
@@ -113,9 +117,17 @@ export default function BillingPage() {
                   订单号 <b style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>#{order.id}</b> · ¥{order.amount} · 请转账后提交
                 </div>
                 {qrOk ? (
-                  <img src={`/api/v1/payment-qr?t=${order.id}`} alt="收款码"
-                    onError={() => setQrOk(false)}
-                    style={{ width: 180, height: 180, margin: '0 auto', borderRadius: 10, border: '1px solid var(--border)', background: '#fff' }} />
+                  <div style={{ textAlign: 'center' }}>
+                    <img src={`/api/v1/payment-qr?t=${order.id}`} alt="收款码"
+                      onError={() => setQrOk(false)}
+                      onClick={() => setExpandedQr(true)}
+                      title="点击放大收款码" aria-label="点击放大收款码"
+                      className="yuan-tip" data-tip="点击放大"
+                      style={{ width: 200, maxWidth: '100%', height: 200, objectFit: 'contain',
+                        borderRadius: 10, border: '1px solid var(--border)', background: '#fff',
+                        cursor: 'zoom-in' }} />
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>点击收款码可放大</div>
+                  </div>
                 ) : (
                   <div style={{ fontSize: 12.5, color: 'var(--warning)', textAlign: 'center', padding: '12px' }}>
                     收款码尚未配置——请联系管理员上传（后台「设置 → 收款码」）
@@ -136,6 +148,11 @@ export default function BillingPage() {
             {submitMsg && <div style={{ fontSize: 12.5, marginTop: 10, color: submitMsg.includes('失败') || submitMsg.includes('仅支持') ? 'var(--danger)' : 'var(--success)' }}>{submitMsg}</div>}
           </div>
         </div>
+
+        {/* 收款码放大（聊天图片同款 ZoomViewport 缩放：滚轮/拖拽/双击/Esc） */}
+        {expandedQr && (
+          <ZoomableImage src={`/api/v1/payment-qr?t=${order?.id ?? 0}`} onClose={() => setExpandedQr(false)} />
+        )}
 
         {/* 充值记录 */}
         <div style={C.card}>

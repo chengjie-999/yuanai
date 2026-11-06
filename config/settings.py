@@ -451,7 +451,13 @@ if not _jwt or _jwt == "change-me-to-a-random-secret":
     if os.getenv("APP_ENV") == "production":
         raise RuntimeError("JWT_SECRET_KEY 未设置，生产环境必须设置此环境变量")
     # 持久化到文件，避免重启后 token 全部失效
-    _secret_file = _Path(__file__).parent / ".jwt_secret"
+    # 2026-11-06 修复：exe 冻结模式 __file__ 在 _MEI 临时解包目录——config/
+    # 目录不是真实文件夹（write_text FileNotFoundError 启动即崩）且临时目录
+    # 退出即清；秘密必须落数据根（与 .env/身份/配置同地，见文件头注释）
+    if getattr(sys, "frozen", False):
+        _secret_file = _Path(frozen_data_root()) / ".jwt_secret"
+    else:
+        _secret_file = _Path(__file__).parent / ".jwt_secret"
     if _secret_file.exists():
         _jwt = _secret_file.read_text(encoding="utf-8").strip()
     else:

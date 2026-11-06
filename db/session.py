@@ -1090,6 +1090,19 @@ class AgentDatabase:
         finally:
             sess.close()
 
+    def get_payment_detail(self, payment_id: int, user_id: int) -> dict | None:
+        """订单详情（归属校验；可点击查看订单信息）"""
+        sess = self.Session()
+        try:
+            p = sess.query(PaymentRecord).filter_by(id=payment_id, user_id=user_id).first()
+            if not p:
+                return None
+            return {"id": p.id, "amount": float(p.amount or 0), "note": p.note or "",
+                    "status": p.status or "confirmed",
+                    "created_at": p.created_at.strftime("%Y-%m-%d %H:%M:%S") if p.created_at else ""}
+        finally:
+            sess.close()
+
     def cancel_user_payment(self, payment_id: int, user_id: int) -> str:
         """用户取消自己的订单（created/pending → cancelled；终态不可取消）。
         返回 "ok" / "not_found" / "already"——与 set_payment_status 同口径。"""
@@ -1107,20 +1120,30 @@ class AgentDatabase:
         finally:
             sess.close()
 
-    def list_pending_payments(self, limit: int = 100) -> list:
-        """后台待确认订单队列（新→旧）"""
+    def list_pending_payments(self, limit: int = 100) -> dict:
+        """后台待确认订单队列（新→旧）。返回 {"pending": [...], "cancelled": [...]}
+        ——用户取消订单时告知管理员（最近 20 条已取消进历史区，灰态展示）。"""
         sess = self.Session()
         try:
+            def _fmt(p, u):
+                return {"id": p.id, "user_id": p.user_id,
+                        "username": u.username if u else str(p.user_id),
+                        "amount": float(p.amount or 0), "note": p.note or "",
+                        "status": p.status or "confirmed",
+                        "created_at": p.created_at.strftime("%Y-%m-%d %H:%M:%S") if p.created_at else ""}
             rows = sess.query(PaymentRecord).filter_by(status="pending") \
                 .order_by(PaymentRecord.id.desc()).limit(limit).all()
-            out = []
+            pending = []
             for p in rows:
                 u = sess.query(User).filter_by(id=p.user_id).first()
-                out.append({"id": p.id, "user_id": p.user_id,
-                            "username": u.username if u else str(p.user_id),
-                            "amount": float(p.amount or 0), "note": p.note or "",
-                            "created_at": p.created_at.strftime("%Y-%m-%d %H:%M:%S") if p.created_at else ""})
-            return out
+                pending.append(_fmt(p, u))
+            cancelled_rows = sess.query(PaymentRecord).filter_by(status="cancelled") \
+                .order_by(PaymentRecord.id.desc()).limit(20).all()
+            cancelled = []
+            for p in cancelled_rows:
+                u = sess.query(User).filter_by(id=p.user_id).first()
+                cancelled.append(_fmt(p, u))
+            return {"pending": pending, "cancelled": cancelled}
         finally:
             sess.close()
 

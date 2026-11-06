@@ -1,11 +1,18 @@
 # -*- coding: utf-8 -*-
-"""盈利 MVP 充值链路（2026-11-06，零资质阶段 0：个人收款码 + 人工确认）
+"""盈利 MVP 充值链路（2026-11-06 用户拍板最终流程）
 
-- POST /auth/payments：创建充值订单（档位金额）→ status=pending
-- POST /auth/payments/{pid}/submit：用户转账后提交转账信息（金额/尾号/时间）
-- GET  /auth/payments：我的充值记录（含状态）
-- POST /admin/payment-qr：管理员上传收款码图片（data/payment_qr.png）
-- GET  /payment-qr：公开收款码（收款码本就公开展示，无敏感信息）
+流程：选择金额 → 前端展示收款码（本地状态）→ 填尾号备注 → **提交订单**
+（此时才创建订单并发送管理员）→ 管理员确认（交易达成，不可取消）。
+中间（提交后/确认前）用户可取消订单——取消会告知管理员（队列历史区可见）。
+可点击查看订单信息（详情端点）。
+
+端点：
+- POST /auth/payments          提交订单：创建 pending（提交成功才创建并发送管理员）
+- GET  /auth/payments          我的充值记录（含状态）
+- GET  /auth/payments/{pid}    订单详情（归属校验）
+- POST /auth/payments/{pid}/cancel  取消订单（pending → cancelled；告知管理员）
+- POST /admin/payment-qr       管理员上传收款码图片（data/payment_qr.png）
+- GET  /payment-qr             公开收款码（收款码本就公开展示，无敏感信息）
 
 后台确认/驳回与待确认队列在 admin/users.py（require_admin 模块内聚）。
 """
@@ -29,62 +36,37 @@ _QR_MAX_BYTES = 2 * 1024 * 1024
 
 class PaymentCreate(BaseModel):
     amount: float = Field(..., gt=0)
-
-
-class PaymentSubmit(BaseModel):
-    # 对账凭证：转账账号尾号（金额=订单金额系统已知、时间=提交时间系统记录，
-    # 用户只需填尾号——2026-11-06 用户拍板）
+    # 对账凭证：转账账号尾号（金额=订单金额系统已知、时间=提交时间系统记录）
     tail: str = Field(..., min_length=3, max_length=20, description="转账账号尾号（如 8888）")
     note: str = Field("", max_length=100, description="补充备注（选填）")
 
 
 @router.post("/auth/payments")
 async def create_payment(req: PaymentCreate, request: Request):
-    """创建充值订单（pending）：选档位 → 得到订单号 → 扫码转账 → submit 填信息"""
+    """提交订单（提交成功才创建订单并发送管理员——2026-11-06 用户拍板）：
+    创建 status=pending，直接进入管理员确认队列。"""
     uid = getattr(request.state, "user_id", None)
     if not uid:
         raise HTTPException(status_code=401, detail="未登录")
     amount = round(req.amount, 2)
     if amount not in PAY_AMOUNTS:
         raise HTTPException(status_code=400, detail=f"仅支持以下充值档位：{'/'.join(str(a) for a in PAY_AMOUNTS)} 元")
+    tail = (req.tail or "").strip()
+    note = (req.note or "").strip()
     db = get_db()
-    # created = 订单已生成但用户尚未提交转账（不进管理员确认队列——2026-11-06
-    # 用户拍板「等他提交订单再发送订单确认」）；提交后 → pending 才出现在队列
-    pid = db.add_payment(uid, amount, "", status="created")
+    pid = db.add_payment(uid, amount,
+                         (f"尾号:{tail[:20]}" + (f" 备注:{note[:100]}" if note else ""))[:200],
+                         status="pending")
     if not pid:
         raise HTTPException(status_code=404, detail="用户不存在")
-    return {"ok": True, "id": pid, "amount": amount, "status": "created",
-            "qr": "/api/v1/payment-qr",
-            "message": "请使用微信/支付宝扫描收款码转账，完成后在下方提交转账信息"}
-
-
-@router.post("/auth/payments/{pid}/submit")
-async def submit_payment(pid: int, req: PaymentSubmit, request: Request):
-    """转账后提交信息（转账金额/尾号/时间）——管理员据此对账确认"""
-    uid = getattr(request.state, "user_id", None)
-    if not uid:
-        raise HTTPException(status_code=401, detail="未登录")
-    from db.session import PaymentRecord
-    db = get_db()
-    with db.session() as sess:
-        p = sess.query(PaymentRecord).filter_by(id=pid, user_id=uid).first()
-        if not p:
-            raise HTTPException(status_code=404, detail="订单不存在")
-        if p.status not in ("created", "pending"):
-            raise HTTPException(status_code=400, detail="该订单已处理，请重新生成订单")
-        tail = (req.tail or "").strip()
-        note = (req.note or "").strip()
-        p.note = (f"尾号:{tail[:20]}" + (f" 备注:{note[:100]}" if note else ""))[:200]
-        # 提交转账信息 → 进入管理员确认队列
-        p.status = "pending"
-        sess.commit()
-    return {"ok": True, "message": "已提交，管理员对账确认后额度到账（通常几分钟内）"}
+    return {"ok": True, "id": pid, "amount": amount, "status": "pending",
+            "message": "订单已提交，管理员对账确认后额度到账（通常几分钟内）"}
 
 
 @router.post("/auth/payments/{pid}/cancel")
 async def cancel_payment(pid: int, request: Request):
-    """用户取消自己的订单（created/pending → cancelled；不进队列不计收款）。
-    「订单直接不发送」：cancelled 订单从任何确认队列消失（本来 created 就不在队列）。"""
+    """用户取消订单（pending → cancelled；确认后交易达成不可取消）。
+    取消会告知管理员：队列历史区可见「已取消」。"""
     uid = getattr(request.state, "user_id", None)
     if not uid:
         raise HTTPException(status_code=401, detail="未登录")
@@ -92,8 +74,8 @@ async def cancel_payment(pid: int, request: Request):
     if r == "not_found":
         raise HTTPException(status_code=404, detail="订单不存在")
     if r == "already":
-        raise HTTPException(status_code=409, detail="订单已处理，无法取消")
-    return {"ok": True, "message": "订单已取消"}
+        raise HTTPException(status_code=409, detail="订单已确认或已取消，无法取消")
+    return {"ok": True, "message": "订单已取消（管理员可见）"}
 
 
 @router.get("/auth/payments")
@@ -103,6 +85,18 @@ async def my_payments(request: Request, limit: int = 50):
     if not uid:
         raise HTTPException(status_code=401, detail="未登录")
     return {"records": get_db().list_payments(uid, limit=min(limit, 200))}
+
+
+@router.get("/auth/payments/{pid}")
+async def payment_detail(pid: int, request: Request):
+    """订单详情（可点击查看订单信息）"""
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    d = get_db().get_payment_detail(pid, uid)
+    if not d:
+        raise HTTPException(status_code=404, detail="订单不存在")
+    return d
 
 
 @router.post("/admin/payment-qr")

@@ -54,18 +54,19 @@ export default function UsersTab() {
   }
   // 盈利 MVP（2026-11-06）：待确认充值队列 + 确认/驳回
   const [pendingPays, setPendingPays] = useState<any[]>([])
+  const [cancelledPays, setCancelledPays] = useState<any[]>([])
   const [pendCount, setPendCount] = useState(0)
   const [showPays, setShowPays] = useState(false)
   const loadPendingPayments = () => {
     fetch(`${API_BASE}/admin/payments/pending`, { headers: headers() })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { setPendingPays(d?.records || []); setPendCount(d?.records?.length || 0); setShowPays(true) })
+      .then((d) => { setPendingPays(d?.pending || []); setCancelledPays(d?.cancelled || []); setPendCount(d?.pending?.length || 0); setShowPays(true) })
       .catch(() => {})
   }
   useEffect(() => {
     fetch(`${API_BASE}/admin/payments/pending`, { headers: headers() })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setPendCount(d?.records?.length || 0))
+      .then((d) => setPendCount(d?.pending?.length || 0))
       .catch(() => {})
   }, [])
   const handlePayAction = async (pid: number, action: 'confirm' | 'reject') => {
@@ -305,6 +306,22 @@ export default function UsersTab() {
               </button>
             </div>
           ))}
+          {/* 已取消历史（用户取消订单在此告知管理员） */}
+          {cancelledPays.length > 0 && (
+            <>
+              <div style={{ padding: '14px 4px 8px', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', borderTop: '1px solid var(--border)' }}>
+                最近取消的订单
+              </div>
+              {cancelledPays.map((p) => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', borderBottom: '1px solid var(--border-light)', fontSize: 12.5, opacity: 0.6 }}>
+                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>¥{p.amount.toFixed(2)}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{p.username}</span>
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, color: 'var(--text-muted)', background: 'var(--bg-tertiary)' }}>已取消</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 11.5, marginLeft: 'auto' }}>{p.created_at?.slice(5, 16)}</span>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </Modal>
 

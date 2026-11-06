@@ -75,45 +75,31 @@ def test_payment_order_and_confirm_flow(client, db, users):
     h, ah = _h(tok), _h(admin_tok)
 
     # 非法档位 → 400
-    r = client.post("/api/v1/auth/payments", json={"amount": 66}, headers=h)
+    r = client.post("/api/v1/auth/payments", json={"amount": 66, "tail": "8888"}, headers=h)
     assert r.status_code == 400
-    # 创建订单
-    r = client.post("/api/v1/auth/payments", json={"amount": 50}, headers=h)
+    # 提交订单（提交成功才创建订单并发送管理员）
+    r = client.post("/api/v1/auth/payments", json={"amount": 50, "tail": "8888"}, headers=h)
     assert r.status_code == 200
     pid = r.json()["id"]
-    assert r.json()["status"] == "created"  # 生成订单 ≠ 提交转账
-    # created 不进管理员确认队列
-    from db.session import PaymentRecord
-    assert not any(x["id"] == pid for x in db.list_pending_payments())
+    assert r.json()["status"] == "pending"
+    # 直接出现在管理员确认队列
+    assert any(x["id"] == pid for x in db.list_pending_payments()["pending"])
     # 待确认不计入收款总额
     assert db.user_paid_totals([uid]).get(uid, 0) == 0
-    # 提交转账信息 → pending → 出现在队列
-    r = client.post(f"/api/v1/auth/payments/{pid}/submit",
-                    json={"tail": "8888"}, headers=h)
-    assert r.status_code == 200
-    assert any(x["id"] == pid for x in db.list_pending_payments())
-    # pending 重复提交 = 更新对账信息（允许）
-    r2 = client.post(f"/api/v1/auth/payments/{pid}/submit",
-                     json={"tail": "8888", "note": "10:23 转账"}, headers=h)
-    assert r2.status_code == 200
     # 缺尾号 → 422
-    assert client.post(f"/api/v1/auth/payments/{pid}/submit",
-                       json={"note": "x"}, headers=h).status_code == 422
+    assert client.post("/api/v1/auth/payments",
+                       json={"amount": 50}, headers=h).status_code == 422
     # 后台确认 → 计入收款
     r = client.post(f"/api/v1/admin/payments/{pid}/confirm", headers=ah)
     assert r.status_code == 200
     assert db.user_paid_totals([uid]).get(uid, 0) == 50.0
-    # 确认后提交 → 400
-    r = client.post(f"/api/v1/auth/payments/{pid}/submit",
-                    json={"tail": "8888"}, headers=h)
-    assert r.status_code == 400
 
 
 def test_payment_reject_flow(client, db, users):
     uid, tok = users["__pay_user__"]
     admin_tok = users["__pay_admin__"][1]
     h, ah = _h(tok), _h(admin_tok)
-    r = client.post("/api/v1/auth/payments", json={"amount": 10}, headers=h)
+    r = client.post("/api/v1/auth/payments", json={"amount": 10, "tail": "8888"}, headers=h)
     pid = r.json()["id"]
     r = client.post(f"/api/v1/admin/payments/{pid}/reject?note=未收到款", headers=ah)
     assert r.status_code == 200
@@ -124,26 +110,22 @@ def test_payment_reject_flow(client, db, users):
 
 
 def test_payment_cancel_flow(client, db, users):
-    """取消订单：created/pending 可取消（终态不可）；取消后不进队列不计收款"""
+    """取消订单（最终流程）：pending 可取消（告知管理员）；终态不可；取消不计收款"""
     uid, tok = users["__pay_user__"]
     ah = _h(users["__pay_admin__"][1])
     h = _h(tok)
-    r = client.post("/api/v1/auth/payments", json={"amount": 50}, headers=h)
+    r = client.post("/api/v1/auth/payments", json={"amount": 50, "tail": "8888"}, headers=h)
     pid = r.json()["id"]
-    # created 直接取消
+    assert any(x["id"] == pid for x in db.list_pending_payments()["pending"])
+    # 取消 → 从待确认消失 + 进已取消历史（告知管理员）
     assert client.post(f"/api/v1/auth/payments/{pid}/cancel", headers=h).status_code == 200
     assert db.user_paid_totals([uid]).get(uid, 0) == 0
+    assert not any(x["id"] == pid for x in db.list_pending_payments()["pending"])
+    assert any(x["id"] == pid for x in db.list_pending_payments()["cancelled"])
     # 已取消再取消 → 409
     assert client.post(f"/api/v1/auth/payments/{pid}/cancel", headers=h).status_code == 409
-    # 新单：提交后（pending）也可取消
-    r2 = client.post("/api/v1/auth/payments", json={"amount": 10}, headers=h)
-    pid2 = r2.json()["id"]
-    client.post(f"/api/v1/auth/payments/{pid2}/submit", json={"tail": "8888"}, headers=h)
-    assert any(x["id"] == pid2 for x in db.list_pending_payments())
-    assert client.post(f"/api/v1/auth/payments/{pid2}/cancel", headers=h).status_code == 200
-    assert not any(x["id"] == pid2 for x in db.list_pending_payments())
     # 已确认订单不可取消
-    r3 = client.post("/api/v1/auth/payments", json={"amount": 10}, headers=h)
+    r3 = client.post("/api/v1/auth/payments", json={"amount": 10, "tail": "8888"}, headers=h)
     pid3 = r3.json()["id"]
     client.post(f"/api/v1/admin/payments/{pid3}/confirm", headers=ah)
     assert client.post(f"/api/v1/auth/payments/{pid3}/cancel", headers=h).status_code == 409
@@ -152,17 +134,29 @@ def test_payment_cancel_flow(client, db, users):
     assert client.post(f"/api/v1/auth/payments/{pid3}/cancel", headers=_h(other)).status_code == 404
 
 
+def test_payment_detail(client, users):
+    """订单详情：归属校验 + 完整信息"""
+    tok = users["__pay_user__"][1]
+    r = client.post("/api/v1/auth/payments", json={"amount": 50, "tail": "8888", "note": "测试"}, headers=_h(tok))
+    pid = r.json()["id"]
+    d = client.get(f"/api/v1/auth/payments/{pid}", headers=_h(tok)).json()
+    assert d["id"] == pid and d["amount"] == 50.0
+    assert "尾号:8888" in d["note"] and "备注:测试" in d["note"]
+    # 他人查看 → 404
+    other = users["__pay_admin__"][1]
+    assert client.get(f"/api/v1/auth/payments/{pid}", headers=_h(other)).status_code == 404
+
+
 def test_payment_ownership(client, users):
     tok = users["__pay_user__"][1]
-    r = client.post("/api/v1/auth/payments", json={"amount": 50}, headers=_h(tok))
+    r = client.post("/api/v1/auth/payments", json={"amount": 50, "tail": "8888"}, headers=_h(tok))
     pid = r.json()["id"]
-    # 别人提交 → 404
+    # 别人取消 → 404
     other = users["__pay_admin__"][1]
-    r2 = client.post(f"/api/v1/auth/payments/{pid}/submit",
-                     json={"tail": "8888"}, headers=_h(other))
+    r2 = client.post(f"/api/v1/auth/payments/{pid}/cancel", headers=_h(other))
     assert r2.status_code == 404
     # 未登录 → 401
-    assert client.post("/api/v1/auth/payments", json={"amount": 50}).status_code == 401
+    assert client.post("/api/v1/auth/payments", json={"amount": 50, "tail": "8888"}).status_code == 401
 
 
 def test_payment_state_machine(client, users, db):
@@ -170,7 +164,7 @@ def test_payment_state_machine(client, users, db):
     rejected 可补确认；重复 reject 409。"""
     uid, tok = users["__pay_user__"]
     ah = _h(users["__pay_admin__"][1])
-    r = client.post("/api/v1/auth/payments", json={"amount": 10}, headers=_h(tok))
+    r = client.post("/api/v1/auth/payments", json={"amount": 10, "tail": "8888"}, headers=_h(tok))
     pid = r.json()["id"]
     # 确认 → 到账
     assert client.post(f"/api/v1/admin/payments/{pid}/confirm", headers=ah).status_code == 200
@@ -180,7 +174,7 @@ def test_payment_state_machine(client, users, db):
     assert client.post(f"/api/v1/admin/payments/{pid}/reject", headers=ah).status_code == 409
     assert db.user_paid_totals([uid]).get(uid, 0) == 10.0
     # 新单：驳回 → 可补确认
-    r2 = client.post("/api/v1/auth/payments", json={"amount": 10}, headers=_h(tok))
+    r2 = client.post("/api/v1/auth/payments", json={"amount": 10, "tail": "8888"}, headers=_h(tok))
     pid2 = r2.json()["id"]
     assert client.post(f"/api/v1/admin/payments/{pid2}/reject", headers=ah).status_code == 200
     assert client.post(f"/api/v1/admin/payments/{pid2}/reject", headers=ah).status_code == 409  # 幂等拒绝

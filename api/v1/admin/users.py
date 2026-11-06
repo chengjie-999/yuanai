@@ -76,7 +76,7 @@ async def list_users(request: Request):
 async def pending_payments(request: Request, limit: int = 100):
     """盈利 MVP：待确认充值订单队列（管理员对账后确认/驳回）"""
     require_admin(request)
-    return {"records": get_db().list_pending_payments(limit=min(limit, 200))}
+    return get_db().list_pending_payments(limit=min(limit, 200))
 
 
 @router.post("/payments/{pid}/confirm")

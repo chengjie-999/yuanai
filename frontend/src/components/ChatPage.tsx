@@ -25,6 +25,7 @@ const BoardLazy = lazy(() => import('../pages/DashboardBoardPage'))
 const DashboardLazy = lazy(() => import('../pages/AnalysisDashboard'))
 const RfmLazy = lazy(() => import('../pages/RFMDashboard'))
 const PlanetLazy = lazy(() => import('../pages/PlanetPage'))
+const BillingLazy = lazy(() => import('./BillingPage'))
 
 // 页面路径 → 懒加载组件 + 标题（浮窗/浮层标题栏与地址栏用）
 function resolvePanel(path: string): { Comp: any; props: any; title: string } | null {
@@ -39,6 +40,7 @@ function resolvePanel(path: string): { Comp: any; props: any; title: string } | 
   if (path.startsWith('/chat/agent/records')) return { Comp: RecordsLazy, props: {}, title: '采集记录' }
   if (path.startsWith('/chat/agent/rfm')) return { Comp: RfmLazy, props: {}, title: 'RFM 大屏' }
   if (path.startsWith('/chat/planet')) return { Comp: PlanetLazy, props: {}, title: '知识星球' }
+  if (path.startsWith('/chat/billing')) return { Comp: BillingLazy, props: {}, title: '充值中心' }
   return null
 }
 

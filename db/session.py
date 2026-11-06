@@ -104,12 +104,15 @@ class AIReport(Base):
 
 
 class PaymentRecord(Base):
-    """收款记录（2026-10-30：逐笔记账，线下收款管理员登记；累计收款 = 各笔之和）"""
+    """收款记录（2026-10-30：逐笔记账，线下收款管理员登记；累计收款 = 各笔之和。
+    MVP（2026-11-06）：status=confirmed 已到账 / pending 用户下单待确认 /
+    rejected 驳回；仅 confirmed 计入收款总额（迁移 0029））"""
     __tablename__ = 'payment_records'
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, nullable=False, index=True)
     amount = Column(Numeric(10, 2), nullable=False)
     note = Column(String(200), nullable=False, server_default='')
+    status = Column(String(16), nullable=False, server_default='confirmed')
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -1039,8 +1042,10 @@ class AgentDatabase:
         finally:
             sess.close()
 
-    def add_payment(self, user_id: int, amount: float, note: str = "") -> int:
-        """登记一笔收款（2026-10-30 逐笔记账）。返回记录 id；用户不存在返回 0。"""
+    def add_payment(self, user_id: int, amount: float, note: str = "",
+                    status: str = "confirmed") -> int:
+        """登记一笔收款（2026-10-30 逐笔记账；MVP status：confirmed/pending/rejected）。
+        返回记录 id；用户不存在返回 0。"""
         from decimal import Decimal
         sess = self.Session()
         try:
@@ -1049,20 +1054,54 @@ class AgentDatabase:
                 return 0
             p = PaymentRecord(user_id=user_id,
                               amount=Decimal(str(amount)).quantize(Decimal("0.01")),
-                              note=(note or "")[:200])
+                              note=(note or "")[:200],
+                              status=status if status in ("confirmed", "pending", "rejected") else "confirmed")
             sess.add(p)
             sess.commit()
             return p.id
         finally:
             sess.close()
 
+    def set_payment_status(self, payment_id: int, status: str, note: str = "") -> bool:
+        """后台确认/驳回收款订单（status: confirmed/rejected）"""
+        sess = self.Session()
+        try:
+            p = sess.query(PaymentRecord).filter_by(id=payment_id).first()
+            if not p:
+                return False
+            p.status = status
+            if note:
+                p.note = (note or "")[:200]
+            sess.commit()
+            return True
+        finally:
+            sess.close()
+
+    def list_pending_payments(self, limit: int = 100) -> list:
+        """后台待确认订单队列（新→旧）"""
+        sess = self.Session()
+        try:
+            rows = sess.query(PaymentRecord).filter_by(status="pending") \
+                .order_by(PaymentRecord.id.desc()).limit(limit).all()
+            out = []
+            for p in rows:
+                u = sess.query(User).filter_by(id=p.user_id).first()
+                out.append({"id": p.id, "user_id": p.user_id,
+                            "username": u.username if u else str(p.user_id),
+                            "amount": float(p.amount or 0), "note": p.note or "",
+                            "created_at": p.created_at.strftime("%Y-%m-%d %H:%M:%S") if p.created_at else ""})
+            return out
+        finally:
+            sess.close()
+
     def list_payments(self, user_id: int, limit: int = 200) -> list:
-        """某用户收款记录（新→旧）"""
+        """某用户收款记录（新→旧，含状态）"""
         sess = self.Session()
         try:
             rows = sess.query(PaymentRecord).filter_by(user_id=user_id) \
                 .order_by(PaymentRecord.id.desc()).limit(limit).all()
             return [{"id": p.id, "amount": float(p.amount or 0), "note": p.note or "",
+                     "status": p.status or "confirmed",
                      "created_at": p.created_at.strftime("%Y-%m-%d %H:%M:%S") if p.created_at else ""}
                     for p in rows]
         finally:
@@ -1082,12 +1121,14 @@ class AgentDatabase:
             sess.close()
 
     def user_paid_totals(self, user_ids: list = None) -> dict:
-        """累计收款按用户聚合（user_ids 为空 = 全部）"""
+        """累计收款按用户聚合（user_ids 为空 = 全部；MVP：仅 confirmed 计入——
+        待确认订单不算已收款，防欠费判定被未到账订单干扰）"""
         from sqlalchemy import func as _func
         sess = self.Session()
         try:
             q = sess.query(PaymentRecord.user_id,
                            _func.sum(PaymentRecord.amount))
+            q = q.filter(PaymentRecord.status == "confirmed")
             if user_ids:
                 q = q.filter(PaymentRecord.user_id.in_(user_ids))
             q = q.group_by(PaymentRecord.user_id)

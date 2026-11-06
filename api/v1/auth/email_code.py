@@ -254,6 +254,13 @@ def email_login(email: str, code: str, agreement_accepted: bool = False) -> dict
             sess.refresh(user)
             is_new = True
             logger.info("邮箱验证码自动注册: username=%s email=%s", username, email)
+            # 盈利 MVP（2026-11-06）：新用户赠送体验额度
+            try:
+                from config.settings import GIFT_AMOUNT
+                if GIFT_AMOUNT > 0:
+                    db.add_payment(user.id, GIFT_AMOUNT, "新用户赠送体验额度", status="confirmed")
+            except Exception:
+                pass
         else:
             is_new = False
             if not user.agreed_at:

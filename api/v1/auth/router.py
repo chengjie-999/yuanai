@@ -83,6 +83,13 @@ def register(req: RegisterRequest, request: Request):
                               display_name=req.display_name or "", role="user")
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+    # 盈利 MVP（2026-11-06）：新用户赠送体验额度（confirmed 收款，计入余额）
+    try:
+        from config.settings import GIFT_AMOUNT
+        if GIFT_AMOUNT > 0:
+            db.add_payment(result["id"], GIFT_AMOUNT, "新用户赠送体验额度", status="confirmed")
+    except Exception:
+        pass
     # 协议留痕（注册即接受）
     try:
         from db.session import User

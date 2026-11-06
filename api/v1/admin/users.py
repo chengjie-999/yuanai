@@ -3,8 +3,11 @@
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Request
+import logging
 from db.session import get_db
 from api.v1.middleware import require_admin
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["admin"])  # 无 prefix：由主 router 统一加 /admin
 
@@ -69,6 +72,33 @@ async def list_users(request: Request):
             "paid": round(paid_totals.get(u.id, 0.0), 2),
             "multiplier": COST_PROFIT_MULTIPLIER,
         } for u in users]
+@router.get("/payments/pending")
+async def pending_payments(request: Request, limit: int = 100):
+    """盈利 MVP：待确认充值订单队列（管理员对账后确认/驳回）"""
+    require_admin(request)
+    return {"records": get_db().list_pending_payments(limit=min(limit, 200))}
+
+
+@router.post("/payments/{pid}/confirm")
+async def confirm_payment(pid: int, request: Request):
+    """确认入账：pending → confirmed（自动计入该用户收款总额，余额即到账）"""
+    require_admin(request)
+    if not get_db().set_payment_status(pid, "confirmed"):
+        raise HTTPException(status_code=404, detail="订单不存在")
+    logger.info("充值订单确认入账: pid=%s", pid)
+    return {"ok": True, "message": "已确认入账，用户额度已到账"}
+
+
+@router.post("/payments/{pid}/reject")
+async def reject_payment(pid: int, request: Request, note: str = ""):
+    """驳回订单：pending → rejected（对账不符/未收到款）"""
+    require_admin(request)
+    if not get_db().set_payment_status(pid, "rejected", note=(note or "对账不符，请联系管理员")[:200]):
+        raise HTTPException(status_code=404, detail="订单不存在")
+    logger.info("充值订单驳回: pid=%s", pid)
+    return {"ok": True, "message": "已驳回"}
+
+
 @router.post("/users/revoke-tokens")
 async def revoke_user_tokens(req: FreezeRequest, request: Request):
     """吊销用户全部 JWT（token_version +1，旧 token 立即失效；S3.4 M7）"""

@@ -46,7 +46,13 @@ function MyUsageCard() {
   const owe = data.paid - data.billed_total < 0
   return (
     <div style={_C.card}>
-      <div style={_C.title}>我的用量 <span style={_C.sub}>— 本人 API 成本（近 30 天）</span></div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={_C.title}>我的用量 <span style={_C.sub}>— 本人 API 成本（近 30 天）</span></div>
+        <a href="/chat/billing" style={{ padding: '5px 14px', marginRight: 14, borderRadius: 999,
+          background: 'var(--accent)', color: '#fff', fontSize: 12.5, fontWeight: 600, textDecoration: 'none' }}>
+          充值
+        </a>
+      </div>
       <div style={{ display: 'flex', padding: '16px 12px' }}>
         {/* 2026-10-30 口径（与用户管理同款）：显示金额 = 收款 − 系数成本，
             欠费红/余额绿 */}
@@ -153,7 +159,7 @@ function AgentDownloadCard() {
         {/* 使用指南（2026-10-30 用户拍板：图形 + yuan/yuancc 终端两套入口） */}
         <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.9 }}>
           <b style={{ color: 'var(--text-primary)' }}>使用指南</b>
-          <div>① <b>图形安装（推荐）</b>：下载最新版本 → 双击运行 → 安装引导中粘贴上方安装码 → 完成（托盘常驻，可开关各 Agent）</div>
+          <div>① <b>图形安装（推荐）</b>：下载默认版本（文件名已内嵌安装码）→ 双击运行 → 自动注册完成（托盘常驻，可开关各 Agent；文件名被改才会弹码框）</div>
           <div>② <b>终端安装（开发者，本机需 Python 3.10+ 环境）</b>：</div>
           <div style={{ fontFamily: 'monospace', fontSize: 11.5, paddingLeft: 18, color: 'var(--text-primary)' }}>
             yuan --install &lt;安装码&gt;&nbsp;&nbsp;注册本机设备（之后 yuan 自动联动云端）

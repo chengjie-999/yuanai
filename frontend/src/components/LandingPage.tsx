@@ -106,6 +106,12 @@ const ENTRIES: { icon: string; title: string; desc: string; to?: string; href?: 
   },
   {
     icon: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3',
+    title: '定制服务',
+    desc: '内容审核 · 数据分析 · 生物信息 · 量化——专业交付，微信详谈',
+    to: '/chat/billing',
+  },
+  {
+    icon: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3',
     title: '下载本机 Agent',
     desc: 'Windows 安装包 · 双击即用 · 托盘常驻',
     href: '/downloads/yuanai-agent.exe',

@@ -52,6 +52,31 @@ export default function UsersTab() {
     if (data.detail) { setError(_detail(data)); return }
     fetchUsers()
   }
+  // 盈利 MVP（2026-11-06）：待确认充值队列 + 确认/驳回
+  const [pendingPays, setPendingPays] = useState<any[]>([])
+  const [pendCount, setPendCount] = useState(0)
+  const [showPays, setShowPays] = useState(false)
+  const loadPendingPayments = () => {
+    fetch(`${API_BASE}/admin/payments/pending`, { headers: headers() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { setPendingPays(d?.records || []); setPendCount(d?.records?.length || 0); setShowPays(true) })
+      .catch(() => {})
+  }
+  useEffect(() => {
+    fetch(`${API_BASE}/admin/payments/pending`, { headers: headers() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setPendCount(d?.records?.length || 0))
+      .catch(() => {})
+  }, [])
+  const handlePayAction = async (pid: number, action: 'confirm' | 'reject') => {
+    const res = await fetch(`${API_BASE}/admin/payments/${pid}/${action}`, { method: 'POST', headers: headers() })
+    const d = await res.json().catch(() => ({}))
+    if (!res.ok) { setError(d.detail || '操作失败'); return }
+    setNotice(d.message || (action === 'confirm' ? '已确认入账' : '已驳回'))
+    loadPendingPayments()
+    fetchUsers()
+  }
+
   // 重置密码（2026-10-30）：新密码由管理员输入，成功后旧会话全部失效
   const handleResetPw = async (userId: number, password: string) => {
     setError('')
@@ -187,6 +212,10 @@ export default function UsersTab() {
           </div>
         )}
         <div style={{ flex: 1 }} />
+        <button onClick={loadPendingPayments}
+          style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--warning)', background: 'none', color: 'var(--warning)', cursor: 'pointer', fontSize: 12.5 }}>
+          充值确认{pendCount > 0 ? `（${pendCount}）` : ''}
+        </button>
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索用户名或 ID..." style={{ ...inputStyle, width: 200 }} />
       </div>
       {loading ? <Spinner /> : (
@@ -254,6 +283,30 @@ export default function UsersTab() {
           </table>
         </Card>
       )}
+
+      {/* 盈利 MVP（2026-11-06）：待确认充值队列——对账后一键确认/驳回 */}
+      <Modal open={showPays} title="充值确认" onClose={() => setShowPays(false)} width={520}>
+        <div style={{ minWidth: 420 }}>
+          {pendingPays.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>暂无待确认的充值订单</div>
+          ) : pendingPays.map((p) => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 4px', borderBottom: '1px solid var(--border-light)', fontSize: 13 }}>
+              <span style={{ fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>¥{p.amount.toFixed(2)}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.username}</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.note}>{p.note || '（未填写转账信息）'}</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{p.created_at?.slice(5, 16)}</span>
+              <button onClick={() => handlePayAction(p.id, 'confirm')}
+                style={{ padding: '4px 12px', borderRadius: 6, border: 'none', background: 'var(--success)', color: '#fff', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}>
+                确认
+              </button>
+              <button onClick={() => handlePayAction(p.id, 'reject')}
+                style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid var(--danger)', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}>
+                驳回
+              </button>
+            </div>
+          ))}
+        </div>
+      </Modal>
 
       {/* 收款子页面（2026-10-30 逐笔记账）：累计收款 + 每笔记录 + 登记/删除 */}
       {payUser && (

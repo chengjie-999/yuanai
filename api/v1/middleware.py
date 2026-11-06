@@ -19,7 +19,8 @@ PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/api/v1/auth/login", 
                  "/api/v1/auth/email-code",   # R1'：邮箱验证码发送（登录前）
                  "/api/v1/auth/email-login",  # R1'：邮箱验证码登录（注册登录合一）
                  "/api/v1/auth/user-avatar",  # 用户头像公开端点（uid 白名单，非敏感）
-                 "/api/v1/share"]  # V1-4 会话分享公开页（用户主动分享产物，含 AI 标识与举报入口）
+                 "/api/v1/share",  # V1-4 会话分享公开页（用户主动分享产物，含 AI 标识与举报入口）
+                 "/api/v1/payment-qr"]  # 收款码（公开展示给用户扫码，非敏感）
 
 
 def is_public(path: str) -> bool:

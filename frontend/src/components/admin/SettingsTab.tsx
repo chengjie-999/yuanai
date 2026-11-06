@@ -220,6 +220,31 @@ export default function SettingsTab() {
           ))}
         </div>
       </Card>
+      {/* 收款码（盈利 MVP 2026-11-06）：管理员上传个人收款码，充值页公开展示 */}
+      <Card>
+        <CardHeader title="收款码" />
+        <div style={{ padding: '10px 20px', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.7 }}>
+          上传微信/支付宝个人收款码图片——用户充值页展示此码扫码转账（≤2MB，支持常见图片格式）。
+        </div>
+        <div style={{ padding: '12px 20px', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input type="file" accept="image/*" onChange={async (e) => {
+            const f = e.target.files?.[0]
+            if (!f) return
+            const fd = new FormData()
+            fd.append('qr', f)
+            const res = await fetch(`${API_BASE}/admin/payment-qr`, { method: 'POST', headers: headers(), body: fd })
+            const d = await safeJson(res)
+            setSmtpMsg('')
+            setTestMsg(res.ok ? '收款码已更新' : (d?.detail || '上传失败'))
+            e.target.value = ''
+          }} style={{ fontSize: 12.5 }} />
+          <img src={`/api/v1/payment-qr?t=${Date.now()}`} alt="收款码预览"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            style={{ width: 100, height: 100, borderRadius: 8, border: '1px solid var(--border)', background: '#fff' }} />
+          <span style={{ fontSize: 12, color: testMsg.includes('失败') ? 'var(--danger)' : 'var(--success)' }}>{testMsg}</span>
+        </div>
+      </Card>
+
       {/* 邮箱验证码登录（R1' 2026-11-05）：SMTP 后台热配置——粘贴邮箱+授权码即生效，
           零服务器操作；授权码加密存储、GET 永不回传；测试发送 60s 冷却 */}
       <Card>

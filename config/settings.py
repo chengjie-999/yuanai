@@ -87,6 +87,8 @@ _DEFAULT_SYSTEM_CONFIG = {
     # 欠费限制门槛（2026-10-30 用户拍板；2026-11-06 改默认 11）：显示金额
     # ≤ -门槛 时限制聊天使用；后台「设置 → 系统参数」可改（0 = 不限制）
     "arrears_limit": 11,
+    # 新用户赠送体验额度（盈利 MVP 2026-11-06）：注册成功自动记一笔 confirmed 收款
+    "gift_amount": 5,
     # 模型定价（dict，空=用内置默认；合并 MODEL_PRICING）
     "model_pricing": {},
     # 助手设定（提示词，模型自知的「可编辑设定」）
@@ -105,7 +107,10 @@ _DEFAULT_SYSTEM_CONFIG = {
                         "不要说「无法给链接」「没有能力生成入口」。"
                         "计划有执行中/排队中任务时聊天页顶部有「后台执行中」指示条；"
                         "分析完成后你的气泡同样自动带看板的「打开面板」按钮。"
-                        "不要编造不存在的标签页或路径；用户设置等其余界面在页面右上角。"),
+                        "不要编造不存在的标签页或路径；用户设置等其余界面在页面右上角。"
+                        "定制服务（盈利方向）：用户咨询内容审核、数据分析、生物信息、量化"
+                        "等领域定制服务时，说明平台提供该方向专业服务（交付走分析/检索/审核"
+                        "工具），可引导用户通过充值中心或微信 17852428208 联系详谈。"),
 }
 
 # 键 → env 名（env 优先链；不在映射的键只走 _system_config）
@@ -127,6 +132,7 @@ _SYS_CONFIG_ENV_MAP = {
     "voice_enabled": "VOICE_ENABLED",
     "cost_profit_multiplier": "COST_PROFIT_MULTIPLIER",
     "arrears_limit": "ARREARS_LIMIT",
+    "gift_amount": "GIFT_AMOUNT",
 }
 
 
@@ -436,6 +442,7 @@ RECYCLE_RETENTION_DAYS = int(os.getenv("RECYCLE_RETENTION_DAYS", "365"))
 # 即欠费满该金额时限制聊天使用并提示缴费；0 = 不限制。
 # 后台「设置 → 系统参数 → 欠费限制」可改（热更新），env ARREARS_LIMIT 可覆盖
 ARREARS_LIMIT = float(_syscfg("arrears_limit"))
+GIFT_AMOUNT = float(_syscfg("gift_amount"))
 
 # ===================== 鉴权配置 =====================
 
@@ -605,7 +612,7 @@ def reload_system_config() -> None:
     global MEMORY_MAX_ITEMS, MEMORY_MAX_CHARS, MEMORY_FOLD_TIMEOUT_S
     global MEMORY_FOLD_DAILY_MAX, MEMORY_ORGANIZE_DELETE_DAILY_MAX
     global REGISTER_OPEN, DAILY_MESSAGE_QUOTA, VOICE_ENABLED, MODEL_PRICING
-    global COST_PROFIT_MULTIPLIER, ARREARS_LIMIT
+    global COST_PROFIT_MULTIPLIER, ARREARS_LIMIT, GIFT_AMOUNT
 
     SYSTEM_CONFIG.clear()
     SYSTEM_CONFIG.update(_load_system_config())
@@ -629,6 +636,7 @@ def reload_system_config() -> None:
     VOICE_ENABLED = bool(_syscfg("voice_enabled"))
     COST_PROFIT_MULTIPLIER = float(_syscfg("cost_profit_multiplier"))
     ARREARS_LIMIT = float(_syscfg("arrears_limit"))
+    GIFT_AMOUNT = float(_syscfg("gift_amount"))
     MODEL_PRICING = dict(_MODEL_PRICING_DEFAULTS)
     try:
         _pricing_env = os.getenv("MODEL_PRICING_JSON", "")

@@ -829,7 +829,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 </div>
               ) : null
             ) : (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length || msg.usage) ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
                 {(msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? (
                 <details style={{ flex: '1 1 auto', minWidth: 0 }}>
                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none', outline: 'none' }}>
@@ -892,7 +892,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 {/* 本次消耗（2026-11-06 用户拍板）：气泡上方与折叠按钮同行；
                     费用不对普通用户展示（成本是平台口径，我的用量卡/后台可见） */}
                 {msg.usage && (msg.usage.prompt_tokens || msg.usage.completion_tokens) ? (
-                  <span style={{ flexShrink: 0, marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  <span style={{ flexShrink: 0, marginLeft: 'auto', marginTop: 1, fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                     消耗 {fmtTokens(msg.usage.prompt_tokens + msg.usage.completion_tokens)} tokens
                     {msg.usage.cache_hit_tokens ? ` · 缓存命中 ${fmtTokens(msg.usage.cache_hit_tokens)}` : ''}
                   </span>

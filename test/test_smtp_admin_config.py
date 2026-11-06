@@ -307,7 +307,9 @@ def test_magic_link_puts_code_in_hash():
     from api.v1.auth.email_code import _magic_link, _code_email_html
     link = _magic_link("to@163.com", "123456")
     # 验证码/邮箱放 hash 片段——不进服务器与 nginx 访问日志（query 会落日志）
-    assert link.startswith("https://cjyuanai.cn/login#")
+    # 域名随 SITE_BASE_URL 配置（本地联调为 localhost）——断言路径与 hash 形态
+    from config.settings import SITE_BASE_URL
+    assert link.startswith(f"{SITE_BASE_URL}/login#")
     assert "code=123456" in link
     assert "email=to%40163.com" in link
     assert "?code=" not in link

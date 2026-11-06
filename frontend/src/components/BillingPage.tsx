@@ -47,6 +47,7 @@ export default function BillingPage() {
     const d = await res.json().catch(() => ({}))
     if (!res.ok) { setSubmitMsg(d.detail || '创建订单失败'); return }
     setOrder(d)
+    setQrOk(true)  // 管理员可能刚上传收款码——重新探测
     load()
   }
 
@@ -106,7 +107,7 @@ export default function BillingPage() {
                   订单号 <b style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>#{order.id}</b> · ¥{order.amount} · 待确认
                 </div>
                 {qrOk ? (
-                  <img src="/api/v1/payment-qr" alt="收款码"
+                  <img src={`/api/v1/payment-qr?t=${order.id}`} alt="收款码"
                     onError={() => setQrOk(false)}
                     style={{ width: 180, height: 180, margin: '0 auto', borderRadius: 10, border: '1px solid var(--border)', background: '#fff' }} />
                 ) : (

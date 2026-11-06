@@ -1062,18 +1062,28 @@ class AgentDatabase:
         finally:
             sess.close()
 
-    def set_payment_status(self, payment_id: int, status: str, note: str = "") -> bool:
-        """后台确认/驳回收款订单（status: confirmed/rejected）"""
+    def set_payment_status(self, payment_id: int, status: str, note: str = "") -> str:
+        """后台确认/驳回收款订单。状态机（2026-11-06 审查加固）：
+        - pending → confirmed / rejected ✓
+        - rejected → confirmed ✓（款后到可补确认）
+        - confirmed → 任何 ✗（已到账不可逆转——防误操作吞掉用户余额）
+        - rejected → rejected ✗（幂等拒绝，需先补确认）
+        返回 "ok" / "not_found" / "already"（已处理，端点映射 404/409）。"""
         sess = self.Session()
         try:
             p = sess.query(PaymentRecord).filter_by(id=payment_id).first()
             if not p:
-                return False
+                return "not_found"
+            cur = p.status or "confirmed"
+            if cur == "confirmed":
+                return "already"
+            if cur == "rejected" and status != "confirmed":
+                return "already"
             p.status = status
             if note:
                 p.note = (note or "")[:200]
             sess.commit()
-            return True
+            return "ok"
         finally:
             sess.close()
 

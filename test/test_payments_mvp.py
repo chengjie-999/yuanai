@@ -130,6 +130,29 @@ def test_payment_ownership(client, users):
     assert client.post("/api/v1/auth/payments", json={"amount": 50}).status_code == 401
 
 
+def test_payment_state_machine(client, users, db):
+    """状态机（审查加固）：confirmed 不可再改（防误操作吞余额）；
+    rejected 可补确认；重复 reject 409。"""
+    uid, tok = users["__pay_user__"]
+    ah = _h(users["__pay_admin__"][1])
+    r = client.post("/api/v1/auth/payments", json={"amount": 10}, headers=_h(tok))
+    pid = r.json()["id"]
+    # 确认 → 到账
+    assert client.post(f"/api/v1/admin/payments/{pid}/confirm", headers=ah).status_code == 200
+    assert db.user_paid_totals([uid]).get(uid, 0) == 10.0
+    # 再确认/再驳回 → 409（金额不变）
+    assert client.post(f"/api/v1/admin/payments/{pid}/confirm", headers=ah).status_code == 409
+    assert client.post(f"/api/v1/admin/payments/{pid}/reject", headers=ah).status_code == 409
+    assert db.user_paid_totals([uid]).get(uid, 0) == 10.0
+    # 新单：驳回 → 可补确认
+    r2 = client.post("/api/v1/auth/payments", json={"amount": 10}, headers=_h(tok))
+    pid2 = r2.json()["id"]
+    assert client.post(f"/api/v1/admin/payments/{pid2}/reject", headers=ah).status_code == 200
+    assert client.post(f"/api/v1/admin/payments/{pid2}/reject", headers=ah).status_code == 409  # 幂等拒绝
+    assert client.post(f"/api/v1/admin/payments/{pid2}/confirm", headers=ah).status_code == 200  # 补确认
+    assert db.user_paid_totals([uid]).get(uid, 0) == 20.0
+
+
 # ---------------- 注册赠送 ----------------
 
 def test_register_gift(client, db, monkeypatch):

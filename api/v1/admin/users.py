@@ -83,8 +83,11 @@ async def pending_payments(request: Request, limit: int = 100):
 async def confirm_payment(pid: int, request: Request):
     """确认入账：pending → confirmed（自动计入该用户收款总额，余额即到账）"""
     require_admin(request)
-    if not get_db().set_payment_status(pid, "confirmed"):
+    _r = get_db().set_payment_status(pid, "confirmed")
+    if _r == "not_found":
         raise HTTPException(status_code=404, detail="订单不存在")
+    if _r == "already":
+        raise HTTPException(status_code=409, detail="该订单已确认入账，不可重复操作")
     logger.info("充值订单确认入账: pid=%s", pid)
     return {"ok": True, "message": "已确认入账，用户额度已到账"}
 
@@ -93,8 +96,11 @@ async def confirm_payment(pid: int, request: Request):
 async def reject_payment(pid: int, request: Request, note: str = ""):
     """驳回订单：pending → rejected（对账不符/未收到款）"""
     require_admin(request)
-    if not get_db().set_payment_status(pid, "rejected", note=(note or "对账不符，请联系管理员")[:200]):
+    _r = get_db().set_payment_status(pid, "rejected", note=(note or "对账不符，请联系管理员")[:200])
+    if _r == "not_found":
         raise HTTPException(status_code=404, detail="订单不存在")
+    if _r == "already":
+        raise HTTPException(status_code=409, detail="该订单已处理，不可重复操作")
     logger.info("充值订单驳回: pid=%s", pid)
     return {"ok": True, "message": "已驳回"}
 

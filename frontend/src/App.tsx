@@ -21,6 +21,7 @@ const AdminPage = lazy(() => import('./components/AdminPage'))
 const UserPage = lazy(() => import('./components/UserPage'))
 const SettingsPage = lazy(() => import('./components/SettingsPage'))
 const AgentPage = lazy(() => import('./components/AgentPage'))
+const BillingPage = lazy(() => import('./components/BillingPage'))
 const AgentAnalysisPage = lazy(() => import('./pages/AgentAnalysisPage'))
 const AgentAutomationPage = lazy(() => import('./pages/AgentAutomationPage'))
 const AgentKnowledgePage = lazy(() => import('./pages/AgentKnowledgePage'))
@@ -198,6 +199,7 @@ function AppLayout() {
             <Route path="/user" element={<UserPage user={user} onLogout={logout} />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/agent" element={<AgentPage userId={user?.id} />} />
+            <Route path="/billing" element={<BillingPage />} />
             <Route path="/agent/analysis" element={<AgentAnalysisPage />} />
             <Route path="/agent/automation" element={<AgentAutomationPage />} />
             <Route path="/agent/knowledge" element={<AgentKnowledgePage />} />

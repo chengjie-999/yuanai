@@ -4,6 +4,16 @@ import { API_BASE, authHeaders, getToken } from '../../api'
 
 export type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean }
 
+/* token 数展示（2026-11-06 用量脚注/上下文徽标）：≥1000 → 1.2K 形态 */
+export function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n)
+}
+
+/* 小额成本展示（2026-11-06 用量脚注）：≥0.01 两位小数，更小保留两位有效数字 */
+export function fmtCostSmall(v: number): string {
+  return v >= 0.01 ? v.toFixed(2) : String(Number(v.toPrecision(2)))
+}
+
 export function addToken(url: string): string {
   if (url.startsWith('data:')) return url
   if (!url.startsWith('/api/v1/')) return url

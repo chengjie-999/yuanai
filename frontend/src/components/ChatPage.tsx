@@ -3,6 +3,7 @@ import { streamChat, createSession, listSessions, ensureMainSession, deleteSessi
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
+import { setContextSid } from './chat/ContextUsageBadge'
 import Modal from './Modal'
 import Sidebar from './chat/Sidebar'
 import ChatView from './chat/ChatView'
@@ -98,6 +99,9 @@ function parseHistory(history: any[]): ChatMessage[] {
 export default function ChatPage({ user }: { user?: any }) {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [currentSid, setCurrentSid] = useState<string>('')
+  // 上下文用量徽标（2026-11-06）：当前会话 id 写入模块级 store → 顶栏徽标
+  // 跟随会话切换刷新
+  useEffect(() => { setContextSid(currentSid) }, [currentSid])
   // 挂载失败兜底（2026-10-22 欢迎页移除后：加载中不再闪欢迎页，接口异常给重试框）
   const [initFailed, setInitFailed] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -209,6 +213,9 @@ export default function ChatPage({ user }: { user?: any }) {
   }, [loading, answerTone])
   // 在途流（P1-1 停止生成/会话切换守卫）：sid + AbortController
   const streamRef = useRef<{ sid: string; controller: AbortController } | null>(null)
+  // 思考时长计时起点（2026-11-06）：发送时刻 → 首个回答 token 的间隔 =
+  // 模型思考+工具执行时长，消息脚注展示（Claude Code 风格）
+  const thinkingStartRef = useRef(0)
   // 会话加载序号（2026-10-19）：快速切换会话时丢弃迟到响应
   const loadSeqRef = useRef(0)
   // 轻提示（handleSend 静默 return 反馈，2s 自动消失）
@@ -239,6 +246,7 @@ export default function ChatPage({ user }: { user?: any }) {
     const finalMsgs = flushVoiceTranscripts(stoppedMsgs)
     saveMessages(s.sid, finalMsgs.map(encodeMsg))
     refreshSessions()
+    window.dispatchEvent(new Event('yuan-ctx-refresh'))  // 上下文用量徽标即时刷新
   }
   // 会话切换/新建/删除守卫：流式进行中先停并保存
   const guardBusySession = (): boolean => {
@@ -596,10 +604,20 @@ ${full}
         }
         return
       }
+      if (event.type === 'usage_event') {
+        // 本次 token 消耗（2026-11-06）：后端 done 前发——挂当前气泡脚注
+        //（思考时长 · 消耗 N tokens · ≈¥成本）；桥接路径无此事件则不显示
+        const u = event.data || {}
+        if (u.prompt_tokens || u.completion_tokens) {
+          setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], usage: { prompt_tokens: u.prompt_tokens || 0, completion_tokens: u.completion_tokens || 0, cache_hit_tokens: u.cache_hit_tokens || 0, cost: u.cost, model: u.model } }; return last })
+        }
+        return
+      }
       if (event.type === 'token') {
         // 时序交叉渲染：首个 token 时把累积思考快照为「最终思考」（回答前展示），
-        // 之后 reasoning 字段复位（下一阶段重新累积）
-        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const firstToken = !last[i].content && !last[i].finalReasoning; last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender) as any, ...(firstToken && last[i].reasoning ? { finalReasoning: last[i].reasoning, reasoning: '' } : {}) } }; return last })
+        // 之后 reasoning 字段复位（下一阶段重新累积）。
+        // 2026-11-06：首个 token 同时结算思考时长（发送 → 首 token 间隔）
+        setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) { const firstToken = !last[i].content && !last[i].finalReasoning; const reasoningTime = firstToken && last[i].reasoningTime === undefined && thinkingStartRef.current ? Math.max(1, Math.round((Date.now() - thinkingStartRef.current) / 1000)) : undefined; last[i] = { ...last[i], content: last[i].content + event.data, sender: (last[i].sender || currentSender) as any, ...(reasoningTime ? { reasoningTime } : {}), ...(firstToken && last[i].reasoning ? { finalReasoning: last[i].reasoning, reasoning: '' } : {}) } }; return last })
       } else if (event.type === 'reasoning') {
         setMessages((prev) => { const last = [...prev]; const i = last.length - 1; if (i >= 0) last[i] = { ...last[i], reasoning: (last[i].reasoning || '') + event.data }; return last })
       } else if (event.type === 'tool_start') {
@@ -757,7 +775,10 @@ ${full}
       // P1-1：断流也落库（此前 onError 不保存，刷新后部分输出丢失）
       if (s) {
         const finalMsgs = flushVoiceTranscripts(restored)
-        saveMessages(s.sid, finalMsgs.map(encodeMsg)).finally(() => refreshSessions())
+        saveMessages(s.sid, finalMsgs.map(encodeMsg)).finally(() => {
+          refreshSessions()
+          window.dispatchEvent(new Event('yuan-ctx-refresh'))
+        })
       }
     }
     return { onEvent, onError }
@@ -792,6 +813,7 @@ ${full}
         ? target
         : chatMode === 'cloud' ? 'orchestrator' : 'local'
     setMessages([...msgs, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
+    thinkingStartRef.current = Date.now()  // 思考时长起点（首个回答 token 结算）
 
     const { onEvent, onError } = makeStreamHandlers(isClaude || (!entMode && !!dmTarget))
     const controller = streamChat(
@@ -816,7 +838,10 @@ ${full}
         // C AI 会话标题：只透传显式 title（新会话首次发送），普通发送不再覆盖标题
         // 会话日期更新（2026-10-19 修复）：等 /chat/save 落库提交后再刷新列表——
         // 此前未 await，列表查询先于保存提交返回旧 update_time，旧对话日期永不更新
-        saveMessages(sid, msgs, title).finally(() => refreshSessions())
+        saveMessages(sid, msgs, title).finally(() => {
+          refreshSessions()
+          window.dispatchEvent(new Event('yuan-ctx-refresh'))  // 上下文用量徽标即时刷新
+        })
         noteLastAssistant(finalMsgs)
       },
     )

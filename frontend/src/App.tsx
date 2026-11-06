@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import AgentStatus from './components/AgentStatus'
 import AnnouncementBar from './components/AnnouncementBar'
+import ContextUsageBadge from './components/chat/ContextUsageBadge'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useAutoRead, toggleAutoRead } from './hooks/useAutoRead'
 import { SpeakerIcon, SpeakerOffIcon } from './components/icons'
@@ -137,6 +138,9 @@ function AppLayout() {
         </nav>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* 上下文用量徽标（2026-11-06）：仅主聊天页显示（ChatPage 挂载写入
+              当前会话 id；独立面板/后台无会话上下文不显示） */}
+          {location.pathname === '/chat' && <ContextUsageBadge />}
           <AutoReadToggle />
           <button onClick={toggleTheme} aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}
             className="theme-toggle yuan-tip yuan-tip-down" data-tip={isDark ? '切换亮色模式' : '切换暗色模式'}

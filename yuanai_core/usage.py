@@ -169,6 +169,9 @@ class UsageTrackingHandler(BaseCallbackHandler):
     def __init__(self, default_model: str = "", default_purpose: str = "chat"):
         self.default_model = default_model or ""
         self.default_purpose = default_purpose or "chat"
+        # 本实例用量累积（2026-11-06）：LLM 实例每请求新建，同实例多轮工具循环
+        # 累加=单请求总量——/stream usage_event 消息脚注「本次消耗」展示用
+        self.last_usage = None
 
     def on_llm_end(self, response, **kwargs) -> None:
         try:
@@ -181,13 +184,53 @@ class UsageTrackingHandler(BaseCallbackHandler):
             params = kwargs.get("invocation_params") or {}
             if isinstance(params, dict):
                 model = str(params.get("model", "") or params.get("model_name", "") or model)
+            cache_hit = _cache_hit_tokens(usage)
+            prev = self.last_usage or {}
+            self.last_usage = {
+                "model": model,
+                "input_tokens": int(prev.get("input_tokens") or 0) + prompt_tokens,
+                "output_tokens": int(prev.get("output_tokens") or 0) + completion_tokens,
+                "cache_hit_tokens": int(prev.get("cache_hit_tokens") or 0) + cache_hit,
+            }
             user_id = current_user_id.get() or 0
             record_usage(user_id, model, self.default_purpose,
                          prompt_tokens, completion_tokens,
-                         source="cloud", cache_hit_tokens=_cache_hit_tokens(usage))
+                         source="cloud", cache_hit_tokens=cache_hit)
         except Exception:
             # 统计回调绝不抛出（langchain 会吞，但双保险）
             pass
+
+
+def accumulate_llm_usage(llm, model: str, input_tokens: int, output_tokens: int,
+                         cache_hit_tokens: int = 0) -> None:
+    """非 langchain 回调通道（DeepSeek 原生 AsyncOpenAI 绕过 on_llm_end）显式
+    累计用量到 llm 挂载的 UsageTrackingHandler.last_usage——/stream usage_event
+    脚注展示用；找不到 handler 静默（本地 Agent 等无展示需求，2026-11-06）"""
+    for cb in getattr(llm, "callbacks", None) or []:
+        if isinstance(cb, UsageTrackingHandler):
+            prev = cb.last_usage or {}
+            cb.last_usage = {
+                "model": model,
+                "input_tokens": int(prev.get("input_tokens") or 0) + int(input_tokens or 0),
+                "output_tokens": int(prev.get("output_tokens") or 0) + int(output_tokens or 0),
+                "cache_hit_tokens": int(prev.get("cache_hit_tokens") or 0) + int(cache_hit_tokens or 0),
+            }
+            return
+
+
+def usage_from_llm(llm) -> dict:
+    """从 LLM 实例 callbacks 里取用量累积（/stream usage_event 用）；
+    无回调或无用量返回 {}（桥接路径等无云端 LLM 的场景）"""
+    total = {"input_tokens": 0, "output_tokens": 0, "cache_hit_tokens": 0, "model": ""}
+    for cb in getattr(llm, "callbacks", None) or []:
+        u = getattr(cb, "last_usage", None)
+        if isinstance(u, dict):
+            for k in ("input_tokens", "output_tokens", "cache_hit_tokens"):
+                total[k] += int(u.get(k) or 0)
+            total["model"] = u.get("model", "") or total["model"]
+    if not total["input_tokens"] and not total["output_tokens"]:
+        return {}
+    return total
 
 
 _handler = UsageTrackingHandler()

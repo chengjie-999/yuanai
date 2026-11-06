@@ -7,7 +7,7 @@ import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { useTheme } from '../../contexts/ThemeContext'
 import { voiceTtsStream } from '../../api'
-import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks } from './helpers'
+import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks, fmtTokens, fmtCostSmall } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, DownloadIcon } from '../icons'
 import { ZoomViewer } from './ZoomableImage'
 
@@ -1014,6 +1014,20 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 {msg.htmls.map((url, j) => (
                   <HtmlFrame key={j} url={url} title={`交互图表 ${j + 1}`} />
                 ))}
+              </div>
+            )}
+            {/* 本次消耗脚注（2026-11-06）：思考时长 · token 消耗 · 计费价成本——
+                Claude Code /cost 风格；usage_event 仅云端直连有，历史消息无数据不显示 */}
+            {!isUser && msg.content && !msg.error && (msg.usage || msg.reasoningTime) && (
+              <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {msg.reasoningTime ? <span>思考时长 {msg.reasoningTime}s</span> : null}
+                {msg.usage ? (
+                  <span>消耗 {fmtTokens(msg.usage.prompt_tokens + msg.usage.completion_tokens)} tokens
+                    {msg.usage.cache_hit_tokens ? ` · 缓存命中 ${fmtTokens(msg.usage.cache_hit_tokens)}` : ''}
+                  </span>
+                ) : null}
+                {msg.usage && typeof msg.usage.cost === 'number' && msg.usage.cost > 0
+                  ? <span>≈¥{fmtCostSmall(msg.usage.cost)}</span> : null}
               </div>
             )}
             {bubbleActions}

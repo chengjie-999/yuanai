@@ -392,6 +392,28 @@ def _env_of(m: dict) -> dict:
             if k in m and m[k] != _ENVELOPE_DEFAULTS[k]}
 
 
+def _usage_event(llm, fallback_model: str = "") -> dict:
+    """本次请求 token 消耗 → usage_event（2026-11-06：消息脚注「本次消耗」展示）。
+    计费价成本 = 模型定价 × 盈利系数（与「我的用量」卡同口径）；
+    桥接路径无云端 LLM 实例 → 空 dict 不发事件。"""
+    from yuanai_core.usage import usage_from_llm, model_cost
+    u = usage_from_llm(llm)
+    if not u:
+        return {}
+    model = u.get("model") or fallback_model
+    try:
+        from config.settings import COST_PROFIT_MULTIPLIER
+        mult = float(COST_PROFIT_MULTIPLIER)
+    except Exception:
+        mult = 1.8
+    cost = round(model_cost(model, u["input_tokens"], u["output_tokens"]) * mult, 4)
+    return {"type": "usage_event",
+            "data": {"prompt_tokens": u["input_tokens"],
+                     "completion_tokens": u["output_tokens"],
+                     "cache_hit_tokens": u["cache_hit_tokens"],
+                     "cost": cost, "model": model}}
+
+
 def _fix_history_for_api(history: list) -> list:
     """清洗历史：工具调用结构（tool_calls/tool）统一扁平化为普通文本。
 
@@ -717,6 +739,11 @@ async def chat_stream(req: ChatRequest, request: Request):
                     if event.get("type") == "tool_start":
                         had_tools = True
                     if event.get("type") == "done":
+                        # 本次 token 消耗（2026-11-06）：消息脚注展示——usage_event
+                        # 必须抢在 done 之前发（前端 done 后不再处理后续事件）
+                        _u = _usage_event(llm, model)
+                        if _u:
+                            yield f"data: {_sse(_u)}\n\n"
                         # 追问预测（2026-10-31 用户拍板）：done 之前发——普通/娱乐对话
                         # 且无工具调用的轮次；前端 done 后不再处理后续事件
                         if full_text and not had_tools:
@@ -884,6 +911,11 @@ async def claude_stream(req: ChatRequest, request: Request):
                         _gate_audit(user_id, event["data"]["gate"], event["data"])
                     if event.get("type") == "token" and isinstance(event.get("data"), str):
                         full_text.append(event["data"])
+                    if event.get("type") == "done":
+                        # 本次 token 消耗（2026-11-06）：同 /stream——done 之前发
+                        _u = _usage_event(llm, model)
+                        if _u:
+                            yield f"data: {_sse(_u)}\n\n"
                     for ui in _ui_events(event):
                         yield f"data: {_sse(ui)}\n\n"
                     yield f"data: {_sse(event)}\n\n"
@@ -912,6 +944,48 @@ async def get_system_prompt(request: Request):
         "self_report_template": SELF_REPORT_TEMPLATE,
         "capability_note": CAPABILITY_NOTE,
     }
+
+
+@router.get("/context-usage")
+async def context_usage(request: Request, sid: str = Query(..., min_length=1)):
+    """上下文用量（2026-11-06）：会话将发给模型的内容 token 估算 vs 模型窗口
+    ——前端聊天页头部指示器（Claude Code /context 风格）。
+    口径与 /stream 组装对齐：system 提示 + 用户记忆 + 最近历史
+    （主对话 60 条截断、小窗 200 条）；仅估内容列（META 思考段不计）。
+    估算非精确计数（纯函数 token_estimate），展示百分比足够。"""
+    uid = _get_user_id(request)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    db = _get_db()
+    _verify_session_owner(db, sid, uid)
+    from db.session import ChatSession, AIChat
+    from sqlalchemy import func
+    from config.settings import CHAT_SYSTEM_PROMPT, DEFAULT_MODEL
+    from yuanai_core.pure.token_estimate import estimate_tokens, model_context_window
+    with db.session() as sess:
+        row = sess.query(ChatSession).filter_by(session_id=sid).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        is_main = bool(row.is_main)
+        hist_limit = 60 if is_main else 200  # 与 /stream 截断口径一致
+        total_cnt = sess.query(func.count(AIChat.id)).filter_by(session_id=sid).scalar() or 0
+        contents = [c for (c,) in sess.query(AIChat.content)
+                    .filter(AIChat.session_id == sid)
+                    .order_by(AIChat.id.desc()).limit(hist_limit).all()]
+    # system 提示 + 用户记忆（/stream 注入点同源）
+    used = estimate_tokens(CHAT_SYSTEM_PROMPT or "")
+    try:
+        mem = db.get_user_memory(uid)
+        if mem:
+            used += estimate_tokens(mem)
+    except Exception:
+        pass
+    used += sum(estimate_tokens(c or "") for c in contents)
+    limit = model_context_window(DEFAULT_MODEL)
+    return {"used": used, "limit": limit,
+            "percent": round(min(used / limit * 100, 100), 1),
+            "model": DEFAULT_MODEL, "history_capped": hist_limit,
+            "truncated": total_cnt > hist_limit}
 
 
 class NewSessionRequest(BaseModel):

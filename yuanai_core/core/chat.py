@@ -250,12 +250,15 @@ async def _deepseek_agent_stream(
             if round_usage is not None:
                 try:
                     from yuanai_core.rag import current_user_id
-                    from yuanai_core.usage import record_usage
+                    from yuanai_core.usage import record_usage, accumulate_llm_usage
+                    _pt = int(getattr(round_usage, "prompt_tokens", 0) or 0)
+                    _ct = int(getattr(round_usage, "completion_tokens", 0) or 0)
+                    _hit = int(getattr(round_usage, "prompt_cache_hit_tokens", 0) or 0)
                     record_usage(current_user_id.get() or 0, model_name, "chat",
-                                 int(getattr(round_usage, "prompt_tokens", 0) or 0),
-                                 int(getattr(round_usage, "completion_tokens", 0) or 0),
-                                 source="cloud",
-                                 cache_hit_tokens=int(getattr(round_usage, "prompt_cache_hit_tokens", 0) or 0))
+                                 _pt, _ct, source="cloud", cache_hit_tokens=_hit)
+                    # usage_event 脚注展示（2026-11-06）：本通道绕过 langchain 回调，
+                    # on_llm_end 不触发——显式累计到 llm 挂载的 handler 上
+                    accumulate_llm_usage(llm, model_name, _pt, _ct, _hit)
                 except Exception:
                     pass
 

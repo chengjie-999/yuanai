@@ -133,6 +133,18 @@ def test_download_exe_with_code_filename(client, db, exe_file, versions_manifest
     assert r.content == b"MZ-fake-exe"
 
 
+def test_download_exe_query_token(client, db, exe_file, versions_manifest, my_code_user):
+    """浏览器导航下载（2026-11-06）：<a href> 带不上 header，token 走 query——
+    中间件 download-exe 白名单；文件名同样内嵌安装码"""
+    uid, code = my_code_user
+    token = _jwt(db, uid)
+    r = client.get(f"/api/v1/agent/download-exe?code={code}&token={token}")
+    assert r.status_code == 200
+    assert f"yuanai-agent-v9.9_{code}.exe" in r.headers.get("content-disposition", "")
+    # 无效 token → 401
+    assert client.get(f"/api/v1/agent/download-exe?code={code}&token=bad").status_code == 401
+
+
 def test_download_exe_code_ownership(client, db, exe_file, versions_manifest, my_code_user):
     uid, code = my_code_user
     h = {"Authorization": f"Bearer {_jwt(db, uid)}"}

@@ -40,6 +40,9 @@ def _extract_token(request: Request) -> str:
     # WebSocket 升级请求无法携带 Authorization header，只能通过 query 参数
     # iframe src 同理（MessageBubble/AnalysisResultView/大屏的 plotly 图表）
     # 知识星球笔记图片/导图原文件同理（<img>/<iframe> 带不上 header，走 ?token=）
+    # Agent exe 下载同理（2026-11-06）：<a href> 浏览器导航下载才有原生进度条，
+    # 带不上 header——token 走 query（与 chat/image 同款先例；文件本身 nginx
+    # 静态可公开，码归属校验在端点内，风险可控）
     if path.startswith("/api/v1/agent/ws") or path.startswith("/api/v1/data/script-html") \
             or path.startswith("/api/v1/data/analysis-html") \
             or path.startswith("/api/v1/data/dashboard-html") \
@@ -49,6 +52,7 @@ def _extract_token(request: Request) -> str:
             or path.startswith("/api/v1/admin/file-media") \
             or path.startswith("/api/v1/chat/image") \
             or path.startswith("/api/v1/knowledge/img") \
+            or path.startswith("/api/v1/agent/download-exe") \
             or (path.startswith("/api/v1/planet/maps") and path.endswith("/origin")):
         return request.query_params.get("token", "")
     return ""

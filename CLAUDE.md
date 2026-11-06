@@ -275,7 +275,7 @@ data/                   数据目录
 2. **mount-only useEffect 冻结 props 闭包**：长生命周期 RTC 回调必须走 `propsRef.current = props` 每帧刷新模式（VoiceCall 已示范），否则 loading 守卫失效、会话反复新建。
 3. **同一数据实体只允许一条写入路径**：新增写路径前先问幂等键在哪。
 4. **工具输出全链路必须有截断上限**（2026-11-03 消息消失事故）：fetch_url 抓 5MB 网页全文 → 云端直连 tool_end 无截断落 META → 击穿 ai_chat.content TEXT(64KB) → /chat/save 500 → 刷新后消息消失。凡新工具先问「最坏输出多大」，回传/落库/塞回模型三处都要截断（chat.py `_cap_tool_output` 20K + crawl.py 50K 双保险，迁移 0026 列扩 MEDIUMTEXT 兜底）。
-5. **前端直链鉴权端点必须走 fetch 带 header，不能 `<a href>`**（2026-11-06 部署事故）：`<a href>` 浏览器导航不带 Authorization header → 登录端点 401「未提供 token」（AgentPage 带码下载全量挂掉）；带鉴权下载统一 `downloadFile`（api/index.ts：fetch+blob+Content-Disposition 解析文件名，token 不进 URL）。静态文件（nginx 直供 /downloads）可保持纯链接。
+5. **大文件下载要浏览器原生进度：`<a href>` 直链 + `?token=` 白名单，不要 fetch+blob**（2026-11-06 两轮踩坑）：`<a href>` 导航不带 Authorization header 会 401；fetch+blob 方案虽能带 header 但整包进内存、无进度反馈（按钮「下载中」期间浏览器毫无动静，200MB exe 体验灾难）。定稿：下载类端点（agent/download-exe）进 middleware `_extract_token` query 白名单（与 chat/image 同款先例），前端 `<a href="...?code=..&token=JWT">` 直链——浏览器下载管理器接管（原生进度条/断点续传/零内存），token 入 URL 是已接受的先例折衷（nginx 日志可见 JWT，勿推广到敏感数据端点）。
 
 ## 后台管理
 

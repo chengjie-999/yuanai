@@ -233,6 +233,27 @@ export async function changePassword(old_password: string, new_password: string)
   return res.json()
 }
 
+// 带鉴权下载（2026-11-06 修复）：<a href> 导航不带 Authorization header——
+// 登录端点 401；改 fetch + blob 触发浏览器下载，token 不进 URL 更安全
+export async function downloadFile(url: string): Promise<void> {
+  const res = await fetch(`${API_BASE}${url}`, { headers: authHeaders() })
+  if (!res.ok) throw new Error(await _errorDetail(res))
+  const blob = await res.blob()
+  // 文件名从 Content-Disposition 解析（后端 download-exe 自定义了带安装码的文件名）
+  let fname = 'download'
+  const cd = res.headers.get('content-disposition') || ''
+  const m = /filename="?([^";]+)"?/.exec(cd)
+  if (m) fname = decodeURIComponent(m[1])
+  const urlObj = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = urlObj
+  a.download = fname
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(urlObj)
+}
+
 // ==================== 统一上传收口（2026-11-06 用户拍板） ====================
 // 全部 multipart 上传走这两个函数——绝不手动带 Content-Type（浏览器自动加
 // multipart boundary；手动设置会覆盖成 JSON 导致后端 form 解析失败，已踩坑

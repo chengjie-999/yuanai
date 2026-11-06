@@ -95,6 +95,19 @@ def test_payment_order_and_confirm_flow(client, db, users):
     assert db.user_paid_totals([uid]).get(uid, 0) == 50.0
 
 
+def test_payment_created_at_beijing_time(client, db, users):
+    """充值时间用北京时间（云服务器时区 UTC——func.now() 曾差 8 小时）"""
+    tok = users["__pay_user__"][1]
+    client.post("/api/v1/auth/payments", json={"amount": 50, "tail": "8888"}, headers=_h(tok))
+    rec = db.list_payments(users["__pay_user__"][0], limit=1)[0]
+    from datetime import datetime
+    from yuanai_core.pure.beijing_time import beijing_now
+    created = datetime.strptime(rec["created_at"], "%Y-%m-%d %H:%M:%S")
+    now = beijing_now()
+    # 与北京时间差 < 5 分钟（UTC 写入会差 8 小时）
+    assert abs((now - created).total_seconds()) < 300
+
+
 def test_payment_reject_flow(client, db, users):
     uid, tok = users["__pay_user__"]
     admin_tok = users["__pay_admin__"][1]

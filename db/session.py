@@ -1047,6 +1047,7 @@ class AgentDatabase:
         """登记一笔收款（2026-10-30 逐笔记账；MVP status：confirmed/pending/rejected）。
         返回记录 id；用户不存在返回 0。"""
         from decimal import Decimal
+        from yuanai_core.pure.beijing_time import beijing_now
         sess = self.Session()
         try:
             user = sess.query(User).filter_by(id=user_id).first()
@@ -1055,7 +1056,10 @@ class AgentDatabase:
             p = PaymentRecord(user_id=user_id,
                               amount=Decimal(str(amount)).quantize(Decimal("0.01")),
                               note=(note or "")[:200],
-                              status=status if status in ("confirmed", "pending", "created", "rejected", "cancelled") else "confirmed")
+                              status=status if status in ("confirmed", "pending", "created", "rejected", "cancelled") else "confirmed",
+                              # 北京时间写入（云服务器时区 UTC——func.now() 差 8 小时，
+                              # 2026-11-06 用户反馈充值时间不对）
+                              created_at=beijing_now())
             sess.add(p)
             sess.commit()
             return p.id

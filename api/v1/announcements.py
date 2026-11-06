@@ -15,6 +15,7 @@ import re
 import threading
 import uuid
 from datetime import datetime
+from yuanai_core.pure.beijing_time import beijing_now
 
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Request
@@ -63,7 +64,8 @@ def add_announcement(title: str, content: str, kind: str = "site",
             "content": content[:2000],
             "kind": kind,  # site / agent
             "version": version[:32],
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            # 北京时间（云服务器时区 UTC——datetime.now() 差 8 小时，2026-11-06 同充值一起修）
+            "created_at": beijing_now().strftime("%Y-%m-%d %H:%M:%S"),
         }
         items = [entry] + items
         items = items[:_MAX_ANNOUNCEMENTS]
@@ -122,7 +124,7 @@ def auto_deploy_announcement() -> None:
             kind="site", version=head[:8])
         os.makedirs(os.path.dirname(state_path), exist_ok=True)
         with open(state_path + ".tmp", "w", encoding="utf-8") as f:
-            json.dump({"last_commit": head, "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}, f)
+            json.dump({"last_commit": head, "updated_at": beijing_now().strftime("%Y-%m-%d %H:%M:%S")}, f)
         os.replace(state_path + ".tmp", state_path)
     except Exception:
         pass  # 部署公告失败不影响启动

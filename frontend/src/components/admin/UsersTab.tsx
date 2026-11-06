@@ -69,8 +69,20 @@ export default function UsersTab() {
       .then((d) => setPendCount(d?.pending?.length || 0))
       .catch(() => {})
   }, [])
-  const handlePayAction = async (pid: number, action: 'confirm' | 'reject') => {
-    const res = await fetch(`${API_BASE}/admin/payments/${pid}/${action}`, { method: 'POST', headers: headers() })
+  const handlePayAction = async (pid: number, action: 'confirm' | 'reject', orderAmount?: number) => {
+    let body: any = undefined
+    if (action === 'confirm' && orderAmount !== undefined) {
+      // 实际到账金额（2026-11-06 用户拍板）：默认订单金额；核对转账与订单金额
+      // 不一致时按实填写——多转多充、少转少充；明显不符走驳回；取消 = 不操作
+      const input = window.prompt(`实际到账金额（元）：\n订单金额 ¥${orderAmount.toFixed(2)}，转账金额与订单不一致时按实填写`, String(orderAmount))
+      if (input === null) return
+      const v = Number(input)
+      if (!(v > 0)) { setError('金额必须大于 0'); return }
+      body = JSON.stringify({ amount: v })
+    }
+    const res = await fetch(`${API_BASE}/admin/payments/${pid}/${action}`, {
+      method: 'POST', headers: headers(), body,
+    })
     const d = await res.json().catch(() => ({}))
     if (!res.ok) { setError(d.detail || '操作失败'); return }
     setNotice(d.message || (action === 'confirm' ? '已确认入账' : '已驳回'))
@@ -296,7 +308,7 @@ export default function UsersTab() {
               <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.username}</span>
               <span style={{ color: 'var(--text-muted)', fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.note}>{p.note || '（未填写转账信息）'}</span>
               <span style={{ color: 'var(--text-muted)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{p.created_at?.slice(5, 16)}</span>
-              <button onClick={() => handlePayAction(p.id, 'confirm')}
+              <button onClick={() => handlePayAction(p.id, 'confirm', p.amount)}
                 style={{ padding: '4px 12px', borderRadius: 6, border: 'none', background: 'var(--success)', color: '#fff', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}>
                 确认
               </button>

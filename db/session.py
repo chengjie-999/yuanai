@@ -1062,7 +1062,8 @@ class AgentDatabase:
         finally:
             sess.close()
 
-    def set_payment_status(self, payment_id: int, status: str, note: str = "") -> str:
+    def set_payment_status(self, payment_id: int, status: str, note: str = "",
+                           amount: float = None) -> str:
         """后台确认/驳回收款订单。状态机（2026-11-06 审查加固）：
         - pending → confirmed / rejected ✓
         - rejected → confirmed ✓（款后到可补确认）
@@ -1085,6 +1086,11 @@ class AgentDatabase:
             p.status = status
             if note:
                 p.note = (note or "")[:200]
+            # 实际到账金额（2026-11-06 用户拍板：管理员核对转账与订单金额不一致时
+            # 按实入账——多转多充、少转少充；明显不符走驳回）
+            if amount is not None and amount > 0:
+                from decimal import Decimal
+                p.amount = Decimal(str(round(amount, 2))).quantize(Decimal("0.01"))
             sess.commit()
             return "ok"
         finally:

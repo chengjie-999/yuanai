@@ -159,6 +159,27 @@ def test_payment_ownership(client, users):
     assert client.post("/api/v1/auth/payments", json={"amount": 50, "tail": "8888"}).status_code == 401
 
 
+def test_confirm_with_custom_amount(client, db, users):
+    """实际到账金额：管理员核对转账与订单不一致时按实入账（多转多充）"""
+    uid, tok = users["__pay_user__"]
+    ah = _h(users["__pay_admin__"][1])
+    r = client.post("/api/v1/auth/payments", json={"amount": 50, "tail": "8888"}, headers=_h(tok))
+    pid = r.json()["id"]
+    # 实收 100（多转）→ 按 100 入账
+    r = client.post(f"/api/v1/admin/payments/{pid}/confirm", json={"amount": 100}, headers=ah)
+    assert r.status_code == 200
+    assert db.user_paid_totals([uid]).get(uid, 0) == 100.0
+    # 留空 body → 按订单金额
+    r2 = client.post("/api/v1/auth/payments", json={"amount": 10, "tail": "8888"}, headers=_h(tok))
+    pid2 = r2.json()["id"]
+    assert client.post(f"/api/v1/admin/payments/{pid2}/confirm", headers=ah).status_code == 200
+    assert db.user_paid_totals([uid]).get(uid, 0) == 110.0
+    # 非法金额 → 422
+    r3 = client.post("/api/v1/auth/payments", json={"amount": 10, "tail": "8888"}, headers=_h(tok))
+    pid3 = r3.json()["id"]
+    assert client.post(f"/api/v1/admin/payments/{pid3}/confirm", json={"amount": -5}, headers=ah).status_code == 422
+
+
 def test_payment_state_machine(client, users, db):
     """状态机（审查加固）：confirmed 不可再改（防误操作吞余额）；
     rejected 可补确认；重复 reject 409。"""

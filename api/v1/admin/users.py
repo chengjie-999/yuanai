@@ -79,11 +79,19 @@ async def pending_payments(request: Request, limit: int = 100):
     return get_db().list_pending_payments(limit=min(limit, 200))
 
 
+class PaymentConfirmBody(BaseModel):
+    # 实际到账金额（2026-11-06 用户拍板）：管理员核对转账与订单金额不一致时按实
+    # 入账——多转多充、少转少充；留空 = 按订单金额；明显不符请走驳回
+    amount: float | None = Field(None, gt=0, le=100000)
+
+
 @router.post("/payments/{pid}/confirm")
-async def confirm_payment(pid: int, request: Request):
-    """确认入账：pending → confirmed（自动计入该用户收款总额，余额即到账）"""
+async def confirm_payment(pid: int, request: Request, body: PaymentConfirmBody = None):
+    """确认入账：pending → confirmed（自动计入该用户收款总额，余额即到账）。
+    可指定实际到账金额（与订单不符时按实入账）。"""
     require_admin(request)
-    _r = get_db().set_payment_status(pid, "confirmed")
+    _r = get_db().set_payment_status(pid, "confirmed",
+                                     amount=(body.amount if body else None))
     if _r == "not_found":
         raise HTTPException(status_code=404, detail="订单不存在")
     if _r == "already":

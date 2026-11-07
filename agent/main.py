@@ -58,16 +58,55 @@ def load_identity() -> dict:
 # yuanai-agent-v{版本}_{安装码}.exe → 首启从自身文件名解析 → 静默注册；
 # 文件名被改/码失效 → 输码弹窗兜底
 _EXE_CODE_RE = re.compile(r"yuanai-agent-v[\w.\-]+_([A-Z0-9][A-Z0-9\-]{5,63})\.exe$", re.IGNORECASE)
+_EXE_SETUP_CODE_RE = re.compile(r"yuanai-agent-setup-v[\w.\-]+_([A-Z0-9][A-Z0-9\-]{5,63})\.exe$", re.IGNORECASE)
+# install_code.txt 里的码：YUAN-XXXX-XXXX-XXXX（完整校验，防坏文件注入）
+_INSTALL_CODE_RE = re.compile(r"^YUAN-[A-Z0-9][A-Z0-9\-]{5,63}$")
+
+# 安装码文件（2026-11-07 企业级安装器/引导程序写入）：exe 冻结模式 = 数据根
+# %LOCALAPPDATA%\XiaoYuanAI\install_code.txt（安装器/bootstraper 同地写）；
+# 源码模式 = 项目根（本地联调）
+def _install_code_file() -> str:
+    if getattr(sys, "frozen", False):
+        from utils.data_path import frozen_data_root
+        return os.path.join(frozen_data_root(), "install_code.txt")
+    return os.path.join(root_path(), "install_code.txt")
 
 
 def install_code_from_exe_name() -> str:
     """从自身 exe 文件名解析安装码（sys.executable 与 argv[0] 双查——快捷方式
-    启动时 argv[0] 可能已改名，安装目录里的真实 exe 名才是下载原名）"""
+    启动时 argv[0] 可能已改名，安装目录里的真实 exe 名才是下载原名）；
+    兼容裸 exe 与 setup 安装器两种文件名"""
     for candidate in (getattr(sys, "executable", ""), sys.argv[0] if sys.argv else ""):
-        m = _EXE_CODE_RE.search(os.path.basename(candidate or ""))
-        if m:
-            return m.group(1).upper()
+        base = os.path.basename(candidate or "")
+        for pat in (_EXE_CODE_RE, _EXE_SETUP_CODE_RE):
+            m = pat.search(base)
+            if m:
+                return m.group(1).upper()
     return ""
+
+
+def install_code_from_file() -> str:
+    """读安装码文件（免输码链路第二步，2026-11-07）：Inno 安装器 / bootstrap
+    在安装时把码写进数据根 install_code.txt——安装后 exe 名固定为
+    「小元AI Agent.exe」（不含码），首启读文件静默注册；读不到返回空"""
+    try:
+        with open(_install_code_file(), "r", encoding="utf-8") as f:
+            code = (f.read() or "").strip().upper()
+        if _INSTALL_CODE_RE.fullmatch(code):
+            return code
+    except Exception:
+        pass
+    return ""
+
+
+def clear_install_code_file() -> None:
+    """注册成功后清理码文件（码一次消费；防旧码干扰重装/换码）"""
+    try:
+        p = _install_code_file()
+        if os.path.isfile(p):
+            os.remove(p)
+    except Exception:
+        pass
 
 
 def register_device(server_url: str, install_code: str) -> dict:

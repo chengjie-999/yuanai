@@ -363,11 +363,14 @@ async def agent_downloads(request: Request):
 
 @router.get("/download-exe")
 async def agent_download_exe(request: Request, code: str = ""):
-    """T2 免输码自动注册（2026-11-06）：带码下载——文件名内嵌预绑定安装码
-    yuanai-agent-v{版本}_{安装码}.exe，Agent 首启从自身文件名解析静默注册。
+    """T2 免输码自动注册（2026-11-06）+ 企业级安装器（2026-11-07）：
+    带码下载时若该版本有 setup 安装器（清单 installer 标记 + 同目录
+    yuanai-agent-setup-v{版本}.exe），发安装器——文件名内嵌安装码，安装
+    向导读自身文件名提取码写 install_code.txt（免输码链路第一步）；
+    无安装器退回裸 exe 带码文件名（旧链路）；无码仍发裸 exe 原名（更新）。
 
     安全：码必须预绑定当前登录用户（my-code/后台签发时 user_id 归属）；
-    文件本身是静态目录同一份 exe，仅 Content-Disposition 文件名不同——
+    文件本身是静态目录同一份，仅 Content-Disposition 文件名不同——
     不扩大暴露面（码本就一次消费）。"""
     uid = getattr(request.state, "user_id", None)
     if not uid:
@@ -390,7 +393,15 @@ async def agent_download_exe(request: Request, code: str = ""):
     fpath = os.path.join(_downloads_dir(), "versions", default["filename"])
     if not os.path.isfile(fpath):
         raise HTTPException(status_code=404, detail="版本文件不存在")
-    fname = default["filename"] if not code else         f"yuanai-agent-v{default['version']}_{code}.exe"
+    fname = default["filename"]
+    if code:
+        setup_name = default["filename"].replace("yuanai-agent-v", "yuanai-agent-setup-v", 1)
+        setup_path = os.path.join(_downloads_dir(), "versions", setup_name)
+        if os.path.isfile(setup_path):
+            fpath = setup_path
+            fname = f"yuanai-agent-setup-v{default['version']}_{code}.exe"
+        else:
+            fname = f"yuanai-agent-v{default['version']}_{code}.exe"
     from fastapi.responses import FileResponse
     return FileResponse(fpath, media_type="application/octet-stream",
                         filename=fname)

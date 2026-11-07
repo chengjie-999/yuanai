@@ -346,6 +346,16 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **V1-3 记忆条目事件化（2abf23d）**：facts.jsonl v3（id/session_id/turn/supersedes 链/last_hit/hit_count/status）；只归档不删除（delete/rewrite/apply 移除行 archived）；淘汰三步 run_maintenance（superseded 7 天/零命中 90 天/相似 0.9 冲突队列 conflicts.jsonl）；注入点 mark_hit（60s 节流）；RLock 防死锁
 - **T2 免输码自动注册**：`GET /api/v1/agent/download-exe?code=` 文件名内嵌预绑定安装码（码归属校验），Agent 首启从自身 exe 文件名解析静默注册（register_device），输码弹窗仅兜底；AgentPage 下载按钮有码时自动走带码下载
 
+## 企业级安装器（2026-11-07 立项落地，设计 plans/agent-installer-enterprise.md）
+
+- **双产物打包**：`scripts/build_agent.py <版本号>` 现在产出两个文件——裸 exe `yuanai-agent-v{版本}.exe`（自动更新用）+ Inno Setup 安装器 `yuanai-agent-setup-v{版本}.exe`（用户下载用）；`--upload` 自动先传 exe 再传 setup（`kind=setup` 表单字段，须同版本 exe 已存在）
+- **安装器**（`agent/installer/yuanai_agent.iss`，ISCC 编译，路径探测 env `INNO_ISCC` > 常见目录 > D:\installed）：AppId 固定 GUID（升级=覆盖安装）；per-user 免 UAC（{localappdata}\XiaoYuanAI\bin\小元AI Agent.exe，与 bootstrap 布局一致——`is_frozen_in_install_dir` 判定不破）；协议页（docs/agreements/用户协议.txt，build 时由 .md 剥 markdown 生成）；开始菜单/桌面快捷方式；控制面板卸载（先 taskkill 托盘进程、数据默认保留、确认后才删）
+- **免输码链路三顺位**（码一次消费，注册成功即清码文件）：① 安装器读自身文件名（`ParamStr(0)`，**Inno 会复制到临时目录执行、扩展名变 .tmp——按第一个点截断**；签名的内容不变故文件名可带码）→ 写 `%LOCALAPPDATA%\XiaoYuanAI\install_code.txt` ② 裸 exe 文件名内嵌码（旧链路；bootstrap 改名前把码带进码文件，`_carry_install_code`）③ 输码弹窗兜底。tray 首启优先级 = 码文件 > exe 文件名 > 弹窗
+- **下载端点**：有码且该版本存在 setup 文件 → 发安装器（文件名 `yuanai-agent-setup-v{版本}_{码}.exe`）；无 setup → 裸 exe 带码名（旧链路）；无码 → 裸 exe 原名
+- **.iss 踩坑**（编译过三关才过）：AppId 花括号内不能嵌 ISPP 宏（`{{#GUID}` 两种闭合都实测编译失败，硬编码）；Pascal `{}` 注释内不能出现花括号字符（`{版本}`/「}」都会把注释提前截断 → 语法错误）；LicenseFile 相对路径按「cwd/脚本目录」解析不一致——用 `..\..` 两级上跳两种基准都对；中文路径需 .iss UTF-8 BOM（否则 ISCC 按 ANSI 误读）
+- **测试**：test_agent_install_code.py 4 项 + test_agent_code_download.py setup 分支；真机模拟（静默安装/码提取/静默卸载/数据保留）全通——**静默参数必须经 Python subprocess 直发，Git Bash 会把 /VERYSILENT 转义坏掉**
+- **SmartScreen**：暂不买证书（下载页指引「更多信息→仍要运行」），EV 证书挂账（有营业执照后对安装器+exe 双签名根治）
+
 ## 第三批（2026-11-06：N3 三态 / N1 多设备 / V1-4 分享）
 
 - **N3 云端/本地三态（f2a8b79）**：ChatRequest.chat_backend（auto/cloud/local）；cloud 跳过桥接、local 离线 SSE 报错不回退；用户命令 route_chat_backend 关键词判定 → backend_event；模型工具 set_chat_backend（L1）拦截发事件；前端输入区「云端/自动/本机」分段开关（localStorage 持久化）；_bridge_sse prefix_events 列表

@@ -6,6 +6,7 @@ Content-Disposition 文件名）；register_device 静默注册（mock 云端）
 import io
 import json
 import secrets
+from pathlib import Path
 
 import pytest
 
@@ -131,6 +132,26 @@ def test_download_exe_with_code_filename(client, db, exe_file, versions_manifest
     cd = r.headers.get("content-disposition", "")
     assert f"yuanai-agent-v9.9_{code}.exe" in cd
     assert r.content == b"MZ-fake-exe"
+
+
+def test_download_exe_setup_branch(client, db, exe_file, versions_manifest, my_code_user):
+    """企业级安装器（2026-11-07）：版本有 setup 时带码下载发安装器——
+    文件名内嵌码（安装向导读自身文件名提取）；无 setup 退回裸 exe 带码名"""
+    uid, code = my_code_user
+    h = {"Authorization": f"Bearer {_jwt(db, uid)}"}
+    setup = Path(str(exe_file)) / "downloads" / "versions" / "yuanai-agent-setup-v9.9.exe"
+    setup.write_bytes(b"MZ-fake-setup")
+    r = client.get(f"/api/v1/agent/download-exe?code={code}", headers=h)
+    assert r.status_code == 200
+    assert r.content == b"MZ-fake-setup"
+    cd = r.headers.get("content-disposition", "")
+    assert f"yuanai-agent-setup-v9.9_{code}.exe" in cd
+    # 删掉 setup → 退回裸 exe 带码文件名（旧链路）
+    setup.unlink()
+    r2 = client.get(f"/api/v1/agent/download-exe?code={code}", headers=h)
+    assert r2.status_code == 200
+    assert r2.content == b"MZ-fake-exe"
+    assert f"yuanai-agent-v9.9_{code}.exe" in r2.headers.get("content-disposition", "")
 
 
 def test_download_exe_query_token(client, db, exe_file, versions_manifest, my_code_user):

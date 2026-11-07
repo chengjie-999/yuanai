@@ -73,3 +73,6 @@ downloads/version.json
 downloads/yuanai-agent.exe
 downloads/*.uploading
 downloads/versions/
+
+# 安装器协议页纯文本（build_agent.py 每次由 用户协议.md 生成，不入库）
+docs/agreements/用户协议.txt

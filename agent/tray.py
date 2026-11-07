@@ -748,17 +748,21 @@ def main():
     )
     logging.getLogger("websockets").setLevel(logging.WARNING)
 
-    # 傻瓜引导（T2 2026-11-06）：无身份时先试文件名内嵌安装码静默注册
-    # （零输码零弹窗），失败/无码才弹输码窗兜底；注册失败/取消则退出
-    from agent.main import load_identity, install_code_from_exe_name, register_device
+    # 傻瓜引导（T2 2026-11-06 + 安装器 2026-11-07）：无身份时按优先级静默注册
+    # ① install_code.txt（安装器/引导程序写入）② exe 文件名内嵌码
+    # ③ 输码弹窗兜底——零输码零弹窗；注册失败/取消则退出
+    from agent.main import (load_identity, install_code_from_exe_name,
+                            install_code_from_file, clear_install_code_file,
+                            register_device)
     identity = load_identity()
     if not identity.get("agent_id") or not identity.get("agent_secret"):
-        code = install_code_from_exe_name()
+        code = install_code_from_file() or install_code_from_exe_name()
         if code:
             try:
                 register_device(args.server_url, code)
+                clear_install_code_file()  # 码一次消费，注册成功即清
                 identity = load_identity()
-                logger.info("已从下载文件名自动注册: %s", code[:8] + "***")
+                logger.info("已自动注册（安装码 %s）", code[:8] + "***")
                 try:
                     import tkinter.messagebox as _mb
                     _mb.showinfo("注册成功", "本机 Agent 已自动注册并开始运行！\n\n图标会常驻任务栏右下角。")

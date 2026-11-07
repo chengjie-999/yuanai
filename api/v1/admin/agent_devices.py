@@ -104,20 +104,34 @@ async def mint_agent_token(req: AgentTokenRequest, request: Request):
         return {"token": token, "user_id": user.id, "expires_days": req.expires_days}
 @router.post("/agent-exe-upload")
 async def upload_agent_exe(request: Request, version: str = Form(""), note: str = Form(""),
-                           file: UploadFile = File(...)):
+                           kind: str = Form("exe"), file: UploadFile = File(...)):
     """上传本地 Agent 安装包（仅 admin）——多版本保留（2026-10-30）：
     写入 downloads/versions/yuanai-agent-v{version}.exe 并追加 versions.json 清单，
     不再覆盖旧版本；同版本号上传 = 覆盖该版本（修正重新打包）。
     version.json 同步指向默认版本（客户端自动更新零改动）。
-    命名与本地打包脚本 scripts/build_agent.py 产物一致（统一规范）。"""
+    命名与本地打包脚本 scripts/build_agent.py 产物一致（统一规范）。
+
+    kind=setup（2026-11-07 企业级安装器）：上传 Inno Setup 安装器
+    （yuanai-agent-setup-v{version}.exe，依附同版本安装包，须先传 exe）——
+    清单条目标 installer=True，带码下载时发安装器；自动更新链路不受影响。"""
     require_admin(request)
     version = version.strip() or datetime.now().strftime("%Y%m%d-%H%M%S")
     if not _VERSION_NAME_RE.match(version):
         raise HTTPException(status_code=400, detail="版本号仅限字母/数字/._-（≤32 字符）")
     if not (file.filename or "").lower().endswith(".exe"):
         raise HTTPException(status_code=400, detail="仅支持 .exe 安装包")
+    is_setup = (kind or "").strip().lower() == "setup"
 
-    exe_path = os.path.join(_versions_dir(), f"yuanai-agent-v{version}.exe")
+    data = _load_versions()
+    if is_setup:
+        # 安装器依附同版本安装包：无对应 exe 条目的版本拒绝（否则默认指向
+        # 安装器，自动更新链路会被打断）
+        if not any(v["version"] == version for v in data["versions"]):
+            raise HTTPException(status_code=400, detail="请先上传同版本安装包（exe）再传安装器")
+
+    target_name = (f"yuanai-agent-setup-v{version}.exe" if is_setup
+                   else f"yuanai-agent-v{version}.exe")
+    exe_path = os.path.join(_versions_dir(), target_name)
     tmp_path = exe_path + ".uploading"
 
     # 流式分块写入（200MB 级文件不占内存）+ 同步计算 sha256（S1.7，不二次读盘）
@@ -139,7 +153,14 @@ async def upload_agent_exe(request: Request, version: str = Form(""), note: str 
             raise HTTPException(status_code=400, detail="文件为空")
 
         os.replace(tmp_path, exe_path)
-        data = _load_versions()
+        if is_setup:
+            for v in data["versions"]:
+                if v["version"] == version:
+                    v["installer"] = True
+                    break
+            _save_versions(data)
+            return {"ok": True, "version": version, "size": size,
+                    "sha256": hasher.hexdigest(), "kind": "setup"}
         entry = {"version": version, "filename": f"yuanai-agent-v{version}.exe",
                  "size": size, "sha256": hasher.hexdigest(),
                  "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

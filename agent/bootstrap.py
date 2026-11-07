@@ -80,6 +80,26 @@ def _migrate_old_env(install_dir: str) -> bool:
         return False
 
 
+def _carry_install_code() -> None:
+    """免输码衔接（2026-11-07）：bootstrap 会把 exe 复制并改名为固定名
+    「小元AI Agent.exe」——原文件名里的安装码会丢。改名前把码写进数据根
+    install_code.txt（安装后首启读文件静默注册）；已有码文件不覆盖。"""
+    from agent.main import install_code_from_exe_name
+    code = install_code_from_exe_name()
+    if not code:
+        return
+    from utils.data_path import frozen_data_root
+    target = os.path.join(frozen_data_root(), "install_code.txt")
+    if os.path.isfile(target):
+        return
+    try:
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "w", encoding="utf-8") as f:
+            f.write(code)
+    except Exception:
+        pass
+
+
 def run_install_bootstrap() -> None:
     """安装引导主流程：弹窗 → 安装 → 启动新副本。用户取消 → sys.exit(0)"""
     import tkinter as tk
@@ -109,6 +129,9 @@ def run_install_bootstrap() -> None:
     # 已在标准位置（重复安装）→ 直接启动
     if os.path.abspath(sys.executable) == os.path.abspath(target_exe):
         return
+
+    # 免输码衔接：改名复制前把文件名里的安装码写进数据根（首启静默注册）
+    _carry_install_code()
 
     try:
         _copy_self(target_exe)

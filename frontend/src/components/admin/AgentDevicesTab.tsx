@@ -359,7 +359,7 @@ export default function AgentDevicesTab() {
             }}
           >
             <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              <b style={{ color: 'var(--text-primary)' }}>把安装器 yuanai-agent-setup-v{版本}.exe 拖到这里</b>（或点击选择，可选）
+              <b style={{ color: 'var(--text-primary)' }}>把安装器 yuanai-agent-setup-v版本.exe 拖到这里</b>（或点击选择，可选）
             </div>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>

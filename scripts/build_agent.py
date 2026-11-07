@@ -115,27 +115,71 @@ def _set_agent_version(version: str):
     return src
 
 
+class _ProgressFile:
+    """上传进度包装（2026-11-07 修复 AI 上传链路）：200MB 家宽上行要几分钟，
+    无进度反馈会被误判卡死；requests 读文件时按 10MB 粒度打印进度+速率。"""
+
+    def __init__(self, f, label: str):
+        self._f = f
+        self._label = label
+        self._total = os.path.getsize(f.name)
+        self._sent = 0
+        self._t0 = None
+        self._last_pct = -1
+
+    def read(self, n: int = -1):
+        import time as _time
+        if self._t0 is None:
+            self._t0 = _time.time()
+        data = self._f.read(n)
+        self._sent += len(data)
+        pct = int(self._sent * 100 / max(self._total, 1))
+        if pct >= self._last_pct + 10 or self._sent >= self._total:
+            speed = self._sent / max(_time.time() - self._t0, 1e-9) / 1024 / 1024
+            print(f"  上传 {self._label}: {pct}%（{self._sent / 1024 / 1024:.0f}MB，"
+                  f"{speed:.1f}MB/s）", flush=True)
+            self._last_pct = pct
+        return data
+
+
 def _upload_one(server: str, token: str, version: str, note: str,
                 final_path: str, final_name: str, kind: str = "exe") -> bool:
     """单文件上传：POST /admin/agent-exe-upload（kind=exe 入版本清单并默认
-    指向；kind=setup 附安装器标记）"""
+    指向；kind=setup 附安装器标记）。带进度 + 网络错误重试 3 次 + 长超时
+    （200MB 家宽上行数分钟级，10 分钟超时曾致 AI 上传全灭）。"""
+    import time as _time
     import requests
-    with open(final_path, "rb") as f:
-        resp = requests.post(
-            f"{server}/api/v1/admin/agent-exe-upload",
-            headers={"Authorization": f"Bearer {token}"},
-            data={"version": version, "note": note, "kind": kind},
-            files={"file": (final_name, f, "application/octet-stream")},
-            timeout=600)
-    data = {}
-    try:
-        data = resp.json()
-    except Exception:
-        pass
-    if resp.status_code == 200 and data.get("ok"):
-        print(f"已上传 {kind}（sha256: {str(data.get('sha256', ''))[:16]}...）")
-        return True
-    print(f"上传失败 HTTP {resp.status_code}: {str(data.get('detail', resp.text[:200]))}")
+    last_err = ""
+    for attempt in (1, 2, 3):
+        if attempt > 1:
+            wait = 5 * attempt
+            print(f"  第 {attempt} 次重试（{wait}s 后）...", flush=True)
+            _time.sleep(wait)
+        try:
+            with open(final_path, "rb") as f:
+                resp = requests.post(
+                    f"{server}/api/v1/admin/agent-exe-upload",
+                    headers={"Authorization": f"Bearer {token}"},
+                    data={"version": version, "note": note, "kind": kind},
+                    files={"file": (final_name, _ProgressFile(f, final_name), "application/octet-stream")},
+                    timeout=3600)
+            data = {}
+            try:
+                data = resp.json()
+            except Exception:
+                pass
+            if resp.status_code == 200 and data.get("ok"):
+                print(f"已上传 {kind}（sha256: {str(data.get('sha256', ''))[:16]}...）")
+                return True
+            # 服务端明确拒绝（校验失败/无权限）不重试
+            if resp.status_code in (400, 401, 403):
+                print(f"上传被拒 HTTP {resp.status_code}: "
+                      f"{str(data.get('detail', resp.text[:200]))}")
+                return False
+            last_err = f"HTTP {resp.status_code}: {str(data.get('detail', resp.text[:200]))}"
+        except Exception as e:
+            last_err = str(e)[:200]
+    print(f"上传失败（重试 3 次后放弃）: {last_err}")
     return False
 
 

@@ -830,6 +830,19 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
               ) : null
             ) : (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length || msg.usage) ? (
               <div style={{ marginBottom: 8 }}>
+                {/* 本次消耗（2026-11-06 用户拍板 + 2026-11-07 两轮调整）：气泡
+                    左上角首行左对齐——不占折叠行宽度、不挤压思考框；费用不对
+                    普通用户展示 */}
+                {msg.usage && (msg.usage.prompt_tokens || msg.usage.completion_tokens) ? (
+                  <div style={{
+                    marginBottom: (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? 2 : 0,
+                    fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5,
+                    wordBreak: 'break-all',
+                  }}>
+                    消耗 {fmtTokens(msg.usage.prompt_tokens + msg.usage.completion_tokens)} tokens
+                    {msg.usage.cache_hit_tokens ? ` · 缓存命中 ${fmtTokens(msg.usage.cache_hit_tokens)}` : ''}
+                  </div>
+                ) : null}
                 {(msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? (
                 <details>
                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none', outline: 'none' }}>
@@ -888,19 +901,6 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                   </div>
                 )}
                 </details>
-                ) : null}
-                {/* 本次消耗（2026-11-06 用户拍板 + 2026-11-07 修复）：气泡上方
-                    折叠行下一行右对齐——与折叠按钮同区但不再同行（同行 flex
-                    会挤压思考内容框）；费用不对普通用户展示 */}
-                {msg.usage && (msg.usage.prompt_tokens || msg.usage.completion_tokens) ? (
-                  <div style={{
-                    marginTop: (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? 2 : 0,
-                    fontSize: 11, color: 'var(--text-muted)', textAlign: 'right',
-                    lineHeight: 1.5, wordBreak: 'break-all',
-                  }}>
-                    消耗 {fmtTokens(msg.usage.prompt_tokens + msg.usage.completion_tokens)} tokens
-                    {msg.usage.cache_hit_tokens ? ` · 缓存命中 ${fmtTokens(msg.usage.cache_hit_tokens)}` : ''}
-                  </div>
                 ) : null}
               </div>
             ) : null}

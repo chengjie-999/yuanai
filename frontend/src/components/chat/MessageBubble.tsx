@@ -828,21 +828,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                   ))}
                 </div>
               ) : null
-            ) : (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length || msg.usage) ? (
+            ) : (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? (
               <div style={{ marginBottom: 8 }}>
-                {/* 本次消耗（2026-11-06 用户拍板 + 2026-11-07 两轮调整）：气泡
-                    左上角首行左对齐——不占折叠行宽度、不挤压思考框；费用不对
-                    普通用户展示 */}
-                {msg.usage && (msg.usage.prompt_tokens || msg.usage.completion_tokens) ? (
-                  <div style={{
-                    marginBottom: (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? 2 : 0,
-                    fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5,
-                    wordBreak: 'break-all',
-                  }}>
-                    消耗 {fmtTokens(msg.usage.prompt_tokens + msg.usage.completion_tokens)} tokens
-                    {msg.usage.cache_hit_tokens ? ` · 缓存命中 ${fmtTokens(msg.usage.cache_hit_tokens)}` : ''}
-                  </div>
-                ) : null}
                 {(msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? (
                 <details>
                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none', outline: 'none' }}>
@@ -1034,6 +1021,15 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
               </div>
             )}
             {bubbleActions}
+            {/* 本次消耗（2026-11-07 定稿，借鉴 Claude.ai 消息 meta 惯例）：
+                气泡底部小字浅色行——顶部区域与思考折叠区抢位已否决（左上/
+                同行均挤压或突兀）；思考时长仍在折叠标题；费用不对普通用户展示 */}
+            {msg.usage && (msg.usage.prompt_tokens || msg.usage.completion_tokens) ? (
+              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                消耗 {fmtTokens(msg.usage.prompt_tokens + msg.usage.completion_tokens)} tokens
+                {msg.usage.cache_hit_tokens ? ` · 缓存命中 ${fmtTokens(msg.usage.cache_hit_tokens)}` : ''}
+              </div>
+            ) : null}
           </>
         )}
       </div>

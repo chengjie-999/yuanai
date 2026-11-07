@@ -829,9 +829,9 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 </div>
               ) : null
             ) : (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length || msg.usage) ? (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+              <div style={{ marginBottom: 8 }}>
                 {(msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? (
-                <details style={{ flex: '1 1 auto', minWidth: 0 }}>
+                <details>
                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', userSelect: 'none', outline: 'none' }}>
                   {msg.toolCalls?.length
                     ? `${(msg.reasoning || msg.finalReasoning) ? `思考${msg.reasoningTime ? ` (${msg.reasoningTime}s)` : ''} · ` : ''}${msg.toolCalls.length} 次工具调用`
@@ -889,13 +889,18 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
                 )}
                 </details>
                 ) : null}
-                {/* 本次消耗（2026-11-06 用户拍板）：气泡上方与折叠按钮同行；
-                    费用不对普通用户展示（成本是平台口径，我的用量卡/后台可见） */}
+                {/* 本次消耗（2026-11-06 用户拍板 + 2026-11-07 修复）：气泡上方
+                    折叠行下一行右对齐——与折叠按钮同区但不再同行（同行 flex
+                    会挤压思考内容框）；费用不对普通用户展示 */}
                 {msg.usage && (msg.usage.prompt_tokens || msg.usage.completion_tokens) ? (
-                  <span style={{ flexShrink: 0, marginLeft: 'auto', marginTop: 1, fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  <div style={{
+                    marginTop: (msg.reasoning || msg.finalReasoning || msg.toolCalls?.length) ? 2 : 0,
+                    fontSize: 11, color: 'var(--text-muted)', textAlign: 'right',
+                    lineHeight: 1.5, wordBreak: 'break-all',
+                  }}>
                     消耗 {fmtTokens(msg.usage.prompt_tokens + msg.usage.completion_tokens)} tokens
                     {msg.usage.cache_hit_tokens ? ` · 缓存命中 ${fmtTokens(msg.usage.cache_hit_tokens)}` : ''}
-                  </span>
+                  </div>
                 ) : null}
               </div>
             ) : null}

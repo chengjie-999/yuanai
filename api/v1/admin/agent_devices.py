@@ -237,6 +237,12 @@ async def delete_agent_version(version: str, request: Request):
         os.remove(os.path.join(_versions_dir(), entry["filename"]))
     except OSError:
         pass
+    # 安装器（2026-11-07）随版本一起删（依附产物，防孤儿文件）
+    try:
+        os.remove(os.path.join(_versions_dir(),
+                               entry["filename"].replace("yuanai-agent-v", "yuanai-agent-setup-v", 1)))
+    except OSError:
+        pass
     return {"ok": True, "deleted": version}
 
 

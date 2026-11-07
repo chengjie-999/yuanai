@@ -79,18 +79,21 @@ export default function AgentDevicesTab() {
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const uploadExeFile = (f: File) => {
+  const uploadExeFile = (f: File, kind: 'exe' | 'setup' = 'exe') => {
     setUploadBusy(true); setUploadPct(0); setUploadMsg('')
-    // 统一上传收口（2026-11-06）：大文件走进度版（XHR onprogress）
+    // 统一上传收口（2026-11-06）：大文件走进度版（XHR onprogress）；
+    // kind=setup（2026-11-07 企业级安装器）：依附同版本 exe 的安装向导
     uploadFileWithProgress(
       '/admin/agent-exe-upload',
       { file: f },
-      { version: upVersion.trim(), note: upNote.trim() },  // version 留空 = 后端自动生成
+      { version: upVersion.trim(), note: upNote.trim(), kind },  // version 留空 = 后端自动生成
       (pct) => setUploadPct(pct),
     ).then((data: any) => {
       setUploadBusy(false)
       if (data.ok) {
-        setUploadMsg(`已发布 v${data.version}（${(data.size / 1024 / 1024).toFixed(0)}MB）`)
+        setUploadMsg(kind === 'setup'
+          ? `安装器已上传 v${data.version}（${(data.size / 1024 / 1024).toFixed(0)}MB）——带码下载将走安装向导`
+          : `已发布 v${data.version}（${(data.size / 1024 / 1024).toFixed(0)}MB）`)
         setUpVersion(''); setUpNote('')
         loadVersions()
       } else setUploadMsg(data.detail || '上传失败')
@@ -133,6 +136,23 @@ export default function AgentDevicesTab() {
     setDragOver(false)
     const f = e.dataTransfer.files?.[0]
     if (f) uploadExeFile(f)
+  }
+
+  // 安装器上传（2026-11-07 企业级安装器）：同版本 exe 先传，setup 后传
+  const setupFileRef = useRef<HTMLInputElement>(null)
+  const [setupDrag, setSetupDrag] = useState(false)
+
+  const handleSetupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (f) uploadExeFile(f, 'setup')
+  }
+
+  const handleSetupDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setSetupDrag(false)
+    const f = e.dataTransfer.files?.[0]
+    if (f) uploadExeFile(f, 'setup')
   }
 
   // 上传期间刷新/关闭页面时弹浏览器确认，防止手滑中断
@@ -259,7 +279,12 @@ export default function AgentDevicesTab() {
                   </td>
                   <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>{(v.size / 1024 / 1024).toFixed(0)}MB</td>
                   <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>{v.uploaded_at?.slice(0, 16)}</td>
-                  <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>{v.note || '—'}</td>
+                  <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>
+                    {v.note || '—'}
+                    {v.installer && (
+                      <span style={{ fontSize: 11, color: 'var(--success)', marginLeft: 6 }}>安装器已传</span>
+                    )}
+                  </td>
                   <td style={{ padding: '6px 8px', display: 'flex', gap: 6 }}>
                     <a href={`/downloads/versions/${v.filename}`} style={{ fontSize: 12, color: 'var(--accent)' }}>下载</a>
                     {v.version !== defaultVersion && (
@@ -316,6 +341,29 @@ export default function AgentDevicesTab() {
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
             版本号自动生成 · 上传后立即生效：所有已安装的客户端会在托盘里提示「发现新版本」，点一下自动更新
             <br />上传中请勿刷新或关闭页面（切换到其他页不影响，会在后台继续上传）
+          </div>
+          {/* 安装器上传（2026-11-07 企业级安装器）：新用户下载走安装向导；同版本 exe 先传 */}
+          <input ref={setupFileRef} type="file" accept=".exe" hidden onChange={handleSetupFile} />
+          <div
+            onClick={() => !uploadBusy && setupFileRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setSetupDrag(true) }}
+            onDragLeave={() => setSetupDrag(false)}
+            onDrop={handleSetupDrop}
+            style={{
+              border: `2px dashed ${setupDrag ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius: 10, padding: '14px 16px', textAlign: 'center',
+              cursor: uploadBusy ? 'not-allowed' : 'pointer',
+              background: setupDrag ? 'var(--accent-light)' : 'var(--bg-secondary)',
+              transition: 'all 0.15s', maxWidth: 460, marginTop: 10,
+              opacity: uploadBusy ? 0.6 : 1,
+            }}
+          >
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              <b style={{ color: 'var(--text-primary)' }}>把安装器 yuanai-agent-setup-v{版本}.exe 拖到这里</b>（或点击选择，可选）
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+            安装器 = 新用户下载的安装向导（协议页/选目录/卸载）；不传则新用户下载裸 exe（旧流程）
           </div>
         </div>
       </Card>

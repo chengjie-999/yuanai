@@ -8,6 +8,7 @@ import AnnouncementBar from './components/AnnouncementBar'
 import ContextUsageBadge from './components/chat/ContextUsageBadge'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useAutoRead, toggleAutoRead } from './hooks/useAutoRead'
+import { useIsMobile } from './hooks/useIsMobile'
 import { SpeakerIcon, SpeakerOffIcon } from './components/icons'
 
 /* 路由级懒加载：公开页访客无需下载聊天/后台代码，首屏体积大减 */
@@ -93,6 +94,10 @@ function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const [resetKey, setResetKey] = useState(0)
+  // 移动端适配（2026-11-08）：顶栏此前零适配——52px 塞 品牌+3导航+6 右侧
+  // 元素手机上必溢出。移动端：导航横向滚动、隐藏低价值项（自动朗读开关/
+  // 上下文徽标）、昵称只留头像
+  const isMobile = useIsMobile()
 
   // 点击左上角品牌 → 回官网首页（聊天会话重置，回来时是全新欢迎页）
   const goHome = useCallback(() => {
@@ -126,22 +131,25 @@ function AppLayout() {
         <span className="brand" onClick={goHome} style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: -0.3, cursor: 'pointer', flexShrink: 0, userSelect: 'none' }}>
           小元AI
         </span>
-        <nav style={{ display: 'flex', gap: 0 }}>
-          <Link to="/chat" style={navLinkStyle('/chat')}>对话</Link>
+        <nav style={{ display: 'flex', gap: 0, overflowX: 'auto', minWidth: 0,
+          scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          <Link to="/chat" style={{ ...navLinkStyle('/chat'), flexShrink: 0 }}>对话</Link>
           {/* 知识星球暂不给普通用户展示（2026-10-31 用户拍板）：导航入口仅 admin */}
           {isAdmin && (
-            <Link to="/chat/planet" style={navLinkStyle('/chat/planet')}>知识星球</Link>
+            <Link to="/chat/planet" style={{ ...navLinkStyle('/chat/planet'), flexShrink: 0 }}>知识星球</Link>
           )}
           {isAdmin && (
-            <Link to="/chat/admin" style={navLinkStyle('/chat/admin')}>管理</Link>
+            <Link to="/chat/admin" style={{ ...navLinkStyle('/chat/admin'), flexShrink: 0 }}>管理</Link>
           )}
         </nav>
         <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 8 }}>
           {/* 上下文用量徽标（2026-11-06）：仅主聊天页显示（ChatPage 挂载写入
-              当前会话 id；独立面板/后台无会话上下文不显示） */}
-          {location.pathname === '/chat' && <ContextUsageBadge />}
-          <AutoReadToggle />
+              当前会话 id；独立面板/后台无会话上下文不显示）；移动端隐藏
+              （2026-11-08：信息密度低价值，留宽度给导航横滚） */}
+          {location.pathname === '/chat' && !isMobile && <ContextUsageBadge />}
+          {/* 自动朗读开关：移动端隐藏（设置页可管，2026-11-08） */}
+          {!isMobile && <AutoReadToggle />}
           <button onClick={toggleTheme} aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}
             className="theme-toggle yuan-tip yuan-tip-down" data-tip={isDark ? '切换亮色模式' : '切换暗色模式'}
             style={{
@@ -185,7 +193,8 @@ function AppLayout() {
                 border: '1px solid var(--border)',
               }} />
             )}
-            {user?.display_name || user?.username}
+            {/* 移动端只留头像（2026-11-08 顶栏压缩） */}
+            {!isMobile && (user?.display_name || user?.username)}
           </Link>
           <Link to="/chat/settings" style={{
             fontSize: 13, color: location.pathname === '/chat/settings' ? 'var(--text-primary)' : 'var(--text-secondary)',

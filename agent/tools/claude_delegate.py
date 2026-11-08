@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 from typing import Callable, Optional
 
 from yuanai_core.core.schemas import AgentEvent, progress

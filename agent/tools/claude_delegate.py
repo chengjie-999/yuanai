@@ -23,13 +23,18 @@ logger = logging.getLogger(__name__)
 CLAUDE_CLI = "claude"
 PROJECT_ROOT = root_path()
 
-# 冻结版仓库目录解析（2026-10-19）：exe 内 root_path() 指向数据目录而非真实仓库，
-# 其中没有 scripts/hooks 与 .claude/settings.json → guard_ready 永远 fail-closed、
-# Claude 委派不可用。发布版可设 CC_PROJECT_DIR 指向真实仓库目录；未设置保持
-# fail-closed（安全默认不变）。
+# 冻结版仓库目录解析（2026-10-19 初版 + 2026-11-08 傻瓜化）：exe 内
+# root_path() 指向数据目录而非真实仓库，其中没有 scripts/hooks 与
+# .claude/settings.json → guard_ready 永远 fail-closed、Claude 委派不可用。
+# 现方案：CC_PROJECT_DIR 指向真实仓库仍优先；未设置时自动落内建
+# workspace（guard 三件套开箱就绪，见 agent/cc_workspace.py）——
+# 用户零配置，安全门禁不削弱。
+from agent.cc_workspace import ensure_cc_workspace
 _CC_DIR = os.getenv("CC_PROJECT_DIR", "")
 if _CC_DIR and os.path.isdir(_CC_DIR):
     PROJECT_ROOT = os.path.abspath(_CC_DIR)
+elif getattr(sys, "frozen", False):
+    PROJECT_ROOT = ensure_cc_workspace()
 SUBPROCESS_TIMEOUT = 600       # 单次任务最长 10 分钟
 HEARTBEAT_SECONDS = 30         # 心跳间隔（重置云端 SSE 300s 超时）
 MAX_OUTPUT_CHARS = 8000        # tool_end 输出上限（进入 LLM 上下文与聊天记录）

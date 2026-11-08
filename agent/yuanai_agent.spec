@@ -20,6 +20,9 @@ a = Analysis(
         (str(ROOT / 'yuanai_core' / 'pure' / 'report_template.html'), 'yuanai_core/pure'),
         # 智能体能力边界身份卡（agent_docs 加载器 frozen 下从 _MEIPASS 读）
         (str(ROOT / 'docs' / 'agents'), 'docs/agents'),
+        # CC 委派安全钩子模板（2026-11-08）：内建 workspace 惰性初始化时复制落地
+        # （exe 下 CC_PROJECT_DIR 未设时 guard_ready 曾永远 fail-closed）
+        (str(ROOT / 'scripts' / 'hooks' / 'claude_guard.py'), 'scripts/hooks'),
     ],
     hiddenimports=[
         'yuanai_core', 'yuanai_core.core', 'yuanai_core.core.lc', 'yuanai_core.core.chat', 'yuanai_core.core.schemas',
@@ -46,6 +49,18 @@ a = Analysis(
         'agent.audit', 'agent.audit.core', 'agent.audit.parser',
         'agent.rag',
         'spiderlx', 'spiderlx.core.browser_manager', 'spiderlx.core.cdp_events',
+        # selenium 子模块（2026-11-08 修复「自动化不能对话」）：webdriver 主包被
+        # 收集但 common.action_chains 等子模块漏打包 → ModuleNotFoundError
+        'selenium.webdriver.common', 'selenium.webdriver.common.action_chains',
+        'selenium.webdriver.common.actions', 'selenium.webdriver.common.keys',
+        'selenium.webdriver.common.actions.key_input',
+        'selenium.webdriver.common.actions.pointer_input',
+        'selenium.webdriver.common.actions.mouse_button',
+        'selenium.webdriver.common.actions.wheel_input',
+        'selenium.webdriver.common.actions.interaction',
+        'selenium.webdriver.common.actions.input_device',
+        'selenium.webdriver.remote', 'selenium.webdriver.remote.remote_connection',
+        'selenium.webdriver.remote.webelement', 'selenium.webdriver.remote.webdriver',
         'config', 'config.settings',
         'utils', 'utils.sensitive_data', 'utils.data_path',
         'db', 'db.session', 'db.cache', 'db.redis_client',

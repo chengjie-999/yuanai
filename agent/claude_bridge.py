@@ -48,12 +48,16 @@ from agent.claude_loop import BRIDGE_SYSTEM_PROMPT as _BRIDGE_SYSTEM_PROMPT
 logger = logging.getLogger("claude_bridge")
 
 PROJECT_ROOT = root_path()
-# 冻结版仓库目录解析（2026-10-19，同 claude_delegate）：exe 内 root_path() 指向
-# 数据目录而非真实仓库 → guard_ready 永远 fail-closed。发布版可设 CC_PROJECT_DIR
-# 指向真实仓库；未设置保持 fail-closed（安全默认不变）。
+# 冻结版仓库目录解析（2026-10-19 初版 + 2026-11-08 傻瓜化）：exe 内 root_path()
+# 指向数据目录而非真实仓库 → guard_ready 永远 fail-closed。CC_PROJECT_DIR 指向
+# 真实仓库优先；未设置自动落内建 workspace（guard 三件套开箱就绪，
+# agent/cc_workspace.py）——用户零配置，安全门禁不削弱。
+from agent.cc_workspace import ensure_cc_workspace
 _CC_DIR = os.getenv("CC_PROJECT_DIR", "")
 if _CC_DIR and os.path.isdir(_CC_DIR):
     PROJECT_ROOT = os.path.abspath(_CC_DIR)
+elif getattr(sys, "frozen", False):
+    PROJECT_ROOT = ensure_cc_workspace()
 SESSIONS_FILE = os.path.join(PROJECT_ROOT, "data", "claude_sessions.json")
 HEARTBEAT_SECONDS = 30
 MAX_TOOL_OUTPUT = 2000

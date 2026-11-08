@@ -848,34 +848,39 @@ async def claude_stream(req: ChatRequest, request: Request):
         current_user_id.set(user_id if user_id else 0)
         current_session_id.set(getattr(req, "session_id", "") or "")
 
-        # 目标 agent：共享桥接（固定 id）或该用户自己的本机 Agent
-        target_agent_id = CLAUDE_BRIDGE_AGENT_ID if CLAUDE_BRIDGE_AGENT_ID > 0 else user_id
+        # 目标 agent（2026-11-08 修复「Claude 说自己在云端」）：优先当前用户
+        # 自己的绑定设备（N1 多设备口径，get_agent 走 agent_devices.user_id
+        # 绑定映射）；无绑定设备/离线时回退共享桥接账号（CLAUDE_BRIDGE_AGENT_ID）。
+        # 此前固定走共享桥接（或 user_id 直连旧模式），机器模式（agent_id≠user_id）
+        # 下用户设备永不被问询 → 云端回退分支假扮 Claude
+        from api.v1.agent.router import forward_to_agent, get_pending_queue
+        import uuid as _uuid
 
-        if target_agent_id:
-            from api.v1.agent.router import forward_to_agent, get_pending_queue
-            import uuid as _uuid
-
-            agent_request_id = str(_uuid.uuid4())
-            agent_chat_request = {
-                "type": "chat_request",
-                "request_id": agent_request_id,
-                "session_id": req.session_id,
-                "user_id": user_id,
-                "messages": input_messages,
-                "images": req.images,
-                "mode": "claude",  # 本机 Agent 的 claude 分支
-                "decision": req.decision,  # 审批决议原样转发（无则 None）
-                "envelopes": envelopes,
-            }
-            bridged_request_id = await forward_to_agent(target_agent_id, agent_chat_request)
-            if bridged_request_id:
-                logger.info("chat/claude-stream → Claude 桥接 (target=%s, user=%s, session=%s, req=%s)",
-                            target_agent_id, user_id, req.session_id, bridged_request_id[:8])
-                queue = get_pending_queue(bridged_request_id)
-                return StreamingResponse(_bridge_sse(queue, bridged_request_id, target_agent_id,
-                                                     session_id=getattr(req, "session_id", "") or "",
-                                                     suggest=False),  # claude-stream = coding，不出追问
-                                         media_type="text/event-stream")
+        agent_request_id = str(_uuid.uuid4())
+        agent_chat_request = {
+            "type": "chat_request",
+            "request_id": agent_request_id,
+            "session_id": req.session_id,
+            "user_id": user_id,
+            "messages": input_messages,
+            "images": req.images,
+            "mode": "claude",  # 本机 Agent 的 claude 分支
+            "decision": req.decision,  # 审批决议原样转发（无则 None）
+            "envelopes": envelopes,
+        }
+        bridged_request_id = await forward_to_agent(user_id, agent_chat_request)
+        target_agent_id = user_id
+        if not bridged_request_id and CLAUDE_BRIDGE_AGENT_ID > 0 and CLAUDE_BRIDGE_AGENT_ID != user_id:
+            bridged_request_id = await forward_to_agent(CLAUDE_BRIDGE_AGENT_ID, agent_chat_request)
+            target_agent_id = CLAUDE_BRIDGE_AGENT_ID
+        if bridged_request_id:
+            logger.info("chat/claude-stream → Claude 桥接 (target=%s, user=%s, session=%s, req=%s)",
+                        target_agent_id, user_id, req.session_id, bridged_request_id[:8])
+            queue = get_pending_queue(bridged_request_id)
+            return StreamingResponse(_bridge_sse(queue, bridged_request_id, target_agent_id,
+                                                 session_id=getattr(req, "session_id", "") or "",
+                                                 suggest=False),  # claude-stream = coding，不出追问
+                                     media_type="text/event-stream")
 
         # 回退：云端直接调用 LLM
         logger.info("chat/claude-stream → Claude 桥离线，云端回退 (user=%s)", user_id)

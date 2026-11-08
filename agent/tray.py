@@ -345,7 +345,10 @@ class AgentTray:
             self._update_available = latest or f"({remote_size})"
             self._update_sha256 = remote_sha
             try:
-                self._icon.update_menu()
+                # 2026-11-08 修复：update_menu() 只重估动态属性（勾选态），
+                # 不增删菜单项——发现新版后「立即更新」项从未出现过。
+                # menu setter 整体重建并刷新（内部调 update_menu）
+                self._icon.menu = self._build_menu()
             except Exception:
                 pass
             force_tip = "（安全要求，必须更新）" if self._update_forced else ""
@@ -741,7 +744,8 @@ class AgentTray:
                     self._profile_label = f"账号：{u.get('display_name') or u.get('username')}"
                 else:
                     self._profile_label = "账号：未绑定（后台「Agent 管理」可绑定）"
-                self._icon.update_menu()
+                # menu setter 整体重建（update_menu 不增删菜单项，2026-11-08）
+                self._icon.menu = self._build_menu()
             except Exception:
                 logger.warning("获取账号信息失败（菜单不显示账号行）")
         threading.Thread(target=_do, daemon=True).start()

@@ -204,6 +204,7 @@ class AgentTray:
         self._update_available = None  # 云端最新版本号（发现新版后设置）
         self._update_forced = False  # min_version 安全下限触发（必须更新）
         self._update_sha256 = ""  # S1.7：云端清单 sha256（下载校验用）
+        self._profile_label = None  # 本机账号归属（2026-11-08，查询成功后显示）
 
     def run(self):
         """主入口：启动托盘（阻塞主线程）"""
@@ -540,10 +541,15 @@ class AgentTray:
                 logger.info("身份已更新，重启全部 Agent 循环")
                 self._restart_loops()
 
+        # 菜单分组（2026-11-08 优化）：标题/账号 → 能力开关 → 常用入口 →
+        # 工具 → 发现新版时的更新项 → 维护项。状态走图标颜色+悬停标题，
+        # 不在菜单里刷（工具调用时 working/online 高频切换，菜单会闪）
         items = [
             MenuItem("小元AI Agent", None, enabled=False),
-            TrayMenu.SEPARATOR,
         ]
+        if self._profile_label:
+            items.append(MenuItem(self._profile_label, None, enabled=False))
+        items.append(TrayMenu.SEPARATOR)
         # Agent 开关（勾选 = 启用）
         for opt in AGENT_OPTIONS:
             items.append(MenuItem(
@@ -553,22 +559,25 @@ class AgentTray:
             ))
         items += [
             TrayMenu.SEPARATOR,
-            MenuItem("开机自启", self._on_autostart_toggle, checked=lambda item: autostart_enabled()),
-            MenuItem("vault 同步", self._on_vault_toggle, checked=lambda item: self._vault_enabled()),
-            MenuItem("设置 vault 路径...", self._on_set_vault_path),
+            MenuItem("打开 Web 对话", on_open_web, default=True),
+            MenuItem("终端对话", self._on_terminal_open),
+            TrayMenu.SEPARATOR,
             MenuItem("桌宠", TrayMenu(
                 MenuItem("启动桌宠", self._on_pet_launch),
                 MenuItem("关闭桌宠", self._on_pet_stop),
                 MenuItem("桌宠联动设置", self._on_pet_setup),
             )),
-            MenuItem("终端对话", self._on_terminal_open),
-            MenuItem("检查更新", lambda icon, item: threading.Thread(target=self._check_update_once, args=(True,), daemon=True).start()),
+            MenuItem("vault 同步", self._on_vault_toggle, checked=lambda item: self._vault_enabled()),
+            MenuItem("设置 vault 路径...", self._on_set_vault_path),
+            MenuItem("开机自启", self._on_autostart_toggle, checked=lambda item: autostart_enabled()),
         ]
-        # 发现新版时追加「立即更新」入口
+        # 仅发现新版时出现（2026-11-08：后台 6h 自动检查，「检查更新」常显项
+        # 已移除——用户拍板「有新版本了再出现」）
         if self._update_available:
+            items.append(TrayMenu.SEPARATOR)
             items.append(MenuItem(f"立即更新 v{self._update_available}", self._on_update_click))
         items += [
-            MenuItem("打开 Web 对话", on_open_web, default=True),
+            TrayMenu.SEPARATOR,
             MenuItem("重新注册（换安装码）", on_reinstall),
             MenuItem("退出 Agent", on_exit),
         ]
@@ -674,6 +683,7 @@ class AgentTray:
                 claude_handler._ws_send = self._client.send_event
 
                 self._set_status("online")
+                self._fetch_profile()  # 本机账号归属（2026-11-08，后台线程查询）
                 await self._client.connect()
             except Exception as e:
                 logger.error("Agent 连接异常: %s", e)
@@ -692,6 +702,29 @@ class AgentTray:
                 self._icon.title = f"小元AI Agent - {labels.get(status, status)}"
             except Exception:
                 pass
+
+    def _fetch_profile(self):
+        """本机账号归属（2026-11-08）：设备凭据查云端绑定用户，托盘菜单显示。
+        失败静默（菜单不显示账号行，不影响主链路）"""
+        def _do():
+            try:
+                import urllib.request
+                http_base = self._version_base_url()
+                req = urllib.request.Request(
+                    f"{http_base}/api/v1/agent/my-profile",
+                    headers={"X-Agent-Id": str(self.agent_id),
+                             "X-Agent-Secret": str(self.agent_token)})
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                if data.get("bound"):
+                    u = data.get("user") or {}
+                    self._profile_label = f"账号：{u.get('display_name') or u.get('username')}"
+                else:
+                    self._profile_label = "账号：未绑定（后台「Agent 管理」可绑定）"
+                self._icon.update_menu()
+            except Exception:
+                logger.warning("获取账号信息失败（菜单不显示账号行）")
+        threading.Thread(target=_do, daemon=True).start()
 
 
 def main():

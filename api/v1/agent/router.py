@@ -281,6 +281,26 @@ def require_agent_uid(request: Request) -> int:
     return uid
 
 
+@router.get("/my-profile")
+async def agent_my_profile(request: Request):
+    """本机账号归属（2026-11-08 用户诉求：本机 Agent 连着哪个账号）：
+    设备凭据鉴权 → 返回设备信息 + 绑定用户（未绑定 user=null）。
+    托盘菜单「账号」项消费——只回昵称/用户名，不扩大暴露面。"""
+    agent_id = require_agent_device(request)
+    from db.session import get_db, AgentDevice, User
+    with get_db().session() as sess:
+        dev = sess.query(AgentDevice).filter_by(id=int(agent_id)).first()
+        user = None
+        if dev and dev.user_id:
+            u = sess.query(User).filter_by(id=dev.user_id).first()
+            if u:
+                user = {"username": u.username, "display_name": u.display_name or u.username}
+        return {"agent_id": agent_id,
+                "machine_name": (dev.machine_name if dev else "") or "",
+                "bound": bool(user),
+                "user": user}
+
+
 class ActivityReport(BaseModel):
     """活动上报体（O1 2026-10-26）：只收元数据——state 六态词汇 / tool 工具名 /
     message 展示文案 / detail 补充。绝不上传命令内容、文件内容、对话正文。"""

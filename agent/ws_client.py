@@ -87,7 +87,13 @@ class AgentWSClient:
                     extra_headers = {"Authorization": f"Bearer {self.agent_token}"}
                 self._status = "connecting"
                 logger.info("正在连接云端: %s/api/v1/agent/ws/agent/%s", self.server_url, self.agent_id)
-                self._ws = await connect(url, ping_interval=None, additional_headers=extra_headers)
+                # 应用层心跳（2026-11-08 修复「合盖断连后永不重连」）：ping_interval
+                # 20s + ping_timeout 10s——笔记本睡眠唤醒后旧 TCP 半开，无心跳时
+                # 消息循环永远等不到数据也不报错（本地以为在线、云端已踢）；
+                # 有心跳则 30s 内 pong 超时抛 ConnectionClosed → 走重连循环。
+                # open_timeout 防唤醒后网络未就绪时 TCP/DNS 长时间阻塞
+                self._ws = await connect(url, ping_interval=20, ping_timeout=10,
+                                         open_timeout=15, additional_headers=extra_headers)
 
                 # 发送注册消息
                 await self._ws.send(json.dumps({

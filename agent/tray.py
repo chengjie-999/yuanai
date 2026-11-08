@@ -761,7 +761,10 @@ def main():
     import argparse
 
     p = argparse.ArgumentParser(description="小元AI 本地 Agent（托盘模式）")
-    p.add_argument("--server-url", default="wss://cjyuanai.cn", help="云端 WebSocket 地址")
+    # 2026-11-08 修复：默认值写死 wss://cjyuanai.cn 会顶掉身份文件里的
+    # server_url（本地联调 ws://localhost:8000 被覆盖 → 拿本地设备号去连
+    # 生产 403）——default=None 走身份文件，仅显式传参时覆盖
+    p.add_argument("--server-url", default=None, help="云端 WebSocket 地址（默认读身份文件）")
     p.add_argument("--agent-id", default=None, help="Agent 唯一标识")
     p.add_argument("--agent-name", default="小元AI Agent", help="Agent 显示名称")
     p.add_argument("--agent-token", default=os.environ.get("AGENT_TOKEN", ""), help="Agent 认证 JWT token")
@@ -788,11 +791,14 @@ def main():
                             install_code_from_file, clear_install_code_file,
                             register_device)
     identity = load_identity()
+    # 2026-11-08 修复：身份文件优先（与 CLI 口径一致），显式传参才覆盖——
+    # 注册与连接共用该值（此前 argparse 默认值写死生产地址，本地联调身份被顶掉）
+    server_url = args.server_url or identity.get("server_url") or "wss://cjyuanai.cn"
     if not identity.get("agent_id") or not identity.get("agent_secret"):
         code = install_code_from_file() or install_code_from_exe_name()
         if code:
             try:
-                register_device(args.server_url, code)
+                register_device(server_url, code)
                 clear_install_code_file()  # 码一次消费，注册成功即清
                 identity = load_identity()
                 logger.info("已自动注册（安装码 %s）", code[:8] + "***")
@@ -804,7 +810,7 @@ def main():
             except Exception as e:
                 logger.warning("静默注册失败（转弹窗兜底）: %s", str(e)[:120])
         if not identity.get("agent_id") or not identity.get("agent_secret"):
-            if not _install_dialog(args.server_url):
+            if not _install_dialog(server_url):
                 logger.info("用户取消安装，进程退出")
                 sys.exit(0)
             identity = load_identity()
@@ -812,9 +818,9 @@ def main():
     agent_id = args.agent_id or str(identity.get("agent_id") or "1")
     agent_token = args.agent_token or identity.get("agent_secret", "") or ""
 
-    logger.info("启动托盘模式: server=%s agent=%s", args.server_url, agent_id)
+    logger.info("启动托盘模式: server=%s agent=%s", server_url, agent_id)
 
-    tray = AgentTray(args.server_url, agent_id, args.agent_name, agent_token)
+    tray = AgentTray(server_url, agent_id, args.agent_name, agent_token)
     tray.run()
 
 

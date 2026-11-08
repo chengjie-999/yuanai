@@ -161,6 +161,10 @@ async def main():
     args = parse_args()
     if args.tray:
         from agent.tray import main as tray_main
+        # 源码模式入口修复（2026-11-08）：--tray 已被本文件消费——tray.py
+        # 的 argparse 不认识它（其 usage 只有 4 参数），不清掉必报
+        # unrecognized arguments（exe 入口直接是 tray.py 故无此问题）
+        sys.argv = [a for a in sys.argv if a != "--tray"]
         tray_main()
         return
 

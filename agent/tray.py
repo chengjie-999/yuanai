@@ -48,10 +48,9 @@ def _run_script_allowed(script_path: str, root: str) -> bool:
     p = os.path.realpath(script_path)
     return any(p == a or p.startswith(a + os.sep) for a in allowed)
 
-# 状态颜色
+# 状态颜色（离线=灰环灰球；在线=绿环；执行=黄环——2026-11-08 图标定版）
 GREEN = (76, 175, 80)
 YELLOW = (255, 152, 0)
-RED = (244, 67, 54)
 GRAY = (158, 158, 158)
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -143,11 +142,32 @@ def set_autostart(enable: bool):
     winreg.CloseKey(key)
 
 
-def _make_icon(color: tuple) -> Image.Image:
-    """生成 32x32 纯色圆形图标"""
-    img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+def _make_icon(status: str = "offline") -> Image.Image:
+    """32x32 托盘图标（2026-11-08 定版）：小元AI 吉祥物渐变核心球
+    （亮 #60a5fa → 深 #1d4ed8，同 Mascot 形象）+ 状态色外环
+    （在线绿/执行黄/离线灰）——不再是纯色圆点；离线=灰球"""
+    S = 32
+    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.ellipse((3, 3, 29, 29), fill=color, outline=(255, 255, 255, 200), width=2)
+    ring = {"online": GREEN, "working": YELLOW, "offline": GRAY}.get(status, GRAY)
+    draw.ellipse((2, 2, S - 2, S - 2), outline=ring + (255,), width=2)
+    # 球体：自上而下线性渐变（离线灰）
+    if status == "offline":
+        top, bottom = (0x9e, 0x9e, 0x9e), (0x75, 0x75, 0x75)
+    else:
+        top, bottom = (0x60, 0xa5, 0xfa), (0x1d, 0x4e, 0xd8)
+    cx, cy, R = S / 2, S / 2 + 1, 10
+    for i in range(2 * R):
+        t = i / (2 * R - 1)
+        r = int(top[0] + (bottom[0] - top[0]) * t)
+        g = int(top[1] + (bottom[1] - top[1]) * t)
+        b = int(top[2] + (bottom[2] - top[2]) * t)
+        y = int(cy - R + i)
+        half = int((R * R - (i - R) ** 2) ** 0.5)
+        draw.line([(cx - half, y), (cx + half, y)], fill=(r, g, b, 255))
+    # 左上高光
+    draw.ellipse((cx - R + 3, cy - R + 2, cx - R + 8, cy - R + 7),
+                 fill=(255, 255, 255, 90))
     return img
 
 
@@ -208,7 +228,7 @@ class AgentTray:
 
     def run(self):
         """主入口：启动托盘（阻塞主线程）"""
-        icon = _make_icon(GRAY)
+        icon = _make_icon("offline")
         self._icon = pystray.Icon(
             "yuanai_agent",
             icon,
@@ -694,11 +714,11 @@ class AgentTray:
 
     def _set_status(self, status: str):
         self._status = status
-        colors = {"online": GREEN, "working": YELLOW, "offline": RED}
         labels = {"online": "在线", "working": "执行中", "offline": "离线"}
         if self._icon:
             try:
-                self._icon.icon = _make_icon(colors.get(status, GRAY))
+                # 2026-11-08：图标=吉祥物渐变球+状态色外环（离线灰/在线绿/执行黄）
+                self._icon.icon = _make_icon(status)
                 self._icon.title = f"小元AI Agent - {labels.get(status, status)}"
             except Exception:
                 pass

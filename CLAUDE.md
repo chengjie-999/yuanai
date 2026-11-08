@@ -355,6 +355,9 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **.iss 踩坑**（编译过三关才过）：AppId 花括号内不能嵌 ISPP 宏（`{{#GUID}` 两种闭合都实测编译失败，硬编码）；Pascal `{}` 注释内不能出现花括号字符（`{版本}`/「}」都会把注释提前截断 → 语法错误）；LicenseFile 相对路径按「cwd/脚本目录」解析不一致——用 `..\..` 两级上跳两种基准都对；中文路径需 .iss UTF-8 BOM（否则 ISCC 按 ANSI 误读）
 - **测试**：test_agent_install_code.py 4 项 + test_agent_code_download.py setup 分支；真机模拟（静默安装/码提取/静默卸载/数据保留）全通——**静默参数必须经 Python subprocess 直发，Git Bash 会把 /VERYSILENT 转义坏掉**
 - **SmartScreen**：暂不买证书（下载页指引「更多信息→仍要运行」），EV 证书挂账（有营业执照后对安装器+exe 双签名根治）
+- **断线重连心跳（2026-11-08）**：ws_client `ping_interval=None` 曾致合盖唤醒后半开连接永不重连（本地以为在线、云端已踢）——改 ping_interval 20s/ping_timeout 10s/open_timeout 15s，30s 内检出走重连循环。**托盘两连修**：① agent/main.py `--tray` 分支必须从 sys.argv 清掉 --tray（tray.py 自己的 argparse 只有 4 参数，残留必报 unrecognized——exe 入口直接是 tray.py 无此问题，纯源码模式雷）② tray.py `--server-url` 默认值曾写死 wss://cjyuanai.cn 顶掉身份文件里的地址（本地联调 ws://localhost:8000 → 拿本地设备号连生产 403）——default=None 身份优先
+- **本机账号归属（2026-11-08）**：`GET /api/v1/agent/my-profile`（设备凭据自鉴权，middleware 放行）→ 托盘菜单「账号：昵称」行（未绑定显示引导）；托盘菜单重排（开关组/常用入口/工具组），「检查更新」常显项移除——仅发现新版时出现「立即更新 vX」（后台 6h 循环）；**托盘图标定版**：吉祥物渐变核心球（PIL 渐变 #60a5fa→#1d4ed8）+ 状态色外环（在线绿/执行黄/离线灰球），`_make_icon(status)` 取代纯色圆点
+- **桌宠窗口缩放**：UI 滑杆最小 0.5，config-slot-0.json 直写 `scale` 可突破（0.3=65×81，2026-11-08 实测）——见记忆 dsh-pet-config
 
 ## 第三批（2026-11-06：N3 三态 / N1 多设备 / V1-4 分享）
 

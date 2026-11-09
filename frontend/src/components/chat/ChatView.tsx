@@ -2,20 +2,24 @@ import { useRef, useEffect, useState } from 'react'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
 import type { ReasoningEffort } from './ReasoningSelector'
-import { SUGGESTIONS, ENT_SUGGESTIONS } from '../../config/agents'
+import { SUGGESTIONS, ENT_SUGGESTIONS, AGENT_CONFIG } from '../../config/agents'
 import { ArrowDownIcon } from '../icons'
 import Mascot from '../Mascot'
 import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onReport, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice, onSuggest, sendTick, onOpenPanel }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, dmTarget, activeTarget, onExitActiveTarget, ccActivity, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onReport, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice, onSuggest, sendTick, onOpenPanel }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
   sessions: SessionInfo[]
+  dmTarget: string
+  activeTarget: string
+  onExitActiveTarget: () => void
+  ccActivity: { online: boolean; agent_name: string; latest: { message: string; detail: string; ts?: number; time: string } | null; age_s?: number } | null
   localOnline: boolean; claudeOnline: boolean
   model: string; setModel: (v: string) => void
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
@@ -141,6 +145,44 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         background: 'var(--bg-primary)',
       }}>
         <div style={{ maxWidth: 720, width: '100%' }}>
+          {/* P1-3（2026-11-09）：CC 私聊窗桥接状态徽标——在线=棕「Claude Code 本机」/
+              离线=灰「云端兜底应答」，让用户一眼知道对面是不是本机 CC */}
+          {dmTarget === 'claude' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{
+                  fontSize: 12, padding: '4px 12px', borderRadius: 999,
+                  background: claudeOnline
+                    ? `color-mix(in srgb, ${AGENT_CONFIG.claude.color} 12%, transparent)`
+                    : 'var(--bg-tertiary)',
+                  color: claudeOnline ? AGENT_CONFIG.claude.color : 'var(--text-muted)',
+                  border: `1px solid ${claudeOnline
+                    ? `color-mix(in srgb, ${AGENT_CONFIG.claude.color} 35%, transparent)`
+                    : 'var(--border-light)'}`,
+                }}>
+                  {claudeOnline ? 'Claude Code 本机' : 'Claude Code 离线 · 云端兜底应答'}
+                </span>
+                {/* P3-5 执行观测面：电脑执行状态 + 最近活动（/chat/cc-activity 15s 轮询） */}
+                {claudeOnline && ccActivity?.latest?.message && (
+                  <span style={{
+                    fontSize: 12, padding: '4px 12px', borderRadius: 999,
+                    background: 'var(--bg-tertiary)', color: 'var(--text-secondary)',
+                    border: '1px solid var(--border-light)',
+                  }}>
+                    {ccActivity.latest.message}
+                    {ccActivity.age_s != null ? ` · ${Math.floor(ccActivity.age_s / 60)} 分钟前` : ''}
+                  </span>
+                )}
+              </div>
+              {/* CC 长时间无活动主动提示（愿景：手机看电脑在干什么——卡死无感知的根治） */}
+              {claudeOnline && ccActivity?.age_s != null && ccActivity.age_s > 300
+                && /工具调用|思考中|等待审批|出错/.test(ccActivity.latest?.message || '') && (
+                <div style={{ fontSize: 12, color: 'var(--warning)' }}>
+                  电脑上 Claude Code 已 {Math.floor(ccActivity.age_s / 60)} 分钟无活动，可能已无响应——可停止生成后重试
+                </div>
+              )}
+            </div>
+          )}
           {messages.map((msg, i) => (
             <MessageBubble key={`${currentSid}-${i}`} msg={msg} index={i} isLast={i === messages.length - 1}
               loading={loading} user={user}
@@ -233,6 +275,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         onStartVoiceCall={onStartVoiceCall}
         entMode={entMode} toggleEntMode={toggleEntMode} chatBackend={chatBackend} setChatBackend={setChatBackend}
         targetAgent={targetAgent} setTargetAgent={setTargetAgent}
+        activeTarget={activeTarget} onExitActiveTarget={onExitActiveTarget}
         onOpenDirectChat={onOpenDirectChat}
         onStop={onStop} notice={notice} />
     </>

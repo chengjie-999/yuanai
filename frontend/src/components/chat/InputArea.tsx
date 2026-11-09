@@ -17,7 +17,7 @@ const TARGET_AGENTS = [
   { key: 'claude', desc: '本机代码、终端、Git 任务' },
 ]
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, activeTarget, onExitActiveTarget, onOpenDirectChat, onStop, notice }: {
   input: string; setInput: (v: string | ((p: string) => string)) => void; loading: boolean; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
@@ -29,6 +29,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   entMode: boolean; toggleEntMode: () => void
   chatBackend: 'auto' | 'cloud' | 'local'; setChatBackend: (v: 'auto' | 'cloud' | 'local') => void
   targetAgent: string; setTargetAgent: (v: string) => void
+  activeTarget: string; onExitActiveTarget: () => void
   onOpenDirectChat: (target: string) => void
   onStop: () => void
   notice: string
@@ -190,6 +191,25 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                 ><XIcon size={11} /></span>
               </span>
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>本条消息将定向该智能体处理</span>
+            </div>
+          )}
+          {activeTarget && AGENT_CONFIG[activeTarget] && !entMode && !targetAgent && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px 0', flexWrap: 'wrap' }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 6px 3px 8px',
+                borderRadius: 999, border: `1px solid ${AGENT_CONFIG[activeTarget].color}55`,
+                background: AGENT_CONFIG[activeTarget].bg, fontSize: 12, fontWeight: 600,
+                color: AGENT_CONFIG[activeTarget].color, lineHeight: 1,
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: AGENT_CONFIG[activeTarget].color, flexShrink: 0 }} />
+                定向 · {AGENT_CONFIG[activeTarget].label}
+                <span onClick={onExitActiveTarget} className="yuan-tip" data-tip="退出定向" aria-label="退出定向"
+                  style={{ cursor: 'pointer', padding: '1px 2px', opacity: 0.7, display: 'flex', alignItems: 'center' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
+                ><XIcon size={11} /></span>
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>后续消息持续发送给该智能体，换 @ 可切换</span>
             </div>
           )}
           {/* 输入行：只留输入框 + 发送/停止（豆包式，功能键全部下沉工具行）；

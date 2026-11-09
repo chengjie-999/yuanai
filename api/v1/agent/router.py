@@ -446,6 +446,7 @@ async def report_activity(req: ActivityReport, request: Request):
                 message = f"{message}: {tool}"
         acts = _rest_activities.setdefault(agent_id, [])
         acts.append({"message": message, "detail": detail, "time": time.strftime("%H:%M:%S"),
+                     "ts": time.time(),  # P3-5：epoch 秒——前端算「多久前」/卡死判定
                      "source": "rest"})
         if len(acts) > 20:
             acts[:] = acts[-20:]
@@ -540,6 +541,7 @@ async def agent_ws(websocket: WebSocket, agent_id: str):
                         "message": act.get("message", ""),
                         "detail": act.get("detail", ""),
                         "time": time.strftime("%H:%M:%S"),
+                        "ts": time.time(),  # P3-5：epoch 秒——前端算「多久前」/卡死判定
                     })
                     if len(acts) > 20:
                         acts[:] = acts[-20:]  # 只保留最近 20 条

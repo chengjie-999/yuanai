@@ -22,6 +22,9 @@ AGENT_LABELS = {
     "collection": "数据采集 Agent",
     "automation": "自动化 Agent",
     "claude": "Claude Code",
+    # P1-2（2026-11-09）：云端兜底独立说话人——真 CC 的视图里兜底发言
+    # 显示为【云端兜底】摘要，不再被当成「自己之前说的」
+    "cloud_fallback": "云端兜底",
     "planet": "知识星球",
     "user": "用户",
 }

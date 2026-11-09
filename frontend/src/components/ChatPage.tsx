@@ -175,12 +175,52 @@ export default function ChatPage({ user }: { user?: any }) {
       return next
     })
   }
+  // @ 粘性定向（P2-1，2026-11-09）：主对话 @某智能体后进入「定向对话期」——
+  // 后续消息默认继续发同一目标，直到换 @ 或点输入区「退出定向」徽标
+  const [activeTargets, setActiveTargets] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('activeTargets') || '{}') } catch { return {} }
+  })
+  const activeTargetsRef = useRef(activeTargets)
+  activeTargetsRef.current = activeTargets
+  const setActiveTarget = (sid: string, target: string) => {
+    setActiveTargets((prev) => {
+      const next = target ? { ...prev, [sid]: target } : { ...prev }
+      try { localStorage.setItem('activeTargets', JSON.stringify(next)) } catch { /* 存储受限，仅本次会话 */ }
+      return next
+    })
+  }
+  const clearActiveTarget = (sid: string) => {
+    setActiveTargets((prev) => {
+      if (!(sid in prev)) return prev
+      const next = { ...prev }
+      delete next[sid]
+      try { localStorage.setItem('activeTargets', JSON.stringify(next)) } catch { /* 存储受限，仅本次会话 */ }
+      return next
+    })
+  }
   // 推理强度开关（快答/深思）：localStorage 持久化，仅对 DeepSeek 系列生效
   const [effort, setEffortState] = useState<'low' | 'medium' | 'high'>(getStoredEffort())
   const setEffort = (v: 'low' | 'medium' | 'high') => { setEffortState(v); setStoredEffort(v) }
   const [localOnline, setLocalOnline] = useState(false)
   const [claudeOnline, setClaudeOnline] = useState(false)
   const [statusKnown, setStatusKnown] = useState(false)
+  // P3-5 执行观测面进对话（2026-11-09）：电脑执行状态 15s 轮询——
+  // 愿景「手机看电脑在干什么」的对话内闭环（执行中/卡死/空闲 + 最近活动）
+  const [ccActivity, setCcActivity] = useState<{ online: boolean; agent_name: string; latest: { message: string; detail: string; ts?: number; time: string } | null; age_s?: number } | null>(null)
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/chat/cc-activity`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        })
+        if (!res.ok) return
+        setCcActivity(await res.json())
+      } catch { /* 静默：观测面降级不影响对话 */ }
+    }
+    poll()
+    const t = setInterval(poll, 15000)
+    return () => clearInterval(t)
+  }, [])
   // Claude Code 桥接待审批命令
   const [pendingApproval, setPendingApproval] = useState<{ decision_id: string; tool_name: string; command: string; claude: boolean } | null>(null)
   // 消息点赞（下标 → 已赞）与修改编辑态（消息下标，null = 非编辑态）
@@ -533,6 +573,7 @@ ${full}
       try { localStorage.setItem("dmTargets", JSON.stringify(next)) } catch { /* 存储受限，仅本次会话 */ }
       return next
     })
+    clearActiveTarget(sid)  // @ 粘性定向同清
     refreshSessions()
   }
 
@@ -797,8 +838,16 @@ ${full}
     // 小窗会话（dmTargets）持久定向不复位；@Claude Code = 原 ⌘ 桥接模式
     // 娱乐模式（E1）：不委派——忽略 @定向与小窗持久定向，纯云端小元AI 回答
     const dmTarget = entMode ? '' : (dmTargetsRef.current[sid] || '')
-    const target = entMode ? '' : (targetAgentRef.current || dmTarget)
-    if (target && !dmTarget) setTargetAgent('')
+    const activeTarget = entMode ? '' : (activeTargetsRef.current[sid] || '')
+    const target = entMode ? '' : (targetAgentRef.current || activeTarget || dmTarget)
+    if (target && !dmTarget) {
+      // P2-1 @ 粘性定向：单次 @ 提升为会话级定向期（微信式 @人=持续对话）；
+      // 统筹是默认，无需粘性
+      if (targetAgentRef.current && targetAgentRef.current !== 'orchestrator') {
+        setActiveTarget(sid, targetAgentRef.current)
+      }
+      setTargetAgent('')
+    }
     const isClaude = !entMode && (target === 'claude' || chatMode === 'claude')
     // 信封协议：最后一条 user 消息打 recipient（定向 @target）；说话人身份
     // 走信封字段，【xx】前缀渲染由后端 views.py 视图滤波负责
@@ -1111,6 +1160,10 @@ ${full}
             images={images} setImages={setImages}
             currentSid={currentSid}
             sessions={sessions}
+            dmTarget={dmTargets[currentSid] || ''}
+            activeTarget={activeTargets[currentSid] || ''}
+            onExitActiveTarget={() => clearActiveTarget(currentSid)}
+            ccActivity={ccActivity}
             localOnline={localOnline} claudeOnline={claudeOnline}
             model={model} setModel={handleModelChange}
             effort={effort} setEffort={setEffort}

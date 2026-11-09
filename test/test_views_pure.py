@@ -136,3 +136,22 @@ def test_system_message_passthrough():
     view = view_for("orchestrator", msgs)
     assert view[0]["role"] == "system"
     assert view[0]["content"] == msgs[0]["content"]
+
+
+def test_cloud_fallback_not_self_for_claude():
+    """P1-2：兜底发言（cloud_fallback）在真 CC 视角不是「自己说的」——
+    渲染为【云端兜底】前缀，而非 self_set 原样通过"""
+    msgs = [
+        {"role": "user", "content": "改一下 README"},
+        {"role": "assistant", "content": "本地 Claude Code 离线，我暂为云端应答", "sender": "cloud_fallback"},
+    ]
+    view = view_for("claude", msgs)
+    assert view[0] == {"role": "user", "content": "改一下 README"}
+    assert view[1]["content"].startswith("【云端兜底】")
+    assert "云端应答" in view[1]["content"]
+    # 真 claude 自己的话仍然原样（对照）
+    msgs2 = [
+        {"role": "assistant", "content": "已修改 README", "sender": "claude"},
+    ]
+    view2 = view_for("claude", msgs2)
+    assert view2[0] == {"role": "assistant", "content": "已修改 README"}

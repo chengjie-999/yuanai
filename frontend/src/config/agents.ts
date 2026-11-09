@@ -8,6 +8,9 @@ export const AGENT_CONFIG: Record<string, { label: string; color: string; bg: st
   collection: { label: '数据采集', color: '#00695c', bg: '#f0faf9' },
   automation: { label: '自动化 Agent', color: '#e65100', bg: '#fff8f0' },
   claude: { label: 'Claude Code', color: '#d97757', bg: '#fdf6f0' },
+  // P1-2（2026-11-09）：云端兜底独立说话人——不再混记 claude，
+  // 真 CC 不会被兜底的话污染上下文
+  cloud_fallback: { label: '云端兜底', color: '#64748b', bg: '#f1f5f9' },
   planet: { label: '知识星球', color: '#6a9955', bg: '#f2f8f0' },
   plan: { label: '计划', color: '#0b7285', bg: '#eef7fa' },
 }

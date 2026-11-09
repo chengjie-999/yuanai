@@ -1,9 +1,11 @@
 import json
 import os
 import re
+import time
 import uuid
 import base64
 import asyncio
+import html as _html
 import logging
 from typing import Optional
 
@@ -23,6 +25,60 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 _SAFE_ERROR = "请求处理失败，请稍后重试"
+
+
+# P1-6（2026-11-09）：CC 读自家分享链接——检测消息中 cjyuanai.cn 或相对路径的
+# /api/v1/share/{sid} 链接，云端读自家静态分享页剥标签注入纯文本（标注已展开）。
+# CC 零新增联网能力（curl/WebFetch 全禁，cc_search 只管搜索，读自家公开页
+# 不应被联网收口误伤）；只读自家文件，安全面零新增。
+_SHARE_LINK_PATTERNS = [
+    re.compile(r"https?://[^\s\"'<>]*cjyuanai\.cn/api/v1/share/([0-9a-zA-Z\-]{8,64})"),
+    re.compile(r"(?<![\w/-])/api/v1/share/([0-9a-zA-Z\-]{8,64})"),
+]
+_SHARE_EXPAND_MAX = 12000  # 注入正文截断上限（工具输出截断纪律）
+
+
+def _expand_share_links(prompt: str) -> str:
+    """展开自家分享链接为纯文本注入；未分享/已取消的链接附人话提示"""
+    from api.v1.chat.share import _share_path
+    expanded_ids: "set[str]" = set()
+    unreadable: "set[str]" = set()
+
+    def _load(sid: str) -> str:
+        path = _share_path(sid)
+        if not os.path.isfile(path):
+            unreadable.add(sid)
+            return ""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                page = f.read()
+            body = re.sub(r"<style.*?</style>", "", page, flags=re.S)
+            body = re.sub(r"<[^>]+>", " ", body)
+            body = _html.unescape(body)
+            body = re.sub(r"[ \t]+", " ", body)
+            text = re.sub(r"\n\s*\n+", "\n", body).strip()
+            if len(text) > _SHARE_EXPAND_MAX:
+                text = text[:_SHARE_EXPAND_MAX] + "…（内容过长已截断）"
+            return text
+        except Exception:
+            return ""
+
+    def _expand(m: "re.Match") -> str:
+        sid = m.group(1)
+        if sid in expanded_ids:
+            return m.group(0)
+        expanded_ids.add(sid)
+        text = _load(sid)
+        if not text:
+            return m.group(0)
+        return m.group(0) + f"\n\n【分享内容已展开（{sid}），直接引用其内容作答】\n{text}"
+
+    out = prompt
+    for pat in _SHARE_LINK_PATTERNS:
+        out = pat.sub(_expand, out)
+    if unreadable:
+        out += "\n\n【提示】以下分享链接无法读取（未分享或已取消）：" + "、".join(sorted(unreadable))
+    return out
 
 
 def _sse(obj) -> str:
@@ -845,6 +901,18 @@ async def claude_stream(req: ChatRequest, request: Request):
             history=history,
             system_message=SystemMessage(content=CHAT_SYSTEM_PROMPT),
         )
+        # P1-6：CC 读自家分享链接——末条 user 消息展开注入（桥接转发与
+        # 云端回退共用同一份消息，一处展开两端生效）
+        _last = input_messages[-1] if input_messages else None
+        if _last and _last.get("role") == "user":
+            _lc = _last.get("content", "")
+            if isinstance(_lc, str):
+                _last["content"] = _expand_share_links(_lc)
+            elif isinstance(_lc, list):
+                for _part in _lc:
+                    if isinstance(_part, dict) and _part.get("type") == "text":
+                        _part["text"] = _expand_share_links(_part.get("text", ""))
+                        break
         current_user_id.set(user_id if user_id else 0)
         current_session_id.set(getattr(req, "session_id", "") or "")
 
@@ -889,10 +957,21 @@ async def claude_stream(req: ChatRequest, request: Request):
         view = view_for("claude", fixed_items, envelopes=envelopes[1:-1])
         # C8：回退分支同样用服务端固定提示（此后整段重写为去委派化离线提示）
         input_messages = _langchain_from_items(view, req.prompt, req.images, CHAT_SYSTEM_PROMPT)
-        offline_prompt = ("你是小元AI助手（Claude Code 桥接当前离线，已切换云端模式）。"
-                          "不要提及「委派」、不要调用任何 delegate 工具——子智能体在本机"
-                          "Agent 上且当前离线，所有请求由你自己直接处理。"
-                          "可以直接使用工具完成任务。简洁回复，任务完成时用表格总结本次完成了什么。")
+        # P1-1 回退提示重写（2026-11-09）：云端兜底如实自报身份，不再假扮本机
+        # Claude Code；含 P1-5 首句自报与 P2-3 引导话术
+        offline_prompt = (
+            "你是小元AI的云端兜底助手，不是本机 Claude Code——本机 Claude Code 当前离线，"
+            "本次对话由云端模型代为应答。"
+            "【身份自报】回复第一句必须自报身份，例如："
+            "「本地 Claude Code 离线，我暂为云端应答。」"
+            "【边界如实说明】你没有本机电脑的任何信息（工作目录/文件/进程/代码），"
+            "涉及本机状态的问题一律如实说「不清楚，需要本机 Claude Code 在线」，"
+            "绝不编造本机信息；用户要求改代码/跑终端任务时说明需等本机上线。"
+            "不要提及「委派」、不要调用任何 delegate 工具。可以直接使用云端工具完成任务。"
+            "【结尾引导】涉及本机任务时结尾引导：本地 Agent 上线后我会自动转回本机"
+            "Claude Code；着急可去设置页检查 Agent 状态。"
+            "简洁回复，任务完成时用表格总结本次完成了什么。"
+        )
         # 模型如实自报（2026-10-17 补齐：claude-stream 回退此前漏注入）
         from yuanai_core.core.lc import resolve_model_id
         from config.settings import self_report_text
@@ -902,6 +981,9 @@ async def claude_stream(req: ChatRequest, request: Request):
 
         async def event_stream():
             try:
+                # P1-2（2026-11-09）：兜底独立说话人——首个事件声明 cloud_fallback
+                # 身份（前端气泡转挂「云端兜底」，落库 META.s 不再混记 claude）
+                yield f"data: {_sse({'type': 'agent', 'data': {'sender': 'cloud_fallback'}})}\n\n"
                 from yuanai_core.core.chat import limited_tools
                 # V1-2 审批分层：云端直连工具链过 gate（同 /stream 回退）
                 from yuanai_core.pure.tool_gate import gate as _tool_gate
@@ -937,6 +1019,45 @@ async def claude_stream(req: ChatRequest, request: Request):
     except Exception as e:
         logger.error("claude-stream 请求初始化失败: %s", e)
         raise HTTPException(status_code=500, detail=_SAFE_ERROR)
+
+
+@router.get("/cc-activity")
+async def cc_activity(request: Request):
+    """P3-5（2026-11-09）执行观测面进对话：CC 私聊窗显示电脑执行状态。
+    复用 /admin/agent-status 的活动合并（WS + 离线上报），返回本用户绑定设备
+    /共享桥接的最近活动与年龄——愿景「手机看电脑在干什么」的对话内闭环。"""
+    from api.v1.agent.router import _get_agent_status
+    uid = _get_user_id(request)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    try:
+        entries = _get_agent_status(request, include_activities=True)
+    except Exception:
+        logger.warning("cc-activity 状态查询失败", exc_info=True)
+        return {"online": False, "latest": None}
+    # 优先本用户绑定设备（agent_id==user_id 旧模式或绑定映射），其次共享桥接
+    entry = None
+    for e in entries:
+        caps = e.get("capabilities") or []
+        if "claude_code" not in caps:
+            continue
+        if str(e.get("agent_id")) == str(uid):
+            entry = e
+            break
+        if entry is None:
+            entry = e
+    if not entry:
+        return {"online": False, "latest": None}
+    acts = entry.get("activities") or []
+    latest = acts[0] if acts else None
+    payload = {
+        "online": bool(entry.get("online")),
+        "agent_name": entry.get("agent_name", ""),
+        "latest": latest,
+    }
+    if latest and latest.get("ts"):
+        payload["age_s"] = max(0, int(time.time() - float(latest["ts"])))
+    return payload
 
 
 @router.get("/system-prompt")

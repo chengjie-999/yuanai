@@ -48,6 +48,32 @@ def _strip_meta(content: str) -> str:
     return content or ""
 
 
+# P1-4（2026-11-09）：说话人标签 + 身份色（对齐聊天界面 AGENT_CONFIG）
+_SENDER_META = {
+    "orchestrator": ("小元AI", "#2563eb"),
+    "local": ("小元AI", "#2563eb"),
+    "analysis": ("数据分析 Agent", "#7b1fa2"),
+    "collection": ("数据采集 Agent", "#00695c"),
+    "automation": ("自动化 Agent", "#e65100"),
+    "claude": ("Claude Code", "#d97757"),
+    "cloud_fallback": ("云端兜底", "#64748b"),
+    "planet": ("知识星球", "#6a9955"),
+    "plan": ("计划", "#0b7285"),
+}
+
+
+def _sender_of(m: dict) -> str:
+    """说话人解析：sender 列 > META.s > 缺省（assistant→orchestrator）"""
+    sender = (m.get("sender") or "").strip()
+    if not sender:
+        from yuanai_core.core.message import split_meta
+        meta, _ = split_meta(m.get("content") or "")
+        sender = str(meta.get("s") or "")
+    if not sender and m.get("role") == "assistant":
+        sender = "orchestrator"
+    return sender
+
+
 def _render_html(title: str, session_id: str, created_at: str, messages: list) -> str:
     """服务端静态 HTML（内联样式自包含；无 JS）"""
     rows = []
@@ -57,9 +83,16 @@ def _render_html(title: str, session_id: str, created_at: str, messages: list) -
         if not content.strip():
             continue
         is_user = role == "user"
+        sender_html = ""
+        if not is_user:
+            # P1-4：气泡上方说话人标签 + 身份色（蓝=小元 / 棕=CC / 灰=云端兜底…）
+            sender = _sender_of(m)
+            if sender in _SENDER_META:
+                label, color = _SENDER_META[sender]
+                sender_html = f'<div class="sender" style="color:{color}">{_html.escape(label)}</div>'
         rows.append(
             f'<div class="msg {"user" if is_user else "ai"}">'
-            f'<div class="bubble">{content}</div></div>'
+            f'<div class="bubble">{sender_html}{content}</div></div>'
         )
     body = "\n".join(rows) if rows else '<p class="empty">该会话暂无内容</p>'
     title_esc = _html.escape(title or "小元AI 对话分享")
@@ -88,6 +121,7 @@ def _render_html(title: str, session_id: str, created_at: str, messages: list) -
   .msg.ai {{ justify-content:flex-start; }}
   .bubble {{ max-width:85%; padding:10px 14px; border-radius:10px; font-size:14px;
              line-height:1.7; word-break:break-word; }}
+  .sender {{ font-size:11px; font-weight:600; margin-bottom:4px; }}
   .user .bubble {{ background:#2563eb; color:#fff; border-bottom-right-radius:3px; }}
   .ai .bubble {{ background:#fff; border:1px solid #e2e8f0; border-bottom-left-radius:3px; }}
   .empty {{ text-align:center; color:#64748b; }}

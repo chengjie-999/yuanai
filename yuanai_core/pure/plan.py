@@ -57,7 +57,10 @@ def validate_steps(steps_raw) -> tuple:
             return [], "每步必须是对象"
         skill = str(s.get("skill", "") or "").strip() or "analysis"
         if skill not in PLAN_SKILLS:
-            return [], f"skill 仅支持 {'/'.join(PLAN_SKILLS)}（收到 {skill!r}）"
+            # P2-2（2026-11-09）：报错说清白名单边界（人话），引导模型改用合法 skill
+            return [], (f"skill 仅支持 analysis/collection（数据分析/数据采集；收到 {skill!r}）"
+                        "——计划 v1 暂不支持 claude_code/automation 等本地执行类步骤，"
+                        "请改用分析或采集步骤")
         desc = str(s.get("desc", "") or "").strip()
         if not desc:
             return [], "每步必须有 desc（说明做什么）"

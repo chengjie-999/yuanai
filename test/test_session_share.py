@@ -140,3 +140,22 @@ def test_share_bad_sid_rejected(client, user_session):
 
 if __name__ == "__main__":
     print("测试入口：pytest test/test_session_share.py -v")
+
+
+def test_share_sender_labels():
+    """P1-4：分享页气泡上方说话人标签 + 身份色（列 > META.s > 缺省）；
+    用户气泡不带标签；C5 标识保留"""
+    html = render_share_html("s-sender-test", "标题", "2026-11-09 18:00", [
+        {"role": "user", "content": "帮我改代码"},
+        {"role": "assistant", "content": "本地 Claude Code 离线，我暂为云端应答",
+         "sender": "cloud_fallback"},
+        {"role": "assistant", "content": "已修改 README", "sender": "claude"},
+        # META.s 兜底（无 sender 列）
+        {"role": "assistant", "content": "\x00META\x00{\"s\":\"automation\"}\x00浏览器任务完成"},
+        {"role": "assistant", "content": "你好，我是小元AI"},  # 缺省 → orchestrator
+    ])
+    assert "云端兜底" in html and "#64748b" in html
+    assert "Claude Code" in html and "#d97757" in html
+    assert "自动化 Agent" in html and "#e65100" in html
+    assert "小元AI" in html and "#2563eb" in html
+    assert "AI 生成" in html  # C5 标识保留

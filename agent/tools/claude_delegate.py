@@ -16,7 +16,8 @@ from typing import Callable, Optional
 
 from yuanai_core.core.schemas import AgentEvent, progress
 from yuanai_core.rag import current_request_id
-from agent.bridge_policy import build_allowed_tools, guard_ready
+from agent.bridge_policy import (build_allowed_tools, guard_ready,
+                                 register_spawned_proc, unregister_spawned_proc)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,8 @@ _IS_3P_MODE = bool(os.getenv("ANTHROPIC_BASE_URL")) and \
 
 
 def _build_command(claude_path: str, prompt: str) -> list:
+    # P3-1 环境自述：工作目录/shell/文件工具边界随每次调用重新解析
+    from agent.claude_loop import env_hint
     return [
         claude_path, "-p", prompt,
         "--output-format", "stream-json",
@@ -84,7 +87,7 @@ def _build_command(claude_path: str, prompt: str) -> list:
         "--disallowedTools", _DISALLOWED_TOOLS,
         "--setting-sources", "project",
         "--max-budget-usd", "10",
-        "--append-system-prompt", _BRIDGE_SYSTEM_PROMPT,
+        "--append-system-prompt", _BRIDGE_SYSTEM_PROMPT + env_hint(),
     ]
 
 
@@ -170,6 +173,7 @@ async def run_claude_once(
         except Exception:
             pass
 
+    register_spawned_proc(proc)  # P0 退出清子进程：托盘退出时 tree-kill
     read_task = asyncio.create_task(_read_stdout())
     err_task = asyncio.create_task(_drain_stderr())
     hb_task = asyncio.create_task(_heartbeat())
@@ -179,19 +183,24 @@ async def run_claude_once(
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
-            return _with_stderr("Claude Code 执行超时（10 分钟），已终止", stderr_buf)
+            # P3-2 委派失败人话：超时带可行动指引（拆分任务重试）
+            return _with_stderr("Claude Code 执行超时（10 分钟），已终止——"
+                                "任务可能过重，建议拆分成小步骤后重试", stderr_buf)
         await read_task  # 排空剩余输出
     finally:
         hb_task.cancel()
         err_task.cancel()
+        unregister_spawned_proc(proc)
 
     if error_text:
         _audit(prompt, proc.returncode, len(final_text), "error")
-        return _with_stderr(f"Claude Code 执行失败: {error_text}", stderr_buf)
+        return _with_stderr(f"Claude Code 执行失败: {error_text}——"
+                            "如因安全策略被拒请调整任务描述；网络/网关问题可稍后重试", stderr_buf)
 
     if not final_text and proc.returncode != 0:
         _audit(prompt, proc.returncode, 0, "exit_error")
-        return _with_stderr(f"Claude Code 异常退出（code={proc.returncode}）", stderr_buf)
+        return _with_stderr(f"Claude Code 异常退出（code={proc.returncode}）——"
+                            "可稍后重试；若持续失败请检查本机 claude 安装", stderr_buf)
 
     text = final_text.strip()
     if not text:

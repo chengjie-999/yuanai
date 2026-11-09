@@ -340,7 +340,7 @@ def _approve_yn(decision_id: str, tool_name: str, command: str) -> str:
 
 async def run_claude_query(messages: list, on_approval=None, render=None) -> str:
     """/claude 模式：复用 claude_loop SDK loop（与云端桥接同一条代码路径）"""
-    from agent.claude_loop import run_sdk_loop, load_credentials, endpoint_compliant, BRIDGE_SYSTEM_PROMPT
+    from agent.claude_loop import run_sdk_loop, load_credentials, endpoint_compliant, bridge_system_prompt
 
     render = render or PlainRenderer()
     api_key = load_credentials()
@@ -358,7 +358,7 @@ async def run_claude_query(messages: list, on_approval=None, render=None) -> str
     _emit_pet("thinking")
     final = ""
     async for ev in run_sdk_loop(messages, api_key=api_key,
-                                 system=BRIDGE_SYSTEM_PROMPT,
+                                 system=bridge_system_prompt(),
                                  on_approval=on_approval):
         kind = ev.get("type", "")
         if kind == "token":

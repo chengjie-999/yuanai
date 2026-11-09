@@ -224,8 +224,57 @@ def _init_workspace(ws: str) -> None:
             f.write(_SETTINGS_TEMPLATE)
 
 
+def pick_directory(title: str = "选择文件夹") -> str:
+    """原生 Windows 目录选择器（FolderBrowserDialog，经 PowerShell 独立进程弹出）。
+    结果经临时文件以 UTF-8 传回——绕开 pystray 回调线程弹 tkinter 无焦点不可用
+    （2026-11-09 vault 教训）与控制台 GBK 编码坑。用户取消/失败返回空串。"""
+    if os.name != "nt":
+        return ""
+    import subprocess
+    import tempfile
+    out_file = os.path.join(tempfile.gettempdir(), f"yuanai_pick_{os.getpid()}.txt")
+    try:
+        os.remove(out_file)
+    except OSError:
+        pass
+    ps = (
+        "Add-Type -AssemblyName System.Windows.Forms | Out-Null;"
+        "$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
+        f"$d.Description = '{title}';"
+        "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {"
+        f"[System.IO.File]::WriteAllText('{out_file}', $d.SelectedPath, [System.Text.Encoding]::UTF8)"
+        "}"
+    )
+    try:
+        subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", ps],
+                       capture_output=True, timeout=300,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:
+        return ""
+    try:
+        with open(out_file, "r", encoding="utf-8") as f:
+            picked = f.read().strip()
+        os.remove(out_file)
+        return picked
+    except OSError:
+        return ""
+
+
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if "--pick" in argv:
+        # 交互式选择目录（托盘菜单同款通道；CLI 联调用）
+        picked = pick_directory("选择 Claude Code 的工作目录（代码仓库）")
+        if not picked:
+            print("已取消")
+            return 1
+        try:
+            p = set_project_dir(picked)
+        except ValueError as e:
+            print(f"拒绝设置: {e}", file=sys.stderr)
+            return 2
+        print(f"已设置工作目录: {p}")
+        return 0
     if "--clear" in argv:
         had = clear_project_dir()
         print("已清除工作目录配置" if had else "本来就没有配置")

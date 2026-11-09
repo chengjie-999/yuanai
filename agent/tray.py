@@ -647,6 +647,7 @@ class AgentTray:
                 MenuItem("关闭桌宠", self._on_pet_stop),
                 MenuItem("桌宠联动设置", self._on_pet_setup),
             )),
+            MenuItem("设置 Claude 工作目录…", self._on_cc_workspace),
             # vault 同步菜单下架（2026-11-09 用户拍板：知识星球非主力）——
             # 托盘菜单回调线程弹 tkinter 目录选择框无焦点不可用（选不了/
             # ✕取消不响应/切窗口消失），先隐藏入口；已配置用户的同步循环不受影响。
@@ -668,6 +669,31 @@ class AgentTray:
     def _on_update_click(self, icon, item):
         """点击立即更新：后台线程执行下载+自替换"""
         threading.Thread(target=self._do_update, daemon=True).start()
+
+    def _on_cc_workspace(self, icon, item):
+        """设置 Claude Code 工作目录：原生目录选择器（独立进程，无 pystray
+        回调线程焦点问题）→ 校验落盘 → 下一轮委派生效（运行期切换无需重启）"""
+        threading.Thread(target=self._set_cc_workspace, daemon=True).start()
+
+    def _set_cc_workspace(self):
+        from agent import cc_workspace
+        picked = cc_workspace.pick_directory("选择 Claude Code 的工作目录（代码仓库）")
+        if not picked:
+            return  # 用户取消
+        try:
+            cc_workspace.set_project_dir(picked)
+            info = cc_workspace.describe()
+            guard_tip = "" if info["guard_ready"] else \
+                "（注意：该目录缺少安全钩子，Claude 委派将被拒绝）"
+            self._icon.notify(f"Claude Code 工作目录已设为：{picked}\n"
+                              f"下一轮对话生效{guard_tip}", "小元AI Agent")
+            logger.info("CC 工作目录已切换: %s", picked)
+        except ValueError as e:
+            logger.warning("CC 工作目录设置被拒: %s", e)
+            try:
+                self._icon.notify(f"设置失败：{e}", "小元AI Agent")
+            except Exception:
+                pass
 
     def _on_autostart_toggle(self, icon, item):
         """切换开机自启（exe 发布版有效）"""

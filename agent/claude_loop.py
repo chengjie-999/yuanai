@@ -58,6 +58,29 @@ BRIDGE_SYSTEM_PROMPT = (
     "完成后用简洁中文总结：做了什么、改了哪些文件、如何验证。"
 )
 
+
+def env_hint() -> str:
+    """本机环境自述（P3-1）：工作目录每次调用重新解析——运行期 --set 切换
+    下一轮即生效。省掉 CC 环境侦察轮次与中途错误结论。"""
+    try:
+        from agent.cc_workspace import resolve_project_dir
+        cwd = resolve_project_dir()
+    except Exception:
+        cwd = str(POLICY_ROOT)
+    return (
+        "\n\n【本机环境（无需侦察，直接据此工作）】\n"
+        f"- 当前工作目录：{cwd}——所有相对路径以此为准；Read/Write/Edit/Glob/Grep "
+        "等文件工具均被限制在此目录内，越界会被直接拒绝\n"
+        "- 系统 Shell：cmd.exe（Windows）——每次 Bash 调用都是全新会话，cd 不会跨调用保留；"
+        "需要进目录的复合命令请写在同一行（如 cd xxx && dir）\n"
+        "- 本机是 Windows 系统，路径分隔符为反斜杠"
+    )
+
+
+def bridge_system_prompt() -> str:
+    """桥接系统提示：静态安全约束 + 动态环境自述（终端 CLI 与云端桥接共用）"""
+    return BRIDGE_SYSTEM_PROMPT + env_hint()
+
 # ——— SDK tool 定义 ———
 # bash 与 text editor 在 Anthropic 官方端点是内置工具（schema-less，
 # type+name 声明即可，不能自定义同名带 schema 工具）；Read/Glob/Grep 为自定义。

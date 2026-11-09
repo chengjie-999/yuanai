@@ -42,9 +42,10 @@ from yuanai_core.core.schemas import (
     approval_event,
 )
 from utils.data_path import root_path
-from agent.bridge_policy import build_allowed_tools, guard_ready
+from agent.bridge_policy import (build_allowed_tools, guard_ready,
+                                 register_spawned_proc, unregister_spawned_proc, kill_spawned_tree)
 # 共享桥接系统提示（2026-10-23 上移至 claude_loop——终端 CLI 与云端桥接同一份约束）
-from agent.claude_loop import BRIDGE_SYSTEM_PROMPT as _BRIDGE_SYSTEM_PROMPT
+from agent.claude_loop import bridge_system_prompt as _bridge_system_prompt
 
 logger = logging.getLogger("claude_bridge")
 
@@ -225,7 +226,10 @@ class ClaudeBridgeHandler:
                 self._reset_lock(lock_key)
                 yield error_event("上一任务卡死已终止，请重试", rid)
                 return
-            yield error_event(f"Claude Code 正在处理上一请求（已运行 {elapsed}s），请稍候", rid)
+            # P3-2 委派失败人话：可行动指引（稍候重发 / 看门狗自动复位）
+            yield error_event(f"Claude Code 正在处理上一请求（已运行 {elapsed}s），"
+                              f"请稍候片刻后重发；超过 {LOCK_TIMEOUT // 60} 分钟无响应会自动终止并复位，"
+                              "届时直接重试即可", rid)
             return
         if self._sem.locked():
             yield error_event("本机 Claude Code 正忙（并发任务已满），请稍后再试", rid)
@@ -352,7 +356,7 @@ class ClaudeBridgeHandler:
         is_error = False
         final_result = ""
         async for ev in run_sdk_loop(
-                messages, api_key=api_key, system=_BRIDGE_SYSTEM_PROMPT,
+                messages, api_key=api_key, system=_bridge_system_prompt(),
                 on_approval=_on_approval):
             kind = ev.get("type", "")
             if kind == "token":
@@ -412,7 +416,7 @@ class ClaudeBridgeHandler:
             "--disallowedTools", _DISALLOWED_TOOLS,
             "--setting-sources", "project",
             "--max-budget-usd", "10",
-            "--append-system-prompt", _BRIDGE_SYSTEM_PROMPT,
+            "--append-system-prompt", _bridge_system_prompt(),
         ]
         # 已有会话用 --resume 续接；新会话用 --session-id 固定 UUID（--session-id 只用于新建）
         if resume_sid:
@@ -433,6 +437,8 @@ class ClaudeBridgeHandler:
             active = self._active.get(lock_key)
             if active is not None:
                 active["proc"] = proc
+        # P0 退出清子进程：登记 PID，托盘退出时 tree-kill 残留 claude
+        register_spawned_proc(proc)
 
         tool_id_map = {}   # tool_use id -> tool name
         saw_delta = False  # 是否已收到流式 text_delta（用于 assistant 消息降级补发）
@@ -533,6 +539,7 @@ class ClaudeBridgeHandler:
         finally:
             hb_task.cancel()
             err_task.cancel()
+            unregister_spawned_proc(proc)  # 子进程已结束/被杀，移出退出清杀清单
 
         # 未收到 result 消息 = 进程异常退出
         if result_obj is None:
@@ -547,7 +554,8 @@ class ClaudeBridgeHandler:
             except Exception:
                 pass
             is_error = True
-            final_result = f"Claude Code 进程异常退出（code={proc.returncode}）: {stderr_tail}"
+            final_result = (f"Claude Code 进程异常退出（code={proc.returncode}）: {stderr_tail}"
+                            "——可稍后重试；若持续失败请检查本机 claude 安装或工作目录配置")
 
         # 会话持久化
         if is_error or "error" in str((result_obj or {}).get("subtype", "")).lower():
@@ -681,6 +689,12 @@ async def main():
 
     def _shutdown():
         logger.info("收到退出信号，正在关闭...")
+        try:
+            n = kill_spawned_tree()  # P0 退出清子进程：tree-kill 残留 claude
+            if n:
+                logger.info("已终止 %d 个残留 Claude 子进程", n)
+        except Exception:
+            pass
         stop.set_result(True)
 
     _signal_ok = False

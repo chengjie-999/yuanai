@@ -381,7 +381,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 
 ## Obsidian vault 双向同步（2026-09-25 落地）
 
-知识星球笔记 ↔ Obsidian vault 指定目录（`知识星球/`）双向同步，本地 Agent 作桥（托盘菜单「vault 同步」勾选 + 「设置 vault 路径...」选目录，配置存 `data/agent_config.json` 的 vault 节；CLI 模式 `python -m agent.main --vault-sync`）。
+知识星球笔记 ↔ Obsidian vault 指定目录（`知识星球/`）双向同步，本地 Agent 作桥（CLI 模式 `python -m agent.main --vault-sync`，配置存 `data/agent_config.json` 的 vault 节）。**托盘菜单入口已下架（2026-11-09 用户拍板：知识星球非主力）**——根因=托盘菜单回调线程弹 tkinter 目录选择框无焦点不可用（选不了/✕取消不响应/切窗口消失）；已配置用户的同步循环不受影响。去留待办：修复对话框（原生 Windows 目录选择器）或彻底移除三件套（vault_sync.py/planet_sync/前端徽标）。
 
 - **同步引擎**：`agent/vault_sync.py` VaultSyncLoop——20s 纯轮询、`(size,mtime)` 两轮防抖、三向判定（`yuanai_core/pure/vault_note.py` sync_decision：双改本地赢 + 云端版落 `*.conflict-*.md`）、冷启动云端全量建基线、本地删 trash 归档 + 云端删保守墓碑、笔记级重试 + 请求级 20→40→80→300s 退避、状态 `data/vault_sync_state.json`（原子写 + .bak）
 - **内容规范**：`vault_note.py` canonical_body 把图片链接统一为 `asset:{mid}/{basename}` 再算哈希（token/写法不同内容相同 → 哈希一致，防无限回环）；自实现 frontmatter（扁平标量，不引 PyYAML）；vault 文件名保留中文空格
@@ -439,7 +439,8 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **模式**：`/claude` 默认（复用 `claude_loop.run_sdk_loop`，与云端桥接同一条代码路径；审批流终端内 Y/N，fail-closed）/ `/chat` 本地 LLM 直连（`TERMINAL_CHAT_MODEL` 可配）；`/history` `/clear` `/quit`
 - **托盘入口（2026-10-23 三本地合一）**：托盘菜单「终端对话」→ `find_terminal_launcher()` 探测（源码树=当前解释器+仓库根；frozen exe=向上四级探测 venv\Scripts\python.exe+agent\terminal.py）→ CREATE_NEW_CONSOLE 开新控制台窗口；发布版无源码环境通知提示。Agent 常驻+桌宠+终端三样统一托盘托管
 - **会话续接**：独立 `data/terminal_sessions.json`（不与云端桥接 claude_sessions.json 互串）；REPL 默认自动续接上次会话（--new 新开会话）；管道模式单轮不落盘
-- **安全**：cwd 锁仓库根（CC_PROJECT_DIR 可指真实仓库）；工具执行经 claude_loop.execute_tool 安全分类（deny/review 与桥接同口径）；`_BRIDGE_SYSTEM_PROMPT` 已上移至 claude_loop 共享（改一处两端生效）
+- **安全**：cwd 锁仓库根（CC_PROJECT_DIR / 数据根 cc_config.json 可指真实仓库）；工具执行经 claude_loop.execute_tool 安全分类（deny/review 与桥接同口径）；`_BRIDGE_SYSTEM_PROMPT` 已上移至 claude_loop 共享（改一处两端生效）
+- **CC 工作目录可配置（2026-11，取代「必须设系统环境变量 + 重启」）**：选择链 `CC_PROJECT_DIR`（进程级覆盖）> 数据根 `cc_config.json` 的 `project_dir`（持久化；`python -m agent.cc_workspace --set <目录>` / `--show` / `--clear`，写数据根故不污染仓库、不进 git status）> 源码根 / 内建 workspace。`agent/cc_workspace.resolve_project_dir()` 为唯一解析器，`bridge_policy.current_project_root()`（Write/Edit 边界）与 spawn cwd 均**每次动态解析**——运行期切换下一轮即生效，不必重启 agent/Windows。安全不放松：目标目录缺 guard 时 `guard_ready` 仍 fail-closed 拒绝 spawn；`set_project_dir` 拒绝盘符根 / 用户主目录 / 不存在目录，配置坏 JSON 或目录被删自动回落默认根。测试 `test/test_cc_workspace_config.py`（12 项）
 - **编码防护（真机踩坑）**：Windows 管道 GBK/UTF-8 错位与网关流脏字节会产生孤立 surrogate——stdin 按字节读 + utf-8/gbk 双解码兜底（`read_stdin_query`），token/结果/落盘全链路 `_clean_text` 清洗（anthropic SDK openapi_dumps 严格 utf-8 编码，带 surrogate 必崩）
 - **网关工具声明形态（2026-10-23 修复，云端桥接 SDK 模式同时受益）**：DeepSeek 官方 anthropic 兼容网关不认内置工具 type（422: unknown variant `bash_20250124`，只认 web_search_*）——`sdk_tools()` 按 ANTHROPIC_BASE_URL 含 deepseek 判定：网关端点发自定义 schema 工具（Bash/Edit 别名，classify/执行器零变化），Anthropic 官方端点保持内置声明
 - **桌宠联动**：thinking/working+工具名/attention(审批)/idle/error 挂 pet_events

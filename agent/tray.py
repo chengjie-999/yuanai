@@ -590,8 +590,10 @@ class AgentTray:
                 MenuItem("关闭桌宠", self._on_pet_stop),
                 MenuItem("桌宠联动设置", self._on_pet_setup),
             )),
-            MenuItem("vault 同步", self._on_vault_toggle, checked=lambda item: self._vault_enabled()),
-            MenuItem("设置 vault 路径...", self._on_set_vault_path),
+            # vault 同步菜单下架（2026-11-09 用户拍板：知识星球非主力）——
+            # 托盘菜单回调线程弹 tkinter 目录选择框无焦点不可用（选不了/
+            # ✕取消不响应/切窗口消失），先隐藏入口；已配置用户的同步循环不受影响。
+            # 去留待办：修复对话框（原生 Windows 目录选择器）或彻底移除，见待办清单。
             MenuItem("开机自启", self._on_autostart_toggle, checked=lambda item: autostart_enabled()),
         ]
         # 仅发现新版时出现（2026-11-08：后台 6h 自动检查，「检查更新」常显项

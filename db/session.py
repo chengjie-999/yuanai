@@ -185,6 +185,10 @@ class User(Base):
     token_version = Column(Integer, default=0, nullable=False)  # S3.4：令牌吊销计数（+1 全量失效）
     freeze_reason = Column(String(500), default='')   # C7：冻结原因（登录时展示，迁移 0021）
     agreed_at = Column(TIMESTAMP, nullable=True)      # C11：协议接受时间（登录勾选留痕，迁移 0021）
+    # 多端同步 P1（2026-11-09，迁移 0030）：用户跨端偏好 JSON（娱乐模式/三态/
+    # 自动朗读/小窗定向/@粘性定向）；白名单校验在 /auth/prefs 端点。
+    # MySQL TEXT 不能带 server_default（1101）——Python 侧 default=''，读取兜底空串
+    prefs = Column(Text, default='')
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 

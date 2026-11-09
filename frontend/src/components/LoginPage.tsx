@@ -83,6 +83,9 @@ export default function LoginPage() {
     try {
       const data = await login(u, password)
       if (!data?.token) { setError('登录失败，服务器返回异常'); setLoading(false); return }
+      // 多端同步 P1（2026-11-09）：服务端 agreed_at 留痕 → 本端记住勾选态，
+      // 同端下次登录不再重复勾选
+      if (data.user?.agreed) { try { localStorage.setItem('agreedTerms', '1') } catch { /* 忽略 */ } }
       handleLogin(data.token, data.user, remember)
       agreeTerms()  // C11：协议接受留痕（fire-and-forget）
       if (data.user?.theme && data.user.theme !== theme) setTheme(data.user.theme)

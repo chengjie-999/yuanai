@@ -160,6 +160,27 @@ export async function saveTheme(theme: string): Promise<boolean> {
   } catch { return false }
 }
 
+// ---- 跨端偏好（多端同步 P1，2026-11-09）：服务端为准，本地 localStorage 兜底 ----
+export async function fetchUserPrefs(): Promise<Record<string, any>> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/prefs`, { headers: authHeaders() })
+    if (!res.ok) return {}
+    const data = await res.json()
+    return (data.prefs && typeof data.prefs === 'object' && !Array.isArray(data.prefs)) ? data.prefs : {}
+  } catch { return {} }
+}
+
+export async function putUserPrefs(partial: Record<string, any>): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/prefs`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ prefs: partial }),
+    })
+    return res.ok
+  } catch { return false }
+}
+
 // ---- 长期记忆（设置页「我的记忆」卡） ----
 export interface MemoryInfo {
   memory: string

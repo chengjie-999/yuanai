@@ -176,6 +176,8 @@ def login(req: AuthRequest, request: Request):
             "avatar": user.avatar or "",
             "has_password": bool(user.password_hash),
             "theme": user.theme or "",
+            # 多端同步 P1（2026-11-09）：协议已勾选留痕——前端据此记住勾选态
+            "agreed": bool(user.agreed_at),
         },
     }
 
@@ -236,6 +238,16 @@ def email_login_endpoint(req: EmailLoginRequest, request: Request):
         status = 422 if result.get("agreement_required") else (
             403 if result.get("frozen") else 401)
         raise HTTPException(status_code=status, detail=result["error"])
+    # 多端同步 P1：协议已勾选留痕（邮箱注册时强制勾选；老用户查 agreed_at）
+    _agreed = result.get("agreed", False)
+    if not _agreed:
+        try:
+            from db.session import User
+            with get_db().session() as sess:
+                _u = sess.query(User).filter_by(id=result["user_id"]).first()
+                _agreed = bool(_u and _u.agreed_at)
+        except Exception:
+            _agreed = False
     return {
         "token": result["token"],
         "is_new": result["is_new"],
@@ -248,6 +260,7 @@ def email_login_endpoint(req: EmailLoginRequest, request: Request):
             "has_password": result.get("has_password", False),
             "role": "user",
             "theme": "",
+            "agreed": bool(_agreed),
         },
     }
 
@@ -330,6 +343,78 @@ def agree_terms(request: Request):
                 u.agreed_at = datetime.utcnow()
                 sess.commit()
     return {"ok": True}
+
+
+# ==================== 多端同步 P1（2026-11-09）：用户偏好上云 ====================
+# 白名单五键（其余键一律丢弃）；值域与大小上限在此收口
+_PREF_TARGET_KEYS = ("orchestrator", "automation", "claude", "analysis", "collection")
+_PREF_MAX_MAP = 50
+
+
+def _sanitize_prefs(raw) -> dict:
+    """白名单过滤 + 值域校验；非法键/值丢弃（fail-soft 不整单拒绝）"""
+    clean = {}
+    if not isinstance(raw, dict):
+        return clean
+    if raw.get("entertainmentMode") in ("0", "1"):
+        clean["entertainmentMode"] = raw["entertainmentMode"]
+    if raw.get("chatBackend") in ("auto", "cloud", "local"):
+        clean["chatBackend"] = raw["chatBackend"]
+    if raw.get("autoRead") in ("0", "1"):
+        clean["autoRead"] = raw["autoRead"]
+    for key in ("dmTargets", "activeTargets"):
+        v = raw.get(key)
+        if isinstance(v, dict) and len(v) <= _PREF_MAX_MAP:
+            clean[key] = {str(k)[:64]: t for k, t in v.items() if t in _PREF_TARGET_KEYS}
+    return clean
+
+
+class PrefsUpdate(BaseModel):
+    prefs: dict = {}
+
+
+@router.get("/prefs")
+def get_prefs(request: Request):
+    """多端同步：返回用户跨端偏好（JSON dict；未设置为 {}）"""
+    from db.session import User
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    db = get_db()
+    with db.session() as sess:
+        row = sess.query(User).filter_by(id=uid).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        raw = row.prefs or ""
+    try:
+        prefs = _json.loads(raw)
+    except Exception:
+        prefs = {}
+    return {"prefs": prefs if isinstance(prefs, dict) else {}}
+
+
+@router.put("/prefs")
+def update_prefs(req: PrefsUpdate, request: Request):
+    """多端同步：合并更新跨端偏好（白名单校验；返回合并后全量）"""
+    from db.session import User
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    db = get_db()
+    with db.session() as sess:
+        row = sess.query(User).filter_by(id=uid).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        try:
+            cur = _json.loads(row.prefs or "")
+            if not isinstance(cur, dict):
+                cur = {}
+        except Exception:
+            cur = {}
+        cur.update(_sanitize_prefs(req.prefs or {}))
+        row.prefs = _json.dumps(cur, ensure_ascii=False)
+        sess.commit()
+    return {"ok": True, "prefs": cur}
 
 
 class ThemeUpdate(BaseModel):

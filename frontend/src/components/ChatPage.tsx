@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
-import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, reportMessage, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken, authHeaders, shareSession } from '../api'
+import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, reportMessage, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken, authHeaders, shareSession, fetchUserPrefs, putUserPrefs } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
@@ -10,7 +10,7 @@ import ChatView from './chat/ChatView'
 import VoiceCall from './chat/VoiceCall'
 import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
-import { useAutoRead } from '../hooks/useAutoRead'
+import { useAutoRead, setAutoReadValue } from '../hooks/useAutoRead'
 import { useAnswerTone, playAnswerTone } from '../hooks/useAnswerTone'
 import { useTheme } from '../contexts/ThemeContext'
 import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, LinkIcon } from './icons'
@@ -221,12 +221,88 @@ export default function ChatPage({ user }: { user?: any }) {
     const t = setInterval(poll, 15000)
     return () => clearInterval(t)
   }, [])
+  // 多端同步 P0-1（2026-11-09）：当前会话增量轮询——对端设备发的新消息
+  // 15s（+ 窗口聚焦/切回立即一次）尾部合入；有进行中 SSE 流时跳过（不打断
+  // 本地流式态）；只追加不缩减（对端编辑/重发等缩量场景等手动切会话刷新，
+  // 避免误删本端未落库的瞬时气泡如小窗问候语）
+  const pollMsgSigRef = useRef<{ sid: string; count: number; tail: string } | null>(null)
+  const syncPoll = useCallback(async () => {
+    const sid = sidRef.current
+    if (!sid || streamRef.current) return  // 流式进行中不合并
+    try {
+      const history = await loadMessages(sid)
+      const tailMsg = history[history.length - 1]
+      const sig = { sid, count: history.length, tail: String(tailMsg?.content || '') }
+      const prev = pollMsgSigRef.current
+      const local = messagesRef.current
+      if (prev && prev.sid === sid && prev.count === sig.count && prev.tail === sig.tail) {
+        return  // 指纹一致：无新增
+      }
+      pollMsgSigRef.current = sig
+      if (history.length > local.length) {
+        // 对端追加：尾部合入（本地流式态不动；贴底才跟随由 ChatView 滚动逻辑保证）
+        const extra = parseHistory(history.slice(local.length))
+        setMessages([...local, ...extra])
+        setAutoReadTick((t) => t + 1)  // 自动朗读联动（新消息到达即播）
+      }
+    } catch { /* 静默：同步失败下轮再试 */ }
+  }, [])
+  useEffect(() => {
+    const onFocus = () => { syncPoll() }
+    const onVis = () => { if (!document.hidden) syncPoll() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVis)
+    const t = setInterval(syncPoll, 15000)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [syncPoll])
   // Claude Code 桥接待审批命令
   const [pendingApproval, setPendingApproval] = useState<{ decision_id: string; tool_name: string; command: string; claude: boolean } | null>(null)
   // 消息点赞（下标 → 已赞）与修改编辑态（消息下标，null = 非编辑态）
   const [feedback, setFeedbackState] = useState<Record<number, { liked: boolean; disliked: boolean }>>({})
   // 自动朗读（默认开启，与顶部栏喇叭/设置页开关共享 useAutoRead 同步）
   const autoRead = useAutoRead()
+  // 多端同步 P1（2026-11-09）：偏好上云——挂载拉服务端覆盖本地，之后变更回写。
+  // prefsReadyRef 防默认值在服务端偏好到达前把服务端冲掉
+  const prefsReadyRef = useRef(false)
+  useEffect(() => {
+    (async () => {
+      const prefs = await fetchUserPrefs()
+      if (prefs.entertainmentMode === '0' || prefs.entertainmentMode === '1') {
+        setEntMode(prefs.entertainmentMode === '1')
+        try { localStorage.setItem('entertainmentMode', prefs.entertainmentMode) } catch { /* 忽略 */ }
+      }
+      if (prefs.chatBackend === 'auto' || prefs.chatBackend === 'cloud' || prefs.chatBackend === 'local') {
+        setChatBackend(prefs.chatBackend)
+      }
+      if (prefs.autoRead === '0' || prefs.autoRead === '1') {
+        setAutoReadValue(prefs.autoRead === '1')
+      }
+      for (const key of ['dmTargets', 'activeTargets'] as const) {
+        const server = prefs[key]
+        if (server && typeof server === 'object' && !Array.isArray(server)) {
+          const setter = key === 'dmTargets' ? setDmTargets : setActiveTargets
+          setter((prev) => {
+            const next = { ...prev, ...server }  // 服务端条目覆盖本地同名会话
+            try { localStorage.setItem(key, JSON.stringify(next)) } catch { /* 忽略 */ }
+            return next
+          })
+        }
+      }
+      prefsReadyRef.current = true
+    })()
+    // 仅挂载执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  // 变更回写（fire-and-forget；prefsReady 之后才写）
+  useEffect(() => { if (prefsReadyRef.current) putUserPrefs({ entertainmentMode: entMode ? '1' : '0' }) }, [entMode])
+  useEffect(() => { if (prefsReadyRef.current) putUserPrefs({ chatBackend }) }, [chatBackend])
+  useEffect(() => { if (prefsReadyRef.current) putUserPrefs({ autoRead: autoRead ? '1' : '0' }) }, [autoRead])
+  useEffect(() => { if (prefsReadyRef.current) putUserPrefs({ dmTargets }) }, [dmTargets])
+  useEffect(() => { if (prefsReadyRef.current) putUserPrefs({ activeTargets }) }, [activeTargets])
   // 回答完成提示音（U5，默认开启，设置页可关）
   const answerTone = useAnswerTone()
   // 模型自主界面联动（2026-10-22）：set_theme 工具 → 后端 theme_event → 主题切换
@@ -479,6 +555,11 @@ export default function ChatPage({ user }: { user?: any }) {
     setMessages(history.length === 0
       ? []  // 空对话显示吉祥物 logo（2026-10-31）
       : parseHistory(history))
+    // 多端同步：以刚加载的历史为指纹基线，首个轮询周期直接比对增量
+    pollMsgSigRef.current = {
+      sid, count: history.length,
+      tail: String(history[history.length - 1]?.content || ''),
+    }
     scrollToLatest()  // 历史异步加载完成后补滚（时序缺口）
     if (isMobile) setSidebarOpen(false)  // P2：移动端选中会话后收起侧栏
   }

@@ -21,6 +21,12 @@ export function toggleAutoRead(): boolean {
   return next
 }
 
+/** 直接设值并广播（多端同步 P1：服务端偏好回填用，非切换语义） */
+export function setAutoReadValue(v: boolean) {
+  try { localStorage.setItem(KEY, v ? '1' : '0') } catch { /* 不落盘仅本次会话 */ }
+  emit()
+}
+
 /** 订阅式读取：任意一处切换，顶部栏/设置页/聊天页实时同步 */
 export function useAutoRead(): boolean {
   return useSyncExternalStore(

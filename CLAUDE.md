@@ -358,6 +358,8 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **断线重连心跳（2026-11-08）**：ws_client `ping_interval=None` 曾致合盖唤醒后半开连接永不重连（本地以为在线、云端已踢）——改 ping_interval 20s/ping_timeout 10s/open_timeout 15s，30s 内检出走重连循环。**托盘两连修**：① agent/main.py `--tray` 分支必须从 sys.argv 清掉 --tray（tray.py 自己的 argparse 只有 4 参数，残留必报 unrecognized——exe 入口直接是 tray.py 无此问题，纯源码模式雷）② tray.py `--server-url` 默认值曾写死 wss://cjyuanai.cn 顶掉身份文件里的地址（本地联调 ws://localhost:8000 → 拿本地设备号连生产 403）——default=None 身份优先
 - **本机账号归属（2026-11-08）**：`GET /api/v1/agent/my-profile`（设备凭据自鉴权，middleware 放行）→ 托盘菜单「账号：昵称」行（未绑定显示引导）；托盘菜单重排（开关组/常用入口/工具组），「检查更新」常显项移除——仅发现新版时出现「立即更新 vX」（后台 6h 循环）；**托盘图标定版**：吉祥物渐变核心球（PIL 渐变 #60a5fa→#1d4ed8）+ 状态色外环（在线绿/执行黄/离线灰球），`_make_icon(status)` 取代纯色圆点
 - **桌宠窗口缩放**：UI 滑杆最小 0.5，config-slot-0.json 直写 `scale` 可突破（0.3=65×81，2026-11-08 实测）——见记忆 dsh-pet-config
+- **2026-11-09 打包发布 v20261108 最终版**：此前 19:42 的产物早于角色串线三连修（ea80abd）与托盘菜单修复——重打后双产物已上传生产（exe sha256 d6e5b495… / setup 17e7a8c7…，生产清单核对一致，installer=True，默认 20261108；旧版 20261030-135832 已删，保留 1107/1108）；本机托盘已换新 exe（日志确认已连接云端、selenium 报错消失、菜单「账号：」行 my-profile 实测 200 绑定成功）。两处收尾修复：① 托盘菜单动态刷新——`update_menu()` 只重估勾选态不增删菜单项，发现新版/账号归属变化必须走 `self._icon.menu = self._build_menu()` 整体重建（「立即更新」项此前从未出现）② claude_delegate 补 `import sys`——ea80abd 引入 `getattr(sys, "frozen")` 冻结判定但漏导入，agent/tools 整包 import 即崩 NameError（源码/冻结双模式，回归测试抓出）
+- **桌宠窗口缩放**：UI 滑杆最小 0.5，config-slot-0.json 直写 `scale` 可突破（0.3=65×81，2026-11-08 实测）——见记忆 dsh-pet-config
 
 ## 第三批（2026-11-06：N3 三态 / N1 多设备 / V1-4 分享）
 

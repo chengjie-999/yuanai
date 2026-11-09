@@ -40,6 +40,34 @@ def _ver_lt(a: str, b: str) -> bool:
     return pa < pb
 
 
+def _cleanup_mei_residue():
+    """更新器自愈（P0）：清理 %TEMP%\\_MEI* 残留——PyInstaller 单文件模式崩溃/
+    更新被中断会遗留解包目录，残留冲突可致新包启动即崩（DLL 加载失败）。
+    启动与更新前调用；当前进程自己的解包目录跳过；任何异常静默不影响主流程。"""
+    try:
+        import glob
+        import shutil
+        import tempfile
+        meipass = getattr(sys, "_MEIPASS", "") or ""
+        keep = os.path.normcase(os.path.abspath(meipass)) if meipass else ""
+        temp_dir = os.environ.get("TEMP") or os.environ.get("TMP") or tempfile.gettempdir()
+        removed = 0
+        for d in glob.glob(os.path.join(temp_dir, "_MEI*")):
+            try:
+                if keep and os.path.normcase(os.path.abspath(d)) == keep:
+                    continue  # 当前进程自己的解包目录不能删
+                if os.path.isdir(d):
+                    shutil.rmtree(d, ignore_errors=True)
+                    removed += 1
+                    logger.info("已清理残留临时目录: %s", d)
+            except Exception:
+                pass
+        if removed:
+            logger.info("更新器自愈：清理了 %d 个 _MEI 残留目录", removed)
+    except Exception:
+        pass
+
+
 def _run_script_allowed(script_path: str, root: str) -> bool:
     """冻结模式 --run-script 白名单校验（S5.1 L1）：
     realpath 必须落在内置脚本目录（agent/datanalysis/scripts|crawl、skills）内"""
@@ -228,6 +256,7 @@ class AgentTray:
 
     def run(self):
         """主入口：启动托盘（阻塞主线程）"""
+        _cleanup_mei_residue()  # P0 更新器自愈：启动先清上次崩溃/更新遗留
         icon = _make_icon("offline")
         self._icon = pystray.Icon(
             "yuanai_agent",
@@ -283,11 +312,20 @@ class AgentTray:
     def _update_check_loop(self):
         """周期性检查云端 version.json，发现新版时更新托盘菜单提示"""
         time.sleep(5)
+        _fail_notified = False
         while self._running:
             try:
                 self._check_update_once()
             except Exception as e:
                 logger.warning("检查更新失败: %s", e)
+                # P0 更新器自愈：检查失败不再静默（每次进程运行只提示一次，防刷屏）
+                if not _fail_notified:
+                    _fail_notified = True
+                    try:
+                        self._icon.notify(f"检查更新失败：{e}\n网络不通或服务端异常，不影响使用；"
+                                          "可稍后重试或去小元AI网站重新下载", "小元AI Agent")
+                    except Exception:
+                        pass
             time.sleep(6 * 3600)  # 每 6 小时查一次
 
     def _version_base_url(self) -> str:
@@ -360,6 +398,7 @@ class AgentTray:
         """一键更新：校验清单 sha256 → 下载并同步算哈希 → 一致才写自替换脚本"""
         import hashlib
         import urllib.request
+        _cleanup_mei_residue()  # P0 更新器自愈：更新前清残留，防新包解压冲突
         new_exe = os.path.join(_config_file().parent, "yuanai-agent.new")
         bat = os.path.join(_config_file().parent, "update.bat")
         exe_path = sys.executable
@@ -412,7 +451,17 @@ class AgentTray:
             logger.error("自动更新失败: %s", e)
             self._icon.title = f"小元AI Agent - 更新失败"
             try:
-                self._icon.notify(f"更新失败：{e}\n请稍后重试或手动下载新版", "小元AI Agent")
+                # P0 更新器自愈：人话报错 + 可行动指引（解压失败多为杀软/残留拦截）
+                reason = str(e)
+                if "sha256" in reason:
+                    tip = "更新包下载损坏或校验不一致，已自动中止"
+                elif any(k in reason.lower() for k in ("timeout", "timed out", "urlopen", "getaddrinfo", "refused")):
+                    tip = "网络连接失败，请检查网络后重试"
+                else:
+                    tip = "更新包解压失败，可能被杀软拦截或临时目录残留冲突"
+                self._icon.notify(
+                    f"更新失败：{tip}\n已自动清理临时目录残留——点「立即更新」重试；"
+                    "仍失败可去小元AI网站「设置 → 本地 Agent」重新下载安装", "小元AI Agent")
             except Exception:
                 pass
 
@@ -550,6 +599,14 @@ class AgentTray:
 
         def on_exit(icon, item):
             self._running = False
+            # P0 退出清子进程：tree-kill 自己 spawn 的 claude（根治「只有重启才释放锁」）
+            try:
+                from agent.bridge_policy import kill_spawned_tree
+                n = kill_spawned_tree()
+                if n:
+                    logger.info("退出时已终止 %d 个残留 Claude 子进程", n)
+            except Exception:
+                pass
             icon.stop()
 
         def on_reinstall(icon, item):

@@ -9,9 +9,62 @@ Phase 2（SDK 桥接）：review 走云端聊天审批流（can_use_tool）
 import json
 import os
 import re
+import subprocess
+import threading
 from pathlib import Path
 
 from utils.data_path import root_path
+
+
+# ==================== 子进程登记（P0 退出清子进程） ====================
+# 桥接/委派 spawn 的 claude 子进程登记在此——托盘退出时 tree-kill，
+# 根治「只有重启才释放锁」的残留进程。失败一律静默，不影响主流程。
+
+_SPAWNED_PIDS: "set[int]" = set()
+_SPAWNED_LOCK = threading.Lock()
+
+
+def register_spawned_proc(proc) -> None:
+    """登记本进程 spawn 的 claude 子进程 PID（供退出时 tree-kill）"""
+    try:
+        with _SPAWNED_LOCK:
+            _SPAWNED_PIDS.add(proc.pid)
+    except Exception:
+        pass
+
+
+def unregister_spawned_proc(proc) -> None:
+    """子进程正常结束/被清理后移出登记"""
+    try:
+        with _SPAWNED_LOCK:
+            _SPAWNED_PIDS.discard(getattr(proc, "pid", None))
+    except Exception:
+        pass
+
+
+def kill_spawned_tree() -> int:
+    """tree-kill 全部登记中的 claude 子进程（Windows taskkill /T /F；POSIX SIGKILL），
+    返回击杀数量。退出路径专用，任何异常静默。"""
+    with _SPAWNED_LOCK:
+        pids = list(_SPAWNED_PIDS)
+        _SPAWNED_PIDS.clear()
+    killed = 0
+    for pid in pids:
+        if os.name == "nt":
+            try:
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                               capture_output=True, timeout=10,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                killed += 1
+            except Exception:
+                pass
+        else:
+            try:
+                os.kill(pid, 9)
+                killed += 1
+            except Exception:
+                pass
+    return killed
 
 
 def current_project_root() -> Path:

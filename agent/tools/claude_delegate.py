@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 from typing import Callable, Optional
 
 from yuanai_core.core.schemas import AgentEvent, progress
@@ -39,6 +40,9 @@ HEARTBEAT_SECONDS = 30         # 心跳间隔（重置云端 SSE 300s 超时）
 MAX_OUTPUT_CHARS = 8000        # tool_end 输出上限（进入 LLM 上下文与聊天记录）
 
 _DISALLOWED_TOOLS = "WebFetch,WebSearch"
+# 委派静默化（P0）：Windows 下不弹空控制台窗口（0x08000000）；非 Windows 无此概念
+_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+_STDERR_TAIL = 2000  # 失败时带回 stderr 末尾字数（失败不再无日志）
 
 # 能力边界身份卡（docs/agents/claude_code.md，单一事实源）：CLI 与 SDK 共用
 try:
@@ -112,6 +116,7 @@ async def run_claude_once(
         cwd=str(cwd),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        creationflags=_NO_WINDOW,  # 委派静默化：不再每次弹空终端窗口
         env={
             **os.environ,
             "PYTHONIOENCODING": "utf-8",
@@ -150,13 +155,18 @@ async def run_claude_once(
                 if emit and request_id:
                     emit(progress(0, 0, f"Claude Code 执行中（{elapsed}s）...", request_id))
 
+    stderr_buf = ""  # 滚动保留 stderr 尾部——失败时带回返回（不再静默丢弃）
+
     async def _drain_stderr():
         # 2026-10-19 修复：stderr=PIPE 从不排水——verbose 模式输出多时管道写满，
-        # 子进程阻塞直到超时才被 kill；并发排空（内容丢弃，审计由钩子/audit 落盘）
+        # 子进程阻塞直到超时才被 kill；并发排空并滚动保留末 _STDERR_TAIL 字
+        nonlocal stderr_buf
         assert proc.stderr is not None
         try:
-            async for _chunk in proc.stderr:
-                pass
+            async for chunk in proc.stderr:
+                stderr_buf += chunk.decode("utf-8", errors="replace")
+                if len(stderr_buf) > _STDERR_TAIL * 2:
+                    stderr_buf = stderr_buf[-_STDERR_TAIL:]
         except Exception:
             pass
 
@@ -169,7 +179,7 @@ async def run_claude_once(
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
-            return "Claude Code 执行超时（10 分钟），已终止"
+            return _with_stderr("Claude Code 执行超时（10 分钟），已终止", stderr_buf)
         await read_task  # 排空剩余输出
     finally:
         hb_task.cancel()
@@ -177,13 +187,11 @@ async def run_claude_once(
 
     if error_text:
         _audit(prompt, proc.returncode, len(final_text), "error")
-        return f"Claude Code 执行失败: {error_text}"[:MAX_OUTPUT_CHARS]
+        return _with_stderr(f"Claude Code 执行失败: {error_text}", stderr_buf)
 
     if not final_text and proc.returncode != 0:
-        assert proc.stderr is not None
-        stderr_tail = (await proc.stderr.read()).decode("utf-8", errors="replace")[-500:]
         _audit(prompt, proc.returncode, 0, "exit_error")
-        return f"Claude Code 异常退出（code={proc.returncode}）: {stderr_tail}"
+        return _with_stderr(f"Claude Code 异常退出（code={proc.returncode}）", stderr_buf)
 
     text = final_text.strip()
     if not text:
@@ -193,6 +201,14 @@ async def run_claude_once(
         text = text[:MAX_OUTPUT_CHARS] + "\n...(输出过长已截断)"
     _audit(prompt, proc.returncode, len(text), "ok")
     return text
+
+
+def _with_stderr(msg: str, stderr_buf: str) -> str:
+    """失败消息附 stderr 尾部（P0 委派静默化：失败不再无日志），并遵守输出上限"""
+    tail = (stderr_buf or "").strip()[-_STDERR_TAIL:]
+    if tail:
+        msg = f"{msg}\n[stderr] {tail}"
+    return msg[:MAX_OUTPUT_CHARS]
 
 
 def _audit(prompt: str, exit_code, result_len: int, status: str):

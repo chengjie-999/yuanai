@@ -27,6 +27,7 @@ import os
 import shutil
 import signal
 import socket
+import subprocess
 import sys
 import time
 import uuid
@@ -69,6 +70,12 @@ CLAUDE_CLI = "claude"
 BRIDGE_TIMEOUT = 900  # 单次会话最长 15 分钟
 
 _DISALLOWED_TOOLS = "WebFetch,WebSearch"
+# 会话锁看门狗（P0 自愈）：上一请求占用锁超过该秒数（子进程卡死等）→ 新请求
+# 到来时强制杀子进程 + 复位锁 + 人话报错；CLAUDE_BRIDGE_LOCK_TIMEOUT 可配
+LOCK_TIMEOUT = int(os.getenv("CLAUDE_BRIDGE_LOCK_TIMEOUT", "600"))
+# 委派静默化（P0）：Windows 下不弹空控制台窗口（0x08000000）；非 Windows 无此概念
+_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+_STDERR_TAIL = 2000  # 失败时带回 stderr 末尾字数（失败不再无日志）
 
 
 class SessionStore:
@@ -179,6 +186,10 @@ class ClaudeBridgeHandler:
         self._sessions = SessionStore(SESSIONS_FILE)
         self._sessions.load()
         self._locks = {}  # cloud session_id -> asyncio.Lock（防并发 query）
+        # 会话锁看门狗状态（P0 自愈）：锁获取时刻 / 活动子进程+任务 / rid→锁映射
+        self._lock_since = {}   # lock_key -> monotonic 秒（锁被占用时有效）
+        self._active = {}       # lock_key -> {"proc": Process|None, "task": Task|None}
+        self._rid_key = {}      # request_id -> lock_key（stop_request 反查）
         self._pending_approvals = {}  # decision_id -> asyncio.Future（SDK 审批流）
         self._sdk_mode = sdk_mode  # None=auto（有凭证即 SDK，否则 CLI）；True/False 强制
         # 全局并发上限：Claude Code 子进程重量级（内存 + 网关配额），默认 2
@@ -205,30 +216,82 @@ class ClaudeBridgeHandler:
         lock_key = req.session_id or "global"
         lock = self._locks.setdefault(lock_key, asyncio.Lock())
         if lock.locked():
-            yield error_event("Claude Code 正在处理上一请求，请稍候", rid)
+            since = self._lock_since.get(lock_key)
+            elapsed = int(time.monotonic() - since) if since else 0
+            if since is not None and time.monotonic() - since >= LOCK_TIMEOUT:
+                # P0 会话锁看门狗：上一请求卡死（子进程挂死/无产出）→ 强杀 + 复位锁
+                logger.warning("会话锁看门狗触发：%s 占用 %ds 未释放，强制终止并复位",
+                               lock_key[:12], elapsed)
+                self._reset_lock(lock_key)
+                yield error_event("上一任务卡死已终止，请重试", rid)
+                return
+            yield error_event(f"Claude Code 正在处理上一请求（已运行 {elapsed}s），请稍候", rid)
             return
         if self._sem.locked():
             yield error_event("本机 Claude Code 正忙（并发任务已满），请稍后再试", rid)
             return
-        async with self._sem:
-            async with lock:
-                # SDK 决策：auto 模式按凭证有无（有 → SDK 全功能，无 → CLI 兜底）
-                # C9（2026-10-29）：凭证之外还须端点合规（ANTHROPIC_BASE_URL 显式
-                # 指向境内网关）；未设置/官方端点 → 不启用 SDK，降级 CLI
-                from agent.claude_loop import load_credentials, endpoint_compliant
-                use_sdk = self._sdk_mode
-                if use_sdk is None:
-                    use_sdk = bool(load_credentials()) and endpoint_compliant()
-                elif use_sdk and not endpoint_compliant():
-                    logger.warning("C9 出境开关：--sdk 强制但端点未指向合规网关"
-                                   "（ANTHROPIC_BASE_URL 未设置或为官方端点），降级 CLI")
-                    use_sdk = False
-                if use_sdk:
-                    async for ev in self._run_sdk_query(req, rid):
-                        yield ev
-                else:
-                    async for ev in self._run_query(req, rid, prompt):
-                        yield ev
+        # 登记锁占用（看门狗依据）：任务=当前消费任务（SDK 取消用）、proc=CLI 子进程
+        since = time.monotonic()
+        self._lock_since[lock_key] = since
+        active = {"proc": None, "task": asyncio.current_task()}
+        self._active[lock_key] = active
+        self._rid_key[rid] = lock_key
+        try:
+            async with self._sem:
+                async with lock:
+                    # SDK 决策：auto 模式按凭证有无（有 → SDK 全功能，无 → CLI 兜底）
+                    # C9（2026-10-29）：凭证之外还须端点合规（ANTHROPIC_BASE_URL 显式
+                    # 指向境内网关）；未设置/官方端点 → 不启用 SDK，降级 CLI
+                    from agent.claude_loop import load_credentials, endpoint_compliant
+                    use_sdk = self._sdk_mode
+                    if use_sdk is None:
+                        use_sdk = bool(load_credentials()) and endpoint_compliant()
+                    elif use_sdk and not endpoint_compliant():
+                        logger.warning("C9 出境开关：--sdk 强制但端点未指向合规网关"
+                                       "（ANTHROPIC_BASE_URL 未设置或为官方端点），降级 CLI")
+                        use_sdk = False
+                    if use_sdk:
+                        async for ev in self._run_sdk_query(req, rid):
+                            yield ev
+                    else:
+                        async for ev in self._run_query(req, rid, prompt, lock_key):
+                            yield ev
+        finally:
+            # 身份守卫：只有仍指向本请求才清理——看门狗复位后新请求可能已占用该 key
+            if self._active.get(lock_key) is active:
+                self._active.pop(lock_key, None)
+            if self._rid_key.get(rid) == lock_key:
+                self._rid_key.pop(rid, None)
+            if self._lock_since.get(lock_key) == since:
+                self._lock_since.pop(lock_key, None)
+
+    def _reset_lock(self, lock_key: str):
+        """看门狗/停止联动共用的强制复位：杀 CLI 子进程 + 取消 SDK 活动任务 +
+        移除锁对象。旧持有者最终退出时解锁的是已废弃的锁对象，无副作用"""
+        active = self._active.pop(lock_key, None)
+        if active:
+            proc = active.get("proc")
+            if proc is not None and proc.returncode is None:
+                try:
+                    proc.kill()
+                except Exception as e:
+                    logger.warning("杀子进程失败: %s", e)
+            task = active.get("task")
+            if task is not None and not task.done():
+                task.cancel()
+        self._lock_since.pop(lock_key, None)
+        self._locks.pop(lock_key, None)
+
+    def stop(self, rid: str):
+        """stop_request 联动（云端「停止生成」→ 本机）：终止 rid 对应的活动
+        子进程/任务；锁随旧持有者退出自然释放，无需额外复位"""
+        lock_key = self._rid_key.get(rid)
+        if not lock_key:
+            logger.info("停止请求无对应活动任务: %s", rid[:8] if rid else "(空)")
+            return
+        logger.info("收到停止生成：终止挂起委派 rid=%s", rid[:8])
+        self._reset_lock(lock_key)
+        self._rid_key.pop(rid, None)  # 本请求已终止，映射立即失效
 
     async def _wait_decision_future(self, decision_id: str, tool_name: str, command: str, rid: str):
         """主事件循环内：注册审批 Future → 发 approval 事件 → 等云端 decision 回传。
@@ -322,7 +385,7 @@ class ClaudeBridgeHandler:
             self._flush_memory_markers(req, final_result)
             yield ev_done(final_result, "", rid)
 
-    async def _run_query(self, req: ChatRequest, rid: str, prompt: str):
+    async def _run_query(self, req: ChatRequest, rid: str, prompt: str, lock_key: str = ""):
         claude_path = shutil.which(CLAUDE_CLI)
         if claude_path is None:
             yield error_event("本机未安装 Claude Code CLI（请先安装并登录 claude）", rid)
@@ -362,8 +425,14 @@ class ClaudeBridgeHandler:
             cwd=root,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            creationflags=_NO_WINDOW,  # 委派静默化：不再每次弹空终端窗口
             env={**os.environ, "PYTHONIOENCODING": "utf-8", "CLAUDE_CODE_BRIDGE": "1"},
         )
+        # 登记子进程供会话锁看门狗/停止联动强杀（SDK 模式无子进程，取消任务即可）
+        if lock_key:
+            active = self._active.get(lock_key)
+            if active is not None:
+                active["proc"] = proc
 
         tool_id_map = {}   # tool_use id -> tool name
         saw_delta = False  # 是否已收到流式 text_delta（用于 assistant 消息降级补发）
@@ -372,13 +441,18 @@ class ClaudeBridgeHandler:
         is_error = False
         result_obj = None  # 收到的 result 消息（未收到 = 进程异常退出）
 
+        stderr_buf = ""  # 滚动保留 stderr 尾部——失败时带回返回（不再静默丢弃）
+
         async def _drain_stderr():
             # 2026-10-19 修复：stderr=PIPE 从不排水——管道写满后子进程阻塞、
-            # 与等待 stdout EOF 互相死锁；并发排空（内容丢弃，审计由钩子落盘）
+            # 与等待 stdout EOF 互相死锁；并发排空并滚动保留末 _STDERR_TAIL 字
+            nonlocal stderr_buf
             assert proc.stderr is not None
             try:
-                async for _chunk in proc.stderr:
-                    pass
+                async for chunk in proc.stderr:
+                    stderr_buf += chunk.decode("utf-8", errors="replace")
+                    if len(stderr_buf) > _STDERR_TAIL * 2:
+                        stderr_buf = stderr_buf[-_STDERR_TAIL:]
             except Exception:
                 pass
 
@@ -462,12 +536,14 @@ class ClaudeBridgeHandler:
 
         # 未收到 result 消息 = 进程异常退出
         if result_obj is None:
-            stderr_tail = ""
+            stderr_tail = stderr_buf[-_STDERR_TAIL:].strip()
             try:
                 if proc.returncode is None:
                     await asyncio.wait_for(proc.wait(), 10)
                 if proc.stderr:
-                    stderr_tail = (await proc.stderr.read()).decode("utf-8", errors="replace")[-300:]
+                    # 排水任务取消后管道残留再读一次（合并尾部）
+                    rest = (await proc.stderr.read()).decode("utf-8", errors="replace")
+                    stderr_tail = (stderr_tail + rest)[-_STDERR_TAIL:]
             except Exception:
                 pass
             is_error = True
@@ -480,7 +556,12 @@ class ClaudeBridgeHandler:
             self._sessions.put(req.session_id, final_session_id)
 
         if is_error:
-            yield error_event(f"Claude Code 执行失败: {final_result[:500]}", rid)
+            # 委派静默化：失败带回 stderr 尾部（人话可行动，不再只有一句 code）
+            tail = stderr_buf[-_STDERR_TAIL:].strip()
+            detail = final_result[:800]
+            if tail and "[stderr]" not in final_result:
+                detail = f"{detail}\n[stderr] {tail}"
+            yield error_event(f"Claude Code 执行失败: {detail[:2500]}", rid)
         else:
             # 解析【记住】标记 → 云端写入用户长期记忆（失败静默，不阻塞回复）
             self._flush_memory_markers(req, final_result)
@@ -586,6 +667,8 @@ async def main():
     )
     handler._ws_send = client.send_event
     client.on_chat_request(handler.stream)
+    # P0 停止联动：云端「停止生成」→ 杀本机挂起委派（与统筹 B1-11 同通道）
+    client.on_stop_request(handler.stop)
 
     logger.info("=" * 50)
     logger.info("Claude Code 桥接进程启动")

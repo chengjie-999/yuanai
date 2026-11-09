@@ -11,31 +11,29 @@ import json
 import logging
 import os
 import shutil
-import sys
 from typing import Callable, Optional
 
 from yuanai_core.core.schemas import AgentEvent, progress
 from yuanai_core.rag import current_request_id
-from utils.data_path import root_path
 from agent.bridge_policy import build_allowed_tools, guard_ready
 
 logger = logging.getLogger(__name__)
 
 CLAUDE_CLI = "claude"
-PROJECT_ROOT = root_path()
-
-# 冻结版仓库目录解析（2026-10-19 初版 + 2026-11-08 傻瓜化）：exe 内
-# root_path() 指向数据目录而非真实仓库，其中没有 scripts/hooks 与
+# 冻结版仓库目录解析（2026-10-19 初版 + 2026-11-08 傻瓜化 + 2026-11 可配置）：
+# exe 内 root_path() 指向数据目录而非真实仓库，其中没有 scripts/hooks 与
 # .claude/settings.json → guard_ready 永远 fail-closed、Claude 委派不可用。
-# 现方案：CC_PROJECT_DIR 指向真实仓库仍优先；未设置时自动落内建
-# workspace（guard 三件套开箱就绪，见 agent/cc_workspace.py）——
-# 用户零配置，安全门禁不削弱。
-from agent.cc_workspace import ensure_cc_workspace
-_CC_DIR = os.getenv("CC_PROJECT_DIR", "")
-if _CC_DIR and os.path.isdir(_CC_DIR):
-    PROJECT_ROOT = os.path.abspath(_CC_DIR)
-elif getattr(sys, "frozen", False):
-    PROJECT_ROOT = ensure_cc_workspace()
+# 现方案：选择链见 agent/cc_workspace.resolve_project_dir（CC_PROJECT_DIR >
+# 数据根 cc_config.json > 源码根 / 内建 workspace）——用户零配置，门禁不削弱。
+from agent.cc_workspace import resolve_project_dir
+
+
+def _project_root() -> str:
+    """每次委派重新解析：运行期切换工作目录后，下一次即生效"""
+    return resolve_project_dir()
+
+
+PROJECT_ROOT = resolve_project_dir()
 SUBPROCESS_TIMEOUT = 600       # 单次任务最长 10 分钟
 HEARTBEAT_SECONDS = 30         # 心跳间隔（重置云端 SSE 300s 超时）
 MAX_OUTPUT_CHARS = 8000        # tool_end 输出上限（进入 LLM 上下文与聊天记录）
@@ -98,7 +96,8 @@ async def run_claude_once(
         return "本机未安装 Claude Code CLI（请先安装并登录 claude）"
 
     # fail-closed 门禁：安全钩子未就绪绝不 spawn 子进程（S0.1 C1 修复）
-    ok, reason = guard_ready(PROJECT_ROOT)
+    root = _project_root()
+    ok, reason = guard_ready(root)
     if not ok:
         logger.error("拒绝启动 Claude Code：%s", reason)
         return f"安全钩子未就绪，已拒绝启动 Claude Code：{reason}"
@@ -106,7 +105,7 @@ async def run_claude_once(
     if _IS_3P_MODE:
         logger.warning("第三方网关模式（hooks 可能不触发）：命令级拦截靠进程级白名单兜底")
 
-    cwd = cwd or PROJECT_ROOT
+    cwd = cwd or root
     cmd = _build_command(claude_path, prompt)
     proc = await asyncio.create_subprocess_exec(
         *cmd,

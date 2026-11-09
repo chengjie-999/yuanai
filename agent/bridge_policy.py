@@ -13,7 +13,19 @@ from pathlib import Path
 
 from utils.data_path import root_path
 
-PROJECT_ROOT = Path(root_path()).resolve()
+
+def current_project_root() -> Path:
+    """项目边界根（Write/Edit 落点）：每次调用重新解析——支持运行期切换
+    CC 工作目录（数据根 cc_config.json）而无需重启 agent。
+    解析异常一律回落 root_path()，与切换前行为一致。"""
+    try:
+        from agent.cc_workspace import resolve_project_dir
+        return Path(resolve_project_dir()).resolve()
+    except Exception:
+        return Path(root_path()).resolve()
+
+
+PROJECT_ROOT = current_project_root()
 
 # 允许 curl/wget 访问本机回环地址（默认关闭，测试场景可设 CLAUDE_ALLOW_LOCALHOST=1）
 ALLOW_LOCALHOST = os.getenv("CLAUDE_ALLOW_LOCALHOST", "0") == "1"
@@ -158,11 +170,12 @@ def _path_within_root(tool_input: dict) -> bool:
     path = tool_input.get("file_path") or tool_input.get("path") or ""
     if not path:
         return True
+    root = current_project_root()
     p = Path(str(path))
     if not p.is_absolute():
-        p = PROJECT_ROOT / p
+        p = root / p
     try:
-        return _is_within(p, PROJECT_ROOT)
+        return _is_within(p, root)
     except Exception:
         return False
 

@@ -51,12 +51,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.data_path import root_path  # noqa: E402
 
 # 冻结版仓库目录解析（同 claude_bridge）：exe 内 root_path() 指向数据目录
-# 而非真实仓库——发布版可设 CC_PROJECT_DIR 指向真实仓库；未设置保持 fail-closed。
-_CC_DIR = os.getenv("CC_PROJECT_DIR", "")
-if _CC_DIR and os.path.isdir(_CC_DIR):
-    PROJECT_ROOT = os.path.abspath(_CC_DIR)
-else:
-    PROJECT_ROOT = root_path()
+# 而非真实仓库——选择链见 agent/cc_workspace.resolve_project_dir
+# （CC_PROJECT_DIR > 数据根 cc_config.json > 源码根 / 内建 workspace）。
+from agent.cc_workspace import resolve_project_dir  # noqa: E402
+
+PROJECT_ROOT = resolve_project_dir()
 
 SESSIONS_FILE = os.path.join(PROJECT_ROOT, "data", "terminal_sessions.json")
 HISTORY_FILE = os.path.join(PROJECT_ROOT, "data", "terminal_history.txt")

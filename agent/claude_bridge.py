@@ -48,16 +48,20 @@ from agent.claude_loop import BRIDGE_SYSTEM_PROMPT as _BRIDGE_SYSTEM_PROMPT
 logger = logging.getLogger("claude_bridge")
 
 PROJECT_ROOT = root_path()
-# 冻结版仓库目录解析（2026-10-19 初版 + 2026-11-08 傻瓜化）：exe 内 root_path()
-# 指向数据目录而非真实仓库 → guard_ready 永远 fail-closed。CC_PROJECT_DIR 指向
-# 真实仓库优先；未设置自动落内建 workspace（guard 三件套开箱就绪，
-# agent/cc_workspace.py）——用户零配置，安全门禁不削弱。
-from agent.cc_workspace import ensure_cc_workspace
-_CC_DIR = os.getenv("CC_PROJECT_DIR", "")
-if _CC_DIR and os.path.isdir(_CC_DIR):
-    PROJECT_ROOT = os.path.abspath(_CC_DIR)
-elif getattr(sys, "frozen", False):
-    PROJECT_ROOT = ensure_cc_workspace()
+# 冻结版仓库目录解析（2026-10-19 初版 + 2026-11-08 傻瓜化 + 2026-11 可配置）：
+# exe 内 root_path() 指向数据目录而非真实仓库 → guard_ready 永远 fail-closed。
+# 选择链见 agent/cc_workspace.resolve_project_dir：CC_PROJECT_DIR（进程级覆盖）>
+# 数据根 cc_config.json（持久化，set_project_dir 写入，无需改系统环境变量）>
+# 源码根 / 内建 workspace（guard 三件套开箱就绪）——用户零配置，门禁不削弱。
+from agent.cc_workspace import resolve_project_dir
+
+
+def _project_root() -> str:
+    """每次 spawn 重新解析：运行期切换工作目录后，下一轮即生效（不必重启）"""
+    return resolve_project_dir()
+
+
+PROJECT_ROOT = resolve_project_dir()
 SESSIONS_FILE = os.path.join(PROJECT_ROOT, "data", "claude_sessions.json")
 HEARTBEAT_SECONDS = 30
 MAX_TOOL_OUTPUT = 2000
@@ -325,7 +329,8 @@ class ClaudeBridgeHandler:
             return
 
         # fail-closed 门禁：安全钩子未就绪绝不 spawn 子进程（S0.1 C1 修复）
-        ok, reason = guard_ready(str(PROJECT_ROOT))
+        root = _project_root()
+        ok, reason = guard_ready(root)
         if not ok:
             logger.error("拒绝启动 Claude Code：%s", reason)
             yield error_event(f"安全钩子未就绪，已拒绝启动 Claude Code：{reason}", rid)
@@ -354,7 +359,7 @@ class ClaudeBridgeHandler:
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
-            cwd=str(PROJECT_ROOT),
+            cwd=root,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env={**os.environ, "PYTHONIOENCODING": "utf-8", "CLAUDE_CODE_BRIDGE": "1"},

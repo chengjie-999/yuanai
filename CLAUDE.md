@@ -340,6 +340,21 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **长任务小窗（2026-10-16）**：@面板 Claude/自动化行「小窗」按钮 → 新建独立会话持久定向该智能体（dmTargets localStorage），不占主对话截断（@Claude 走 claude-stream 天然不截断；@自动化 后端截断放宽 200 条）；automation 加 10s 心跳进度（聊天气泡进度条可见）；主对话截断提示附各说话人归档计数
 - 验证：`python -m agent.verify_claude_bridge`（离线断言 agent→token→tool→done + 会话续接）
 
+### CC 桥接体验修复批次（2026-11-09 全部落地，方案 plans/cc-bridge-experience-2026-11.md；v20261109 已发布）
+
+- **P0 可靠性（Agent 侧重打包）**：① 会话锁看门狗自愈——锁占用超 `CLAUDE_BRIDGE_LOCK_TIMEOUT`（默认 600s）新请求到来即强杀子进程/取消任务+复位锁+人话报错，忙提示带已运行时长；「停止生成」接 stop_request 通道杀挂起委派（`client.on_stop_request(handler.stop)`，与统筹 B1-11 同通道）② 委派静默化——spawn 加 CREATE_NO_WINDOW（不再弹空终端窗口），stderr 滚动保留末 2000 字失败带回 ③ 更新器自愈——启动/更新前清 `%TEMP%\_MEI*` 残留（跳过自身解包目录），更新失败按原因分类人话报错，6h 检查失败每进程提示一次 ④ 退出清子进程——bridge_policy PID 登记表，托盘退出/桥接进程退出 tree-kill（taskkill /T /F）
+- **P1 身份管理（云端+前端）**：① claude-stream 回退提示重写——云端兜底首句自报身份+无本机信息如实说+结尾引导转回 ② 兜底独立说话人 `cloud_fallback`——回退流首个 agent 事件声明身份，AGENT_CONFIG/views AGENT_LABELS 双端注册，真 CC 视图显示【云端兜底】摘要 ③ CC 私聊窗桥接状态徽标（在线棕/离线灰）④ 分享页角色显示——share.py 读 sender 列+气泡说话人标签身份色 ⑤ CC 读自家分享链接——claude-stream 检测 `/api/v1/share/{sid}` 链接云端读静态页剥标签注入（12000 字截断，未分享人话提示）
+- **P2 @ 粘性定向**：主对话 @Claude/@自动化 后进入会话级「定向对话期」（localStorage activeTargets），输入区「定向 · xx」徽标可退出，换 @ 即切换（统筹不粘性）；plan skill 白名单报错说清「仅支持数据分析/数据采集，v1 暂不支持 claude_code/automation」
+- **P3 收尾（Agent 侧，随 v20261109 打包）**：① CC 身份卡环境自述——`claude_loop.env_hint()/bridge_system_prompt()` 动态注入工作目录（每轮解析）/shell=cmd.exe/Bash 全新会话 cd 不跨调用/文件工具锁目录（桥接 SDK+CLI、终端 /claude、delegate 四处）② 委派失败人话可行动指引 ③ 生成代码约束（docs/agents/claude_code.md：注释英文/外层 `'''`/显式 encoding='utf-8'）④ 托盘「设置 Claude 工作目录…」菜单——`cc_workspace.pick_directory` PowerShell FolderBrowserDialog 独立进程（绕开 pystray 回调线程 tkinter 无焦点坑 + 控制台 GBK 坑，UTF-8 临时文件传回）→ set_project_dir 校验落盘
+- **#25 执行观测面进对话**：活动上报补 epoch ts；`GET /chat/cc-activity`（复用 agent-status 活动合并，优先本用户绑定设备）；CC 私聊窗显示「最近活动 · N 分钟前」，超 5 分钟无活动主动提示「电脑上 CC 已无响应，可停止生成后重试」
+- **v20261109 已发布**（2026-11-09，P0+P3 一次打包）：裸 exe sha256 `f023f408…` / 安装器 `17f651e2…`，双产物已上传生产（默认 20261109）
+
+## 多端同步（2026-11-09 立项，方案 plans/multi-device-sync-2026-11.md；P0-1+P1 已落地，P2 消息 id 架构债待开工）
+
+- **P0-1 会话消息增量轮询**：当前会话 15s + 窗口聚焦/切回拉 `/chat/messages`，`(条数, 末条哈希)` 指纹一致跳过；有新增且无进行中 SSE → 尾部合入（只追加不缩减，防误删本端未落库瞬时气泡）；会话切换重置指纹基线；自动朗读联动
+- **P1 用户偏好上云**：`users.prefs` JSON 列（迁移 0030，幂等；MySQL TEXT 无 server_default 避 1101）+ `GET/PUT /api/v1/auth/prefs`（白名单五键 fail-soft：entertainmentMode/chatBackend/autoRead/dmTargets/activeTargets，映射 ≤50 条目标白名单）；前端 fetchUserPrefs 挂载回填 + 变更 fire-and-forget 回写（prefsReadyRef 防默认值冲服务端）；登录响应带 agreed（双路径）→ 同端不再重复勾选（C11 强制勾选保留）
+- **P2 消息 id 架构债（待开工）**：ai_chat 消息 id——点赞/修改/重发/删除按 id 定位、SSE 重连幂等、多端合入 diff；SSE 自动重连 blockedBy 此项
+
 ## 第二批（2026-11-06：T5 LLM 代理 + V1-3 记忆事件化 + T2 免输码注册）
 
 - **T5 用户 Agent LLM 云端代理（544c0b1）**：普通用户本机无 key 的 Agent 可用前置——`POST /api/v1/agent/llm/chat/completions` OpenAI 兼容代理（设备凭据鉴权 + 模型白名单 + 欠费 403 + 流式透传 + 强制 include_usage → record_usage purpose=agent_llm 落绑定用户）；lc.get_llm 无本地 key 时自动回退（identity.server_url + agent_secret），代理模式不挂本地记账回调防双计

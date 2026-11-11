@@ -148,3 +148,27 @@ def test_reinstall_flow_success(monkeypatch):
     assert restarted == [1]  # 全循环重建（持旧 secret 的线程同换）
     assert t._reinstall_prompted is False  # 注册成功复位，未来可再提示
     assert any("注册成功" in n for n in notes)
+
+
+def test_inputbox_ps_strips_bom(monkeypatch, tmp_path):
+    """2026-11-11 真机踩坑：PowerShell Encoding.UTF8 自带 BOM——旧版脚本写的
+    文件带 EF BB BF，读入后污染首字符（路径不再以盘符开头）"""
+    monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(tray.os, "name", "nt")
+
+    def fake_run(cmd, **k):
+        (tmp_path / f"yuanai_input_{os.getpid()}.txt").write_bytes(
+            b"\xef\xbb\xbfYUAN-123")
+
+    monkeypatch.setattr(tray.subprocess, "run", fake_run)
+    assert tray._inputbox_ps("t", "p") == "YUAN-123"  # BOM 已剥
+
+
+def test_inputbox_ps_uses_bomless_encoding(monkeypatch, tmp_path):
+    captured = {}
+    monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(tray.os, "name", "nt")
+    monkeypatch.setattr(tray.subprocess, "run",
+                        lambda cmd, **k: captured.update(cmd=cmd) or SimpleNamespace())
+    tray._inputbox_ps("t", "p")
+    assert "UTF8Encoding" in captured["cmd"][4]  # 改用无 BOM 编码写回

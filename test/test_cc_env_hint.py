@@ -35,3 +35,31 @@ def test_env_hint_fallback_on_resolve_error(monkeypatch):
 def test_pick_directory_non_windows(monkeypatch):
     monkeypatch.setattr(cc_workspace.os, "name", "posix")
     assert cc_workspace.pick_directory() == ""        # 非 Windows 无原生选择器，返回空
+
+
+def test_pick_directory_strips_bom(monkeypatch, tmp_path):
+    """2026-11-11 真机踩坑：旧 PowerShell 脚本带 BOM 写回目录选择结果——
+    BOM 成路径首字符 → abspath 错拼 exe 目录 → 「目录不存在」"""
+    import subprocess
+    from types import SimpleNamespace
+    monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(cc_workspace.os, "name", "nt")
+
+    def fake_run(cmd, **k):
+        (tmp_path / f"yuanai_pick_{os.getpid()}.txt").write_bytes(
+            "﻿C:\\Users\\test\\repo".encode("utf-8"))
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert cc_workspace.pick_directory() == "C:\\Users\\test\\repo"  # BOM 已剥
+
+
+def test_pick_directory_uses_bomless_encoding(monkeypatch, tmp_path):
+    import subprocess
+    from types import SimpleNamespace
+    captured = {}
+    monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(cc_workspace.os, "name", "nt")
+    monkeypatch.setattr(subprocess, "run",
+                        lambda cmd, **k: captured.update(cmd=cmd) or SimpleNamespace())
+    cc_workspace.pick_directory()
+    assert "UTF8Encoding" in captured["cmd"][4]  # 改用无 BOM 编码写回

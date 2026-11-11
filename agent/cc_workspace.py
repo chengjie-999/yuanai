@@ -242,7 +242,11 @@ def pick_directory(title: str = "选择文件夹") -> str:
         "$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
         f"$d.Description = '{title}';"
         "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {"
-        f"[System.IO.File]::WriteAllText('{out_file}', $d.SelectedPath, [System.Text.Encoding]::UTF8)"
+        # UTF8Encoding($false) = 无 BOM（Encoding.UTF8 自带 BOM，Python 按 utf-8
+        # 读入会变成路径首字符 U+FEFF → 路径不再以盘符开头 → abspath 错拼 exe
+        # 目录 → 「目录不存在」——2026-11-11 真机踩坑）
+        f"[System.IO.File]::WriteAllText('{out_file}', $d.SelectedPath, "
+        "([System.Text.UTF8Encoding]::new($false)))"
         "}"
     )
     try:
@@ -253,7 +257,7 @@ def pick_directory(title: str = "选择文件夹") -> str:
         return ""
     try:
         with open(out_file, "r", encoding="utf-8") as f:
-            picked = f.read().strip()
+            picked = f.read().strip().lstrip("﻿")  # 双保险：残留 BOM 也剥
         os.remove(out_file)
         return picked
     except OSError:

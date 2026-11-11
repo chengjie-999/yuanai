@@ -133,7 +133,10 @@ def _inputbox_ps(title: str, prompt: str) -> str:
         "Add-Type -AssemblyName Microsoft.VisualBasic | Out-Null;"
         f"$r = [Microsoft.VisualBasic.Interaction]::InputBox('{prompt}', '{title}');"
         "if ($r -ne '') {"
-        f"[System.IO.File]::WriteAllText('{out_file}', $r, [System.Text.Encoding]::UTF8)"
+        # UTF8Encoding($false) = 无 BOM（Encoding.UTF8 自带 BOM 会污染首字符，
+        # 与 pick_directory 同款坑 2026-11-11）
+        f"[System.IO.File]::WriteAllText('{out_file}', $r, "
+        "([System.Text.UTF8Encoding]::new($false)))"
         "}"
     )
     try:
@@ -144,7 +147,7 @@ def _inputbox_ps(title: str, prompt: str) -> str:
         return ""
     try:
         with open(out_file, "r", encoding="utf-8") as f:
-            value = f.read().strip()
+            value = f.read().strip().lstrip("﻿")  # 双保险：残留 BOM 也剥
         os.remove(out_file)
         return value
     except OSError:

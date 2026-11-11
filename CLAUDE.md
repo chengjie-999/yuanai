@@ -351,6 +351,8 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **v20261109 已发布**（2026-11-09，P0+P3 一次打包）：裸 exe sha256 `f023f408…` / 安装器 `17f651e2…`，双产物已上传生产（默认 20261109）
 - **托盘单实例保护 + 启动反馈（2026-11-09 用户实测多开后修复，8846bdb）**：双击 exe 启动无动静（解压加载数秒）→ 误判未启动连点 → 多实例。① Windows 命名互斥体单实例（内核对象退出自动释放；第二实例 MessageBox「已在运行，看托盘图标」即退；位置在 --run-script 与安装引导之后防误拦脚本子进程；0.5s 交接窗口重试；非 Windows 放行）② 托盘就绪 1.5s 后启动气泡确认。注意：任务管理器看到 2 条「小元AI Agent」进程 = PyInstaller 单文件模式一次正常启动（引导器+主进程），不是多开
 - **T3 注销/停用兜底引导（2026-11-09，249aa80）**：ws_client 握手 401/403（账号注销/设备解绑/冻结）不再盲重连——`on_auth_rejected` 回调托盘：气泡通知「已与账号解除关联」+ 自动弹重新注册（每进程一次，注册成功复位）；注册成功后整循环重建（plan/vault 线程持旧 secret 同换）。5xx/网络问题仍通用重连。**重新注册弹窗线程 bug 修复**：菜单「重新注册」原在 pystray 回调线程跑 tkinter 无焦点不可用（vault 教训同款）——改 `_inputbox_ps` 独立进程输入框（PowerShell VB InputBox + UTF-8 临时文件传回），与注销兜底共用 `_reinstall_flow`。首启安装码弹窗（主线程 tkinter）不变
+- **发布版 exe 内置终端（2026-11-11，11c2050）**：此前发布版无控制台、托盘「终端对话」只能提示无源码环境——现 spec 打包 agent.terminal + rich/prompt_toolkit；exe 加 `--run-terminal` 入口（窗口化程序 AllocConsole 自建控制台 + stdio 重指 CONIN$/CONOUT$，位置在单实例保护之前）；托盘菜单冻结模式 spawn 自身 `--run-terminal --no-agent`（--no-agent 跳过内嵌 Agent，托盘进程已持云端连接防双连互踢）；源码模式沿用解释器探测
+- **本地设置面板网页化（2026-11-11 用户拍板，b3d8ab7）**：托盘原生弹窗老旧——`agent/panel.py` 内置本地 HTTP 服务（127.0.0.1 随机端口，stdlib 零新依赖），网页面板复用网站配色变量/圆角/吉祥物呼吸球（明暗自适应）：状态卡/能力开关（网页 toggle）/选择 CC 工作目录（网页按钮→托盘跑原生目录选择器的唯一例外）/重新注册（网页输码替代 InputBox）/检查更新+立即更新/退出。菜单「设置 Claude 工作目录…」→「打开设置面板…」；重新注册与注销兜底改开面板 `?reinstall`。右键菜单本身保持原生（Windows 系统渲染无法换肤）
 
 ## 多端同步（2026-11-09 立项，方案 plans/multi-device-sync-2026-11.md；P0-1+P1 已落地，P2 消息 id 架构债待开工）
 
@@ -446,6 +448,8 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **配置**：`python -m agent.pet_events --setup` 一键探测 %APPDATA% 桌宠配置目录并合并写入 custom_agents「小元AI」（改前备份 .bak）；`PET_EVENTS_PATH` 可覆盖路径；`--test` 发演示事件
 - **验证**：setup 后重启桌宠 → 右键「Agent 联动」勾选「小元AI」→ 聊天派活观察动作/气泡
 - **托盘托管（2026-10-22 完成）**：托盘菜单「桌宠」子菜单——启动/关闭桌宠（`find_pet_exe` 探测 PET_EXE_PATH > %LOCALAPPDATA%\dsh-pet\* > Agent exe 同目录 dsh-pet\*）+ 一键联动设置（跑 setup()，未装桌宠时通知指引）；全部独立线程 + 失败只通知不崩托盘
+- **换皮机制（2026-11-11 实机核查）**：外观 = `assets/characters/<角色>/videos/` 下 7 类动作透明底 WebM（idle/move/click/drag/random/turn/events）+ `frameseq/` 帧序列回退——换 WebM 文件即换皮，零代码改动
+- **融合路线（2026-11-11 用户拍板方向）**：① 近期=体验一体化（Agent 退出自动关桌宠 / 设置面板加桌宠卡 / 下载入口自家网站）② 长期=内嵌融合——dsh-pet MIT 源码 vendored 进 Agent 进程（PySide6 入 exe，单安装单进程单菜单），**只融核心（动画播放/置顶/拖拽/点击 + 状态联动），丢弃冗余（占卜/聊天/自带更新器/多槽位/overlay）**，换皮小元球 WebM 一并做；前置=VPN 拉源码 + 体积评估
 - **挂账**：换皮小元球素材（assets/characters manifest + WebM 帧动画）；stream_target/CC 桥接 approval→attention 扩展
 
 ## 终端对话 CLI（P1 产品愿景，2026-10-23 落地；v2 企业级重构 2026-10-25）

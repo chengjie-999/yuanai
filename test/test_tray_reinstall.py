@@ -112,15 +112,18 @@ def test_auth_rejected_notify_once(monkeypatch):
     t = tray.AgentTray("ws://localhost", "1", "t")
     notes = []
     t._icon = SimpleNamespace(notify=lambda msg, title: notes.append(msg))
-    monkeypatch.setattr(tray, "_inputbox_ps", lambda *a, **k: "")  # 取消路径
+    # 面板已启动（网页化 2026-11-11：兜底改为打开设置面板引导重注册）
+    t._panel = SimpleNamespace(url="http://127.0.0.1:12345/panel")
+    opened = []
+    monkeypatch.setattr(tray.webbrowser, "open", lambda url: opened.append(url))
 
     t._on_auth_rejected("403")
     assert t._reinstall_prompted is True
     assert any("解除关联" in n for n in notes)  # 人话通知
+    assert opened and "reinstall" in opened[0]  # 自动打开面板重注册区
 
     t._on_auth_rejected("403")  # 每次进程只提示一次
-    assert len(notes) == 1
-    time.sleep(0.3)  # 等 daemon 线程跑完（输入框空返回即退）
+    assert len(notes) == 1 and len(opened) == 1
 
 
 def test_reinstall_flow_success(monkeypatch):
@@ -128,7 +131,6 @@ def test_reinstall_flow_success(monkeypatch):
     t = tray.AgentTray("ws://localhost", "1", "t")
     notes = []
     t._icon = SimpleNamespace(notify=lambda msg, title: notes.append(msg))
-    monkeypatch.setattr(tray, "_inputbox_ps", lambda *a, **k: "YUAN-TEST-CODE")
     installed = {}
 
     def fake_install(server_url, code):
@@ -141,13 +143,21 @@ def test_reinstall_flow_success(monkeypatch):
     t._restart_loops = lambda: restarted.append(1)
     t._reinstall_prompted = True  # 之前已提示过
 
-    t._reinstall_flow("测试")
+    ok, err = t._reinstall_flow("测试", "YUAN-TEST-CODE")  # 面板直传码路径
 
+    assert (ok, err) == (True, "")
     assert installed["code"] == "YUAN-TEST-CODE"
     assert t.agent_id == "99" and t.agent_token == "s2"  # 身份已换
     assert restarted == [1]  # 全循环重建（持旧 secret 的线程同换）
     assert t._reinstall_prompted is False  # 注册成功复位，未来可再提示
     assert any("注册成功" in n for n in notes)
+
+
+def test_reinstall_flow_empty_code(monkeypatch):
+    t = tray.AgentTray("ws://localhost", "1", "t")
+    monkeypatch.setattr(tray, "_inputbox_ps", lambda *a, **k: "")  # 取消路径
+    ok, err = t._reinstall_flow("测试")
+    assert ok is False and "未输入" in err
 
 
 def test_inputbox_ps_strips_bom(monkeypatch, tmp_path):

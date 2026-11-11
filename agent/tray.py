@@ -372,6 +372,7 @@ class AgentTray:
         self._update_sha256 = ""  # S1.7：云端清单 sha256（下载校验用）
         self._profile_label = None  # 本机账号归属（2026-11-08，查询成功后显示）
         self._reinstall_prompted = False  # T3 注销兜底：每次进程只弹一次重新注册
+        self._panel = None  # 本地设置面板服务（2026-11-11 网页化，网站风格）
 
     def run(self):
         """主入口：启动托盘（阻塞主线程）"""
@@ -396,6 +397,14 @@ class AgentTray:
                 pass
 
         threading.Thread(target=_notify_started, daemon=True).start()
+
+        # 本地设置面板（2026-11-11 用户拍板：网页化对齐网站风格，替代老旧原生弹窗）
+        try:
+            from agent.panel import PanelServer
+            self._panel = PanelServer(self)
+            self._panel.start()
+        except Exception as e:
+            logger.warning("设置面板启动失败: %s", e)
 
         # 异步线程启动 Agent 连接
         self._running = True
@@ -745,12 +754,13 @@ class AgentTray:
                     logger.info("退出时已终止 %d 个残留 Claude 子进程", n)
             except Exception:
                 pass
+            if self._panel:
+                self._panel.stop()
             icon.stop()
 
         def on_reinstall(icon, item):
-            # 换安装码：独立进程输入框重新注册（不退出进程）——2026-11-09 修复
-            # pystray 回调线程弹 tkinter 无焦点不可用（vault 教训同款 bug）
-            threading.Thread(target=self._reinstall_flow, args=("手动",), daemon=True).start()
+            # 网页化（2026-11-11）：打开设置面板重注册区（替代老旧 InputBox）
+            self._open_panel("?reinstall")
 
         # 菜单分组（2026-11-08 优化）：标题/账号 → 能力开关 → 常用入口 →
         # 工具 → 发现新版时的更新项 → 维护项。状态走图标颜色+悬停标题，
@@ -778,7 +788,7 @@ class AgentTray:
                 MenuItem("关闭桌宠", self._on_pet_stop),
                 MenuItem("桌宠联动设置", self._on_pet_setup),
             )),
-            MenuItem("设置 Claude 工作目录…", self._on_cc_workspace),
+            MenuItem("打开设置面板…", self._on_panel_open),
             # vault 同步菜单下架（2026-11-09 用户拍板：知识星球非主力）——
             # 托盘菜单回调线程弹 tkinter 目录选择框无焦点不可用（选不了/
             # ✕取消不响应/切窗口消失），先隐藏入口；已配置用户的同步循环不受影响。
@@ -801,35 +811,28 @@ class AgentTray:
         """点击立即更新：后台线程执行下载+自替换"""
         threading.Thread(target=self._do_update, daemon=True).start()
 
-    def _on_cc_workspace(self, icon, item):
-        """设置 Claude Code 工作目录：原生目录选择器（独立进程，无 pystray
-        回调线程焦点问题）→ 校验落盘 → 下一轮委派生效（运行期切换无需重启）"""
-        threading.Thread(target=self._set_cc_workspace, daemon=True).start()
-
-    def _set_cc_workspace(self):
-        from agent import cc_workspace
-        picked = cc_workspace.pick_directory("选择 Claude Code 的工作目录（代码仓库）")
-        if not picked:
-            return  # 用户取消
-        try:
-            cc_workspace.set_project_dir(picked)
-            info = cc_workspace.describe()
-            guard_tip = "" if info["guard_ready"] else \
-                "（注意：该目录缺少安全钩子，Claude 委派将被拒绝）"
-            self._icon.notify(f"Claude Code 工作目录已设为：{picked}\n"
-                              f"下一轮对话生效{guard_tip}", "小元AI Agent")
-            logger.info("CC 工作目录已切换: %s", picked)
-        except ValueError as e:
-            logger.warning("CC 工作目录设置被拒: %s", e)
+    def _open_panel(self, anchor: str = "") -> None:
+        """打开本地设置面板（网站风格，2026-11-11）；失败回落托盘气泡提示"""
+        url = getattr(self, "_panel", None) and self._panel.url
+        if url:
             try:
-                self._icon.notify(f"设置失败：{e}", "小元AI Agent")
+                webbrowser.open(url + anchor)
+                return
             except Exception:
                 pass
+        try:
+            self._icon.notify("设置面板暂不可用，请稍后重试", "小元AI Agent")
+        except Exception:
+            pass
+
+    def _on_panel_open(self, icon, item):
+        self._open_panel("")
 
     # ==================== T3 注销/停用兜底引导（2026-11-09） ====================
 
     def _on_auth_rejected(self, code: str):
-        """云端拒绝设备凭据（账号注销/设备解绑/冻结）→ 通知 + 自动弹重新注册。
+        """云端拒绝设备凭据（账号注销/设备解绑/冻结）→ 通知 + 打开设置面板
+        引导重新注册（网页化 2026-11-11，替代自动弹 InputBox）。
         每次进程只提示一次（否则每次重连循环都弹）；注册成功后复位。"""
         if self._reinstall_prompted:
             return
@@ -837,20 +840,22 @@ class AgentTray:
         logger.warning("云端拒绝设备凭据（HTTP %s），引导重新注册", code)
         try:
             self._icon.notify("本机 Agent 已与账号解除关联（账号注销或设备解绑），"
-                              "云端功能已停止——正在弹出重新注册窗口", "小元AI Agent")
+                              "云端功能已停止——正在打开设置面板引导重新注册", "小元AI Agent")
         except Exception:
             pass
-        threading.Thread(target=self._reinstall_flow, args=("注销兜底",), daemon=True).start()
+        self._open_panel("?reinstall")
 
-    def _reinstall_flow(self, why: str):
-        """重新注册流程（菜单「重新注册」与注销兜底共用）：独立进程输入框
-        （绕开 pystray 回调线程 tkinter 无焦点问题）→ do_install → 换身份重启循环"""
-        code = _inputbox_ps(
-            "小元AI Agent 重新注册",
-            "请输入新的安装码（小元AI网站「设置 → 本地 Agent」自取，形如 YUAN-XXXX-XXXX-XXXX）：",
-        )
+    def _reinstall_flow(self, why: str, code: str = "") -> tuple:
+        """重新注册流程（设置面板 / 注销兜底共用）：code 缺省时弹独立进程
+        输入框（绕开 pystray 回调线程 tkinter 无焦点问题）→ do_install →
+        换身份重启循环。返回 (ok, error)。"""
         if not code:
-            return  # 用户取消（兜底提示已给，等用户主动操作）
+            code = _inputbox_ps(
+                "小元AI Agent 重新注册",
+                "请输入新的安装码（小元AI网站「设置 → 本地 Agent」自取，形如 YUAN-XXXX-XXXX-XXXX）：",
+            )
+        if not code:
+            return False, "未输入安装码"  # 用户取消（兜底提示已给，等用户主动操作）
         from agent.main import do_install, load_identity
         try:
             do_install(self.server_url, code.strip())
@@ -860,7 +865,7 @@ class AgentTray:
                 self._icon.notify(f"注册失败：{e}\n请检查安装码与网络后重试", "小元AI Agent")
             except Exception:
                 pass
-            return
+            return False, f"注册失败：{str(e)[:120]}"
         identity = load_identity()
         self.agent_id = str(identity.get("agent_id") or self.agent_id)
         self.agent_token = identity.get("agent_secret", "") or self.agent_token
@@ -873,6 +878,7 @@ class AgentTray:
         # 2026-10-19 修复：plan/vault 循环线程持旧 secret，软重连只换 WS——
         # 循环持续 401 直到重启进程。身份变更走整循环重建
         self._restart_loops()
+        return True, ""
 
     def _on_autostart_toggle(self, icon, item):
         """切换开机自启（exe 发布版有效）"""

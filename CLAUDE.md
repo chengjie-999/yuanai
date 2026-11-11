@@ -349,6 +349,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **#25 执行观测面进对话**：活动上报补 epoch ts；`GET /chat/cc-activity`（复用 agent-status 活动合并，优先本用户绑定设备）；CC 私聊窗显示「最近活动 · N 分钟前」，超 5 分钟无活动主动提示「电脑上 CC 已无响应，可停止生成后重试」
 - **v20261109 已发布**（2026-11-09，P0+P3 一次打包）：裸 exe sha256 `f023f408…` / 安装器 `17f651e2…`，双产物已上传生产（默认 20261109）
 - **托盘单实例保护 + 启动反馈（2026-11-09 用户实测多开后修复，8846bdb）**：双击 exe 启动无动静（解压加载数秒）→ 误判未启动连点 → 多实例。① Windows 命名互斥体单实例（内核对象退出自动释放；第二实例 MessageBox「已在运行，看托盘图标」即退；位置在 --run-script 与安装引导之后防误拦脚本子进程；0.5s 交接窗口重试；非 Windows 放行）② 托盘就绪 1.5s 后启动气泡确认。注意：任务管理器看到 2 条「小元AI Agent」进程 = PyInstaller 单文件模式一次正常启动（引导器+主进程），不是多开
+- **T3 注销/停用兜底引导（2026-11-09，249aa80）**：ws_client 握手 401/403（账号注销/设备解绑/冻结）不再盲重连——`on_auth_rejected` 回调托盘：气泡通知「已与账号解除关联」+ 自动弹重新注册（每进程一次，注册成功复位）；注册成功后整循环重建（plan/vault 线程持旧 secret 同换）。5xx/网络问题仍通用重连。**重新注册弹窗线程 bug 修复**：菜单「重新注册」原在 pystray 回调线程跑 tkinter 无焦点不可用（vault 教训同款）——改 `_inputbox_ps` 独立进程输入框（PowerShell VB InputBox + UTF-8 临时文件传回），与注销兜底共用 `_reinstall_flow`。首启安装码弹窗（主线程 tkinter）不变
 
 ## 多端同步（2026-11-09 立项，方案 plans/multi-device-sync-2026-11.md；P0-1+P1 已落地，P2 消息 id 架构债待开工）
 

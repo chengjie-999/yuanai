@@ -7,7 +7,7 @@ from typing import AsyncGenerator, Callable, Awaitable, Optional
 
 import websockets
 from websockets import connect
-from websockets.exceptions import ConnectionClosed
+from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from yuanai_core.rag import current_user_id, current_request_id, current_session_id
 from yuanai_core.core.schemas import (
@@ -41,6 +41,7 @@ class AgentWSClient:
         self.agent_token = agent_token
         self._on_chat_request = on_chat_request
         self._on_stop_request: Optional[Callable[[str], None]] = None
+        self._on_auth_rejected: Optional[Callable[[str], None]] = None
         self._loop = None  # 主事件循环（send_event 跨线程投递用）
         self._ws = None
         self._running = False
@@ -62,6 +63,11 @@ class AgentWSClient:
     def on_stop_request(self, handler: Callable[[str], None]):
         """注册停止请求回调（request_id → 终止该请求的脚本子进程）"""
         self._on_stop_request = handler
+
+    def on_auth_rejected(self, handler: Callable[[str], None]):
+        """注册凭据被拒回调（T3 注销兜底：账号注销/设备解绑/冻结 → 握手 401/403）
+        ——云端凭据永久失效，盲重连无意义：通知托盘引导重新注册并停止连接循环"""
+        self._on_auth_rejected = handler
 
     def on_chat_request(
         self, handler: Callable[[ChatRequest], AsyncGenerator[AgentEvent, None]]
@@ -135,6 +141,21 @@ class AgentWSClient:
                     else:
                         logger.debug("未知消息类型: %s", msg_type)
 
+            except InvalidStatus as e:
+                # T3 注销兜底（2026-11-09）：HTTP 401/403 = 设备凭据被拒
+                # （账号注销/设备解绑/冻结）——重连永远无意义，通知托盘引导
+                # 重新注册后停止连接循环；其余 4xx/5xx 走通用重连
+                code = int(getattr(getattr(e, "response", None), "status_code", 0))
+                if code in (401, 403):
+                    logger.warning("云端拒绝设备凭据（HTTP %s），停止重连等待重新注册", code)
+                    if self._on_auth_rejected:
+                        try:
+                            self._on_auth_rejected(str(code))
+                        except Exception as ex:
+                            logger.warning("auth_rejected 回调异常: %s", ex)
+                    self._running = False
+                    return
+                logger.warning("WS 握手被拒（HTTP %s），稍后重连", code)
             except (ConnectionClosed, OSError) as e:
                 logger.warning("WebSocket 断开: %s", e)
             except Exception as e:

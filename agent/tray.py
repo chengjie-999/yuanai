@@ -115,6 +115,42 @@ def _notify_already_running() -> None:
         pass
 
 
+def _inputbox_ps(title: str, prompt: str) -> str:
+    """独立进程文本输入框（Microsoft.VisualBasic InputBox 经 PowerShell 弹出，
+    结果 UTF-8 临时文件传回）——绕开 pystray 回调线程弹 tkinter 无焦点不可用
+    （2026-11-09 vault 教训）与控制台 GBK 编码坑。用户取消/失败返回空串。"""
+    if os.name != "nt":
+        return ""
+    import tempfile
+    prompt = str(prompt).replace("'", "''").replace("\n", " ")
+    title = str(title).replace("'", "''")
+    out_file = os.path.join(tempfile.gettempdir(), f"yuanai_input_{os.getpid()}.txt")
+    try:
+        os.remove(out_file)
+    except OSError:
+        pass
+    ps = (
+        "Add-Type -AssemblyName Microsoft.VisualBasic | Out-Null;"
+        f"$r = [Microsoft.VisualBasic.Interaction]::InputBox('{prompt}', '{title}');"
+        "if ($r -ne '') {"
+        f"[System.IO.File]::WriteAllText('{out_file}', $r, [System.Text.Encoding]::UTF8)"
+        "}"
+    )
+    try:
+        subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", ps],
+                       capture_output=True, timeout=300,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:
+        return ""
+    try:
+        with open(out_file, "r", encoding="utf-8") as f:
+            value = f.read().strip()
+        os.remove(out_file)
+        return value
+    except OSError:
+        return ""
+
+
 def _run_script_allowed(script_path: str, root: str) -> bool:
     """冻结模式 --run-script 白名单校验（S5.1 L1）：
     realpath 必须落在内置脚本目录（agent/datanalysis/scripts|crawl、skills）内"""
@@ -300,6 +336,7 @@ class AgentTray:
         self._update_forced = False  # min_version 安全下限触发（必须更新）
         self._update_sha256 = ""  # S1.7：云端清单 sha256（下载校验用）
         self._profile_label = None  # 本机账号归属（2026-11-08，查询成功后显示）
+        self._reinstall_prompted = False  # T3 注销兜底：每次进程只弹一次重新注册
 
     def run(self):
         """主入口：启动托盘（阻塞主线程）"""
@@ -510,16 +547,17 @@ class AgentTray:
             logger.error("自动更新失败: %s", e)
             self._icon.title = f"小元AI Agent - 更新失败"
             try:
-                # P0 更新器自愈：人话报错 + 可行动指引（解压失败多为杀软/残留拦截）
+                # P0 更新器自愈：人话报错 = 保留原失败原因（自身已人话）+
+                # 可行动指引（清理临时目录/重试/重新下载）；按原因分类前缀
                 reason = str(e)
-                if "sha256" in reason:
-                    tip = "更新包下载损坏或校验不一致，已自动中止"
+                if any(k in reason for k in ("https", "sha256", "校验")):
+                    tip = f"更新中止（安全）：{reason}"
                 elif any(k in reason.lower() for k in ("timeout", "timed out", "urlopen", "getaddrinfo", "refused")):
-                    tip = "网络连接失败，请检查网络后重试"
+                    tip = f"网络连接失败：{reason}"
                 else:
-                    tip = "更新包解压失败，可能被杀软拦截或临时目录残留冲突"
+                    tip = f"更新失败：{reason}（可能被杀软拦截或临时目录残留冲突）"
                 self._icon.notify(
-                    f"更新失败：{tip}\n已自动清理临时目录残留——点「立即更新」重试；"
+                    f"{tip}\n已自动清理临时目录残留——点「立即更新」重试；"
                     "仍失败可去小元AI网站「设置 → 本地 Agent」重新下载安装", "小元AI Agent")
             except Exception:
                 pass
@@ -669,16 +707,9 @@ class AgentTray:
             icon.stop()
 
         def on_reinstall(icon, item):
-            # 换安装码：弹窗重新注册（不退出进程）
-            if _install_dialog(self.server_url, "重新注册"):
-                from agent.main import load_identity
-                identity = load_identity()
-                self.agent_id = str(identity.get("agent_id") or self.agent_id)
-                self.agent_token = identity.get("agent_secret", "") or self.agent_token
-                # 2026-10-19 修复：plan/vault 循环线程持旧 secret，软重连只换
-                # WS——循环持续 401 直到重启进程。身份变更走整循环重建
-                logger.info("身份已更新，重启全部 Agent 循环")
-                self._restart_loops()
+            # 换安装码：独立进程输入框重新注册（不退出进程）——2026-11-09 修复
+            # pystray 回调线程弹 tkinter 无焦点不可用（vault 教训同款 bug）
+            threading.Thread(target=self._reinstall_flow, args=("手动",), daemon=True).start()
 
         # 菜单分组（2026-11-08 优化）：标题/账号 → 能力开关 → 常用入口 →
         # 工具 → 发现新版时的更新项 → 维护项。状态走图标颜色+悬停标题，
@@ -753,6 +784,54 @@ class AgentTray:
                 self._icon.notify(f"设置失败：{e}", "小元AI Agent")
             except Exception:
                 pass
+
+    # ==================== T3 注销/停用兜底引导（2026-11-09） ====================
+
+    def _on_auth_rejected(self, code: str):
+        """云端拒绝设备凭据（账号注销/设备解绑/冻结）→ 通知 + 自动弹重新注册。
+        每次进程只提示一次（否则每次重连循环都弹）；注册成功后复位。"""
+        if self._reinstall_prompted:
+            return
+        self._reinstall_prompted = True
+        logger.warning("云端拒绝设备凭据（HTTP %s），引导重新注册", code)
+        try:
+            self._icon.notify("本机 Agent 已与账号解除关联（账号注销或设备解绑），"
+                              "云端功能已停止——正在弹出重新注册窗口", "小元AI Agent")
+        except Exception:
+            pass
+        threading.Thread(target=self._reinstall_flow, args=("注销兜底",), daemon=True).start()
+
+    def _reinstall_flow(self, why: str):
+        """重新注册流程（菜单「重新注册」与注销兜底共用）：独立进程输入框
+        （绕开 pystray 回调线程 tkinter 无焦点问题）→ do_install → 换身份重启循环"""
+        code = _inputbox_ps(
+            "小元AI Agent 重新注册",
+            "请输入新的安装码（小元AI网站「设置 → 本地 Agent」自取，形如 YUAN-XXXX-XXXX-XXXX）：",
+        )
+        if not code:
+            return  # 用户取消（兜底提示已给，等用户主动操作）
+        from agent.main import do_install, load_identity
+        try:
+            do_install(self.server_url, code.strip())
+        except Exception as e:
+            logger.warning("重新注册失败（%s）: %s", why, e)
+            try:
+                self._icon.notify(f"注册失败：{e}\n请检查安装码与网络后重试", "小元AI Agent")
+            except Exception:
+                pass
+            return
+        identity = load_identity()
+        self.agent_id = str(identity.get("agent_id") or self.agent_id)
+        self.agent_token = identity.get("agent_secret", "") or self.agent_token
+        self._reinstall_prompted = False  # 注册成功：允许未来再次提示
+        logger.info("身份已更新（%s），重启全部 Agent 循环", why)
+        try:
+            self._icon.notify("注册成功，正在重新连接云端…", "小元AI Agent")
+        except Exception:
+            pass
+        # 2026-10-19 修复：plan/vault 循环线程持旧 secret，软重连只换 WS——
+        # 循环持续 401 直到重启进程。身份变更走整循环重建
+        self._restart_loops()
 
     def _on_autostart_toggle(self, icon, item):
         """切换开机自启（exe 发布版有效）"""
@@ -843,6 +922,8 @@ class AgentTray:
                 self._client.on_chat_request(route)
                 # B1-12 停止联动：云端 stop 事件 → 终止该请求的脚本子进程
                 self._client.on_stop_request(lambda rid: orchestrator.cancel_request(rid))
+                # T3 注销兜底：凭据被拒（注销/解绑/冻结）→ 通知 + 引导重新注册
+                self._client.on_auth_rejected(self._on_auth_rejected)
                 orchestrator._on_activity = lambda ev: self._set_status("working") or (
                     self._client and self._client.send_activity(ev)
                 )

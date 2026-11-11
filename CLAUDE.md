@@ -348,6 +348,7 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **P3 收尾（Agent 侧，随 v20261109 打包）**：① CC 身份卡环境自述——`claude_loop.env_hint()/bridge_system_prompt()` 动态注入工作目录（每轮解析）/shell=cmd.exe/Bash 全新会话 cd 不跨调用/文件工具锁目录（桥接 SDK+CLI、终端 /claude、delegate 四处）② 委派失败人话可行动指引 ③ 生成代码约束（docs/agents/claude_code.md：注释英文/外层 `'''`/显式 encoding='utf-8'）④ 托盘「设置 Claude 工作目录…」菜单——`cc_workspace.pick_directory` PowerShell FolderBrowserDialog 独立进程（绕开 pystray 回调线程 tkinter 无焦点坑 + 控制台 GBK 坑，UTF-8 临时文件传回）→ set_project_dir 校验落盘
 - **#25 执行观测面进对话**：活动上报补 epoch ts；`GET /chat/cc-activity`（复用 agent-status 活动合并，优先本用户绑定设备）；CC 私聊窗显示「最近活动 · N 分钟前」，超 5 分钟无活动主动提示「电脑上 CC 已无响应，可停止生成后重试」
 - **v20261109 已发布**（2026-11-09，P0+P3 一次打包）：裸 exe sha256 `f023f408…` / 安装器 `17f651e2…`，双产物已上传生产（默认 20261109）
+- **托盘单实例保护 + 启动反馈（2026-11-09 用户实测多开后修复，8846bdb）**：双击 exe 启动无动静（解压加载数秒）→ 误判未启动连点 → 多实例。① Windows 命名互斥体单实例（内核对象退出自动释放；第二实例 MessageBox「已在运行，看托盘图标」即退；位置在 --run-script 与安装引导之后防误拦脚本子进程；0.5s 交接窗口重试；非 Windows 放行）② 托盘就绪 1.5s 后启动气泡确认。注意：任务管理器看到 2 条「小元AI Agent」进程 = PyInstaller 单文件模式一次正常启动（引导器+主进程），不是多开
 
 ## 多端同步（2026-11-09 立项，方案 plans/multi-device-sync-2026-11.md；P0-1+P1 已落地，P2 消息 id 架构债待开工）
 

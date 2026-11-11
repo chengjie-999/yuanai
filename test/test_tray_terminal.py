@@ -55,3 +55,31 @@ def test_terminal_action_frozen_spawns_self(monkeypatch):
 def test_alloc_console_non_windows_noop(monkeypatch):
     monkeypatch.setattr(tray.os, "name", "posix")
     tray._alloc_console()  # 非 Windows 无操作，不抛异常
+
+
+def test_native_cc_open_spawns_claude(monkeypatch):
+    """托盘「Claude Code 原生终端」：探测 claude CLI → 新控制台窗口直接跑官方 TUI"""
+    import shutil as sh
+    t = tray.AgentTray("ws://localhost", "1", "t")
+    notes = []
+    t._icon = SimpleNamespace(notify=lambda msg, title: notes.append(msg))
+    monkeypatch.setattr(sh, "which", lambda name: "C:/npm/claude")
+    spawned = []
+    monkeypatch.setattr(tray.subprocess, "Popen", lambda *a, **k: spawned.append((a, k)))
+    t._on_native_cc_open(None, None)
+    assert spawned and spawned[0][0][0][0] == "C:/npm/claude"
+    if tray.os.name == "nt":
+        assert "creationflags" in spawned[0][1]
+
+
+def test_native_cc_open_missing_cli(monkeypatch):
+    import shutil as sh
+    t = tray.AgentTray("ws://localhost", "1", "t")
+    notes = []
+    t._icon = SimpleNamespace(notify=lambda msg, title: notes.append(msg))
+    monkeypatch.setattr(sh, "which", lambda name: None)
+    spawned = []
+    monkeypatch.setattr(tray.subprocess, "Popen", lambda *a, **k: spawned.append(1))
+    t._on_native_cc_open(None, None)
+    assert not spawned  # 未安装不 spawn，只提示
+    assert notes and "npm" in notes[0]  # 给出安装指引

@@ -666,6 +666,25 @@ class AgentTray:
             logger.warning("打开终端对话失败: %s", e)
             self._icon.notify(f"终端对话启动失败：{e}", "终端对话")
 
+    def _on_native_cc_open(self, icon, item):
+        """原生 Claude Code TUI（2026-11-11）：探测本机 claude CLI，新控制台
+        窗口直接跑官方全屏界面——与内置 REPL 终端并存，互不干扰"""
+        try:
+            import shutil
+            claude_path = shutil.which("claude")
+            if not claude_path:
+                self._icon.notify("未检测到 Claude Code CLI\n"
+                                  "安装：npm install -g @anthropic-ai/claude-code",
+                                  "Claude Code")
+                return
+            kwargs = {}
+            if os.name == "nt":
+                kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+            subprocess.Popen([claude_path], **kwargs)
+        except Exception as e:
+            logger.warning("打开原生 Claude Code 失败: %s", e)
+            self._icon.notify(f"启动失败：{e}", "Claude Code")
+
     def _pet_action(self, action: str) -> None:
         """桌宠菜单动作：启动/关闭/联动设置（独立线程；失败只通知不崩托盘）"""
         try:
@@ -782,6 +801,7 @@ class AgentTray:
             TrayMenu.SEPARATOR,
             MenuItem("打开 Web 对话", on_open_web, default=True),
             MenuItem("终端对话", self._on_terminal_open),
+            MenuItem("Claude Code 原生终端", self._on_native_cc_open),
             TrayMenu.SEPARATOR,
             MenuItem("桌宠", TrayMenu(
                 MenuItem("启动桌宠", self._on_pet_launch),

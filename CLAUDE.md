@@ -277,6 +277,7 @@ data/                   数据目录
 4. **工具输出全链路必须有截断上限**（2026-11-03 消息消失事故）：fetch_url 抓 5MB 网页全文 → 云端直连 tool_end 无截断落 META → 击穿 ai_chat.content TEXT(64KB) → /chat/save 500 → 刷新后消息消失。凡新工具先问「最坏输出多大」，回传/落库/塞回模型三处都要截断（chat.py `_cap_tool_output` 20K + crawl.py 50K 双保险，迁移 0026 列扩 MEDIUMTEXT 兜底）。
 5. **大文件下载要浏览器原生进度：`<a href>` 直链 + `?token=` 白名单，不要 fetch+blob**（2026-11-06 两轮踩坑）：`<a href>` 导航不带 Authorization header 会 401；fetch+blob 方案虽能带 header 但整包进内存、无进度反馈（按钮「下载中」期间浏览器毫无动静，200MB exe 体验灾难）。定稿：下载类端点（agent/download-exe）进 middleware `_extract_token` query 白名单（与 chat/image 同款先例），前端 `<a href="...?code=..&token=JWT">` 直链——浏览器下载管理器接管（原生进度条/断点续传/零内存），token 入 URL 是已接受的先例折衷（nginx 日志可见 JWT，勿推广到敏感数据端点）。
 6. **exe 冻结模式下 `__file__` 指向 _MEI 临时解包目录——一切 `__file__` 旁写文件都是启动崩雷**（2026-11-06 tray 启动即崩 FileNotFoundError）：`config/settings.py` 把 `.jwt_secret` 写 `__file__` 旁，exe 下 config/ 非真实文件夹 + 临时目录退出即清。凡秘密/配置/数据写入一律走 `utils/data_path` 的 `frozen_data_root()`（%LOCALAPPDATA%\XiaoYuanAI\，.env/身份/配置同地）；新增代码先问「exe 模式下这条路径存在吗、退出后还在吗」。回归测试 test_frozen_settings.py 子进程模拟 sys.frozen。
+7. **PowerShell 对话框结果回传必须无 BOM**（2026-11-11 真机踩坑）：`[System.Text.Encoding]::UTF8` 自带 BOM（EF BB BF）——WriteAllText 写回的路径带 BOM，Python 按 utf-8 读入后 BOM 变路径首字符 → 路径不再以盘符开头 → abspath 错拼 cwd → 「设置失败：目录不存在: …bin\<BOM>C:\Users\…」。定稿：PowerShell 侧 `[System.Text.UTF8Encoding]::new($false)` 无 BOM 写回 + Python 读取侧 `lstrip('﻿')` 双保险（pick_directory 与 _inputbox_ps 同修，回归测试 4 项锁死）。凡 PowerShell/外部进程写临时文件回传 Python 的通道都要问「带不带 BOM」。
 
 ## 后台管理
 

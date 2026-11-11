@@ -68,6 +68,53 @@ def _cleanup_mei_residue():
         pass
 
 
+# ==================== 单实例保护（2026-11-09 多开根治） ====================
+_SINGLE_MUTEX_NAME = "XiaoYuanAI-Agent-SingleInstance"
+_SINGLE_INSTANCE_HANDLE = None  # 持住句柄防 GC 提前释放互斥体
+
+
+def _acquire_single_instance(wait_s: float = 0.5):
+    """Windows 命名互斥体单实例保护：返回 (句柄|None, 是否第二实例)。
+    已存在时等 wait_s 秒再判一次（覆盖极端交接窗口；互斥体是内核对象，
+    进程退出自动释放，无残留死锁）。非 Windows 恒放行。"""
+    if os.name != "nt":
+        return None, False
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        ERROR_ALREADY_EXISTS = 183
+        handle = kernel32.CreateMutexW(None, False, _SINGLE_MUTEX_NAME)
+        if kernel32.GetLastError() != ERROR_ALREADY_EXISTS:
+            return handle, False
+        deadline = time.time() + wait_s
+        while time.time() < deadline:
+            time.sleep(0.1)
+            try:
+                kernel32.CloseHandle(handle)
+            except Exception:
+                pass
+            handle = kernel32.CreateMutexW(None, False, _SINGLE_MUTEX_NAME)
+            if kernel32.GetLastError() != ERROR_ALREADY_EXISTS:
+                return handle, False
+        return None, True
+    except Exception:
+        return None, False
+
+
+def _notify_already_running() -> None:
+    """第二实例提示（MessageBox 前台可见——此时托盘气泡尚不可靠）"""
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(
+            None,
+            "小元AI Agent 已经在运行了：\n\n请查看任务栏右下角的托盘图标。\n"
+            "刚启动时解压加载需要几秒，图标出现前请勿重复双击。",
+            "小元AI Agent", 0x40,  # MB_ICONINFORMATION
+        )
+    except Exception:
+        pass
+
+
 def _run_script_allowed(script_path: str, root: str) -> bool:
     """冻结模式 --run-script 白名单校验（S5.1 L1）：
     realpath 必须落在内置脚本目录（agent/datanalysis/scripts|crawl、skills）内"""
@@ -265,6 +312,18 @@ class AgentTray:
             menu=self._build_menu(),
         )
         self._icon.title = f"小元AI Agent - 离线"
+
+        # 启动反馈（2026-11-09）：无窗口应用双击后解压加载需几秒，此前毫无
+        # 动静，用户误判「没启动」而连点致多开——托盘就绪后弹一次气泡确认
+        def _notify_started():
+            time.sleep(1.5)
+            try:
+                self._icon.notify("小元AI Agent 已启动，图标常驻任务栏右下角\n"
+                                  "右键图标可开关能力、查看账号", "小元AI Agent")
+            except Exception:
+                pass
+
+        threading.Thread(target=_notify_started, daemon=True).start()
 
         # 异步线程启动 Agent 连接
         self._running = True
@@ -866,6 +925,16 @@ def main():
             from agent.bootstrap import run_install_bootstrap
             run_install_bootstrap()  # 内部处理完会启动新副本并 sys.exit(0)
             sys.exit(0)
+
+    # 单实例保护（2026-11-09 多开根治）：第二实例弹提示即退。位置必须在
+    # --run-script 分支（脚本子进程复用本 exe，不得被拦）与安装引导之后
+    # （引导进程不持锁，安装副本首启零竞争）
+    global _SINGLE_INSTANCE_HANDLE
+    _mutex_handle, _is_dup = _acquire_single_instance()
+    if _is_dup:
+        _notify_already_running()
+        sys.exit(0)
+    _SINGLE_INSTANCE_HANDLE = _mutex_handle
 
     import argparse
 

@@ -42,6 +42,9 @@ a = Analysis(
         'agent.claude_bridge', 'agent.claude_loop', 'agent.bootstrap', 'agent.bridge_policy',
         'agent.vault_sync',
         'agent.plan_executor', 'agent.pet_events',
+        # 发布版内置终端（2026-11-11）：托盘「终端对话」exe 自建控制台跑
+        # agent.terminal REPL——rich/prompt_toolkit 惰性导入也随 bytecode 分析
+        'agent.terminal', 'rich', 'prompt_toolkit',
         'agent.scripts', 'agent.scripts.registry', 'agent.scripts.tools',
         'agent.agents', 'agent.agents.base', 'agent.agents.automation',
         'agent.tools', 'agent.tools._registry', 'agent.tools.errors',

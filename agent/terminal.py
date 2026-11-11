@@ -631,6 +631,9 @@ def parse_args():
     p.add_argument("--server-url", default=None, help="云端 WebSocket 地址（默认身份文件/wss://cjyuanai.cn）")
     p.add_argument("--agent-name", default=None, help="Agent 显示名称")
     p.add_argument("--no-plan-executor", action="store_true", help="禁用计划执行器线程")
+    p.add_argument("--no-agent", action="store_true",
+                   help="REPL 不拉起后台 Agent（发布版 exe 内置终端用：托盘进程已持有"
+                        "云端连接，再拉会双连互踢）")
     p.add_argument("--update", action="store_true",
                    help="下载云端默认版本的 Agent 安装包（sha256 校验后提示安装）")
     return p.parse_args()
@@ -801,12 +804,13 @@ async def main():
         return
 
     # REPL 模式：同进程拉起后台 Agent（云端联动 + 计划执行 + 桌宠事件）——
-    # 无身份文件时静默跳过（纯本地终端）；远端 ws:// 被护栏拒绝仅提示不阻塞终端
+    # 无身份文件时静默跳过（纯本地终端）；远端 ws:// 被护栏拒绝仅提示不阻塞终端；
+    # --no-agent（发布版 exe 内置终端）：托盘进程已持有云端连接，跳过防双连互踢
     handle = None
     try:
         from agent.main import load_identity, run_agent
         identity = load_identity()
-        if identity.get("agent_id"):
+        if identity.get("agent_id") and not args.no_agent:
             handle = await run_agent(
                 server_url=args.server_url or identity.get("server_url") or "wss://cjyuanai.cn",
                 agent_id=str(identity.get("agent_id")),

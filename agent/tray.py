@@ -154,6 +154,38 @@ def _inputbox_ps(title: str, prompt: str) -> str:
         return ""
 
 
+def _alloc_console() -> None:
+    """窗口化 exe 自建控制台（发布版内置终端 2026-11-11）：AllocConsole 挂接
+    新控制台窗口，再把 Python 层 stdin/stdout/stderr 指到 CONIN$/CONOUT$
+    （windowed 模式下它们为 None/已被指到 devnull）。非 Windows 无操作。"""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        kernel32.AllocConsole()
+        sys.stdin = open("CONIN$", "r", encoding="utf-8", errors="replace")
+        sys.stdout = open("CONOUT$", "w", encoding="utf-8", errors="replace",
+                          buffering=1)
+        sys.stderr = open("CONOUT$", "w", encoding="utf-8", errors="replace",
+                          buffering=1)
+    except Exception:
+        pass  # 控制台建立失败：按窗口化模式静默继续（终端内容仍可经日志排查）
+
+
+def _run_terminal_mode() -> int:
+    """发布版内置终端入口：自建控制台 → 跑 agent.terminal REPL。
+    spawn 侧传 --no-agent（托盘进程已持有云端连接，避免双连互踢）"""
+    _alloc_console()
+    import asyncio
+    from agent.terminal import main as terminal_main
+    try:
+        asyncio.run(terminal_main())
+        return 0
+    except KeyboardInterrupt:
+        return 0
+
+
 def _run_script_allowed(script_path: str, root: str) -> bool:
     """冻结模式 --run-script 白名单校验（S5.1 L1）：
     realpath 必须落在内置脚本目录（agent/datanalysis/scripts|crawl、skills）内"""
@@ -598,14 +630,20 @@ class AgentTray:
         threading.Thread(target=self._terminal_action, daemon=True).start()
 
     def _terminal_action(self) -> None:
-        """终端对话入口（三本地合一 2026-10-23）：新控制台窗口跑 python -m agent.terminal。
-        源码树运行直接复用当前解释器；冻结 exe 向上探测仓库 venv；失败只通知。"""
+        """终端对话入口（三本地合一 2026-10-23 + 发布版内置 2026-11-11）：
+        冻结 exe 不再提示「无源码环境」——启动自身 --run-terminal 子进程，
+        自建控制台跑内置 agent.terminal REPL；源码树运行复用当前解释器。"""
         try:
+            if getattr(sys, "frozen", False):
+                # 发布版内置终端：--no-agent 跳过内嵌 Agent（托盘进程已持云端
+                # 连接，再拉同身份双连互踢）
+                subprocess.Popen([sys.executable, "--run-terminal", "--no-agent"],
+                                 stdin=subprocess.DEVNULL)
+                return
             from agent.terminal import find_terminal_launcher
             launcher = find_terminal_launcher()
             if not launcher:
-                self._icon.notify("终端对话需源码环境（本机仓库 + venv）——"
-                                  "发布版 exe 不含控制台终端", "终端对话")
+                self._icon.notify("未找到 Python 环境，无法启动终端对话", "终端对话")
                 return
             python_exe, root = launcher
             kwargs = {}
@@ -1000,6 +1038,13 @@ def main():
         with open(_script_path, encoding="utf-8") as _f:
             exec(compile(_f.read(), _script_path, "exec"), {"__name__": "__main__", "__file__": _script_path})
         sys.exit(0)
+
+    # 发布版内置终端（2026-11-11）：托盘「终端对话」以 --run-terminal 拉起本
+    # exe 子进程——窗口化程序 AllocConsole 自建控制台跑内置 agent.terminal REPL。
+    # 位置必须在单实例保护之前（终端子进程与托盘实例共存是常态，不得被互斥体拦）
+    if "--run-terminal" in sys.argv:
+        sys.argv = [a for a in sys.argv if a != "--run-terminal"]
+        sys.exit(_run_terminal_mode())
 
     # 首启安装引导（安装包化 2026-10-16）：exe 非安装位置双击 → 引导安装
     # （选目录 + 桌面快捷方式 + 旧数据迁移），装完启动新副本；已安装则跳过

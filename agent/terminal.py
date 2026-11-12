@@ -1356,6 +1356,7 @@ async def run_repl(session: dict, store: TerminalSessionStore,
         render._observe_ready = cloud_client is not None
         if cloud_client is not None and not custom_prompt:
             _start_observe_poll(render, lambda: cloud_client)
+        render.redraw()  # 启动即画状态栏+右栏（v3.0 遗留：此前要等首次按键才重绘）
 
     while True:
         if isinstance(render, FullscreenRenderer):

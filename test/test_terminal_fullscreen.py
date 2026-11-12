@@ -118,7 +118,8 @@ def test_pending_input_and_sel_clamp():
 # ---------------- run_repl 哨兵循环 ----------------
 
 def test_run_repl_refresh_sentinel_redraws(capsys, monkeypatch, tmp_path):
-    """prompt_fn 返回 _REFRESH → FullscreenRenderer.redraw 被调用且继续循环"""
+    """prompt_fn 返回 _REFRESH → FullscreenRenderer.redraw 被调用且继续循环；
+    启动即重绘一次（v3.2 修复：状态栏不再等首次按键）"""
     calls = []
 
     class _FakeFull(terminal.FullscreenRenderer):
@@ -139,7 +140,7 @@ def test_run_repl_refresh_sentinel_redraws(capsys, monkeypatch, tmp_path):
     store = terminal.TerminalSessionStore(str(tmp_path / "t.json"))
     s = store.new_session("claude")
     asyncio.run(terminal.run_repl(s, store, prompt_fn=_prompt, render=renderer))
-    assert len(calls) == 2  # 两次哨兵各触发一次重绘，第三次 None 退出
+    assert len(calls) == 3  # 启动 1 次 + 两次哨兵各 1 次，第三次 None 退出
 
 
 # ---------------- 托盘 WT 承载 ----------------

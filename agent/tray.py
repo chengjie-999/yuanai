@@ -40,12 +40,38 @@ def _ver_lt(a: str, b: str) -> bool:
     return pa < pb
 
 
+def _pid_alive(pid: int) -> bool:
+    """进程存活探测（_cleanup_mei_residue 用）：Windows OpenProcess 查句柄；
+    非 Windows 走 os.kill(0)；探测失败一律视为存活（宁留不删——误删代价远大于残留）。"""
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+    try:
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            return False
+        ctypes.windll.kernel32.CloseHandle(h)
+        return True
+    except Exception:
+        return True
+
+
 def _cleanup_mei_residue():
     """更新器自愈（P0）：清理 %TEMP%\\_MEI* 残留——PyInstaller 单文件模式崩溃/
     更新被中断会遗留解包目录，残留冲突可致新包启动即崩（DLL 加载失败）。
-    启动与更新前调用；当前进程自己的解包目录跳过；任何异常静默不影响主流程。"""
+    启动与更新前调用；跳过两类目录：① 当前进程自己的解包目录 ② 目录名
+    _MEI{pid} 对应的进程仍存活（终端子进程/并发实例正在用——2026-11-12
+    事故：误删在用的父进程解包目录 → 残缺目录被下次启动复用 → _tcl_data
+    缺失启动即崩）；任何异常静默不影响主流程。"""
     try:
         import glob
+        import re
         import shutil
         import tempfile
         meipass = getattr(sys, "_MEIPASS", "") or ""
@@ -56,6 +82,9 @@ def _cleanup_mei_residue():
             try:
                 if keep and os.path.normcase(os.path.abspath(d)) == keep:
                     continue  # 当前进程自己的解包目录不能删
+                m = re.match(r"_MEI(\d+)$", os.path.basename(d))
+                if m and _pid_alive(int(m.group(1))):
+                    continue  # 存活进程在用：删了会残缺（宁留不删）
                 if os.path.isdir(d):
                     shutil.rmtree(d, ignore_errors=True)
                     removed += 1

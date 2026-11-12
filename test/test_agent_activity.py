@@ -112,3 +112,23 @@ def test_cc_activity_offline_empty(monkeypatch):
                         lambda req, include_activities=True: [])
     r = asyncio.run(cc_activity(SimpleNamespace()))
     assert r == {"online": False, "latest": None, "activities": []}
+
+
+def test_agent_capabilities_include_claude_code(monkeypatch):
+    """2026-11-12 真机：终端设备能力缺 claude_code → /chat/cc-activity 过滤掉
+    本机条目、观测右栏显示离线——run_agent 的 hello 能力清单必须含该键"""
+    import skills
+    import agent.main as am
+
+    class _FakeRegistry:
+        names = ["analysis", "collection"]
+
+    monkeypatch.setattr(skills, "skill_registry", _FakeRegistry())
+    caps = am.agent_capabilities()
+    assert "claude_code" in caps and "analysis" in caps
+    # 幂等：已含时不重复追加
+    class _FakeRegistry2:
+        names = ["claude_code", "analysis"]
+
+    monkeypatch.setattr(skills, "skill_registry", _FakeRegistry2())
+    assert am.agent_capabilities() == ["claude_code", "analysis"]

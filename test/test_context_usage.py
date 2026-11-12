@@ -133,6 +133,11 @@ def test_context_usage_flow(client):
     headers = _login(client, "__ctx_user__")
     main = db.ensure_main_session(uid)
     sid = main["session_id"]
+    # 清掉历次运行残留：本测试每次插 3 条且不清理，主对话累积超 60 条后
+    # truncated 翻转致全量跑失败（2026-11-12 排查出的测试数据债）
+    with db.session() as sess:
+        sess.query(AIChat).filter_by(session_id=sid).delete()
+        sess.commit()
     # 直接落库几条消息（省去 /chat/save 链路）
     with db.session() as sess:
         for i in range(3):

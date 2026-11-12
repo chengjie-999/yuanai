@@ -502,8 +502,18 @@ class FullscreenRenderer:
 
     def _agent_dot(self):
         """本机 Agent 在线点：(文本, 样式)。Text.assemble 不解析 markup——
-        直接给样式（#38 顺手修复 v3.0 状态栏字面 [green] 标签显示 bug）"""
+        直接给样式（#38 顺手修复 v3.0 状态栏字面 [green] 标签显示 bug）。
+
+        数据源（2026-11-12 用户拍板「连接与启动分离」——yuan 纯对话客户端，
+        不再同进程拉起 Agent）：优先 status_provider（有 WS handle 时），否则
+        观测轮询的 /chat/cc-activity online 字段（15s 刷新）。"""
         st = self._status_provider() if self._status_provider else None
+        if not st:
+            ob = self._observe
+            if ob and not ob.get("error") and ob.get("online") is True:
+                st = "online"
+            elif self._observe_ready and ob is None:
+                st = "connecting"  # 通道就绪、观测数据未到（首轮 15s 轮询前）
         return {"online": ("● 在线", "green"),
                 "connecting": ("● 连接中", "yellow"),
                 "reconnecting": ("● 重连中", "yellow"),
@@ -542,6 +552,31 @@ class FullscreenRenderer:
             ("F2 网站对话", "bright_black"), ("  ", ""),
             ("? 帮助", "bright_black"),
         )
+
+    # ———— 备用屏幕缓冲（2026-11-12 用户诉求「像 CC 固定顶栏/输入」） ————
+
+    def enter_alt_screen(self) -> None:
+        """进入备用屏幕（\x1b[?1049h）：整屏 TUI 独占一层——清屏重绘不再往
+        scrollback 堆重复帧（此前 WT 上滑全是重复顶栏），退出时恢复原缓冲。
+        ptk 输入与 alt-screen 共存是 pgcli 验证过的成熟模式（ptk 在光标处
+        渲染输入区，与哪层缓冲无关）。管道/纯文本回退分支不进。"""
+        try:
+            f = self._console.file
+            f.write("\x1b[?1049h\x1b[H")
+            f.flush()
+            self._alt = True
+        except Exception:
+            self._alt = False
+
+    def exit_alt_screen(self) -> None:
+        if getattr(self, "_alt", False):
+            try:
+                f = self._console.file
+                f.write("\x1b[?1049l")
+                f.flush()
+            except Exception:
+                pass
+            self._alt = False
 
     # ———— 块渲染 ————
 
@@ -1049,14 +1084,16 @@ async def run_cloud_query(client, session_id: str, messages: list, render=None,
 
 
 def _quiet_background_loggers() -> None:
-    """REPL 全屏模式下静默后台线程噪音（真机 2026-11-12 报障）：yuan 同进程
-    拉起 Agent——ws_client 重连/plan 执行器拉取的 warning 经 StreamHandler 打到
-    stderr，与 ptk 输入行打架刷屏（本地后端没开时每几秒一行）。REPL 状态栏
-    在线点与人话报错已自己呈现，warning 降 ERROR；data/logs/agent.log 文件
-    仍全量留档可查。"""
+    """REPL 全屏模式下静默后台线程噪音（真机 2026-11-12 两次报障）：yuan
+    同进程拉起 Agent——① ws_client 重连/plan 执行器拉取的 warning 打到 stderr
+    与输入行打架；② 观测轮询成功后 httpx 每 15s 一条「HTTP Request: GET ...」
+    + sqlalchemy/alembic 的 INFO（Agent 内直连本机库）刷屏。REPL 状态栏在线点
+    与人话报错已自己呈现——这些模块 logger 降 ERROR；data/logs/agent.log 仍
+    全量留档可查。"""
     import logging
     for name in ("agent.ws_client", "agent.plan_executor", "agent.pet_events",
-                 "agent.chat_client"):
+                 "agent.chat_client", "httpx", "httpcore",
+                 "sqlalchemy.engine", "alembic"):
         logging.getLogger(name).setLevel(logging.ERROR)
 
 
@@ -1236,7 +1273,9 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
                                               bottom_toolbar=_toolbar)
             if renderer is not None:
                 renderer.pending_input = ""
-            return text.strip()
+            if isinstance(text, str):
+                return text.strip()
+            return text  # _REFRESH 哨兵（↑↓/Enter/Esc keybinding 的 exit result）
         except EOFError:
             return None
 
@@ -1343,6 +1382,7 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     if isinstance(render, FullscreenRenderer):
         render.set_mode(mode)
         render.set_session(session.get("id", ""))
+        render.enter_alt_screen()  # 固定顶栏/输入层（scrollback 不残留重复帧）
     else:
         render.info(f"小元AI 终端对话 — 模式: {mode} | 会话: {session.get('id', '')} | /help 查看命令")
 
@@ -1477,6 +1517,15 @@ async def run_repl(session: dict, store: TerminalSessionStore,
                 st = None
                 if isinstance(render, FullscreenRenderer) and render._status_provider:
                     st = render._status_provider()
+                if not st and isinstance(render, FullscreenRenderer):
+                    ob = render._observe
+                    if ob and not ob.get("error"):
+                        online = ob.get("online")
+                        act = (ob.get("latest") or {}).get("message", "")
+                        age = ob.get("age_s")
+                        st = ("在线" if online else "离线") + (
+                            f"（{act} · {int(age)}s 前）"
+                            if online and act and age is not None else "")
                 pet = last_state()
                 render.info(f"本机 Agent：{st or '未运行'} ｜ 桌宠：{pet or '—'} ｜ "
                             f"云端通道：{'已连接' if cloud_client else '未连接'}")
@@ -1609,6 +1658,9 @@ async def run_repl(session: dict, store: TerminalSessionStore,
             continue
         if result.strip():
             store.append(session["id"], "assistant", result, mode)
+
+    if isinstance(render, FullscreenRenderer):
+        render.exit_alt_screen()  # 正常退出恢复主缓冲（异常路径进程退出时终端自动恢复）
 
 
 async def run_pipe(query: str, mode: str, render=None) -> None:
@@ -1812,60 +1864,39 @@ async def main():
         global GRAY, CYAN, YELLOW, RED, RESET
         GRAY = CYAN = YELLOW = RED = RESET = ""
 
-    # REPL 模式：同进程拉起后台 Agent（云端联动 + 计划执行 + 桌宠事件）——
-    # 无身份文件时静默跳过（纯本地终端）；远端 ws:// 被护栏拒绝仅提示不阻塞终端；
-    # --no-agent（发布版 exe 内置终端）：托盘进程已持有云端连接，跳过防双连互踢
+    # REPL 模式（2026-11-12 用户拍板「连接是连接、启动是启动」）：yuan =
+    # 纯对话客户端——**不再同进程拉起后台 Agent**（云端 WS 联动 + 计划执行器
+    # 是独立进程：托盘 exe / python -m agent.main）。终端需要的在线状态改由
+    # 观测轮询（/chat/cc-activity online 字段）驱动；/chat 云端通道走
+    # chat-token HTTP（设备凭据，与 WS 无关）；桌宠走文件协议（pet_events）。
+    # --no-agent 参数保留兼容（发布版 exe 内置终端传递，现为无操作）。
     _quiet_background_loggers()
-    handle = None
+
+    session = None
+    if args.session:
+        session = store.get(args.session)
+        if not session:
+            print(f"{RED}会话不存在: {args.session}（/history 查看可用 ID）{RESET}", file=sys.stderr)
+            return
+    if session is None and not args.new:
+        session = store.latest()
+        if session and session.get("messages"):
+            print(f"{GRAY}已续接上次会话 {session['id']}（{len(session['messages'])} 条历史；"
+                  f"--new 开新会话）{RESET}")
+    if session is None:
+        session = store.new_session(args.mode)
+
+    # v3.0 全屏三区（#36）：在线点数据源 = 观测轮询的 /chat/cc-activity
+    # online 字段（连接与启动分离后无进程内 WS handle，见上方注释）
+    cwd = ""
     try:
-        from agent.main import load_identity, run_agent
-        identity = load_identity()
-        if identity.get("agent_id") and not args.no_agent:
-            handle = await run_agent(
-                server_url=args.server_url or identity.get("server_url") or "wss://cjyuanai.cn",
-                agent_id=str(identity.get("agent_id")),
-                agent_token=identity.get("agent_secret", "") or "",
-                agent_name=args.agent_name or "小元AI 本地 Agent",
-                no_plan_executor=args.no_plan_executor,
-            )
-    except SystemExit as e:
-        print(f"{YELLOW}{e}{RESET}", file=sys.stderr)
-    except Exception as e:
-        print(f"{GRAY}云端联动启动失败（终端功能不受影响）: {str(e)[:120]}{RESET}", file=sys.stderr)
+        from agent.cc_workspace import resolve_project_dir
+        cwd = resolve_project_dir() or ""
+    except Exception:
+        pass
 
-    try:
-        session = None
-        if args.session:
-            session = store.get(args.session)
-            if not session:
-                print(f"{RED}会话不存在: {args.session}（/history 查看可用 ID）{RESET}", file=sys.stderr)
-                return
-        if session is None and not args.new:
-            session = store.latest()
-            if session and session.get("messages"):
-                print(f"{GRAY}已续接上次会话 {session['id']}（{len(session['messages'])} 条历史；"
-                      f"--new 开新会话）{RESET}")
-        if session is None:
-            session = store.new_session(args.mode)
-
-        # v3.0 全屏三区（#36 2026-11-12）：状态栏在线点数据源 = 进程内 Agent 连接
-        # 状态（--no-agent 发布版形态 handle=None → 离线点，v3.1 起云端轮询补齐）
-        cwd = ""
-        try:
-            from agent.cc_workspace import resolve_project_dir
-            cwd = resolve_project_dir() or ""
-        except Exception:
-            pass
-
-        def _agent_status():
-            return handle.status if handle else None
-
-        await run_repl(session, store, render=FullscreenRenderer(
-            cwd=cwd, session_id=session.get("id", ""),
-            status_provider=_agent_status))
-    finally:
-        if handle:
-            await handle.shutdown()
+    await run_repl(session, store, render=FullscreenRenderer(
+        cwd=cwd, session_id=session.get("id", "")))
 
 
 if __name__ == "__main__":

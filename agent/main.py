@@ -283,6 +283,18 @@ def _setup_agent_logging() -> None:
     logging.getLogger("openai").setLevel(logging.WARNING)
 
 
+def agent_capabilities() -> list:
+    """WS hello 能力清单：skill 注册表 + claude_code。claude_code 是本机
+    Claude Code 桥接/终端 /claude 直连的观测键——/chat/cc-activity 过滤与
+    前端 @面板点亮都认它（2026-11-12 真机：终端设备能力缺该键 → 执行观测
+    右栏过滤掉本机条目显示离线）"""
+    from skills import skill_registry
+    caps = list(skill_registry.names)
+    if "claude_code" not in caps:
+        caps.append("claude_code")
+    return caps
+
+
 async def run_agent(*, server_url: str, agent_id: str, agent_token: str,
                     agent_name: str = "小元AI 本地 Agent",
                     no_plan_executor: bool = False) -> AgentHandle:
@@ -299,8 +311,7 @@ async def run_agent(*, server_url: str, agent_id: str, agent_token: str,
         raise SystemExit(f"拒绝明文 ws:// 连接（{server_url}）：Agent 凭据经明文传输会被窃取；"
                          "云端连接请使用 wss:// 地址")
 
-    from skills import skill_registry
-    capabilities = skill_registry.names
+    capabilities = agent_capabilities()
 
     orchestrator = Orchestrator()
     client = AgentWSClient(

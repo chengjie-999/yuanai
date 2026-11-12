@@ -17,11 +17,14 @@ from agent import terminal  # noqa: E402
 
 def _renderer(**kw):
     from rich.console import Console
+    import io
+    # file=StringIO：不写真实终端/全局捕获——曾致 GBK 字节泄漏进 pytest
+    # 捕获缓冲、后续无关测试 teardown 全部 UnicodeDecodeError（测试隔离事故）
     console = Console(record=True, force_terminal=True, width=100,
-                      color_system="standard")
+                      color_system="standard", file=io.StringIO())
+    kw.setdefault("status_provider", lambda: "online")
     return terminal.FullscreenRenderer(
-        console=console, cwd="D:\\code\\yuanai", session_id="abcd1234ef",
-        status_provider=lambda: "online", **kw)
+        console=console, cwd="D:\\code\\yuanai", session_id="abcd1234ef", **kw)
 
 
 def _out(r) -> str:
@@ -124,8 +127,10 @@ def test_run_repl_refresh_sentinel_redraws(capsys, monkeypatch, tmp_path):
 
     class _FakeFull(terminal.FullscreenRenderer):
         def __init__(self):
+            import io
             from rich.console import Console
-            super().__init__(console=Console(record=True, force_terminal=True),
+            super().__init__(console=Console(record=True, force_terminal=True,
+                             file=io.StringIO()),
                              cwd="x", session_id="s1")
 
         def redraw(self):
@@ -293,7 +298,9 @@ def test_tick_observation_repaint_guards():
         def redraw(self):
             calls.append("redraw")
 
-    r = _Spy(console=Console(record=True, force_terminal=True, width=100),
+    import io
+    r = _Spy(console=Console(record=True, force_terminal=True, width=100,
+             file=io.StringIO()),
              cwd="x", session_id="s1")
     r._prompt_active = True
     r.tick_observation(_observe())
@@ -403,9 +410,10 @@ def test_run_repl_plan_command_views(capsys, monkeypatch, tmp_path):
     s = store.new_session("claude")
     seq = iter(["/plan", "/plan 1", "/quit"])
     from rich.console import Console
+    import io
     render = terminal.FullscreenRenderer(
-        console=Console(record=True, force_terminal=True, width=100), cwd="x",
-        session_id="s1")
+        console=Console(record=True, force_terminal=True, width=100,
+                        file=io.StringIO()), cwd="x", session_id="s1")
     import asyncio
 
     async def _prompt():
@@ -444,11 +452,13 @@ def test_ptk_default_never_none():
 
 
 def test_quiet_background_loggers(monkeypatch):
-    """真机报障（2026-11-12）：REPL 下 ws_client/plan_executor 的 warning 刷屏
-    与输入行打架——降 ERROR 静默；无关 logger 不受影响（agent.log 文件仍留档）"""
+    """真机报障（2026-11-12 ×2）：REPL 下 ws_client/plan_executor 的 warning
+    与 httpx/sqlalchemy/alembic 的 INFO 刷屏与输入行打架——降 ERROR 静默；
+    无关 logger 不受影响（agent.log 文件仍留档）"""
     import logging
     names = ("agent.ws_client", "agent.plan_executor", "agent.pet_events",
-             "agent.chat_client")
+             "agent.chat_client", "httpx", "httpcore", "sqlalchemy.engine",
+             "alembic")
     old = {n: logging.getLogger(n).level for n in names}
     try:
         for n in names:
@@ -459,3 +469,95 @@ def test_quiet_background_loggers(monkeypatch):
     finally:
         for n, lv in old.items():
             logging.getLogger(n).setLevel(lv)
+
+
+# ---------------- alt-screen 固定顶栏/输入（2026-11-12 用户诉求，CC 同款） ----------------
+
+def test_alt_screen_enter_exit_writes_escapes():
+    """进/出备用屏幕缓冲：\x1b[?1049h / \x1b[?1049l 落终端；未进入时退出不写"""
+    import io
+    buf = io.StringIO()
+    r = terminal.FullscreenRenderer(
+        console=Console(file=buf, force_terminal=True, width=100), cwd="x",
+        session_id="s1")
+    r.enter_alt_screen()
+    assert "\x1b[?1049h" in buf.getvalue()
+    buf.seek(0); buf.truncate(0)
+    r.exit_alt_screen()
+    assert "\x1b[?1049l" in buf.getvalue()
+    buf.seek(0); buf.truncate(0)
+    r.exit_alt_screen()          # 已退出：幂等不重复写
+    assert buf.getvalue() == ""
+
+
+def test_run_repl_exits_alt_screen_on_quit(capsys, monkeypatch, tmp_path):
+    """REPL 正常退出（/quit）恢复主缓冲——scrollback 不残留重复顶栏"""
+    monkeypatch.setattr(terminal, "_make_cloud_client", lambda: None)
+    import io
+    buf = io.StringIO()
+    render = terminal.FullscreenRenderer(
+        console=Console(file=buf, force_terminal=True, width=100), cwd="x",
+        session_id="s1")
+    store = terminal.TerminalSessionStore(str(tmp_path / "t.json"))
+    s = store.new_session("claude")
+    seq = iter(["/quit"])
+
+    async def _prompt():
+        return next(seq)
+
+    asyncio.run(terminal.run_repl(s, store, prompt_fn=_prompt, render=render))
+    out = buf.getvalue()
+    assert "\x1b[?1049h" in out and "\x1b[?1049l" in out  # 进有出，成对
+
+
+def test_agent_dot_observe_driven():
+    """连接与启动分离（2026-11-12 用户拍板）：yuan 不再同进程拉起 Agent——
+    在线点由观测轮询驱动：无身份→离线灰；通道就绪无数据→连接中黄；
+    online→在线绿；离线→离线灰；status_provider 优先"""
+    import time as _t
+    r = _renderer(status_provider=None)
+    assert r._agent_dot()[0] == "○ 离线"          # 无身份：离线
+    r._observe_ready = True
+    assert r._agent_dot()[0] == "● 连接中"         # 通道就绪、数据未到
+    r._observe = {"online": True, "age_s": 5,
+                  "activities": [{"message": "x", "ts": _t.time() - 5}]}
+    assert r._agent_dot()[0] == "● 在线"
+    r._observe = {"online": False, "activities": []}
+    assert r._agent_dot()[0] == "○ 离线"
+    r._observe = {"error": True}
+    assert r._agent_dot()[0] == "○ 离线"
+    r2 = _renderer(status_provider=lambda: "online")
+    assert r2._agent_dot()[0] == "● 在线"          # status_provider 优先
+
+
+def test_ptk_prompt_fn_returns_refresh_sentinel_unstripped():
+    """真机崩溃（2026-11-12 用户报障）：↑↓/Enter/Esc keybinding 以 _REFRESH
+    退出 prompt——prompt_fn 曾对哨兵对象 .strip() → AttributeError。修=非 str
+    原样回传（run_repl 的 `if line is _REFRESH` 分支消费）"""
+    import asyncio
+    import prompt_toolkit as ptk
+    saved = ptk.PromptSession
+    try:
+        class _S:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def prompt_async(self, *a, **kw):
+                return terminal._REFRESH
+
+        ptk.PromptSession = _S
+        fn = terminal._make_ptk_prompt(["claude"], _renderer())
+        assert asyncio.run(fn()) is terminal._REFRESH  # 哨兵原样回传，不 strip
+
+        class _S2:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def prompt_async(self, *a, **kw):
+                return "  你好  "
+
+        ptk.PromptSession = _S2
+        fn2 = terminal._make_ptk_prompt(["claude"], _renderer())
+        assert asyncio.run(fn2()) == "你好"          # str 输入仍 strip
+    finally:
+        ptk.PromptSession = saved

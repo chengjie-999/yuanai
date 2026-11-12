@@ -52,7 +52,7 @@ python -m agent.main --agent-id 1
 python -m agent.main --agent-id 1 --tray
 ```
 
-**本地终端对话 CLI（2026-10-23，P1 产品愿景；2026-11-12 v3.0 全屏三区 / v3.1 云端对话通道 / v3.2 观测右栏）**：在 Windows 终端里直接对话本机 Claude Code（默认 `/claude`，anthropic SDK loop + 工具 + 审批 Y/N）；v3.0 起为全屏三区 TUI——顶部状态栏（本地 Agent 在线点/模式/工作目录/会话号/桌宠六态色点）+ 对话流块（思考折叠块「▸ 思考 (Xs) · N 次工具调用」/工具卡/回答 Markdown，**↑↓ 选择 · Enter 展开折叠 · PgUp/PgDn 滚动**）+ 底部输入 dock。v3.1 `/chat` = **云端对话通道**（终端=网站对话第三端，与网页/手机同一批会话，backend_event 显示「本机执行/云端执行」）。v3.2 右栏「执行观测」15s 轮询最近活动 + `/plan` 计划队列视图（进度条/步骤详情）。托盘「终端对话」优先开 Windows Terminal 标签页（未装 WT 回落新控制台）：
+**本地终端对话 CLI（2026-10-23，P1 产品愿景；2026-11-12 v3.0 全屏三区 / v3.1 云端对话通道 / v3.2 观测右栏）**：在 Windows 终端里直接对话本机 Claude Code（默认 `/claude`，anthropic SDK loop + 工具 + 审批 Y/N）；v3.0 起为全屏三区 TUI（备用屏幕缓冲，固定顶栏/输入不污染滚动回看）——顶部状态栏（本地 Agent 在线点/模式/工作目录/会话号/桌宠六态色点）+ 对话流块（思考折叠块「▸ 思考 (Xs) · N 次工具调用」/工具卡/回答 Markdown，**↑↓ 选择 · Enter 展开折叠 · PgUp/PgDn 滚动**）+ 底部输入 dock。v3.1 `/chat` = **云端对话通道**（终端=网站对话第三端，与网页/手机同一批会话，backend_event 显示「本机执行/云端执行」）。v3.2 右栏「执行观测」15s 轮询最近活动 + `/plan` 计划队列视图（进度条/步骤详情）。**连接与启动分离**：yuan 是纯对话客户端——云端连接/计划执行由独立的后台 Agent 进程承担（托盘 exe 或 `python -m agent.main`），终端在线点由观测轮询驱动。托盘「终端对话」优先开 Windows Terminal 标签页（未装 WT 回落新控制台）：
 ```bash
 python -m agent.terminal                 # REPL 交互（自动续接上次会话）
 echo "看看项目结构" | python -m agent.terminal   # 管道单轮

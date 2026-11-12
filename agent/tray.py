@@ -97,6 +97,11 @@ def _cleanup_mei_residue():
         pass
 
 
+# ==================== 终端入口防连点（2026-11-12） ====================
+# 托盘默认动作=开终端：双击/连点图标会连发多次激活——冷却期内只开一个窗口
+_TERMINAL_LAST_LAUNCH = 0.0
+_TERMINAL_LAUNCH_COOLDOWN = 1.5  # 秒（双击间隔 ~300ms，正常用后再开 >1.5s 不受影响）
+
 # ==================== 单实例保护（2026-11-09 多开根治） ====================
 _SINGLE_MUTEX_NAME = "XiaoYuanAI-Agent-SingleInstance"
 _SINGLE_INSTANCE_HANDLE = None  # 持住句柄防 GC 提前释放互斥体
@@ -210,7 +215,9 @@ def _alloc_console() -> None:
 
 def _enable_console_vt() -> None:
     """控制台 VT 处理开启（输出 0x0004 ENABLE_VIRTUAL_TERMINAL_PROCESSING +
-    输入 0x0200 ENABLE_VIRTUAL_TERMINAL_INPUT）。幂等，失败静默。"""
+    输入 0x0200 ENABLE_VIRTUAL_TERMINAL_INPUT）+ 暗色壳（2026-11-12 用户拍板：
+    SetConsoleTextAttribute 黑底亮灰字 0x07——不随系统 conhost 默认主题走
+    （可能是浅色），与终端内 TERMINAL_DARK=1 暗色主题一致）。幂等，失败静默。"""
     if os.name != "nt":
         return
     try:
@@ -223,6 +230,9 @@ def _enable_console_vt() -> None:
                 continue
             if not (mode.value & flag):
                 kernel32.SetConsoleMode(h, mode.value | flag)
+        h_out = kernel32.GetStdHandle(-11)
+        if h_out:
+            kernel32.SetConsoleTextAttribute(h_out, 0x07)
     except Exception:
         pass
 
@@ -715,8 +725,16 @@ class AgentTray:
         WT 承载 #36 2026-11-12）：冻结 exe 启动自身 --run-terminal 子进程
         （自建控制台，#13 已补 VT 处理全功能）；源码树运行优先开 Windows
         Terminal 标签页（与用户手动开 WT 跑 yuan 体验一致），未装 WT 回落到
-        新控制台窗口。"""
+        新控制台窗口。1.5s 防连点（2026-11-12 用户问「多次点击托盘会出问题吗」）：
+        双击/连点只开一个终端窗口，不弹多个。"""
         try:
+            global _TERMINAL_LAST_LAUNCH
+            import time
+            now = time.time()
+            if now - _TERMINAL_LAST_LAUNCH < _TERMINAL_LAUNCH_COOLDOWN:
+                self._icon.notify("终端已打开（防连点，X 关掉后稍候再点）", "终端对话")
+                return
+            _TERMINAL_LAST_LAUNCH = now
             if getattr(sys, "frozen", False):
                 # 发布版内置终端：--no-agent 跳过内嵌 Agent（托盘进程已持云端
                 # 连接，再拉同身份双连互踢）

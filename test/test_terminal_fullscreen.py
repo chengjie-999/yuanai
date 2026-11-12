@@ -164,3 +164,56 @@ def test_open_windows_terminal_fallback(monkeypatch):
     from agent import tray
     monkeypatch.setattr(_shutil, "which", lambda name: None)
     assert tray._open_in_windows_terminal(["py"], cwd=".") is False
+
+
+# ---------------- 网站对话入口（2026-11-12） ----------------
+
+def test_web_chat_url_env_override(monkeypatch):
+    monkeypatch.setenv("WEB_CHAT_URL", "https://example.com/chat")
+    assert terminal.web_chat_url() == "https://example.com/chat"
+
+
+def test_web_chat_url_local_dev(monkeypatch):
+    """本地联调（身份文件 server_url=localhost）→ 前端 5173"""
+    monkeypatch.delenv("WEB_CHAT_URL", raising=False)
+    import agent.main as am
+    monkeypatch.setattr(am, "load_identity", lambda: {"server_url": "ws://localhost:8000"})
+    assert terminal.web_chat_url() == "http://localhost:5173/chat"
+
+
+def test_web_chat_url_prod_default(monkeypatch):
+    monkeypatch.delenv("WEB_CHAT_URL", raising=False)
+    import agent.main as am
+    monkeypatch.setattr(am, "load_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
+    assert terminal.web_chat_url() == "https://cjyuanai.cn/chat"
+
+
+def test_run_repl_web_command_opens_browser(capsys, monkeypatch, tmp_path):
+    """/web 命令 → 打开浏览器（后台线程，短轮询等待）+ 提示语含 URL"""
+    import time
+    opened = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url))
+    import agent.main as am
+    monkeypatch.setattr(am, "load_identity", lambda: {"server_url": "wss://cjyuanai.cn"})
+    store = terminal.TerminalSessionStore(str(tmp_path / "t.json"))
+    s = store.new_session("claude")
+    seq = iter(["/web", None])
+
+    async def _prompt():
+        return next(seq)
+
+    asyncio.run(terminal.run_repl(s, store, prompt_fn=_prompt))
+    out = capsys.readouterr().out
+    assert "正在打开网站对话" in out
+    for _ in range(50):  # daemon 线程短暂等待（不能全局 mock Thread——tqdm 等子类会崩）
+        if opened:
+            break
+        time.sleep(0.02)
+    assert opened == ["https://cjyuanai.cn/chat"]
+
+
+def test_status_bar_has_web_entry():
+    """状态栏含「F2 网站对话」入口（全屏渲染器 header）"""
+    r = _renderer()
+    r.redraw()
+    assert "F2 网站对话" in _out(r)

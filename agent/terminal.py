@@ -229,6 +229,34 @@ def read_stdin_query() -> str:
     return _clean_text(raw.decode("utf-8", errors="replace").strip())
 
 
+def web_chat_url() -> str:
+    """网站对话入口地址（终端状态栏/命令用，2026-11-12 用户诉求）：
+    WEB_CHAT_URL 环境变量优先；否则从身份文件 server_url 推导——
+    本地联调（localhost/ws://）指前端 5173，生产默认 https://cjyuanai.cn/chat。"""
+    env = os.getenv("WEB_CHAT_URL")
+    if env:
+        return env
+    url = "https://cjyuanai.cn/chat"
+    try:
+        from agent.main import load_identity
+        su = (load_identity() or {}).get("server_url", "") or ""
+        if "localhost" in su or "127.0.0.1" in su:
+            url = "http://localhost:5173/chat"
+    except Exception:
+        pass
+    return url
+
+
+def _open_web_chat() -> str:
+    """打开网站对话（浏览器新标签）；返回 URL。F2 快捷键与 /web 命令共用
+    （2026-11-12 用户诉求：网站对话入口写进终端界面）。"""
+    import threading
+    import webbrowser
+    url = web_chat_url()
+    threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+    return url
+
+
 def find_terminal_launcher():
     """探测可启动终端的 (python_exe, project_root)；不可用返回 None。
 
@@ -445,6 +473,7 @@ class FullscreenRenderer:
             ("  ", ""), (cwd or "—", "dim"), ("  ", ""),
             (f"会话 {self._session_id[:8]}" if self._session_id else "", "dim"),
             ("  ", ""), (pet, "magenta"), ("  ", ""),
+            ("F2 网站对话", "bright_black"), ("  ", ""),
             ("? 帮助", "bright_black"),
         )
 
@@ -744,6 +773,12 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
     def _(event):
         event.current_buffer.insert_text("\n")
 
+    @kb.add("f2")
+    def _(event):
+        # 网站对话入口（2026-11-12 用户诉求：状态栏可见、一键直达浏览器）
+        _open_web_chat()
+        event.current_buffer.insert_text("")  # 不打断输入
+
     if renderer is not None:
         @kb.add("up")
         def _(event):
@@ -833,10 +868,10 @@ async def _ptk_approve(tool_name: str, command: str) -> str:
 
 
 def _print_help(render) -> None:
-    render.info("命令: /claude 本机Claude(默认)  /chat 本地LLM  /history 历史会话  "
-                "/clear 清空当前会话  /quit 退出\n"
-                "按键: ↑↓ 选择块  Enter 展开/折叠  PgUp/PgDn 滚动  Esc 取消  "
-                "Esc+Enter 换行  Ctrl+C 停止生成")
+    render.info("命令: /claude 本机Claude(默认)  /chat 本地LLM  /web 网站对话  "
+                "/history 历史会话  /clear 清空当前会话  /quit 退出\n"
+                "按键: F2 网站对话  ↑↓ 选择块  Enter 展开/折叠  PgUp/PgDn 滚动  "
+                "Esc 取消  Esc+Enter 换行  Ctrl+C 停止生成")
 
 
 async def _list_history(store: TerminalSessionStore, render) -> None:
@@ -932,6 +967,10 @@ async def run_repl(session: dict, store: TerminalSessionStore,
                 if isinstance(render, FullscreenRenderer):
                     render.set_mode(mode)
                 render.info(f"已切换本地 LLM 直连模式（{DEFAULT_CHAT_MODEL}）")
+            elif cmd == "/web":
+                # 网站对话入口（2026-11-12 用户诉求，与状态栏 F2 同款）
+                url = _open_web_chat()
+                render.info(f"正在打开网站对话：{url}")
             else:
                 render.info(f"未知命令: {cmd}（/help 查看）")
             continue

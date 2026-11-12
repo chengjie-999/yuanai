@@ -959,6 +959,8 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
     session = PromptSession(
         multiline=True, key_bindings=kb,
         history=FileHistory(HISTORY_FILE),
+        # Ctrl+R 反向历史搜索（v3.1 交互：ptk 内建，跨会话历史可搜）
+        enable_history_search=True,
         completer=WordCompleter(
             ["/claude", "/chat", "/web", "/sessions", "/history", "/clear",
              "/quit", "/help", "/plan", "/status", "/panel", "/pet"],
@@ -1010,8 +1012,8 @@ def _print_help(render) -> None:
     render.info("命令: /claude 本机Claude(默认)  /chat 云端对话(与网站同会话)  "
                 "/sessions 网站会话  /web 网站对话  /plan 计划页  /status 本机状态  "
                 "/panel 设置面板  /pet on|off 桌宠  /history /clear /quit\n"
-                "按键: F2 网站对话  ↑↓ 选择块  Enter 展开/折叠  PgUp/PgDn 滚动  "
-                "Esc 取消  Esc+Enter 换行  Ctrl+C 停止生成")
+                "按键: F2 网站对话  Ctrl+R 搜索历史  ↑↓ 选择块  Enter 展开/折叠  "
+                "PgUp/PgDn 滚动  Esc 取消  Esc+Enter 换行  Ctrl+C 停止生成")
 
 
 async def _list_history(store: TerminalSessionStore, render) -> None:

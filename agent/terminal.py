@@ -1048,6 +1048,18 @@ async def run_cloud_query(client, session_id: str, messages: list, render=None,
     return final
 
 
+def _quiet_background_loggers() -> None:
+    """REPL 全屏模式下静默后台线程噪音（真机 2026-11-12 报障）：yuan 同进程
+    拉起 Agent——ws_client 重连/plan 执行器拉取的 warning 经 StreamHandler 打到
+    stderr，与 ptk 输入行打架刷屏（本地后端没开时每几秒一行）。REPL 状态栏
+    在线点与人话报错已自己呈现，warning 降 ERROR；data/logs/agent.log 文件
+    仍全量留档可查。"""
+    import logging
+    for name in ("agent.ws_client", "agent.plan_executor", "agent.pet_events",
+                 "agent.chat_client"):
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+
 def _start_observe_poll(render, client_getter, interval: float = OBSERVE_POLL_S):
     """v3.2 #38 观测轮询：15s 拉 /chat/cc-activity → render.tick_observation
     （渲染时机由 tick 内安全判定）。失败静默——面板显示「云端不可用」，绝不阻塞
@@ -1802,6 +1814,7 @@ async def main():
     # REPL 模式：同进程拉起后台 Agent（云端联动 + 计划执行 + 桌宠事件）——
     # 无身份文件时静默跳过（纯本地终端）；远端 ws:// 被护栏拒绝仅提示不阻塞终端；
     # --no-agent（发布版 exe 内置终端）：托盘进程已持有云端连接，跳过防双连互踢
+    _quiet_background_loggers()
     handle = None
     try:
         from agent.main import load_identity, run_agent

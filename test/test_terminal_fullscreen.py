@@ -440,3 +440,21 @@ def test_ptk_default_never_none():
     assert terminal._ptk_default(r) == ""            # 无未提交输入 → 空串
     r.pending_input = "未提交的文字"
     assert terminal._ptk_default(r) == "未提交的文字"  # 哨兵保留的输入透传
+
+
+def test_quiet_background_loggers(monkeypatch):
+    """真机报障（2026-11-12）：REPL 下 ws_client/plan_executor 的 warning 刷屏
+    与输入行打架——降 ERROR 静默；无关 logger 不受影响（agent.log 文件仍留档）"""
+    import logging
+    names = ("agent.ws_client", "agent.plan_executor", "agent.pet_events",
+             "agent.chat_client")
+    old = {n: logging.getLogger(n).level for n in names}
+    try:
+        for n in names:
+            logging.getLogger(n).setLevel(logging.WARNING)
+        terminal._quiet_background_loggers()
+        assert all(logging.getLogger(n).level == logging.ERROR for n in names)
+        assert logging.getLogger("agent").level == logging.NOTSET  # 无关不动
+    finally:
+        for n, lv in old.items():
+            logging.getLogger(n).setLevel(lv)

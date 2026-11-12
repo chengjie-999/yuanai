@@ -64,6 +64,13 @@ MAX_TOOL_OUTPUT = 2000   # 终端回显工具输出截断（对齐 claude_bridge
 MAX_SESSIONS = 50        # 会话文件保留上限
 MAX_STORED_MSGS = 200    # 每会话落盘消息上限（防文件无限增长）
 MAX_SENT_MSGS = 100      # 每轮发送模型的历史上限（SDK 全量重发，必须封顶）
+OBSERVE_PANEL_W = 34     # v3.2 #38 观测右栏宽度（右栏 + 左块网格并排）
+OBSERVE_POLL_S = 15.0    # 观测轮询间隔（/chat/cc-activity，与网页同口径）
+OBSERVE_STALE_S = 300    # 超此秒数无活动 = 黄条「可能已无响应」（与网页同语义）
+
+# 桌宠六态 → 状态栏色点（v3.2 #38；与 pet_events 六态词一一对应）
+PET_STATE_STYLE = {"thinking": "cyan", "working": "yellow", "attention": "magenta",
+                   "error": "red", "idle": "green", "sleeping": "grey50"}
 
 try:
     # errors="replace"：第三方网关流可能含孤立 surrogate（解码脏字节）——
@@ -446,6 +453,14 @@ class FullscreenRenderer:
         self.sel = None         # 选中块下标（blocks 内绝对下标）
         self.scroll_blocks = 0  # 从尾部隐藏的块数（PgUp 回看）
         self.pending_input = ""  # 折叠/滚动刷新时保留的输入缓冲
+        # v3.2 #38 观测右栏：轮询线程只写状态（tick_observation），渲染时机
+        # = Live 流式帧 / 非输入态整屏重绘（_prompt_active 时不动屏幕防与
+        # ptk 输入行打架——工具栏 mini 状态线由 ptk 自身刷新兜底实时性）
+        self._observe = None       # {"online", "age_s", "activities"} / {"error": True}
+        self._observe_ready = False  # 云端通道客户端可用才渲染右栏
+        self._usage = None         # {"total", "cached"} 上轮 token 消耗（usage_event）
+        self._plan_view = None     # /plan 全屏视图（None=对话流；Esc/Enter 返回）
+        self._prompt_active = False  # 输入等待中（run_repl 维护，轮询线程读）
         try:
             dark = os.getenv("TERMINAL_DARK", "1") == "1"
         except Exception:
@@ -485,37 +500,45 @@ class FullscreenRenderer:
         self.scroll_blocks = 0
         self.sel = None
 
-    def _agent_dot(self) -> str:
+    def _agent_dot(self):
+        """本机 Agent 在线点：(文本, 样式)。Text.assemble 不解析 markup——
+        直接给样式（#38 顺手修复 v3.0 状态栏字面 [green] 标签显示 bug）"""
         st = self._status_provider() if self._status_provider else None
-        st = self._status_provider() if self._status_provider else None
-        return {"online": "[green]● 在线[/green]",
-                "connecting": "[yellow]● 连接中[/yellow]",
-                "reconnecting": "[yellow]● 重连中[/yellow]",
-                "offline": "[grey50]○ 离线[/grey50]",
-                None: "[grey50]○ 离线[/grey50]"}[st if st in (
+        return {"online": ("● 在线", "green"),
+                "connecting": ("● 连接中", "yellow"),
+                "reconnecting": ("● 重连中", "yellow"),
+                "offline": ("○ 离线", "grey50"),
+                None: ("○ 离线", "grey50")}[st if st in (
                     "online", "connecting", "reconnecting", "offline") else None]
 
     def _header(self):
         from rich.text import Text
+        dot, dot_style = self._agent_dot()
         pet = ""
+        pet_style = "magenta"
         try:
             from agent.pet_events import last_state
             st = last_state()
             if st:
-                pet = f"宠:{st}"
+                pet = st
+                pet_style = PET_STATE_STYLE.get(st, "magenta")
         except Exception:
             pass
+        if pet:
+            # v3.2 #38：桌宠六态色点（working 黄/error 红/idle 绿/thinking 青/
+            # attention 紫/sleeping 灰空心）——一眼看电脑在干什么
+            pet = f"{'○' if pet == 'sleeping' else '●'} 宠:{pet}"
         cwd = self._cwd
         if len(cwd) > 42:
             cwd = "…" + cwd[-41:]
         backend = {"local": "本机执行", "cloud": "云端执行"}.get(self._backend, "")
         return Text.assemble(
-            (self._agent_dot(), ""), ("  ", ""),
-            (f"[bold]{self._mode}[/bold]", "cyan"),
+            (dot, dot_style), ("  ", ""),
+            (self._mode, "bold cyan"),
             ("  ", ""), (backend, "green" if self._backend == "local" else "yellow"),
             ("  ", ""), (cwd or "—", "dim"), ("  ", ""),
             (f"会话 {self._session_id[:8]}" if self._session_id else "", "dim"),
-            ("  ", ""), (pet, "magenta"), ("  ", ""),
+            ("  ", ""), (pet, pet_style), ("  ", ""),
             ("F2 网站对话", "bright_black"), ("  ", ""),
             ("? 帮助", "bright_black"),
         )
@@ -552,6 +575,153 @@ class FullscreenRenderer:
             return title
         return Group(title, Text(b.get("content", ""), style="dim"))
 
+    # ———— v3.2 #38 观测右栏（执行观测面，愿景「手机看电脑在干什么」桌面侧） ————
+
+    def set_usage(self, total: int, cached: int = 0) -> None:
+        """上轮 token 消耗（usage_event，run_cloud_query 消费）"""
+        self._usage = {"total": int(total or 0), "cached": int(cached or 0)}
+
+    def tick_observation(self, data: dict) -> None:
+        """轮询线程注入观测数据（15s /chat/cc-activity）：只更新状态；重绘仅在
+        安全时机——Live 流式中逐帧更新（rich Live 锁线程安全）/ 非输入态整屏
+        redraw（Console 写锁串行）。ptk 输入等待中不动屏幕，工具栏 mini 状态线
+        由 ptk 自身刷新（refresh_interval）兜底实时性。"""
+        self._observe = data or None
+        if self._live is not None:
+            self._refresh()
+        elif not self._prompt_active:
+            self.redraw()
+
+    def _observe_panel(self):
+        """右栏面板：状态色点（活跃绿/空闲黄/无响应黄条/离线灰）+ 最近 5 条
+        活动（message + 多久前）+ 上轮 token 消耗。固定宽度 OBSERVE_PANEL_W。"""
+        from rich.panel import Panel
+        from rich.text import Text
+        from rich.console import Group
+        ob = self._observe
+        lines = []
+        if ob is None:
+            lines.append(Text("连接云端…", style="dim"))
+        elif ob.get("error"):
+            lines.append(Text("云端不可用", style="bold red"))
+            lines.append(Text("请检查设备绑定/网络", style="dim"))
+        else:
+            online = bool(ob.get("online"))
+            age = ob.get("age_s")
+            if not online:
+                lines.append(Text("○ 离线", style="bold grey50"))
+            elif age is None:
+                lines.append(Text("● 在线 · 无活动记录", style="green"))
+            elif age <= 60:
+                lines.append(Text(f"● 活跃 · {int(age)}s 前", style="bold green"))
+            elif age <= OBSERVE_STALE_S:
+                lines.append(Text(f"● 空闲 · {int(age // 60)} 分钟", style="bold yellow"))
+            else:
+                lines.append(Text(f"● 已 {int(age // 60)} 分钟无活动", style="bold yellow"))
+                lines.append(Text("可能已无响应（网页同提示）", style="yellow"))
+            for a in (ob.get("activities") or [])[:5]:
+                msg = str(a.get("message", "") or "").strip()[:22] or "活动"
+                ago = ""
+                ts = a.get("ts")
+                if isinstance(ts, (int, float)):
+                    s = max(0, int(time.time() - float(ts)))
+                    ago = f"{s}s" if s < 60 else f"{s // 60}m" if s < 3600 else f"{s // 3600}h"
+                lines.append(Text(f"• {msg}" + (f" {ago}" if ago else "")))
+        if self._usage:
+            lines.append(Text(f"上轮 {self._usage['total']} tokens"
+                              + (f" · 缓存 {self._usage['cached']}" if self._usage["cached"] else ""),
+                              style="dim"))
+        return Panel(Group(*lines), title="执行观测", width=OBSERVE_PANEL_W,
+                     padding=(0, 1))
+
+    def _body(self, parts: list):
+        """块流 + 观测右栏并排（grid 表固定两列：左列弹性 = 全宽−右栏，右栏
+        固定 OBSERVE_PANEL_W）。宽终端（≥72）且云端通道可用才挂右栏；窄终端/
+        无身份 → 纯块流全宽（降级不报错）。"""
+        from rich.console import Group
+        width = self._console.width or 80
+        if not (self._observe_ready and width >= 72):
+            return Group(*parts)
+        from rich.table import Table
+        grid = Table.grid(padding=(0, 0), pad_edge=False, collapse_padding=True)
+        grid.add_column(width=width - OBSERVE_PANEL_W)
+        grid.add_column(width=OBSERVE_PANEL_W)
+        grid.add_row(Group(*parts), self._observe_panel())
+        return grid
+
+    # ———— v3.2 #38 /plan 全屏队列视图（Esc/Enter 返回对话流） ————
+
+    def set_plan_view(self, data) -> None:
+        """None = 退出计划视图（回到对话流块）"""
+        self._plan_view = data
+
+    def show_plans(self, plans: list, detail: dict = None) -> None:
+        """计划列表（plans=卡列表）或单计划详情（detail=含 steps）进全屏视图"""
+        self._plan_view = {"plans": plans or [], "detail": detail}
+        self.sel = None
+        self.scroll_blocks = 0
+
+    def _plan_renderable(self):
+        """计划队列渲染：列表=每计划状态词 + 进度条（rich ProgressBar 列）；
+        详情=步骤逐行（状态标记/描述/运行中百分比/失败错误）。"""
+        from rich.progress_bar import ProgressBar
+        from rich.columns import Columns
+        from rich.text import Text
+        from rich.console import Group
+        st_word = {"queued": "排队中", "running": "执行中", "done": "完成",
+                   "failed": "失败", "draft": "草稿"}
+        st_style = {"queued": "bold cyan", "running": "bold yellow",
+                    "done": "bold green", "failed": "bold red", "draft": "dim"}
+        head = self._plan_view
+        parts = [Text("计划队列（/plan <序号> 查看步骤 · Esc/Enter 返回对话）",
+                      style="bold underline")]
+        detail = head.get("detail")
+        if detail:
+            steps = detail.get("steps") or []
+            title = str(detail.get("title") or "(无标题)")[:40]
+            st = str(detail.get("status") or "draft")
+            prog = int(detail.get("progress") or 0)
+            parts.append(Text.assemble(
+                (f"▸ {title}  ", "bold"),
+                (st_word.get(st, st), st_style.get(st, "dim")),
+                ("  ", ""), (f"{prog}%", ""),
+                (f"  {detail.get('done_steps', 0)}/{detail.get('total_steps', 0)} 步", "dim")))
+            for s in steps:
+                sst = str(s.get("status") or "pending")
+                mark = {"running": "●", "done": "✔", "failed": "✗"}.get(sst, "○")
+                mark_style = {"running": "yellow", "done": "green",
+                              "failed": "red"}.get(sst, "dim")
+                extra = ""
+                if sst == "running":
+                    extra = f" {int(s.get('progress') or 0)}%"
+                err = f" {str(s.get('error') or '')[:40]}" if sst == "failed" and s.get("error") else ""
+                parts.append(Text.assemble(
+                    (f"  {mark} 第{s.get('step_no', '?')}步 ", mark_style),
+                    (f"[{str(s.get('skill') or '-')}] ", "dim"),
+                    (str(s.get("desc") or "")[:30], ""),
+                    (extra, "yellow"), (err, "red")))
+            return Group(*parts)
+        plans = head.get("plans")
+        if not plans:
+            parts.append(Text("暂无计划——在网站对话中说「帮我制定…计划」，"
+                              "创建后终端可直接看执行进度", style="dim"))
+        for i, p in enumerate(plans):
+            title = str(p.get("title") or "(无标题)")[:34]
+            st = str(p.get("status") or "draft")
+            prog = max(0, min(100, int(p.get("progress") or 0)))
+            bar = ProgressBar(total=100, completed=prog, width=14,
+                              complete_style="green", finished_style="green")
+            parts.append(Group(
+                Text.assemble((f"[{i + 1}] ", "bold"), (title, ""), ("  ", ""),
+                              (st_word.get(st, st), st_style.get(st, "dim"))),
+                Columns([bar,
+                         Text.assemble((f"  {prog}%  ", ""),
+                                       (f"{p.get('done_steps', 0)}/{p.get('total_steps', 0)} 步", "dim"),
+                                       ("  ", ""), (str(p.get("message") or "")[:30], "dim"))],
+                        padding=(0, 0), expand=False),
+            ))
+        return Group(*parts)
+
     # ———— 流式帧 ————
 
     def _refresh(self) -> None:
@@ -563,6 +733,10 @@ class FullscreenRenderer:
             self._live = Live(Group(), console=self._console, refresh_per_second=12)
             self._live.start()
         parts = [self._header()]
+        if self._plan_view is not None:
+            parts.append(self._plan_renderable())
+            self._live.update(Group(*parts))
+            return
         for i, b in self._visible_blocks():
             parts.append(self._block_renderable(i, b, self.sel))
         if self._working:
@@ -570,7 +744,7 @@ class FullscreenRenderer:
         if self._reasoning:
             parts.append(Text("思考中…\n" + self._reasoning, style="dim italic"))
         parts.append(Markdown((self._answer or "…") + " ▍", code_theme=self._code_theme))
-        self._live.update(Group(*parts))
+        self._live.update(self._body(parts))
 
     def _stop_live(self) -> None:
         if self._live is not None:
@@ -578,14 +752,18 @@ class FullscreenRenderer:
             self._live = None
 
     def redraw(self) -> None:
-        """空闲整屏重绘：清屏 → 状态栏 + 块（滚动/折叠/选中态）。光标落底供 ptk。"""
+        """空闲整屏重绘：清屏 → 状态栏 + 块（滚动/折叠/选中态；计划视图时替换
+        为计划队列全宽；对话流观测右栏并排）。光标落底供 ptk。"""
         from rich.console import Group
         self._console.clear()
         parts = [self._header()]
-        visible = self._visible_blocks()
-        for i, b in visible:
-            parts.append(self._block_renderable(i, b, self.sel))
-        self._console.print(Group(*parts))
+        if self._plan_view is not None:
+            parts.append(self._plan_renderable())
+            self._console.print(Group(*parts))  # 计划视图全宽，不挂右栏
+        else:
+            for i, b in self._visible_blocks():
+                parts.append(self._block_renderable(i, b, self.sel))
+            self._console.print(self._body(parts))
         if self.sel is not None and self.sel >= len(self._blocks):
             self.sel = None
 
@@ -845,7 +1023,12 @@ async def run_cloud_query(client, session_id: str, messages: list, render=None,
                 render.info("已同意执行" if ans == "approve" else "已拒绝")
                 _emit_pet("working" if ans == "approve" else "thinking")
             elif t == "usage_event":
-                pass  # tokens 计数：v3.2 观测右栏消费
+                # v3.2 #38：token 消耗进观测右栏（与网页消息脚注同口径）
+                if isinstance(render, FullscreenRenderer):
+                    render.set_usage(
+                        (int(data.get("prompt_tokens") or 0)
+                         + int(data.get("completion_tokens") or 0)),
+                        int(data.get("cache_hit_tokens") or 0))
             elif t == "compliance_warning":
                 render.info(_clean_text(str(data)))
             elif t == "error":
@@ -863,6 +1046,27 @@ async def run_cloud_query(client, session_id: str, messages: list, render=None,
     if not final:
         render.info("（本轮无文字回答）")
     return final
+
+
+def _start_observe_poll(render, client_getter, interval: float = OBSERVE_POLL_S):
+    """v3.2 #38 观测轮询：15s 拉 /chat/cc-activity → render.tick_observation
+    （渲染时机由 tick 内安全判定）。失败静默——面板显示「云端不可用」，绝不阻塞
+    对话；daemon 线程随进程退出。仅生产 ptk 路径启动（测试注入 prompt_fn 不启动，
+    防真机身份文件触发真实网络）。"""
+    import threading
+
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                client = client_getter()
+                if client is None:
+                    continue
+                render.tick_observation(client.activity())
+            except Exception:
+                render.tick_observation({"error": True})
+
+    threading.Thread(target=_loop, daemon=True, name="observe-poll").start()
 
 
 # ==================== REPL（prompt_toolkit 企业级交互） ====================
@@ -891,6 +1095,11 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
 
     @kb.add("enter")
     def _(event):
+        if renderer is not None and renderer._plan_view is not None:
+            renderer.pending_input = event.current_buffer.text
+            renderer.set_plan_view(None)
+            event.app.exit(result=_REFRESH)
+            return
         if renderer is not None and renderer.sel is not None:
             renderer.pending_input = event.current_buffer.text
             b = renderer._blocks[renderer.sel]
@@ -913,6 +1122,8 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
     if renderer is not None:
         @kb.add("up")
         def _(event):
+            if renderer._plan_view is not None:
+                return  # 计划视图不参与块选择
             visible = renderer._visible_blocks()
             if not visible:
                 return
@@ -923,6 +1134,8 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
 
         @kb.add("down")
         def _(event):
+            if renderer._plan_view is not None:
+                return
             visible = renderer._visible_blocks()
             if not visible:
                 return
@@ -934,6 +1147,11 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
 
         @kb.add("escape")
         def _(event):
+            if renderer._plan_view is not None:
+                renderer.pending_input = event.current_buffer.text
+                renderer.set_plan_view(None)
+                event.app.exit(result=_REFRESH)
+                return
             if renderer.sel is not None:
                 renderer.pending_input = event.current_buffer.text
                 renderer.sel = None
@@ -941,6 +1159,8 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
 
         @kb.add("pageup")
         def _(event):
+            if renderer._plan_view is not None:
+                return
             renderer.pending_input = event.current_buffer.text
             renderer.scroll_blocks += 5
             renderer.sel = None
@@ -948,6 +1168,8 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
 
         @kb.add("pagedown")
         def _(event):
+            if renderer._plan_view is not None:
+                return
             renderer.pending_input = event.current_buffer.text
             renderer.scroll_blocks = max(0, renderer.scroll_blocks - 5)
             event.app.exit(result=_REFRESH)
@@ -961,6 +1183,9 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
         history=FileHistory(HISTORY_FILE),
         # Ctrl+R 反向历史搜索（v3.1 交互：ptk 内建，跨会话历史可搜）
         enable_history_search=True,
+        # v3.2 #38：1s 刷新让工具栏 mini 观测线随 15s 轮询状态实时变化
+        #（输入等待中不整屏重绘，ptk 自身重画工具栏是唯一的实时面）
+        refresh_interval=1.0,
         completer=WordCompleter(
             ["/claude", "/chat", "/web", "/sessions", "/history", "/clear",
              "/quit", "/help", "/plan", "/status", "/panel", "/pet"],
@@ -969,9 +1194,23 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
 
     def _toolbar():
         base = "↑↓ 选择 · Enter 展开/折叠 · PgUp/PgDn 滚动 · Esc+Enter 换行 · Ctrl+C 停止"
+        if renderer is not None and renderer._plan_view is not None:
+            return HTML("<b>计划视图</b> — Esc/Enter 返回对话流 | " + base)
         if renderer is not None and renderer.sel is not None:
             b = renderer._blocks[renderer.sel]
             return HTML(f"<b>已选中: {b.get('title', '')}</b> — Enter 展开/折叠 · Esc 取消 | {base}")
+        # v3.2 #38 观测 mini 状态线：最近活动 + 多久前（有数据才占行）
+        obs = renderer._observe if renderer is not None else None
+        if obs and not obs.get("error") and obs.get("online") and obs.get("latest"):
+            latest = obs["latest"]
+            msg = str(latest.get("message", ""))[:24]
+            age = obs.get("age_s")
+            ago = ""
+            if age is not None:
+                s = max(0, int(age))
+                ago = f"{s}s" if s < 60 else f"{s // 60}m" if s < 3600 else f"{s // 3600}h"
+            color = "ansiyellow" if age is not None and age > 60 else "ansigreen"
+            return HTML(f"<{color}>● {msg} {ago}</{color}> | <dim>{base}</dim>")
         return HTML(f"<dim>{base}</dim>")
 
     async def prompt_fn():
@@ -1008,12 +1247,29 @@ async def _ptk_approve(tool_name: str, command: str) -> str:
     return "approve" if ans.strip().lower() in ("y", "yes") else "deny"
 
 
+def _print_plan_detail(render, detail: dict) -> None:
+    """非全屏渲染的计划详情（纯文本回退）：步骤逐行"""
+    st_word = {"queued": "排队中", "running": "执行中", "done": "完成",
+               "failed": "失败", "draft": "草稿"}
+    render.info(f"{str(detail.get('title') or '(无标题)')[:40]}  "
+                f"{st_word.get(detail.get('status'), detail.get('status'))}  "
+                f"{int(detail.get('progress') or 0)}%  "
+                f"({detail.get('done_steps', 0)}/{detail.get('total_steps', 0)} 步)")
+    for s in detail.get("steps") or []:
+        extra = f" {int(s.get('progress') or 0)}%" if s.get("status") == "running" else ""
+        err = f" {str(s.get('error') or '')[:40]}" if s.get("status") == "failed" else ""
+        render.info(f"  第{s.get('step_no', '?')}步 [{s.get('skill', '-')}] "
+                    f"{str(s.get('desc') or '')[:30]}{extra}{err}")
+
+
 def _print_help(render) -> None:
     render.info("命令: /claude 本机Claude(默认)  /chat 云端对话(与网站同会话)  "
-                "/sessions 网站会话  /web 网站对话  /plan 计划页  /status 本机状态  "
+                "/sessions 网站会话  /web 网站对话  /plan 计划队列  /status 本机状态  "
                 "/panel 设置面板  /pet on|off 桌宠  /history /clear /quit\n"
                 "按键: F2 网站对话  Ctrl+R 搜索历史  ↑↓ 选择块  Enter 展开/折叠  "
-                "PgUp/PgDn 滚动  Esc 取消  Esc+Enter 换行  Ctrl+C 停止生成")
+                "PgUp/PgDn 滚动  Esc 取消  Esc+Enter 换行  Ctrl+C 停止生成\n"
+                "v3.2: 右栏执行观测（15s 轮询最近活动）/ 计划视图 Esc 返回  "
+                "/plan <序号> 看步骤进度")
 
 
 async def _list_history(store: TerminalSessionStore, render) -> None:
@@ -1035,6 +1291,7 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     mode_ref = [mode]
     rich_mode = render is not None and isinstance(render, (RichRenderer, FullscreenRenderer))
     render = render or PlainRenderer()
+    custom_prompt = prompt_fn is not None  # 测试注入标记（决定是否起观测轮询线程）
     # #13（2026-11-12）：VT 自愈先于 ptk 初始化——自建控制台补开 VT 后
     # prompt_toolkit 可能直接就绪；失败时再按 ANSI 能力降级渲染层
     ansi_ok = _try_enable_vt()
@@ -1069,18 +1326,29 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     else:
         render.info(f"小元AI 终端对话 — 模式: {mode} | 会话: {session.get('id', '')} | /help 查看命令")
 
-    # v3.1 云端通道状态（/chat 进入后生效；/claude 保持本地草稿互不干扰）
-    cloud_client = None
+    # v3.1 云端通道状态（/chat 进入后生效；/claude 保持本地草稿互不干扰）。
+    # v3.2 #38：client 提前构造——观测右栏 /claude 模式也可用（CC 活动流），
+    # 构造零网络（令牌懒取），无身份 → None（右栏不渲染，/chat 时提示绑定）
+    cloud_client = _make_cloud_client()
     cloud_sid = ""
     cloud_messages: list = []
+    if isinstance(render, FullscreenRenderer):
+        render._observe_ready = cloud_client is not None
+        if cloud_client is not None and not custom_prompt:
+            _start_observe_poll(render, lambda: cloud_client)
 
     while True:
+        if isinstance(render, FullscreenRenderer):
+            render._prompt_active = True  # 输入等待中：轮询线程只更新状态不重绘
         try:
             line = await prompt_fn()
         except KeyboardInterrupt:
             # 空闲时 Ctrl+C = 退出
             print()
             break
+        finally:
+            if isinstance(render, FullscreenRenderer):
+                render._prompt_active = False
         if line is None:
             break
         if line is _REFRESH:
@@ -1091,6 +1359,8 @@ async def run_repl(session: dict, store: TerminalSessionStore,
         line = line.strip()
         if not line:
             continue
+        if isinstance(render, FullscreenRenderer) and render._plan_view is not None:
+            render.set_plan_view(None)  # 任何输入退出计划视图（命令照常分发）
         if line.startswith("/"):
             parts = line.split(maxsplit=1)
             cmd = parts[0].lower()
@@ -1190,12 +1460,54 @@ async def run_repl(session: dict, store: TerminalSessionStore,
                 render.info(f"本机 Agent：{st or '未运行'} ｜ 桌宠：{pet or '—'} ｜ "
                             f"云端通道：{'已连接' if cloud_client else '未连接'}")
             elif cmd == "/plan":
-                # v1 边界：终端计划队列全屏视图在 v3.2 观测右栏做——这里直达网页计划页
-                import threading
-                import webbrowser
-                url = web_chat_url().rstrip("/") + "/plan"
-                threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
-                render.info(f"正在打开网页计划页：{url}（终端内计划队列视图 v3.2 上线）")
+                # v3.2 #38 终端计划队列视图：与网站 /chat/plan 同列表（用户 JWT
+                # 口径）；/plan <序号|id> 进单计划详情（步骤 + 进度）
+                if cloud_client is None:
+                    render.error("未找到本机 Agent 身份——请先在网页绑定设备")
+                    continue
+                loop = asyncio.get_running_loop()
+                try:
+                    plans = await loop.run_in_executor(None, cloud_client.list_plans)
+                except Exception as e:
+                    render.error(f"计划列表获取失败：{str(e)[:160]}")
+                    continue
+                if arg:
+                    idx = int(arg) - 1 if arg.isdigit() else None
+                    target = None
+                    if idx is not None and 0 <= idx < len(plans):
+                        target = plans[idx]
+                    else:
+                        for p in plans:
+                            if str(p.get("id")) == arg:
+                                target = p
+                                break
+                    if target is None:
+                        render.info(f"计划不存在（列表 1-{len(plans)}）")
+                        continue
+                    try:
+                        detail = await loop.run_in_executor(
+                            None, cloud_client.plan_detail, target.get("id"))
+                    except Exception as e:
+                        render.error(f"计划详情获取失败：{str(e)[:160]}")
+                        continue
+                    if isinstance(render, FullscreenRenderer):
+                        render.show_plans(plans, detail)
+                        render.redraw()
+                    else:
+                        _print_plan_detail(render, detail)
+                    continue
+                if isinstance(render, FullscreenRenderer):
+                    render.show_plans(plans)
+                    render.redraw()
+                else:
+                    if not plans:
+                        render.info("暂无计划——在网站对话中说「帮我制定…计划」创建")
+                    for i, p in enumerate(plans):
+                        st = str(p.get("status") or "draft")
+                        render.info(f"[{i + 1}] {str(p.get('title') or '(无标题)')[:40]}  {st}  "
+                                    f"{int(p.get('progress') or 0)}%  "
+                                    f"({p.get('done_steps', 0)}/{p.get('total_steps', 0)} 步)")
+                    render.info("详情：/plan <序号>")
             elif cmd == "/panel":
                 # 设置面板入口：读面板进程落盘的 URL 文件（panel.py 启动时写）
                 url = _panel_url()

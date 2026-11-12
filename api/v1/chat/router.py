@@ -1047,13 +1047,14 @@ async def cc_activity(request: Request):
         if entry is None:
             entry = e
     if not entry:
-        return {"online": False, "latest": None}
+        return {"online": False, "latest": None, "activities": []}
     acts = entry.get("activities") or []
     latest = acts[0] if acts else None
     payload = {
         "online": bool(entry.get("online")),
         "agent_name": entry.get("agent_name", ""),
         "latest": latest,
+        "activities": acts[:5],  # v3.2 #38：终端观测右栏最近 5 条活动
     }
     if latest and latest.get("ts"):
         payload["age_s"] = max(0, int(time.time() - float(latest["ts"])))

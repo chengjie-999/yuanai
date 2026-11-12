@@ -160,3 +160,30 @@ class CloudChatClient:
             headers=self._auth(), timeout=self._timeout)
         if resp.status_code != 200:
             raise RuntimeError(f"审批决议发送失败（HTTP {resp.status_code}）")
+
+    # ———— 观测/计划（v3.2 #38：终端观测右栏 + /plan 队列视图） ————
+
+    def activity(self) -> dict:
+        """执行观测面数据：/chat/cc-activity（用户 JWT 口径，本用户绑定设备/共享
+        桥接的最近活动 + 在线状态）。返回 {online, latest, age_s, activities}"""
+        resp = self._httpx.get(f"{self._base}/api/v1/chat/cc-activity",
+                               headers=self._auth(), timeout=self._timeout)
+        if resp.status_code != 200:
+            raise RuntimeError(f"观测数据获取失败（HTTP {resp.status_code}）：{_detail(resp)}")
+        return resp.json() or {}
+
+    def list_plans(self) -> list:
+        """计划队列（与网站 /chat/plan 同列表：用户 JWT 口径，多端同一批计划）"""
+        resp = self._httpx.get(f"{self._base}/api/v1/plan/list",
+                               headers=self._auth(), timeout=self._timeout)
+        if resp.status_code != 200:
+            raise RuntimeError(f"计划列表获取失败（HTTP {resp.status_code}）：{_detail(resp)}")
+        return (resp.json() or {}).get("plans", [])
+
+    def plan_detail(self, plan_id) -> dict:
+        """单计划详情（plan + steps 步骤进度 + runs）"""
+        resp = self._httpx.get(f"{self._base}/api/v1/plan/{plan_id}",
+                               headers=self._auth(), timeout=self._timeout)
+        if resp.status_code != 200:
+            raise RuntimeError(f"计划详情获取失败（HTTP {resp.status_code}）：{_detail(resp)}")
+        return resp.json() or {}

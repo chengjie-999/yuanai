@@ -80,7 +80,8 @@ def test_status_merges_ws_and_rest(authed, monkeypatch):
 
 
 def test_cc_activity_endpoint(monkeypatch):
-    """P3-5：/chat/cc-activity 返回本用户设备的最近活动 + 年龄（epoch ts）"""
+    """P3-5：/chat/cc-activity 返回本用户设备的最近活动 + 年龄（epoch ts）；
+    v3.2 #38 起带最近 5 条 activities（终端观测右栏）"""
     import time as _t
     from api.v1.chat.router import cc_activity
 
@@ -89,7 +90,9 @@ def test_cc_activity_endpoint(monkeypatch):
             {"agent_id": "7", "agent_name": "本机", "capabilities": ["claude_code"],
              "online": True, "activities": [
                  {"message": "工具调用: Bash", "detail": "", "time": "18:00:00",
-                  "ts": _t.time() - 120}]},
+                  "ts": _t.time() - 120},
+                 {"message": "思考中", "detail": "", "time": "17:59:00",
+                  "ts": _t.time() - 180}]},
         ]
 
     monkeypatch.setattr("api.v1.chat.router._get_user_id", lambda req: 7)
@@ -98,6 +101,7 @@ def test_cc_activity_endpoint(monkeypatch):
     assert r["online"] is True
     assert r["latest"]["message"] == "工具调用: Bash"
     assert 110 <= r["age_s"] <= 130
+    assert [a["message"] for a in r["activities"]] == ["工具调用: Bash", "思考中"]
 
 
 def test_cc_activity_offline_empty(monkeypatch):
@@ -107,4 +111,4 @@ def test_cc_activity_offline_empty(monkeypatch):
     monkeypatch.setattr("api.v1.agent.router._get_agent_status",
                         lambda req, include_activities=True: [])
     r = asyncio.run(cc_activity(SimpleNamespace()))
-    assert r == {"online": False, "latest": None}
+    assert r == {"online": False, "latest": None, "activities": []}

@@ -196,3 +196,42 @@ def test_send_decision_posts_decision_body():
     c.send_decision("did123", True)
     body = fake.post_calls[-1][1]["json"]
     assert body == {"decision": {"decision_id": "did123", "approve": True}}
+
+
+def test_activity_returns_observe_payload():
+    """v3.2 #38：activity() 带 JWT 拉 /chat/cc-activity 观测数据"""
+    fake = _FakeHttpx()
+    fake.post_resp["agent/chat-token"] = _Resp(200, {"token": "JWT1"})
+    fake.get_resp["https://cjyuanai.cn/api/v1/chat/cc-activity"] = _Resp(200, {
+        "online": True, "latest": {"message": "工具调用: bash"},
+        "age_s": 42, "activities": [{"message": "工具调用: bash"}]})
+    c = _client(fake)
+    d = c.activity()
+    assert d["online"] is True and d["age_s"] == 42
+    assert d["activities"][0]["message"] == "工具调用: bash"
+    # JWT 鉴权头已带（用户口径，非设备凭据）
+    assert fake.get_calls[0][1]["headers"]["Authorization"] == "Bearer JWT1"
+
+
+def test_activity_error_raises_human():
+    fake = _FakeHttpx()
+    fake.post_resp["agent/chat-token"] = _Resp(200, {"token": "JWT1"})
+    fake.get_resp["https://cjyuanai.cn/api/v1/chat/cc-activity"] = _Resp(500, {"detail": "boom"})
+    c = _client(fake)
+    with pytest.raises(RuntimeError) as ei:
+        c.activity()
+    assert "观测" in str(ei.value)
+
+
+def test_list_plans_and_detail():
+    fake = _FakeHttpx()
+    fake.post_resp["agent/chat-token"] = _Resp(200, {"token": "JWT1"})
+    fake.get_resp["https://cjyuanai.cn/api/v1/plan/list"] = _Resp(200, {
+        "plans": [{"id": 7, "title": "RFM 分析", "status": "queued"}]})
+    fake.get_resp["https://cjyuanai.cn/api/v1/plan/7"] = _Resp(200, {
+        "title": "RFM 分析", "steps": [{"step_no": 1}]})
+    c = _client(fake)
+    plans = c.list_plans()
+    assert plans[0]["id"] == 7
+    detail = c.plan_detail(7)
+    assert detail["steps"][0]["step_no"] == 1

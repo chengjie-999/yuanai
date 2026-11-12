@@ -173,6 +173,41 @@ class TerminalSessionStore:
 
 # ==================== 编码防护 ====================
 
+def _try_enable_vt() -> bool:
+    """控制台 VT 自愈 + ANSI 能力探测（#13 2026-11-12，与 tray._enable_console_vt 同款）。
+
+    GUI 程序 AllocConsole 自建的控制台默认不开启 VT 处理——ANSI 色码打出来是
+    [90m 乱码、prompt_toolkit 控制台模式初始化失败。REPL 启动先尝试显式开启；
+    返回 True = ANSI 可渲染（开启成功或本就有 VT）；False = 当前终端不解释 ANSI
+    （非控制台句柄且 TERM 缺失/dumb），渲染层应强制无色。"""
+    if os.name == "nt":
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            h_out = kernel32.GetStdHandle(-11)
+            mode = ctypes.c_uint32()
+            if not h_out or not kernel32.GetConsoleMode(h_out, ctypes.byref(mode)):
+                # 非控制台句柄（mintty pty/管道）：ANSI 能力交给 TERM
+                term = os.environ.get("TERM", "")
+                return bool(term) and term != "dumb"
+            ok = bool(mode.value & 0x0004)
+            if not ok:
+                ok = bool(kernel32.SetConsoleMode(h_out, mode.value | 0x0004))
+            try:
+                h_in = kernel32.GetStdHandle(-10)
+                m2 = ctypes.c_uint32()
+                if h_in and kernel32.GetConsoleMode(h_in, ctypes.byref(m2)) \
+                        and not (m2.value & 0x0200):
+                    kernel32.SetConsoleMode(h_in, m2.value | 0x0200)
+            except Exception:
+                pass
+            return ok
+        except Exception:
+            return False
+    term = os.environ.get("TERM", "")
+    return bool(term) and term != "dumb"
+
+
 def _clean_text(text: str) -> str:
     """清洗孤立 surrogate（Windows 管道 GBK/UTF-8 解码错位、网关流脏字节的产物）。
 
@@ -216,34 +251,44 @@ def find_terminal_launcher():
 # ==================== 渲染层（v2 抽象：管道纯文本 / tty rich 流式） ====================
 
 class PlainRenderer:
-    """管道/测试渲染：纯文本直接打 stdout（capsys 可断言）"""
+    """管道/测试渲染：纯文本直接打 stdout（capsys 可断言）。
+
+    use_ansi=None → 跟随 _TTY（管道静默色码）；use_ansi=False → 强制无色
+    （#13 2026-11-12：isatty 为真但终端不解释 ANSI 的场景——AllocConsole 自建
+    控制台未开 VT 时 GRAY 常量带码会打 [90m 乱码）；True → 强制带码（测试用）。"""
+
+    def __init__(self, use_ansi: bool = None):
+        self._ansi = _TTY if use_ansi is None else use_ansi
+
+    def _c(self, code: str) -> str:
+        return code if self._ansi else ""
 
     def token(self, text: str) -> None:
         print(text, end="", flush=True)
 
     def reasoning(self, text: str) -> None:
-        if not _TTY:
+        if not self._ansi:
             return  # 管道模式：思考内容不外泄（脚本消费者只要答案）
-        print(f"{GRAY}{text}{RESET}", end="", flush=True)
+        print(f"{self._c(GRAY)}{text}{self._c(RESET)}", end="", flush=True)
 
     def tool_start(self, name: str) -> None:
-        print(f"\n{CYAN}⚙ {name}{RESET}", flush=True)
+        print(f"\n{self._c(CYAN)}⚙ {name}{self._c(RESET)}", flush=True)
 
     def tool_end(self, name: str, output: str) -> None:
         out = output if len(output) <= MAX_TOOL_OUTPUT else output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
-        print(f"{GRAY}{out}{RESET}", flush=True)
+        print(f"{self._c(GRAY)}{out}{self._c(RESET)}", flush=True)
 
     def done(self) -> None:
         print(flush=True)
 
     def error(self, text: str) -> None:
-        print(f"\n{RED}✗ {text}{RESET}", flush=True)
+        print(f"\n{self._c(RED)}✗ {text}{self._c(RESET)}", flush=True)
 
     def info(self, text: str) -> None:
-        print(f"{GRAY}{text}{RESET}", flush=True)
+        print(f"{self._c(GRAY)}{text}{self._c(RESET)}", flush=True)
 
     def interrupted(self) -> None:
-        print(f"\n{YELLOW}（已停止生成）{RESET}", flush=True)
+        print(f"\n{self._c(YELLOW)}（已停止生成）{self._c(RESET)}", flush=True)
 
 
 class RichRenderer:
@@ -318,6 +363,228 @@ class RichRenderer:
     def interrupted(self) -> None:
         self._stop_live()
         self._console.print("[yellow]（已停止生成）[/yellow]")
+
+
+# ==================== v3.0 全屏三区渲染（2026-11-12 #36） ====================
+
+_REFRESH = object()  # ptk keybinding 触发的「重绘后重新进入输入」哨兵（run_repl 消费）
+
+
+class FullscreenRenderer:
+    """终端 TUI v3.0：状态栏（header）+ 对话流块（body）+ prompt_toolkit 输入 dock。
+
+    - 对话以「块」持久化：answer（Markdown）/ thinking（折叠块「▸ 思考 (Xs) ·
+      N 次工具调用」）/ tool（紧凑行「▸ ⚙ 工具名」，展开看输出截断）/ info / error
+    - 流式：Live 原地刷新（非 alt-screen，与 ptk 输入互不打架），每帧 = 状态栏 +
+      已有块 + 当前思考 + 流式回答（带光标 ▍）
+    - 空闲：redraw() 清屏重打 状态栏 + 块（按 scroll_blocks 滚动窗口 + 折叠/选中
+      态渲染），光标落底由 ptk 输入 dock 接续；keybinding（↑↓ 选择 / Enter 展开
+      折叠 / PgUp PgDn 滚动 / Esc 取消）改状态后以 _REFRESH 哨兵退出 prompt，
+      run_repl 重绘后重新进入（pending_input 保留未提交输入）
+    - 接口与 Plain/RichRenderer 对齐（token/reasoning/tool_start/tool_end/done/
+      error/info/interrupted），另加 set_mode/set_session/redraw/pending_input
+    """
+
+    def __init__(self, console=None, status_provider=None, cwd: str = "",
+                 session_id: str = ""):
+        from rich.console import Console
+        self._console = console or Console()
+        self._status_provider = status_provider  # callable → WS 状态词或 None
+        self._cwd = cwd
+        self._session_id = session_id
+        self._mode = "claude"
+        self._blocks: list[dict] = []   # kind/title/content/folded
+        self._answer = ""       # 流式回答累积
+        self._reasoning = ""    # 流式思考累积
+        self._think_start = None
+        self._tool_count = 0
+        self._working = None    # 执行中的工具名
+        self._live = None
+        self.sel = None         # 选中块下标（blocks 内绝对下标）
+        self.scroll_blocks = 0  # 从尾部隐藏的块数（PgUp 回看）
+        self.pending_input = ""  # 折叠/滚动刷新时保留的输入缓冲
+        try:
+            dark = os.getenv("TERMINAL_DARK", "1") == "1"
+        except Exception:
+            dark = True
+        self._code_theme = "github-dark" if dark else "github-light"
+
+    # ———— 状态栏 ————
+
+    def set_mode(self, mode: str) -> None:
+        self._mode = mode
+
+    def set_session(self, session_id: str) -> None:
+        self._session_id = session_id
+
+    def _agent_dot(self) -> str:
+        st = self._status_provider() if self._status_provider else None
+        return {"online": "[green]● 在线[/green]",
+                "connecting": "[yellow]● 连接中[/yellow]",
+                "reconnecting": "[yellow]● 重连中[/yellow]",
+                "offline": "[grey50]○ 离线[/grey50]",
+                None: "[grey50]○ 离线[/grey50]"}[st if st in (
+                    "online", "connecting", "reconnecting", "offline") else None]
+
+    def _header(self):
+        from rich.text import Text
+        pet = ""
+        try:
+            from agent.pet_events import last_state
+            st = last_state()
+            if st:
+                pet = f"宠:{st}"
+        except Exception:
+            pass
+        cwd = self._cwd
+        if len(cwd) > 42:
+            cwd = "…" + cwd[-41:]
+        return Text.assemble(
+            (self._agent_dot(), ""), ("  ", ""),
+            (f"[bold]{self._mode}[/bold]", "cyan"),
+            ("  ", ""), (cwd or "—", "dim"), ("  ", ""),
+            (f"会话 {self._session_id[:8]}" if self._session_id else "", "dim"),
+            ("  ", ""), (pet, "magenta"), ("  ", ""),
+            ("? 帮助", "bright_black"),
+        )
+
+    # ———— 块渲染 ————
+
+    def _visible_blocks(self) -> list[tuple]:
+        """滚动窗口：scroll_blocks=0 显示全部（跟随最新）；>0 隐藏尾部 N 块回看"""
+        blocks = self._blocks
+        if self.scroll_blocks > 0:
+            blocks = blocks[:-self.scroll_blocks] if self.scroll_blocks < len(blocks) else []
+        return [(i, b) for i, b in enumerate(blocks)]
+
+    @staticmethod
+    def _block_renderable(idx: int, b: dict, sel: int = None):
+        """块 → rich 渲染对象。thinking/tool 折叠只出一行标题；选中块反色高亮"""
+        from rich.text import Text
+        from rich.markdown import Markdown
+        from rich.console import Group
+        kind = b.get("kind", "")
+        folded = b.get("folded", False)
+        if kind == "answer":
+            return Markdown(b.get("content", ""))
+        if kind == "info":
+            return Text(b.get("content", ""), style="dim")
+        if kind == "error":
+            return Text(f"✗ {b.get('content', '')}", style="bold red")
+        arrow = "▸" if folded else "▾"
+        style = "reverse" if idx == sel else ("bold" if kind == "tool" else "dim")
+        title = Text(f"{arrow} {b.get('title', '')}", style=style)
+        if folded:
+            return title
+        return Group(title, Text(b.get("content", ""), style="dim"))
+
+    # ———— 流式帧 ————
+
+    def _refresh(self) -> None:
+        from rich.live import Live
+        from rich.markdown import Markdown
+        from rich.text import Text
+        from rich.console import Group
+        if self._live is None:
+            self._live = Live(Group(), console=self._console, refresh_per_second=12)
+            self._live.start()
+        parts = [self._header()]
+        for i, b in self._visible_blocks():
+            parts.append(self._block_renderable(i, b, self.sel))
+        if self._working:
+            parts.append(Text(f"⚙ {self._working} 执行中…", style="bold yellow"))
+        if self._reasoning:
+            parts.append(Text("思考中…\n" + self._reasoning, style="dim italic"))
+        parts.append(Markdown((self._answer or "…") + " ▍", code_theme=self._code_theme))
+        self._live.update(Group(*parts))
+
+    def _stop_live(self) -> None:
+        if self._live is not None:
+            self._live.stop()
+            self._live = None
+
+    def redraw(self) -> None:
+        """空闲整屏重绘：清屏 → 状态栏 + 块（滚动/折叠/选中态）。光标落底供 ptk。"""
+        from rich.console import Group
+        self._console.clear()
+        parts = [self._header()]
+        visible = self._visible_blocks()
+        for i, b in visible:
+            parts.append(self._block_renderable(i, b, self.sel))
+        self._console.print(Group(*parts))
+        if self.sel is not None and self.sel >= len(self._blocks):
+            self.sel = None
+
+    # ———— 流式接口（与 Plain/RichRenderer 对齐） ————
+
+    def _snapshot_thinking(self, final: bool = False) -> None:
+        """当前累积思考落为折叠块（网页「思考快照挂工具卡上方」同语义）"""
+        if not self._reasoning:
+            return
+        secs = int(time.time() - self._think_start) if self._think_start else 0
+        title = (f"最终思考 ({secs}s)" if final else
+                 f"思考 ({secs}s) · {self._tool_count} 次工具调用")
+        self._blocks.append({"kind": "thinking", "title": title,
+                             "content": self._reasoning, "folded": True})
+        self._reasoning = ""
+        self._think_start = None
+
+    def token(self, text: str) -> None:
+        if self._reasoning:  # 首个回答 token：剩余思考存为「最终思考」（网页同款）
+            self._snapshot_thinking(final=True)
+        self._answer += text
+        self._refresh()
+
+    def reasoning(self, text: str) -> None:
+        if self._think_start is None:
+            self._think_start = time.time()
+        self._reasoning += text
+        self._refresh()
+
+    def tool_start(self, name: str) -> None:
+        self._stop_live()
+        self._tool_count += 1  # 先计数：思考块标题「N 次工具调用」含本次
+        self._snapshot_thinking()
+        self._working = name
+        self._refresh()
+
+    def tool_end(self, name: str, output: str) -> None:
+        out = output if len(output) <= MAX_TOOL_OUTPUT else output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
+        self._blocks.append({"kind": "tool", "title": f"⚙ {name}",
+                             "content": out, "folded": True})
+        self._working = None
+        self.scroll_blocks = 0
+        self._refresh()
+
+    def done(self) -> None:
+        self._stop_live()
+        self._snapshot_thinking(final=True)
+        if self._answer:
+            self._blocks.append({"kind": "answer", "title": "",
+                                 "content": self._answer, "folded": False})
+            self._answer = ""
+        self.scroll_blocks = 0
+        self.redraw()
+
+    def error(self, text: str) -> None:
+        self._stop_live()
+        self._blocks.append({"kind": "error", "title": "", "content": text,
+                             "folded": False})
+        self.scroll_blocks = 0
+        self.redraw()
+
+    def info(self, text: str) -> None:
+        self._stop_live()
+        self._blocks.append({"kind": "info", "title": "", "content": text,
+                             "folded": False})
+        self.redraw()
+
+    def interrupted(self) -> None:
+        self._stop_live()
+        self._answer = ""
+        self._blocks.append({"kind": "info", "title": "", "content": "（已停止生成）",
+                             "folded": False})
+        self.redraw()
 
 
 # ==================== 查询执行（render 注入，v2 统一流式） ====================
@@ -446,37 +713,103 @@ async def _ainput(prompt: str = "") -> str:
     return _clean_text(line).strip()
 
 
-def _make_ptk_prompt(mode_ref) -> object:
+def _make_ptk_prompt(mode_ref, renderer=None) -> object:
     """prompt_toolkit PromptSession（惰性构造一次复用）：
     - 多行输入：Enter 提交 / Esc+Enter 换行——粘贴多行代码不碎行
     - FileHistory 跨会话历史（↑↓ 找回、左右编辑）
     - Ctrl+C → KeyboardInterrupt 冒泡（空闲退出/生成中停止）
-    返回 prompt_fn = async () -> str | None（None = EOF 退出）"""
+    - renderer=FullscreenRenderer 时（v3.0 #36）：↑↓ 选块 / Enter 展开折叠 /
+      PgUp PgDn 滚动 / Esc 取消——改状态后以 _REFRESH 哨兵退出，输入缓冲
+      保留在 renderer.pending_input，run_repl 重绘后重新进入
+    返回 prompt_fn = async () -> str | None | _REFRESH（None = EOF 退出）"""
     from prompt_toolkit import PromptSession
     from prompt_toolkit.history import FileHistory
     from prompt_toolkit.key_binding import KeyBindings
-    from prompt_toolkit.formatted_text import ANSI
+    from prompt_toolkit.formatted_text import ANSI, HTML
 
     kb = KeyBindings()
 
     @kb.add("enter")
     def _(event):
+        if renderer is not None and renderer.sel is not None:
+            renderer.pending_input = event.current_buffer.text
+            b = renderer._blocks[renderer.sel]
+            if b.get("kind") in ("thinking", "tool"):
+                b["folded"] = not b["folded"]
+            event.app.exit(result=_REFRESH)
+            return
         event.current_buffer.validate_and_handle()
 
     @kb.add("escape", "enter")
     def _(event):
         event.current_buffer.insert_text("\n")
 
+    if renderer is not None:
+        @kb.add("up")
+        def _(event):
+            visible = renderer._visible_blocks()
+            if not visible:
+                return
+            renderer.pending_input = event.current_buffer.text
+            renderer.sel = visible[-1][0] if renderer.sel is None \
+                else max(0, renderer.sel - 1)
+            event.app.exit(result=_REFRESH)
+
+        @kb.add("down")
+        def _(event):
+            visible = renderer._visible_blocks()
+            if not visible:
+                return
+            renderer.pending_input = event.current_buffer.text
+            last = visible[-1][0]
+            renderer.sel = None if renderer.sel is None or renderer.sel >= last \
+                else renderer.sel + 1
+            event.app.exit(result=_REFRESH)
+
+        @kb.add("escape")
+        def _(event):
+            if renderer.sel is not None:
+                renderer.pending_input = event.current_buffer.text
+                renderer.sel = None
+                event.app.exit(result=_REFRESH)
+
+        @kb.add("pageup")
+        def _(event):
+            renderer.pending_input = event.current_buffer.text
+            renderer.scroll_blocks += 5
+            renderer.sel = None
+            event.app.exit(result=_REFRESH)
+
+        @kb.add("pagedown")
+        def _(event):
+            renderer.pending_input = event.current_buffer.text
+            renderer.scroll_blocks = max(0, renderer.scroll_blocks - 5)
+            event.app.exit(result=_REFRESH)
+
     session = PromptSession(
         multiline=True, key_bindings=kb,
         history=FileHistory(HISTORY_FILE),
     )
 
-    async def prompt_fn() -> str | None:
+    def _toolbar():
+        base = "↑↓ 选择 · Enter 展开/折叠 · PgUp/PgDn 滚动 · Esc+Enter 换行 · Ctrl+C 停止"
+        if renderer is not None and renderer.sel is not None:
+            b = renderer._blocks[renderer.sel]
+            return HTML(f"<b>已选中: {b.get('title', '')}</b> — Enter 展开/折叠 · Esc 取消 | {base}")
+        return HTML(f"<dim>{base}</dim>")
+
+    async def prompt_fn():
         try:
             mode = mode_ref[0]
             p = f"小元[{mode}]> " if mode != "claude" else "小元> "
-            text = await session.prompt_async(ANSI(p))
+            default = None
+            if renderer is not None:
+                default = renderer.pending_input or None
+                renderer.pending_input = ""
+            text = await session.prompt_async(ANSI(p), default=default,
+                                              bottom_toolbar=_toolbar)
+            if renderer is not None:
+                renderer.pending_input = ""
             return text.strip()
         except EOFError:
             return None
@@ -501,7 +834,9 @@ async def _ptk_approve(tool_name: str, command: str) -> str:
 
 def _print_help(render) -> None:
     render.info("命令: /claude 本机Claude(默认)  /chat 本地LLM  /history 历史会话  "
-                "/clear 清空当前会话  /quit 退出")
+                "/clear 清空当前会话  /quit 退出\n"
+                "按键: ↑↓ 选择块  Enter 展开/折叠  PgUp/PgDn 滚动  Esc 取消  "
+                "Esc+Enter 换行  Ctrl+C 停止生成")
 
 
 async def _list_history(store: TerminalSessionStore, render) -> None:
@@ -521,15 +856,25 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     rich 模式用 prompt_toolkit，纯文本模式用 _ainput（测试可注入 mock）。"""
     mode = session.get("mode", "claude")
     mode_ref = [mode]
-    rich_mode = render is not None and isinstance(render, RichRenderer)
+    rich_mode = render is not None and isinstance(render, (RichRenderer, FullscreenRenderer))
     render = render or PlainRenderer()
+    # #13（2026-11-12）：VT 自愈先于 ptk 初始化——自建控制台补开 VT 后
+    # prompt_toolkit 可能直接就绪；失败时再按 ANSI 能力降级渲染层
+    ansi_ok = _try_enable_vt()
     if prompt_fn is None:
         if rich_mode:
             try:
-                prompt_fn = _make_ptk_prompt(mode_ref)
+                prompt_fn = _make_ptk_prompt(
+                    mode_ref, render if isinstance(render, FullscreenRenderer) else None)
             except Exception:
-                # 非 Windows 控制台（Git Bash mintty 未加 winpty 等）：交互层回退
-                # 基础 input()，rich 渲染保留
+                # 非标准 Windows 控制台（Git Bash mintty 未加 winpty / 自建控制台等）：
+                # 交互层回退基础 input()；终端不解释 ANSI 时渲染层同步降级纯文本
+                # （PlainRenderer use_ansi=False）——不再打 [90m 色码乱码；
+                # ANSI 正常时全屏渲染器降回 v2 流式（交互增强不可用）
+                if not ansi_ok:
+                    render = PlainRenderer(use_ansi=False)
+                elif isinstance(render, FullscreenRenderer):
+                    render = RichRenderer()
                 render.info("当前终端不支持交互增强（需 cmd/PowerShell/Windows Terminal），"
                             "已回退基础输入模式")
                 rich_mode = False
@@ -541,7 +886,11 @@ async def run_repl(session: dict, store: TerminalSessionStore,
                     return None
             prompt_fn = _plain_prompt
 
-    render.info(f"小元AI 终端对话 — 模式: {mode} | 会话: {session.get('id', '')} | /help 查看命令")
+    if isinstance(render, FullscreenRenderer):
+        render.set_mode(mode)
+        render.set_session(session.get("id", ""))
+    else:
+        render.info(f"小元AI 终端对话 — 模式: {mode} | 会话: {session.get('id', '')} | /help 查看命令")
 
     while True:
         try:
@@ -552,6 +901,11 @@ async def run_repl(session: dict, store: TerminalSessionStore,
             break
         if line is None:
             break
+        if line is _REFRESH:
+            # 折叠/滚动/选择键：渲染器状态已变——重绘后重新进入输入（缓冲保留）
+            if isinstance(render, FullscreenRenderer):
+                render.redraw()
+            continue
         line = line.strip()
         if not line:
             continue
@@ -561,6 +915,8 @@ async def run_repl(session: dict, store: TerminalSessionStore,
                 break
             elif cmd == "/clear":
                 store.clear(session["id"])
+                if isinstance(render, FullscreenRenderer):
+                    render._blocks.clear()  # 会话消息清空 → 渲染块同步清空
                 render.info(f"当前会话已清空（{session['id']}）")
             elif cmd == "/history":
                 await _list_history(store, render)
@@ -568,9 +924,13 @@ async def run_repl(session: dict, store: TerminalSessionStore,
                 _print_help(render)
             elif cmd == "/claude":
                 mode = "claude"; mode_ref[0] = mode
+                if isinstance(render, FullscreenRenderer):
+                    render.set_mode(mode)
                 render.info("已切换本机 Claude Code 模式")
             elif cmd == "/chat":
                 mode = "chat"; mode_ref[0] = mode
+                if isinstance(render, FullscreenRenderer):
+                    render.set_mode(mode)
                 render.info(f"已切换本地 LLM 直连模式（{DEFAULT_CHAT_MODEL}）")
             else:
                 render.info(f"未知命令: {cmd}（/help 查看）")
@@ -803,6 +1163,13 @@ async def main():
         await run_pipe(query, args.mode)
         return
 
+    # #13（2026-11-12）：终端不解释 ANSI 时，REPL 前后的提示行也强制无色——
+    # 模块级色码常量在 import 时按 isatty 固化，此处补 ANSI 能力判断清零
+    # （「已续接上次会话」等 main 层打印不再打 [90m 乱码）
+    if not _try_enable_vt():
+        global GRAY, CYAN, YELLOW, RED, RESET
+        GRAY = CYAN = YELLOW = RED = RESET = ""
+
     # REPL 模式：同进程拉起后台 Agent（云端联动 + 计划执行 + 桌宠事件）——
     # 无身份文件时静默跳过（纯本地终端）；远端 ws:// 被护栏拒绝仅提示不阻塞终端；
     # --no-agent（发布版 exe 内置终端）：托盘进程已持有云端连接，跳过防双连互踢
@@ -837,7 +1204,22 @@ async def main():
                       f"--new 开新会话）{RESET}")
         if session is None:
             session = store.new_session(args.mode)
-        await run_repl(session, store, render=RichRenderer())
+
+        # v3.0 全屏三区（#36 2026-11-12）：状态栏在线点数据源 = 进程内 Agent 连接
+        # 状态（--no-agent 发布版形态 handle=None → 离线点，v3.1 起云端轮询补齐）
+        cwd = ""
+        try:
+            from agent.cc_workspace import resolve_project_dir
+            cwd = resolve_project_dir() or ""
+        except Exception:
+            pass
+
+        def _agent_status():
+            return handle.status if handle else None
+
+        await run_repl(session, store, render=FullscreenRenderer(
+            cwd=cwd, session_id=session.get("id", ""),
+            status_provider=_agent_status))
     finally:
         if handle:
             await handle.shutdown()

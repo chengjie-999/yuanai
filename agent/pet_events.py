@@ -106,6 +106,12 @@ def emit(state: str = None, event: str = None, tool: str = None) -> None:
             _last = None  # 写失败允许下轮重试
 
 
+def last_state() -> str:
+    """最近一次事件状态（终端状态栏用 #36 2026-11-12）：进程内 _last 去重键
+    首元素即六态词汇/事件名；无事件返回空串。零 I/O 不阻塞。"""
+    return _last[0] if _last else ""
+
+
 def setup() -> None:
     """一键配置：桌宠 config.json 合并写入 custom_agents「小元AI」条目（改前备份 .bak）"""
     d = _config_dir()

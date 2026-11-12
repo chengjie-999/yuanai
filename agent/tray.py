@@ -157,7 +157,12 @@ def _inputbox_ps(title: str, prompt: str) -> str:
 def _alloc_console() -> None:
     """窗口化 exe 自建控制台（发布版内置终端 2026-11-11）：AllocConsole 挂接
     新控制台窗口，再把 Python 层 stdin/stdout/stderr 指到 CONIN$/CONOUT$
-    （windowed 模式下它们为 None/已被指到 devnull）。非 Windows 无操作。"""
+    （windowed 模式下它们为 None/已被指到 devnull）。非 Windows 无操作。
+
+    2026-11-12 补 VT 模式（#13 根因修）：GUI 程序 AllocConsole 自建的控制台
+    默认不开启 VT 处理——ANSI 色码原样显示 [90m 乱码、prompt_toolkit 控制台
+    模式初始化失败回退。显式开 ENABLE_VIRTUAL_TERMINAL_PROCESSING/INPUT
+    后托盘「终端对话」直接全功能。"""
     if os.name != "nt":
         return
     try:
@@ -169,8 +174,46 @@ def _alloc_console() -> None:
                           buffering=1)
         sys.stderr = open("CONOUT$", "w", encoding="utf-8", errors="replace",
                           buffering=1)
+        _enable_console_vt()
     except Exception:
         pass  # 控制台建立失败：按窗口化模式静默继续（终端内容仍可经日志排查）
+
+
+def _enable_console_vt() -> None:
+    """控制台 VT 处理开启（输出 0x0004 ENABLE_VIRTUAL_TERMINAL_PROCESSING +
+    输入 0x0200 ENABLE_VIRTUAL_TERMINAL_INPUT）。幂等，失败静默。"""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        for handle_kind, flag in ((-11, 0x0004), (-10, 0x0200)):
+            h = kernel32.GetStdHandle(handle_kind)
+            mode = ctypes.c_uint32()
+            if not h or not kernel32.GetConsoleMode(h, ctypes.byref(mode)):
+                continue
+            if not (mode.value & flag):
+                kernel32.SetConsoleMode(h, mode.value | flag)
+    except Exception:
+        pass
+
+
+def _open_in_windows_terminal(cmd: list, cwd: str, title: str = "小元AI") -> bool:
+    """Windows Terminal 承载（#36 2026-11-12，用户拍板「先做好 win」）：
+    wt.exe 新标签跑终端命令——与用户手动开 WT 跑 yuan 体验完全一致（颜色/
+    ↑↓ 历史/多行全功能）。未装 WT 返回 False（调用方回落 CREATE_NEW_CONSOLE）。"""
+    if os.name != "nt":
+        return False
+    try:
+        import shutil
+        wt = shutil.which("wt.exe") or shutil.which("wt")
+        if not wt:
+            return False
+        subprocess.Popen([wt, "new-tab", "--title", title, "-d", cwd] + cmd,
+                         stdin=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
 
 
 def _run_terminal_mode() -> int:
@@ -639,9 +682,11 @@ class AgentTray:
         threading.Thread(target=self._terminal_action, daemon=True).start()
 
     def _terminal_action(self) -> None:
-        """终端对话入口（三本地合一 2026-10-23 + 发布版内置 2026-11-11）：
-        冻结 exe 不再提示「无源码环境」——启动自身 --run-terminal 子进程，
-        自建控制台跑内置 agent.terminal REPL；源码树运行复用当前解释器。"""
+        """终端对话入口（三本地合一 2026-10-23 + 发布版内置 2026-11-11 +
+        WT 承载 #36 2026-11-12）：冻结 exe 启动自身 --run-terminal 子进程
+        （自建控制台，#13 已补 VT 处理全功能）；源码树运行优先开 Windows
+        Terminal 标签页（与用户手动开 WT 跑 yuan 体验一致），未装 WT 回落到
+        新控制台窗口。"""
         try:
             if getattr(sys, "frozen", False):
                 # 发布版内置终端：--no-agent 跳过内嵌 Agent（托盘进程已持云端
@@ -655,13 +700,15 @@ class AgentTray:
                 self._icon.notify("未找到 Python 环境，无法启动终端对话", "终端对话")
                 return
             python_exe, root = launcher
-            kwargs = {}
-            if os.name == "nt":
-                kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
-            else:
-                kwargs["start_new_session"] = True
-            subprocess.Popen([python_exe, "-m", "agent.terminal"], cwd=root,
-                             stdin=subprocess.DEVNULL, **kwargs)
+            cmd = [python_exe, "-m", "agent.terminal"]
+            if not _open_in_windows_terminal(cmd, cwd=root):
+                kwargs = {}
+                if os.name == "nt":
+                    kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+                else:
+                    kwargs["start_new_session"] = True
+                subprocess.Popen(cmd, cwd=root,
+                                 stdin=subprocess.DEVNULL, **kwargs)
         except Exception as e:
             logger.warning("打开终端对话失败: %s", e)
             self._icon.notify(f"终端对话启动失败：{e}", "终端对话")

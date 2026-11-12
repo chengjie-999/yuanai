@@ -244,6 +244,11 @@ class AgentHandle:
         self._plan_loop = plan_loop
         self._connect_task = connect_task
 
+    @property
+    def status(self) -> str:
+        """云端连接状态（终端 TUI v3.0 状态栏 #36 2026-11-12）"""
+        return getattr(self._client, "status", "offline")
+
     async def shutdown(self) -> None:
         if self._plan_loop:
             self._plan_loop.stop()

@@ -52,7 +52,7 @@ python -m agent.main --agent-id 1
 python -m agent.main --agent-id 1 --tray
 ```
 
-**本地终端对话 CLI（2026-10-23，P1 产品愿景）**：在 Windows 终端里直接对话本机 Claude Code（默认 `/claude`，anthropic SDK loop + 工具 + 审批 Y/N）或本地 LLM（`/chat`）：
+**本地终端对话 CLI（2026-10-23，P1 产品愿景；2026-11-12 v3.0 全屏三区）**：在 Windows 终端里直接对话本机 Claude Code（默认 `/claude`，anthropic SDK loop + 工具 + 审批 Y/N）或本地 LLM（`/chat`）；v3.0 起为全屏三区 TUI——顶部状态栏（本地 Agent 在线点/模式/工作目录/会话号）+ 对话流块（思考折叠块「▸ 思考 (Xs) · N 次工具调用」/工具卡/回答 Markdown，**↑↓ 选择 · Enter 展开折叠 · PgUp/PgDn 滚动**）+ 底部输入 dock。托盘「终端对话」优先开 Windows Terminal 标签页（未装 WT 回落新控制台）：
 ```bash
 python -m agent.terminal                 # REPL 交互（自动续接上次会话）
 echo "看看项目结构" | python -m agent.terminal   # 管道单轮

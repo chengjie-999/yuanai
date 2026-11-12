@@ -48,6 +48,12 @@ class AgentWSClient:
         self._status = "offline"  # offline | connecting | online | reconnecting
         self._pending_tasks: set[asyncio.Task] = set()
 
+    @property
+    def status(self) -> str:
+        """连接状态（终端 TUI v3.0 状态栏在线点 #36 2026-11-12）：
+        offline | connecting | online | reconnecting"""
+        return self._status
+
     def _track_task(self, coro) -> asyncio.Task:
         """创建已追踪的 Task，异常时自动记录日志"""
         task = asyncio.create_task(coro)

@@ -355,3 +355,66 @@ class TestCmdUpdate:
         from agent.terminal import cmd_update
         self._patch(monkeypatch, tmp_path, {}, server="http://cjyuanai.cn")
         assert cmd_update() == 1  # 远程明文拒绝，不发请求
+
+
+# ---------------- #13 渲染降级 / VT 自愈（2026-11-12） ----------------
+
+def test_plain_renderer_no_ansi_forced(capsys, monkeypatch):
+    """use_ansi=False：isatty 为真也零色码（自建控制台无 VT 场景不乱码）"""
+    monkeypatch.setattr(terminal, "_TTY", True)
+    r = terminal.PlainRenderer(use_ansi=False)
+    r.info("提示")
+    r.error("失败")
+    r.tool_start("bash")
+    r.interrupted()
+    out = capsys.readouterr().out
+    assert "\x1b" not in out
+    assert "提示" in out and "失败" in out and "bash" in out
+
+
+def test_plain_renderer_ansi_follows_tty(capsys, monkeypatch):
+    """默认跟随 _TTY（模块色码常量由 _TTY 派生）：带码/无色两态"""
+    monkeypatch.setattr(terminal, "_TTY", True)
+    monkeypatch.setattr(terminal, "GRAY", "\x1b[90m")
+    monkeypatch.setattr(terminal, "RESET", "\x1b[0m")
+    terminal.PlainRenderer().info("x")
+    assert "\x1b" in capsys.readouterr().out
+    monkeypatch.setattr(terminal, "GRAY", "")
+    monkeypatch.setattr(terminal, "RESET", "")
+    terminal.PlainRenderer().info("x")
+    assert "\x1b" not in capsys.readouterr().out
+
+
+def test_try_enable_vt_term_dumb(monkeypatch):
+    """非控制台句柄 + TERM=dumb/缺失 → False（渲染层应强制无色）"""
+    monkeypatch.setattr(os, "name", "posix")
+    monkeypatch.delenv("TERM", raising=False)
+    assert terminal._try_enable_vt() is False
+    monkeypatch.setenv("TERM", "dumb")
+    assert terminal._try_enable_vt() is False
+
+
+def test_try_enable_vt_term_xterm(monkeypatch):
+    """非控制台句柄 + TERM=xterm（mintty 等 pty）→ True（ANSI 正常解释）"""
+    monkeypatch.setattr(os, "name", "posix")
+    monkeypatch.setenv("TERM", "xterm")
+    assert terminal._try_enable_vt() is True
+
+
+def test_run_repl_ptk_fail_degraded_render(capsys, monkeypatch, tmp_path):
+    """ptk 初始化失败 + 终端无 ANSI → 渲染降级 PlainRenderer(use_ansi=False)：
+    提示语零色码（回归用户实测 [90m 乱码场景）"""
+    monkeypatch.setattr(terminal, "_make_ptk_prompt",
+                        lambda mode_ref, renderer=None: (_ for _ in ()).throw(RuntimeError("no console")))
+    monkeypatch.setattr(terminal, "_try_enable_vt", lambda: False)
+
+    async def _nop(prompt=""):
+        return None  # 立即 EOF 退出
+
+    monkeypatch.setattr(terminal, "_ainput", _nop)
+    store = terminal.TerminalSessionStore(str(tmp_path / "t_none.json"))
+    s = store.new_session("claude")
+    asyncio.run(terminal.run_repl(s, store, render=terminal.RichRenderer()))
+    out = capsys.readouterr().out
+    assert "\x1b" not in out
+    assert "已回退基础输入模式" in out

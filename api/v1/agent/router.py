@@ -301,6 +301,32 @@ async def agent_my_profile(request: Request):
                 "user": user}
 
 
+@router.post("/chat-token")
+async def agent_chat_token(request: Request):
+    """终端 TUI v3 云端对话通道（2026-11-12，任务 #40）：设备凭据 → 绑定用户的会话 JWT。
+
+    终端本机没有用户登录，只有设备凭据（agent_secret，强凭证，与 my-profile 同模式）；
+    换用户 JWT 后复用 /chat/* 全部端点（会话列表/历史/SSE 流）——终端成为多端第三端。
+    冻结检查与密码/验证码登录同口径（C7）；track_session 不登记（设备凭据已是强凭证，
+    与 Agent 桥接长令牌同豁免口径，不占浏览器登录会话数）。"""
+    uid = require_agent_uid(request)
+    from db.session import get_db, User
+    with get_db().session() as sess:
+        u = sess.query(User).filter_by(id=uid).first()
+        if not u:
+            raise HTTPException(status_code=403, detail="绑定账号不存在")
+        if u.frozen_until and u.frozen_until > datetime.utcnow():
+            days = (u.frozen_until - datetime.utcnow()).days
+            raise HTTPException(status_code=403, detail=f"账号已被冻结，剩余 {days} 天")
+        username, display_name, role = u.username or "", u.display_name or "", u.role or "user"
+        if not display_name:
+            display_name = username
+    from api.v1.auth.utils import create_token
+    token = create_token(uid, role=role, username=username)
+    return {"token": token, "user_id": uid, "username": username,
+            "display_name": display_name}
+
+
 class ActivityReport(BaseModel):
     """活动上报体（O1 2026-10-26）：只收元数据——state 六态词汇 / tool 工具名 /
     message 展示文案 / detail 补充。绝不上传命令内容、文件内容、对话正文。"""

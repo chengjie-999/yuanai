@@ -71,6 +71,7 @@ async def auth_middleware(request: Request, call_next):
             or path.startswith("/api/v1/agent/memory")
             or path.startswith("/api/v1/agent/llm")  # T5 LLM 云端代理（设备凭据自鉴权）
             or path.startswith("/api/v1/agent/my-profile")  # 本机账号归属（设备凭据自鉴权，2026-11-08）
+            or path.startswith("/api/v1/agent/chat-token")  # 终端第三端：设备凭据换会话 JWT（#40，2026-11-12）
             or path.startswith("/api/v1/agent/activity")):  # O1 活动上报（设备凭据自鉴权）
         return await call_next(request)
 

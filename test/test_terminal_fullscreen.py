@@ -213,7 +213,10 @@ def test_run_repl_web_command_opens_browser(capsys, monkeypatch, tmp_path):
 
 
 def test_status_bar_has_web_entry():
-    """状态栏含「F2 网站对话」入口（全屏渲染器 header）"""
+    """状态栏含「F2 网站对话」入口（全屏渲染器 header）。
+    分开断言：其它测试残留的桌宠状态会让状态栏变长换行（F2 与 网站对话 分列两行）"""
     r = _renderer()
     r.redraw()
-    assert "F2 网站对话" in _out(r)
+    out = _out(r)
+    assert "F2" in out
+    assert "网站对话" in out

@@ -174,14 +174,15 @@ def test_repl_commands_and_mode_switch(tmp_path, capsys, monkeypatch):
 
     monkeypatch.setattr(terminal, "_ainput", _fake_input)
     monkeypatch.setattr(terminal, "run_query", _fake_run_query)
+    monkeypatch.setattr(terminal, "_make_cloud_client", lambda: None)  # v3.1 /chat=云端
     asyncio.run(terminal.run_repl(s, store))
 
     # /clear 在「你好」「本地问题」两轮后执行 → 消息清零
     assert s["messages"] == []
-    # 未知命令被忽略，不产生消息
+    # 未知命令被忽略，不产生消息；/chat 无身份时给绑定引导（v3.1 云端通道）
     out = capsys.readouterr().out
     assert "未知命令" in out
-    assert "已切换本地 LLM" in out
+    assert "绑定" in out
 
 
 # ---------------- 桌宠事件联动 ----------------

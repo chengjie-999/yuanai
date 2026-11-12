@@ -247,6 +247,20 @@ def web_chat_url() -> str:
     return url
 
 
+def _panel_url() -> str:
+    """设置面板运行中 URL（panel.py 启动时落盘 data/panel_url.json；终端
+    /panel 命令读此文件直达面板，2026-11-12）。未运行返回空串。"""
+    try:
+        from utils.data_path import root_path
+        p = os.path.join(root_path(), "data", "panel_url.json")
+        if os.path.isfile(p):
+            with open(p, "r", encoding="utf-8") as f:
+                return str((json.load(f) or {}).get("url", "") or "")
+    except Exception:
+        pass
+    return ""
+
+
 def _open_web_chat() -> str:
     """打开网站对话（浏览器新标签）；返回 URL。F2 快捷键与 /web 命令共用
     （2026-11-12 用户诉求：网站对话入口写进终端界面）。"""
@@ -421,6 +435,7 @@ class FullscreenRenderer:
         self._cwd = cwd
         self._session_id = session_id
         self._mode = "claude"
+        self._backend = ""      # 执行后端（local=本机统筹/cloud=云端，v3.1 backend_event 驱动）
         self._blocks: list[dict] = []   # kind/title/content/folded
         self._answer = ""       # 流式回答累积
         self._reasoning = ""    # 流式思考累积
@@ -445,7 +460,33 @@ class FullscreenRenderer:
     def set_session(self, session_id: str) -> None:
         self._session_id = session_id
 
+    def set_backend(self, backend: str) -> None:
+        """执行后端（v3.1 #37）：backend_event 驱动——local=本机统筹执行 /
+        cloud=云端执行；状态栏可见（云边协同透明化）"""
+        self._backend = "local" if backend == "local" else "cloud" if backend == "cloud" else ""
+
+    def load_history(self, messages: list) -> None:
+        """云端会话历史 → 块（v3.1 /sessions 切换与 /chat 进入时用）：
+        user → 「你 ▸」块、assistant → answer 块；其余（META/system/tool）跳过"""
+        self._blocks.clear()
+        for m in messages or []:
+            if not isinstance(m, dict):
+                continue
+            role = m.get("role", "")
+            content = str(m.get("content", "") or "").strip()
+            if not content:
+                continue
+            if role == "user":
+                self._blocks.append({"kind": "user", "title": "", "content": content,
+                                     "folded": False})
+            elif role == "assistant":
+                self._blocks.append({"kind": "answer", "title": "", "content": content,
+                                     "folded": False})
+        self.scroll_blocks = 0
+        self.sel = None
+
     def _agent_dot(self) -> str:
+        st = self._status_provider() if self._status_provider else None
         st = self._status_provider() if self._status_provider else None
         return {"online": "[green]● 在线[/green]",
                 "connecting": "[yellow]● 连接中[/yellow]",
@@ -467,9 +508,11 @@ class FullscreenRenderer:
         cwd = self._cwd
         if len(cwd) > 42:
             cwd = "…" + cwd[-41:]
+        backend = {"local": "本机执行", "cloud": "云端执行"}.get(self._backend, "")
         return Text.assemble(
             (self._agent_dot(), ""), ("  ", ""),
             (f"[bold]{self._mode}[/bold]", "cyan"),
+            ("  ", ""), (backend, "green" if self._backend == "local" else "yellow"),
             ("  ", ""), (cwd or "—", "dim"), ("  ", ""),
             (f"会话 {self._session_id[:8]}" if self._session_id else "", "dim"),
             ("  ", ""), (pet, "magenta"), ("  ", ""),
@@ -496,6 +539,8 @@ class FullscreenRenderer:
         folded = b.get("folded", False)
         if kind == "answer":
             return Markdown(b.get("content", ""))
+        if kind == "user":
+            return Text(f"你 ▸ {b.get('content', '')}", style="bold cyan")
         if kind == "info":
             return Text(b.get("content", ""), style="dim")
         if kind == "error":
@@ -734,6 +779,92 @@ async def run_query(mode: str, messages: list, on_approval=None, render=None) ->
     return await run_claude_query(history, on_approval=on_approval, render=render)
 
 
+# ==================== v3.1 云端对话通道（2026-11-12 #37：终端=第三端） ====================
+
+def _make_cloud_client():
+    """云端通道客户端（身份文件构造：agent_id + agent_secret + server_url）。
+    无身份/未注册 → None（终端提示先去网页绑定设备）。"""
+    try:
+        from agent.main import load_identity
+        from agent.chat_client import CloudChatClient
+        identity = load_identity() or {}
+        aid = identity.get("agent_id")
+        secret = identity.get("agent_secret", "") or ""
+        su = identity.get("server_url", "") or "wss://cjyuanai.cn"
+        if not aid or not secret:
+            return None
+        return CloudChatClient(su, aid, secret)
+    except Exception:
+        return None
+
+
+async def run_cloud_query(client, session_id: str, messages: list, render=None,
+                          rich_mode: bool = False) -> str:
+    """云端对话（v3.1）：/chat/stream SSE 与网站同链路——终端发的消息网站立即可见
+    （多端第三端）。事件渲染复用 renderer 接口；approval 事件 → 终端内 Y/N
+    （rich=ptk / plain=input），决议经 body.decision 回传云端（fail-closed）。"""
+    render = render or PlainRenderer()
+    loop = asyncio.get_running_loop()
+    final = ""
+    _emit_pet("thinking")
+    try:
+        async for ev in client.stream(session_id, messages[-1]["content"], messages[:-1]):
+            t = ev.get("type", "")
+            data = ev.get("data", {})
+            if not isinstance(data, dict):
+                data = {"text": str(data)}
+            if t == "token":
+                txt = str(data.get("text", ""))
+                if txt:
+                    final += txt
+                    render.token(txt)
+            elif t == "tool_start":
+                name = str(data.get("name", "工具"))
+                _emit_pet("working", tool=name)
+                render.tool_start(name)
+            elif t == "tool_end":
+                name = str(data.get("name", "工具"))
+                render.tool_end(name, _clean_text(str(data.get("output", "") or "")))
+                _emit_pet("thinking")
+            elif t == "backend_event":
+                if isinstance(render, FullscreenRenderer):
+                    render.set_backend(data.get("backend", ""))
+            elif t == "approval":
+                did = data.get("decision_id", "")
+                tool_name = str(data.get("tool_name", "工具"))
+                command = str(data.get("command", ""))[:200]
+                render.info(f"⚠ 审批 [{tool_name}] {command}（120 秒超时默认拒绝）")
+                _emit_pet("attention")
+                if rich_mode:
+                    ans = await _ptk_approve(tool_name, command)
+                else:
+                    ans = await loop.run_in_executor(
+                        None, _approve_yn, did, tool_name, command)
+                await loop.run_in_executor(
+                    None, client.send_decision, did, ans == "approve")
+                render.info("已同意执行" if ans == "approve" else "已拒绝")
+                _emit_pet("working" if ans == "approve" else "thinking")
+            elif t == "usage_event":
+                pass  # tokens 计数：v3.2 观测右栏消费
+            elif t == "compliance_warning":
+                render.info(_clean_text(str(data)))
+            elif t == "error":
+                render.error(_clean_text(str(data)))
+                _emit_pet("error")
+            elif t == "done":
+                if not final:
+                    final = _clean_text(str(data.get("display_content", "") or ""))
+                render.done()
+                _emit_pet("idle")
+    except Exception as e:
+        render.error(f"云端对话失败：{str(e)[:200]}")
+        _emit_pet("error")
+        return ""
+    if not final:
+        render.info("（本轮无文字回答）")
+    return final
+
+
 # ==================== REPL（prompt_toolkit 企业级交互） ====================
 
 async def _ainput(prompt: str = "") -> str:
@@ -821,9 +952,17 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
             renderer.scroll_blocks = max(0, renderer.scroll_blocks - 5)
             event.app.exit(result=_REFRESH)
 
+    # 斜杠命令补全（v3.1 #37）：仅对 "/" 开头的词弹候选（pattern 过滤，
+    # 普通打字不打扰）
+    from prompt_toolkit.completion import WordCompleter
+    import re as _re
     session = PromptSession(
         multiline=True, key_bindings=kb,
         history=FileHistory(HISTORY_FILE),
+        completer=WordCompleter(
+            ["/claude", "/chat", "/web", "/sessions", "/history", "/clear",
+             "/quit", "/help", "/plan", "/status", "/panel", "/pet"],
+            pattern=_re.compile(r"^/"), ignore_case=True),
     )
 
     def _toolbar():
@@ -868,8 +1007,9 @@ async def _ptk_approve(tool_name: str, command: str) -> str:
 
 
 def _print_help(render) -> None:
-    render.info("命令: /claude 本机Claude(默认)  /chat 本地LLM  /web 网站对话  "
-                "/history 历史会话  /clear 清空当前会话  /quit 退出\n"
+    render.info("命令: /claude 本机Claude(默认)  /chat 云端对话(与网站同会话)  "
+                "/sessions 网站会话  /web 网站对话  /plan 计划页  /status 本机状态  "
+                "/panel 设置面板  /pet on|off 桌宠  /history /clear /quit\n"
                 "按键: F2 网站对话  ↑↓ 选择块  Enter 展开/折叠  PgUp/PgDn 滚动  "
                 "Esc 取消  Esc+Enter 换行  Ctrl+C 停止生成")
 
@@ -927,6 +1067,11 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     else:
         render.info(f"小元AI 终端对话 — 模式: {mode} | 会话: {session.get('id', '')} | /help 查看命令")
 
+    # v3.1 云端通道状态（/chat 进入后生效；/claude 保持本地草稿互不干扰）
+    cloud_client = None
+    cloud_sid = ""
+    cloud_messages: list = []
+
     while True:
         try:
             line = await prompt_fn()
@@ -945,14 +1090,19 @@ async def run_repl(session: dict, store: TerminalSessionStore,
         if not line:
             continue
         if line.startswith("/"):
-            cmd = line.split(maxsplit=1)[0].lower()
+            parts = line.split(maxsplit=1)
+            cmd = parts[0].lower()
+            arg = parts[1].strip() if len(parts) > 1 else ""
             if cmd == "/quit":
                 break
             elif cmd == "/clear":
                 store.clear(session["id"])
                 if isinstance(render, FullscreenRenderer):
                     render._blocks.clear()  # 会话消息清空 → 渲染块同步清空
-                render.info(f"当前会话已清空（{session['id']}）")
+                if mode == "cloud":
+                    render.info("云端会话以网站为准——/clear 仅清空终端显示，网站历史保留")
+                else:
+                    render.info(f"当前会话已清空（{session['id']}）")
             elif cmd == "/history":
                 await _list_history(store, render)
             elif cmd == "/help":
@@ -961,18 +1111,136 @@ async def run_repl(session: dict, store: TerminalSessionStore,
                 mode = "claude"; mode_ref[0] = mode
                 if isinstance(render, FullscreenRenderer):
                     render.set_mode(mode)
-                render.info("已切换本机 Claude Code 模式")
+                    render.set_session(session.get("id", ""))
+                render.info("已切换本机 Claude Code 模式（本地专业模式）")
             elif cmd == "/chat":
-                mode = "chat"; mode_ref[0] = mode
+                # v3.1：云端对话通道（终端=第三端，与网站同一会话体系；
+                # 云端是小元AI 正身——本机统筹在线时云端自动与其协同）
+                if cloud_client is None:
+                    cloud_client = _make_cloud_client()
+                if cloud_client is None:
+                    render.error("未找到本机 Agent 身份（agent_identity.json）——"
+                                 "请先在网页登录并完成设备绑定，再回终端 /chat")
+                    continue
+                try:
+                    loop = asyncio.get_running_loop()
+                    cloud_sid = await loop.run_in_executor(
+                        None, cloud_client.main_session_id)
+                    cloud_messages = await loop.run_in_executor(
+                        None, cloud_client.load_messages, cloud_sid)
+                except Exception as e:
+                    render.error(f"连接云端对话失败：{str(e)[:160]}")
+                    continue
+                mode = "cloud"; mode_ref[0] = mode
                 if isinstance(render, FullscreenRenderer):
                     render.set_mode(mode)
-                render.info(f"已切换本地 LLM 直连模式（{DEFAULT_CHAT_MODEL}）")
+                    render.set_session(cloud_sid)
+                    render.load_history(cloud_messages)
+                    render.redraw()
+                else:
+                    render.info(f"已连接云端对话（主对话 {cloud_sid[:8]}，"
+                                f"{len(cloud_messages)} 条历史）")
+            elif cmd == "/sessions":
+                # 网站会话列表/切换（多端同一批会话）
+                if cloud_client is None:
+                    cloud_client = _make_cloud_client()
+                if cloud_client is None:
+                    render.error("未找到本机 Agent 身份——请先在网页绑定设备")
+                    continue
+                try:
+                    loop = asyncio.get_running_loop()
+                    if arg and arg.isdigit():
+                        sessions = await loop.run_in_executor(
+                            None, cloud_client.list_sessions)
+                        idx = int(arg) - 1
+                        if not (0 <= idx < len(sessions)):
+                            render.info(f"序号无效（1-{len(sessions)}）")
+                            continue
+                        cloud_sid = str(sessions[idx].get("session_id", ""))
+                        cloud_messages = await loop.run_in_executor(
+                            None, cloud_client.load_messages, cloud_sid)
+                        mode = "cloud"; mode_ref[0] = mode
+                        if isinstance(render, FullscreenRenderer):
+                            render.set_mode(mode)
+                            render.set_session(cloud_sid)
+                            render.load_history(cloud_messages)
+                            render.redraw()
+                        else:
+                            render.info(f"已切换到会话 {cloud_sid[:8]}"
+                                        f"（{len(cloud_messages)} 条历史）")
+                    else:
+                        sessions = await loop.run_in_executor(
+                            None, cloud_client.list_sessions)
+                        for i, s in enumerate(sessions):
+                            title = str(s.get("title") or "(无标题)")[:36]
+                            mark = "★" if s.get("is_main") else " "
+                            render.info(f"[{i + 1}]{mark} {title}  "
+                                        f"{str(s.get('session_id', ''))[:8]}")
+                        render.info("切换：/sessions <序号>；不传参=列表")
+                except Exception as e:
+                    render.error(f"会话列表获取失败：{str(e)[:160]}")
+            elif cmd == "/status":
+                from agent.pet_events import last_state
+                st = None
+                if isinstance(render, FullscreenRenderer) and render._status_provider:
+                    st = render._status_provider()
+                pet = last_state()
+                render.info(f"本机 Agent：{st or '未运行'} ｜ 桌宠：{pet or '—'} ｜ "
+                            f"云端通道：{'已连接' if cloud_client else '未连接'}")
+            elif cmd == "/plan":
+                # v1 边界：终端计划队列全屏视图在 v3.2 观测右栏做——这里直达网页计划页
+                import threading
+                import webbrowser
+                url = web_chat_url().rstrip("/") + "/plan"
+                threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+                render.info(f"正在打开网页计划页：{url}（终端内计划队列视图 v3.2 上线）")
+            elif cmd == "/panel":
+                # 设置面板入口：读面板进程落盘的 URL 文件（panel.py 启动时写）
+                url = _panel_url()
+                if url:
+                    import threading
+                    import webbrowser
+                    threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+                    render.info(f"正在打开设置面板：{url}")
+                else:
+                    render.info("设置面板未运行——请从托盘菜单「打开设置面板…」进入")
+            elif cmd == "/pet":
+                from agent.pet_events import launch_pet, stop_pet
+                want_on = arg.lower() not in ("off", "stop", "0")
+                ok, msg = launch_pet() if want_on else stop_pet()
+                render.info(msg)
             elif cmd == "/web":
                 # 网站对话入口（2026-11-12 用户诉求，与状态栏 F2 同款）
                 url = _open_web_chat()
                 render.info(f"正在打开网站对话：{url}")
             else:
                 render.info(f"未知命令: {cmd}（/help 查看）")
+            continue
+        if mode == "cloud":
+            # 云端对话发送：消息落网站会话（/chat/save 同链路，多端互通）
+            loop = asyncio.get_running_loop()
+            cloud_messages.append({"role": "user", "content": line})
+            task = asyncio.create_task(run_cloud_query(
+                cloud_client, cloud_sid, cloud_messages, render=render,
+                rich_mode=rich_mode))
+            try:
+                result = await task
+            except KeyboardInterrupt:
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                render.interrupted()
+                _emit_pet("idle")
+                continue
+            if result.strip():
+                cloud_messages.append({"role": "assistant", "content": result})
+            try:
+                await loop.run_in_executor(
+                    None, cloud_client.save_messages, cloud_sid, cloud_messages)
+            except Exception as e:
+                render.info(f"同步到网站失败：{str(e)[:120]}")
             continue
         store.append(session["id"], "user", line, mode)
 

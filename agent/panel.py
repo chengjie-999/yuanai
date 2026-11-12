@@ -406,6 +406,7 @@ class PanelServer:
             threading.Thread(target=self._server.serve_forever,
                              name="agent-panel", daemon=True).start()
             logger.info("设置面板已启动: %s", self.url)
+            _write_panel_url(self.url)  # 终端 /panel 命令读此文件开面板（v3.1）
         except Exception as e:
             logger.warning("设置面板启动失败: %s", e)
 
@@ -417,3 +418,34 @@ class PanelServer:
             except Exception:
                 pass
             self._server = None
+        _clear_panel_url()
+
+
+def _panel_url_path() -> str:
+    try:
+        from utils.data_path import root_path
+        return os.path.join(root_path(), "data", "panel_url.json")
+    except Exception:
+        return ""
+
+
+def _write_panel_url(url: str) -> None:
+    """面板 URL 落盘（终端 /panel 命令入口用，2026-11-12）；失败静默"""
+    try:
+        p = _panel_url_path()
+        if not p:
+            return
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump({"url": url}, f)
+    except Exception:
+        pass
+
+
+def _clear_panel_url() -> None:
+    try:
+        p = _panel_url_path()
+        if p and os.path.exists(p):
+            os.remove(p)
+    except Exception:
+        pass

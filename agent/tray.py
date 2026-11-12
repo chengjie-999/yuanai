@@ -875,8 +875,10 @@ class AgentTray:
             ))
         items += [
             TrayMenu.SEPARATOR,
-            MenuItem("打开 Web 对话", on_open_web, default=True),
-            MenuItem("终端对话", self._on_terminal_open),
+            MenuItem("打开 Web 对话", on_open_web),
+            # 2026-11-12 用户拍板：点托盘图标（默认动作）直接开终端对话——
+            # X 关终端回托盘、再点图标再开，一步循环；网页对话/设置面板走菜单
+            MenuItem("终端对话", self._on_terminal_open, default=True),
             MenuItem("Claude Code 原生终端", self._on_native_cc_open),
             TrayMenu.SEPARATOR,
             MenuItem("桌宠", TrayMenu(

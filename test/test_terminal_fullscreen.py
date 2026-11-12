@@ -430,3 +430,13 @@ def test_run_repl_plan_no_identity(capsys, monkeypatch, tmp_path):
     asyncio.run(terminal.run_repl(s, store, prompt_fn=_prompt))
     out = capsys.readouterr().out
     assert "绑定设备" in out
+
+
+def test_ptk_default_never_none():
+    """真机踩坑（2026-11-12）：ptk 3.x prompt_async(default=None) → Document(None)
+    → TypeError: len(None)——_ptk_default 永远返回 str（空串兜底），不传 None"""
+    assert terminal._ptk_default(None) == ""
+    r = _renderer()
+    assert terminal._ptk_default(r) == ""            # 无未提交输入 → 空串
+    r.pending_input = "未提交的文字"
+    assert terminal._ptk_default(r) == "未提交的文字"  # 哨兵保留的输入透传

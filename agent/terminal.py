@@ -1217,9 +1217,8 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
         try:
             mode = mode_ref[0]
             p = f"小元[{mode}]> " if mode != "claude" else "小元> "
-            default = None
+            default = _ptk_default(renderer)
             if renderer is not None:
-                default = renderer.pending_input or None
                 renderer.pending_input = ""
             text = await session.prompt_async(ANSI(p), default=default,
                                               bottom_toolbar=_toolbar)
@@ -1230,6 +1229,15 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
             return None
 
     return prompt_fn
+
+
+def _ptk_default(renderer) -> str:
+    """输入默认值（_REFRESH 哨兵保留的未提交输入）。ptk 3.x 对 None 会
+    TypeError（Document(None) → len(None)）——**永远返回 str**，绝不传 None
+    （真机 2026-11-12 踩坑：VT 自愈后 ptk 首次真正工作，暴露该潜伏崩溃）。"""
+    if renderer is None:
+        return ""
+    return renderer.pending_input or ""
 
 
 async def _ptk_approve(tool_name: str, command: str) -> str:

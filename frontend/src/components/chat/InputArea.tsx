@@ -8,16 +8,9 @@ import { ModelSelector } from '../ModelSelector'
 import { compressImage } from './imageUtils'
 import { AGENT_CONFIG } from '../../config/agents'
 import { uploadDataset } from '../../api'
-import { PaperclipIcon, XIcon, AtSignIcon } from '../icons'
+import { PaperclipIcon, XIcon } from '../icons'
 
-// @指定智能体候选（融合后：分析/采集已是统筹内置工具，不再单独指定）
-const TARGET_AGENTS = [
-  { key: 'orchestrator', desc: '统筹亲自回答（内置分析/采集脚本工具）' },
-  { key: 'automation', desc: '浏览器控制、审核、截图' },
-  { key: 'claude', desc: '本机代码、终端、Git 任务' },
-]
-
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, agentKind, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, activeTarget, onExitActiveTarget, onStop, notice }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, agentKind, model, setModel, effort, setEffort, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, activeTarget, onExitActiveTarget, onStop, notice }: {
   input: string; setInput: (v: string | ((p: string) => string)) => void; loading: boolean; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
@@ -25,11 +18,9 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   agentKind: 'chat' | 'claude' | 'automation'
   model: string; setModel: (v: string) => void
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
-  localOnline: boolean; claudeOnline: boolean
   onStartVoiceCall: () => void
   entMode: boolean; toggleEntMode: () => void
   chatBackend: 'auto' | 'cloud' | 'local'; setChatBackend: (v: 'auto' | 'cloud' | 'local') => void
-  targetAgent: string; setTargetAgent: (v: string) => void
   activeTarget: string; onExitActiveTarget: () => void
   onStop: () => void
   notice: string
@@ -45,10 +36,6 @@ export default function InputArea({ input, setInput, loading, handleSend, images
     }
   }, [input])
   const [uploading, setUploading] = useState(false)
-  // 多窗口 P1（2026-11-13）：执行窗口无 @（固定定向该智能体）——切窗时收起残留面板
-  useEffect(() => {
-    if (agentKind !== 'chat') setPickerOpen(false)
-  }, [agentKind])
   // 模式菜单（2026-11-06 用户拍板：工作/娱乐 + 云端/本机两开关收进菜单，输入区不拥挤）
   const [modeMenuOpen, setModeMenuOpen] = useState(false)
   const modeMenuRef = useRef<HTMLDivElement>(null)
@@ -62,32 +49,12 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   }, [modeMenuOpen])
   const [uploadType, setUploadType] = useState<'image' | 'dataset'>('image')
   const [uploadErr, setUploadErr] = useState('')
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [pickIndex, setPickIndex] = useState(0)
   // B1：本地上传的数据集卡片（名称/行数/列数，可移除）
   const [uploadedDs, setUploadedDs] = useState<{ id: number; name: string; row_count: number; columns: { name: string }[] }[]>([])
   // B1：数据集选择弹层
   const [dsPickerOpen, setDsPickerOpen] = useState(false)
   const [dsList, setDsList] = useState<{ id: number; name: string; row_count: number; file_type: string }[]>([])
   const [dsLoading, setDsLoading] = useState(false)
-
-  // 选中 @ 候选：设定定向 + 移除输入框里残留的裸 @（及其后的半截文字）
-  const selectTarget = (key: string) => {
-    setTargetAgent(key)
-    setPickerOpen(false)
-    setPickIndex(0)
-    const idx = input.lastIndexOf('@')
-    if (idx >= 0) setInput((p) => p.slice(0, idx).trimEnd())
-  }
-
-  // @ 面板可用候选（按 @ 后已输入串过滤）
-  const atQuery = pickerOpen ? input.slice(input.lastIndexOf('@') + 1).trim().toLowerCase() : ''
-  const filteredAgents = TARGET_AGENTS.filter((a) => {
-    if (!atQuery) return true
-    const cfg = AGENT_CONFIG[a.key]
-    return a.key.includes(atQuery) || cfg.label.toLowerCase().includes(atQuery)
-      || a.desc.toLowerCase().includes(atQuery)
-  })
 
   /* 统一上传管线（U1 通用体验 2026-10-25）：文件选择/Ctrl+V 粘贴/拖拽三条入口共用 */
   const handleFiles = async (files: File[]) => {
@@ -178,26 +145,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               ))}
             </div>
           )}
-          {targetAgent && AGENT_CONFIG[targetAgent] && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px 0', flexWrap: 'wrap' }}>
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 6px 3px 8px',
-                borderRadius: 999, border: `1px solid ${AGENT_CONFIG[targetAgent].color}55`,
-                background: AGENT_CONFIG[targetAgent].bg, fontSize: 12, fontWeight: 600,
-                color: AGENT_CONFIG[targetAgent].color, lineHeight: 1,
-              }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: AGENT_CONFIG[targetAgent].color, flexShrink: 0 }} />
-                @{AGENT_CONFIG[targetAgent].label}
-                <span onClick={() => setTargetAgent('')} className="yuan-tip" data-tip="取消指定" aria-label="取消指定"
-                  style={{ cursor: 'pointer', padding: '1px 2px', opacity: 0.7, display: 'flex', alignItems: 'center' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
-                ><XIcon size={11} /></span>
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>本条消息将定向该智能体处理</span>
-            </div>
-          )}
-          {activeTarget && AGENT_CONFIG[activeTarget] && !entMode && !targetAgent && (
+          {activeTarget && AGENT_CONFIG[activeTarget] && !entMode && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px 0', flexWrap: 'wrap' }}>
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 6px 3px 8px',
@@ -213,21 +161,14 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
                 ><XIcon size={11} /></span>
               </span>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>后续消息持续发送给该智能体，换 @ 可切换</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>后续消息持续发送给该智能体</span>
             </div>
           )}
           {/* 输入行：只留输入框 + 发送/停止（豆包式，功能键全部下沉工具行）；
               P1-2：loading 时输入框不锁（可继续打字），发送键变停止键 */}
           <div style={{ display: 'flex', alignItems: 'flex-end', padding: '4px 4px 4px 16px' }}>
-            <textarea ref={taRef} value={input} onChange={(e) => { setInput(e.target.value); if (!pickerOpen && e.target.value.endsWith('@')) { setPickerOpen(true); setPickIndex(0) }; const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; t.style.overflowY = t.scrollHeight > 200 ? 'auto' : 'hidden' }}
+            <textarea ref={taRef} value={input} onChange={(e) => { setInput(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; t.style.overflowY = t.scrollHeight > 200 ? 'auto' : 'hidden' }}
               onKeyDown={(e) => {
-                // @面板键盘导航：↑↓ 移动 / Enter 选中 / Esc 关闭
-                if (pickerOpen) {
-                  if (e.key === 'ArrowDown') { e.preventDefault(); setPickIndex((i) => Math.min(i + 1, filteredAgents.length - 1)); return }
-                  if (e.key === 'ArrowUp') { e.preventDefault(); setPickIndex((i) => Math.max(i - 1, 0)); return }
-                  if (e.key === 'Enter') { e.preventDefault(); const a = filteredAgents[pickIndex]; if (a && !(a.key === 'automation' && !localOnline) && !(a.key === 'claude' && !claudeOnline)) selectTarget(a.key); return }
-                  if (e.key === 'Escape') { e.preventDefault(); setPickerOpen(false); return }
-                }
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (loading) { onStop() } else { handleSend() } }
               }}
               onPaste={(e) => {
@@ -243,7 +184,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               placeholder={entMode ? '想聊点什么？八卦、脑洞、安利都行~'
                 : agentKind === 'claude' ? '向 Claude Code 下达任务…'
                 : agentKind === 'automation' ? '向自动化 Agent 下达任务…'
-                : '输入消息，@ 可指定智能体...'}
+                : '输入消息...'}
               rows={1}
               style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflow: 'hidden', color: 'var(--text-primary)' }}
             />
@@ -270,66 +211,9 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   e.target.value = ''
                 }}
               />
-              {/* @ 面板与按钮为兄弟节点：面板点击不冒泡回按钮（曾因冒泡 toggle 导致面板关不掉）；
-                  娱乐模式不委派——隐藏 @ 入口；执行窗口固定定向该智能体——隐藏 @（多窗口 P1） */}
-              {!entMode && agentKind === 'chat' && (
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <button onClick={() => setPickerOpen((o) => !o)} className="yuan-tip"
-                  data-tip={targetAgent ? `已指定：${AGENT_CONFIG[targetAgent]?.label || ''}` : '指定智能体回答'} aria-label="指定智能体"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: targetAgent ? 'var(--accent)' : 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: targetAgent ? 1 : 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
-                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.opacity = targetAgent ? '1' : '0.7' }}
-                >
-                  <AtSignIcon size={17} />
-                </button>
-                {pickerOpen && (
-                  <>
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setPickerOpen(false)} />
-                    <div style={{
-                      position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 41,
-                      minWidth: 210, background: 'var(--bg-primary)', border: '1px solid var(--border)',
-                      borderRadius: 10, boxShadow: '0 8px 28px var(--shadow-md)', padding: 6, textAlign: 'left',
-                    }}>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px 6px', fontWeight: 600 }}>
-                        @指定智能体处理本条消息
-                      </div>
-                      {filteredAgents.length === 0 && (
-                        <div style={{ padding: '8px', fontSize: 12, color: 'var(--text-muted)' }}>无匹配的智能体</div>
-                      )}
-                      {filteredAgents.map((a, ai) => {
-                        const cfg = AGENT_CONFIG[a.key]
-                        const active = targetAgent === a.key
-                        // 群聊规则：本地 Agent 离线时子智能体不可 @（不做云端角色冒充）；
-                        // @Claude Code 需桥接在线；@统筹 永远可用（云端小元AI）
-                        const available = a.key === 'orchestrator'
-                          ? true
-                          : a.key === 'claude' ? claudeOnline : localOnline
-                        const highlighted = ai === pickIndex
-                        return (
-                          <div key={a.key}
-                            onClick={() => { if (!available) return; selectTarget(a.key) }}
-                            onMouseEnter={(e) => { if (available) { e.currentTarget.style.background = 'var(--hover-bg)'; setPickIndex(ai) } }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = (active || highlighted) ? 'var(--hover-bg)' : 'transparent' }}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px',
-                              borderRadius: 7, cursor: available ? 'pointer' : 'not-allowed',
-                              fontSize: 13, opacity: available ? 1 : 0.45,
-                              color: 'var(--text-primary)',
-                              background: (active || highlighted) ? 'var(--hover-bg)' : 'transparent',
-                            }}>
-                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
-                            <span style={{ fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
-                            <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {available ? a.desc : '离线'}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-              )}
+              {/* @ 面板已移除（2026-11-13 多窗口 v2 用户拍板「小元里怎么还有艾特」）：
+                  智能体切换走侧边栏切换器；从主对话派活由统筹自主委派（delegate 工具），
+                  或切到该智能体执行窗口直接下达 */}
               <button onClick={() => fileRef.current?.click()} className="yuan-tip" data-tip="上传图片或数据集" aria-label="上传图片或数据集"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}

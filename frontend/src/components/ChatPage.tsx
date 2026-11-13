@@ -1343,7 +1343,7 @@ ${full}
             activeTarget={activeTargets[currentSid] || ''}
             onExitActiveTarget={() => clearActiveTarget(currentSid)}
             ccActivity={ccActivity}
-            localOnline={localOnline} claudeOnline={claudeOnline}
+            claudeOnline={claudeOnline}
             model={model} setModel={handleModelChange}
             effort={effort} setEffort={setEffort}
             autoRead={autoRead}
@@ -1354,7 +1354,6 @@ ${full}
             onRegenerate={handleRegenerate} onContinue={() => handleSend('继续')}
             onStartVoiceCall={startVoiceCallWithPermission}
             entMode={entMode} toggleEntMode={toggleEntMode}
-            targetAgent={targetAgent} setTargetAgent={setTargetAgent}
             onStop={stopStream} notice={notice}
             onSuggest={handleSend}
             sendTick={sendTick}

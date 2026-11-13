@@ -32,11 +32,12 @@
   --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 45%, #1d4ed8 100%);
   --accent-soft: rgba(59,130,246,0.12);
   --accent-glow: rgba(59,130,246,0.35);
-  /* 终端面板（P2 对话内嵌终端视图）——终端审美恒深色，明暗主题同款 */
-  --terminal-bg: #0d1526;
-  --terminal-border: #26344d;
-  --terminal-text: #cbd5e1;
-  --terminal-prompt: #4ade80;
+  /* 终端面板（P2 对话内嵌终端视图）——2026-11-13 用户拍板适配主题：
+     亮色=浅色面板（编辑器浅色主题同款），暗色=恒深色 */
+  --terminal-bg: #f1f5f9;
+  --terminal-border: #cbd5e1;
+  --terminal-text: #0f172a;
+  --terminal-prompt: #16a34a;
 }
 
 [data-theme="dark"] {
@@ -65,6 +66,11 @@
   --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #60a5fa 45%, #818cf8 100%);
   --accent-soft: rgba(96,165,250,0.14);
   --accent-glow: rgba(96,165,250,0.30);
+  /* 终端面板：暗色=恒深色（终端审美） */
+  --terminal-bg: #0d1526;
+  --terminal-border: #26344d;
+  --terminal-text: #cbd5e1;
+  --terminal-prompt: #4ade80;
 }
 
 body {

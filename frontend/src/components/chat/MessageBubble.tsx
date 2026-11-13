@@ -401,8 +401,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   const autoReadFired = useRef(0)
   useEffect(() => {
     if (!autoRead || !autoReadTick || autoReadTick <= autoReadFired.current) return
-    // 多窗口 P2：执行窗口无朗读（语音仅对话窗口）
-    if (isLast && !isUser && !isExec && msg.content.trim()) {
+    // 多窗口 P2：执行窗口无朗读（语音仅对话窗口）；委派任务卡不自动朗读
+    if (isLast && !isUser && !isExec && !isDelegation && msg.content.trim()) {
       autoReadFired.current = autoReadTick
       toggleRead(true)  // 自动朗读：失败静默不弹窗
     }
@@ -411,6 +411,10 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
 
   // 统一停止朗读：暂停 + revoke blob URL + 复位（所有路径必须走这里，防泄漏）
   const stopReading = () => {
+    // 2026-11-13 双音轨修复：作废在途分段循环的 seq——此前只暂停当前 Audio，
+    // 另一个气泡接走朗读时，本气泡预取/在途的后续段仍会继续 pump 播放，
+    // 出现两个音轨同时读（小元 + CC 各一段）
+    readSeqRef.current += 1
     const audio = audioRef.current
     if (audio) {
       try { audio.pause() } catch { /* 忽略 */ }
@@ -610,7 +614,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   // 多窗口 P2：执行窗口裁剪——无朗读/点赞/点踩/举报/重新生成/继续生成，只留复制与修改
   const bubbleActions = showActions ? (
     <div className="msg-actions" style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', marginTop: 6, marginBottom: -4 }}>
-      {!isUser && !isExec && (
+      {!isUser && !isExec && !isDelegation && (
         <button onClick={() => toggleRead()} className="yuan-tip" data-tip={speaking ? '打断朗读' : '朗读'} aria-label={speaking ? '打断朗读' : '朗读'}
           style={iconBtnStyle(false, speaking)}
           onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
@@ -652,7 +656,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
           onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
           <svg {...iconProps}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
         </button>
-      ) : isExec ? null : (
+      ) : (isExec || isDelegation) ? null : (
         <>
         <button onClick={() => onFeedback(index, 'like')} disabled={loading}
           className="yuan-tip" data-tip={liked ? '取消点赞' : '点赞'} aria-label={liked ? '取消点赞' : '点赞'}
@@ -793,13 +797,16 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
 
       <div className="chat-msg-bubble" style={{
         padding: '10px 16px',
-        borderRadius: isExec ? 8 : (isUser ? '18px 18px 4px 18px' : '4px 14px 14px 14px'),
-        maxWidth: isExec ? '100%' : '75%',
+        borderRadius: isDelegation ? 12 : isExec ? 8 : (isUser ? '18px 18px 4px 18px' : '4px 14px 14px 14px'),
+        maxWidth: (isExec || isDelegation) ? '100%' : '75%',
         minWidth: 0,  // 2026-10-26 溢出修复：flex 项默认 min-width:auto 会被
                       // 超长内容撑开——min-width:0 让气泡严守 75% 上限
-        // 执行窗口（多窗口 P2）：扁平块全宽灰底（Linear 式左色条），无气泡圆角/阴影
-        background: isExec ? 'var(--bg-secondary)' : isUser ? 'var(--accent)' : 'var(--bg-tertiary)',
-        color: isExec ? 'var(--text-primary)' : isUser ? '#fff' : 'var(--text-primary)',
+        // 委派任务卡（多窗口 P3，2026-11-13）：主对话不出现 CC/自动化 聊天气泡——
+        // 以带边框的卡片呈现（身份+状态+执行摘要+去执行窗口），区别于对话气泡
+        // 执行窗口（P2）：扁平块全宽灰底（Linear 式左色条），无气泡圆角/阴影
+        background: isDelegation ? 'var(--bg-input)' : isExec ? 'var(--bg-secondary)' : isUser ? 'var(--accent)' : 'var(--bg-tertiary)',
+        color: (isExec || isDelegation) ? 'var(--text-primary)' : isUser ? '#fff' : 'var(--text-primary)',
+        border: isDelegation ? '1px solid var(--border)' : undefined,
         borderLeft: agent ? `3px solid ${agent.color}`
           : isExec && isUser ? '3px solid var(--accent)' : undefined,
         boxShadow: isExec ? 'none' : (isUser
@@ -1098,7 +1105,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
       {/* 追问预测（2026-10-31 用户拍板）：放在聊天气泡外面——AI 预测用户接下来
           可能问的问题；普通/娱乐对话出现，coding/工具轮次不出 */}
       {!isUser && !loading && onFollowup && (msg.suggestions?.length || 0) > 0
-        && !msg.toolCalls?.length && sender !== 'claude' && !isExec && (
+        && !msg.toolCalls?.length && sender !== 'claude' && !isExec && !isDelegation && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
           {(msg.suggestions || []).slice(0, 3).map((s) => (
             <button key={s} onClick={() => onFollowup(s)}

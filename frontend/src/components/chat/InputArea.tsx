@@ -287,7 +287,10 @@ export default function InputArea({ input, setInput, loading, handleSend, images
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               {/* 模式菜单（2026-11-06 用户拍板：工作/娱乐 + 云端/本机收进菜单，
-                  输入区按钮不拥挤——按钮显示当前模式摘要，点击展开） */}
+                  输入区按钮不拥挤——按钮显示当前模式摘要，点击展开）。
+                  审查修复：执行窗口隐藏——本地智能体固定本机执行（发送侧已强制
+                  chat_backend=local），云端/娱乐切换对执行窗口无意义且会误导 */}
+              {agentKind === 'chat' && (
               <div ref={modeMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
                 <button onClick={() => setModeMenuOpen((o) => !o)}
                   aria-label="对话模式与执行位置"
@@ -339,6 +342,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   </div>
                 )}
               </div>
+              )}
               <ModelSelector model={model} onChange={setModel} />
               <ReasoningSelector effort={effort} setEffort={setEffort} />
             </div>

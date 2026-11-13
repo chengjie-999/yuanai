@@ -64,8 +64,8 @@ export default function TerminalView({ calls, defaultOpen = false }: { calls: To
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
         cursor: 'pointer', userSelect: 'none',
-        // 中性半透明叠层：明暗两种终端底色下都成立（2026-11-13 终端面板适配主题）
-        background: 'rgba(127,127,127,0.08)',
+        // 中性半透明叠层（配色规范：新颜色先加变量；2026-11-13 适配主题）
+        background: 'var(--terminal-header)',
       }} onClick={() => setCollapsed((c) => !c)}>
         <TerminalIcon size={14} style={{ color: 'var(--terminal-prompt)' }} />
         <span style={{ fontWeight: 600, fontSize: 12.5, flex: 1 }}>终端 · {calls.length} 条命令</span>

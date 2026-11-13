@@ -87,8 +87,10 @@ class CloudChatClient:
         return str(resp.json().get("session_id", ""))
 
     def list_sessions(self) -> list:
+        # 2026-11-13 多窗口 v2：终端只列对话窗口会话（agent_kind=chat）——
+        # CC/自动化 执行窗口会话是网页专属执行面，终端混列会以统筹身份污染执行日志
         resp = self._httpx.get(f"{self._base}/api/v1/chat/sessions",
-                               params={"own": 1}, headers=self._auth(),
+                               params={"own": 1, "agent_kind": "chat"}, headers=self._auth(),
                                timeout=self._timeout)
         if resp.status_code != 200:
             raise RuntimeError(f"获取会话列表失败（HTTP {resp.status_code}）：{_detail(resp)}")

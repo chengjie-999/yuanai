@@ -38,6 +38,7 @@
   --terminal-border: #cbd5e1;
   --terminal-text: #0f172a;
   --terminal-prompt: #16a34a;
+  --terminal-header: rgba(127, 127, 127, 0.08);
 }
 
 [data-theme="dark"] {
@@ -71,6 +72,7 @@
   --terminal-border: #26344d;
   --terminal-text: #cbd5e1;
   --terminal-prompt: #4ade80;
+  --terminal-header: rgba(127, 127, 127, 0.08);
 }
 
 body {

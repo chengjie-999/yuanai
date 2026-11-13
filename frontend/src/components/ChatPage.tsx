@@ -45,7 +45,7 @@ function resolvePanel(path: string): { Comp: any; props: any; title: string } | 
   return null
 }
 
-type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean }
+type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean; agent_kind?: string }
 
 /* 兼容历史消息：路由迁移后旧路径 /agent/... 顶层已不存在（会落到兜底路由跳首页），渲染时统一补 /chat 前缀 */
 function normalizePageLink(p: any): string | undefined {
@@ -110,6 +110,8 @@ export default function ChatPage({ user }: { user?: any }) {
   useEffect(() => { setContextSid(currentSid) }, [currentSid])
   // 挂载失败兜底（2026-10-22 欢迎页移除后：加载中不再闪欢迎页，接口异常给重试框）
   const [initFailed, setInitFailed] = useState(false)
+  // sweep 审查修复：历史加载失败态（区别于空会话）——阻断发送防全量替换清历史
+  const [loadFailed, setLoadFailed] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -149,16 +151,20 @@ export default function ChatPage({ user }: { user?: any }) {
     try { localStorage.setItem('chatBackend', v) } catch { /* 忽略 */ }
   }
   const prevChatModeRef = useRef<'local' | 'cloud' | 'claude'>('local')
-  const toggleEntMode = () => {
+  const toggleEntMode = async () => {
     const next = !entMode
+    // 审查修复：切娱乐模式前先退出执行窗口——用户取消切换则整个不进入
+    // （此前先置 entMode 再切窗，guard 取消后切换器已隐藏、困在执行窗口）
+    if (next && agentKindRef.current !== 'chat') {
+      const ok = await handleSwitchKind('chat')
+      if (!ok) return
+    }
     setEntMode(next)
     try { localStorage.setItem('entertainmentMode', next ? '1' : '0') } catch { /* 忽略 */ }
     if (next) {
       prevChatModeRef.current = chatMode
       setChatMode('cloud')
       setTargetAgent('')  // 娱乐模式不委派，清掉残留定向
-      // 娱乐模式纯云端无本地智能体：执行窗口切回小元主对话（切换器随 entMode 隐藏）
-      if (agentKindRef.current !== 'chat') handleSwitchKind('chat')
     } else {
       setChatMode(prevChatModeRef.current || 'local')
     }
@@ -238,6 +244,7 @@ export default function ChatPage({ user }: { user?: any }) {
     if (!sid || streamRef.current) return  // 流式进行中不合并
     try {
       const history = await loadMessages(sid)
+      if (!history) return  // 加载失败（网络/500）：本轮跳过，下轮再试
       const tailMsg = history[history.length - 1]
       const sig = { sid, count: history.length, tail: String(tailMsg?.content || '') }
       const prev = pollMsgSigRef.current
@@ -362,11 +369,24 @@ export default function ChatPage({ user }: { user?: any }) {
     })()
     setMessages(stoppedMsgs)
     setLoading(false)
-    // 立即保存已生成内容（encodeMsg 会带上 stopped 短键）
+    // 立即保存已生成内容（encodeMsg 会带上 stopped 短键）；
+    // 审查修复：与 onDone 同口径走委派双写（停止后执行日志同样落执行窗口）
     const finalMsgs = flushVoiceTranscripts(stoppedMsgs)
-    saveMessages(s.sid, finalMsgs.map(encodeMsg))
-    refreshSessions()
-    window.dispatchEvent(new Event('yuan-ctx-refresh'))  // 上下文用量徽标即时刷新
+    void (async () => {
+      const { decoded, split } = await persistSession(finalMsgs, s.sid)
+      if (split && sidRef.current === s.sid) {
+        const cur = messagesRef.current
+        const tailSame = cur.length === finalMsgs.length
+          && cur.every((m, i) => m === finalMsgs[i])
+        if (tailSame) {
+          messagesRef.current = decoded
+          setMessages(decoded)
+          setFeedbackState((p) => remapFeedback(p, cur, decoded))
+        }
+      }
+      refreshSessions()
+      window.dispatchEvent(new Event('yuan-ctx-refresh'))  // 上下文用量徽标即时刷新
+    })()
   }
   // 会话切换/新建/删除守卫：流式进行中先停并保存
   const guardBusySession = (): boolean => {
@@ -448,10 +468,12 @@ export default function ChatPage({ user }: { user?: any }) {
   }, [chatMode, localOnline, claudeOnline, statusKnown])
 
   const refreshSessions = useCallback(async () => {
-    // 多窗口 P1：只拉当前窗口的会话列表（切换器过滤在服务端）
+    // 多窗口 P1：只拉当前窗口的会话列表——chat 也显式过滤（审查修复：
+    // 空参数后端语义是「不过滤」，执行窗口会话会混进主对话侧栏）。
+    // sweep 审查修复：迟到响应守卫——窗口已切换后，旧窗口的列表不得落地
     const kind = agentKindRef.current
-    const list = await listSessions(kind === 'chat' ? undefined : kind)
-    setSessions(list)
+    const list = await listSessions(kind)
+    if (agentKindRef.current === kind) setSessions(list)
     return list
   }, [])
 
@@ -474,10 +496,12 @@ export default function ChatPage({ user }: { user?: any }) {
         await refreshSessions()
         if (main && !sidRef.current) {
           setCurrentSid(main.session_id)
-          const history = await loadMessages(main.session_id)
-          setMessages(history.length === 0
+          const historyResp = await loadMessages(main.session_id)
+          if (historyResp == null) { setLoadFailed(true); return }  // 同上：失败态阻断发送
+          setLoadFailed(false)
+          setMessages(historyResp.length === 0
             ? []  // 空对话不再塞问候语（2026-10-31 用户拍板）：显示主页 logo 吉祥物 + 推荐问题
-            : parseHistory(history))
+            : parseHistory(historyResp))
           scrollToLatest()
         }
       } catch {
@@ -540,15 +564,20 @@ export default function ChatPage({ user }: { user?: any }) {
     // 2026-10-19 修复①：切换会话清掉上一会话的审批卡——残留时点「同意」会把
     // 决议发给新会话（错会话审批）
     setPendingApproval(null)
-    // 旧小窗会话（@私聊）：恢复持久定向；普通会话：不动
+    // 旧小窗会话（@私聊）：恢复持久定向；无定向的会话清空 stale 定向（审查修复：
+    // 此前打开无 dm 的会话不清 targetAgent，前一个窗口的定向静默泄漏到主对话）
     const dm = dmTargetsRef.current[sid]
-    if (dm) setTargetAgent(dm)
+    setTargetAgent(dm || '')
     // 2026-10-19 修复②：请求序号守卫——快速 A→B 切换时先发的 loadMessages(A)/
-    // loadFeedback(A) 可后到并覆盖 B 的消息与点赞态
+    // loadFeedback(A) 可后到并覆盖 B 的消息与点赞态；两请求并行（审查效率修复）
     const seq = ++loadSeqRef.current
-    const history = await loadMessages(sid)
-    const feedbackData = await loadFeedback(sid)
+    const [historyResp, feedbackData] = await Promise.all([loadMessages(sid), loadFeedback(sid)])
     if (seq !== loadSeqRef.current) return  // 已切到别的会话：丢弃迟到响应
+    // sweep 审查修复：加载失败与「空会话」必须区分——按空会话展示会让用户
+    // 直接发送，/chat/save 全量替换把既有历史清空；失败态阻断发送
+    if (historyResp == null) { setLoadFailed(true); return }
+    setLoadFailed(false)
+    const history = historyResp
     setFeedbackState(feedbackData)
     setEditingIndex(null)
     setMessages(history.length === 0
@@ -572,13 +601,22 @@ export default function ChatPage({ user }: { user?: any }) {
 
   // 切换智能体窗口（侧边栏切换器 / 任务卡「去执行窗口」）：会话列表换成该智能体的；
   // 优先回到该窗口上次打开的会话；任务卡跳转传 sidOverride 精确定位执行会话；
-  // 该智能体还没有会话则自动新建（豆包式点智能体即有对话）
-  const handleSwitchKind = async (kind: 'chat' | 'claude' | 'automation', sidOverride?: string) => {
-    if (kind === agentKindRef.current && !sidOverride) return
-    if (!guardBusySession()) return
+  // 该智能体还没有会话则自动新建（豆包式点智能体即有对话）。
+  // 返回是否切换成功（toggleEntMode 需要——guard 取消时防「半切换」）
+  const switchSeqRef = useRef(0)
+  const handleSwitchKind = async (kind: 'chat' | 'claude' | 'automation', sidOverride?: string): Promise<boolean> => {
+    if (kind === agentKindRef.current && !sidOverride) return true
+    // sweep 审查修复：娱乐模式不进入执行窗口——切换器/模式菜单在娱乐下隐藏，
+    // 进窗后无出口（历史任务卡/指示条 chip 仍可触发），困住用户
+    if (entMode && kind !== 'chat') return false
+    if (!guardBusySession()) return false
+    // 审查修复①：全链序号守卫——快速连点不同智能体时，先发出的 listSessions
+    // 迟到不得覆盖新窗口的列表/会话
+    const seq = ++switchSeqRef.current
     setAgentKind(kind)
-    if (kind === 'chat') setTargetAgent('')
-    const list = await listSessions(kind === 'chat' ? undefined : kind)
+    setTargetAgent('')  // 切窗清定向（openSession 按 dmTargets 恢复）
+    const list = await listSessions(kind)  // 显式 kind 过滤（chat 窗口不混入执行会话）
+    if (seq !== switchSeqRef.current) return false
     setSessions(list)
     let sid = ''
     if (sidOverride && list.some((s) => s.session_id === sidOverride)) sid = sidOverride
@@ -586,19 +624,25 @@ export default function ChatPage({ user }: { user?: any }) {
     if (!sid || !list.some((s) => s.session_id === sid)) sid = list[0]?.session_id || ''
     let created = false
     if (!sid) {
-      const cfg = AGENT_CONFIG[kind]
+      // 审查修复②：AGENT_CONFIG 无 'chat' 键（chat 会话列表为空几乎不可能——
+      // 主对话是锚点，但断网时 listSessions 静默返回 []，防御）
+      const cfg = kind === 'chat' ? AGENT_CONFIG.orchestrator : AGENT_CONFIG[kind]
       sid = await createSession(cfg.label, kind)
-      saveDmTarget(sid, kind)
+      if (seq !== switchSeqRef.current) return false
+      if (kind !== 'chat') saveDmTarget(sid, kind)
       created = true
-      await refreshSessions()
+      await refreshSessions()  // 重拉列表（补 agent_kind/真实时间；seq 守卫在上方）
+      if (seq !== switchSeqRef.current) return false
     }
     saveLastSid(kind, sid)
-    if (kind !== 'chat') setTargetAgent(kind)  // 执行窗口固定定向该智能体
     await openSession(sid)
+    if (seq !== switchSeqRef.current) return false
+    if (kind !== 'chat') setTargetAgent(kind)  // 执行窗口固定定向该智能体
     if (created) {
-      const cfg = AGENT_CONFIG[kind]
+      const cfg = kind === 'chat' ? AGENT_CONFIG.orchestrator : AGENT_CONFIG[kind]
       setMessages([{ role: 'assistant', content: `已打开「${cfg.label}」独立窗口：本窗口内的消息都将直接交给${cfg.label}处理，执行过程与结果不占用主对话历史。`, sender: kind as any, toolCalls: [] }])
     }
+    return true
   }
 
   // U2 会话重命名（2026-10-25）：prompt 输入新标题 → 后端归属校验更新 →
@@ -930,13 +974,25 @@ ${full}
       const restored = s ? restoreAfterRegenerate(errMsgs, s.sid) : errMsgs
       setMessages(restored)
       setLoading(false)
-      // P1-1：断流也落库（此前 onError 不保存，刷新后部分输出丢失）
+      // P1-1：断流也落库（此前 onError 不保存，刷新后部分输出丢失）；
+      // 审查修复：与 onDone 同口径走委派双写（否则执行日志落主对话、失败态丢摘要）
       if (s) {
         const finalMsgs = flushVoiceTranscripts(restored)
-        saveMessages(s.sid, finalMsgs.map(encodeMsg)).finally(() => {
+        void (async () => {
+          const { decoded, split } = await persistSession(finalMsgs, s.sid)
+          if (split && sidRef.current === s.sid) {
+            const cur = messagesRef.current
+            const tailSame = cur.length === finalMsgs.length
+              && cur.every((m, i) => m === finalMsgs[i])
+            if (tailSame) {
+              messagesRef.current = decoded
+              setMessages(decoded)
+              setFeedbackState((p) => remapFeedback(p, cur, decoded))
+            }
+          }
           refreshSessions()
           window.dispatchEvent(new Event('yuan-ctx-refresh'))
-        })
+        })()
       }
     }
     return { onEvent, onError }
@@ -946,48 +1002,96 @@ ${full}
   // 从主对话落库中剥出，全量落执行窗口会话（切过去可回看完整执行日志）；
   // 主对话只落一条任务卡摘要（带 w/wk 窗口引用），60 条截断不被执行日志吃掉。
   // 任何一步失败都退回全量落主对话（不丢数据）。
-  const persistWithDelegationSplit = async (finalMsgs: ChatMessage[]) => {
-    if (agentKindRef.current !== 'chat') return finalMsgs.map(encodeMsg)
-    // 委派段 = sender 为 claude/automation 的 assistant 消息（@ 已退役，delegate 工具是唯一来源）
-    const dlgt = finalMsgs.filter((m) => m.role === 'assistant'
-      && (m.sender === 'claude' || m.sender === 'automation'))
-    if (!dlgt.length) return finalMsgs.map(encodeMsg)
-    const winKind = dlgt[0].sender as 'claude' | 'automation'
-    try {
-      // 执行窗口会话：优先该窗口上次会话（校验仍存在），否则列表最新或自动新建
-      const list = await listSessions(winKind)
-      let winSid = lastSidByKindRef.current[winKind] || ''
-      if (!winSid || !list.some((s) => s.session_id === winSid)) winSid = list[0]?.session_id || ''
-      if (!winSid) {
-        winSid = await createSession(AGENT_CONFIG[winKind].label, winKind)
-        await refreshSessions()
+  // 返回剥除后的主对话消息（decoded）：调用方用它替换 UI 状态——状态与落库一致，
+  // 下一轮保存不会再命中历史委派块（审查修复：此前内存保留 CC 气泡导致每轮重复拆分）。
+  const persistSession = async (finalMsgs: ChatMessage[], sid: string, title?: string) => {
+    if (agentKindRef.current !== 'chat') {
+      const ok = await saveMessages(sid, finalMsgs.map(encodeMsg), title)
+      return { decoded: finalMsgs, split: false, ok }
+    }
+    // 委派段按发送者分组（审查修复：一轮同时委派 CC+自动化 → 各自落各自窗口）
+    const groups: Record<string, ChatMessage[]> = {}
+    for (const m of finalMsgs) {
+      if (m.role === 'assistant' && (m.sender === 'claude' || m.sender === 'automation')) {
+        (groups[m.sender] = groups[m.sender] || []).push(m)
       }
-      saveLastSid(winKind, winSid)
-      // 窗口历史 append（saveMessages 是全量替换语义 → 读旧 + 拼新 = 天然幂等）
-      const winRows = await loadMessages(winSid)
-      const winMsgs = [...winRows]
-      // 指令块：本轮用户原话副本（窗口尾部不是同一指令时追加）
-      const userMsg = [...finalMsgs].reverse().find((m) => m.role === 'user')
-      const lastRow = winMsgs[winMsgs.length - 1]
-      if (userMsg && (lastRow?.role !== 'user' || lastRow.content !== encodeMsg({ ...userMsg }).content)) {
-        winMsgs.push(encodeMsg({ ...userMsg, sender: undefined, recipient: undefined }))
+    }
+    const kinds = Object.keys(groups) as ('claude' | 'automation')[]
+    if (!kinds.length) {
+      const ok = await saveMessages(sid, finalMsgs.map(encodeMsg), title)
+      return { decoded: finalMsgs, split: false, ok }
+    }
+    const removed = new Set<ChatMessage>()
+    const summaries: ChatMessage[] = []
+    let windowAllOk = true
+    for (const winKind of kinds) {
+      const dlgt = groups[winKind]
+      dlgt.forEach((m) => removed.add(m))
+      let winSid = ''
+      try {
+        // 执行窗口会话：上次会话 + 列表校验（sweep 审查修复：已软删的会话
+        // loadMessages 返回 200 [] 而非失败，不校验会把日志写进回收站会话）；
+        // 无则自动新建并补持久定向（审查修复：此前漏 saveDmTarget，
+        // 第二条消息起定向丢失被统筹接管）
+        const list = await listSessions(winKind)
+        winSid = lastSidByKindRef.current[winKind] || ''
+        if (!winSid || !list.some((s) => s.session_id === winSid)) winSid = list[0]?.session_id || ''
+        if (!winSid) {
+          winSid = await createSession(AGENT_CONFIG[winKind].label, winKind)
+          saveDmTarget(winSid, winKind)
+        }
+        saveLastSid(winKind, winSid)
+        // 窗口历史 append（saveMessages 是全量替换语义 → 读旧 + 拼新 = 天然幂等）；
+        // 读失败（null）不得当空数组——否则全量替换把窗口历史清空（审查修复）
+        const winRows = await loadMessages(winSid)
+        if (winRows == null) { windowAllOk = false; break }
+        const winMsgs = [...winRows]
+        // 指令块：本轮用户原话副本（窗口尾部不是同一指令时追加）
+        const userMsg = [...finalMsgs].reverse().find((m) => m.role === 'user')
+        const lastRow = winMsgs[winMsgs.length - 1]
+        if (userMsg && (lastRow?.role !== 'user' || lastRow.content !== encodeMsg({ ...userMsg }).content)) {
+          winMsgs.push(encodeMsg({ ...userMsg, sender: undefined, recipient: undefined }))
+        }
+        for (const d of dlgt) winMsgs.push(encodeMsg(d))
+        // 审查修复：await 且失败可感知（saveMessages 此前吞错，兜底是死代码）
+        const ok = await saveMessages(winSid, winMsgs)
+        if (!ok) windowAllOk = false
+      } catch {
+        windowAllOk = false
       }
-      for (const d of dlgt) winMsgs.push(encodeMsg(d))
-      saveMessages(winSid, winMsgs).catch(() => { /* 执行窗口落库失败不阻塞主对话 */ })
-      // 主对话：剥除委派段 → 追加任务卡摘要消息（w=窗口会话 / wk=窗口类型）
-      const mainMsgs = finalMsgs.filter((m) => !dlgt.includes(m))
+      // 摘要卡（透传失败/停止状态——审查修复：失败态不得在刷新后丢失）
       const lastD = dlgt[dlgt.length - 1]
       const raw = (lastD.content?.trim() || (lastD.toolCalls || []).slice(-1)[0]?.result?.trim() || '')
       const summary = raw.length > 300 ? raw.slice(0, 300) + '…' : (raw || '（无文本输出，详见执行窗口）')
-      mainMsgs.push({
+      summaries.push({
         role: 'assistant', sender: 'orchestrator', msgType: 'note',
         content: `${summary}\n\n— 完整执行过程与结果见 ${AGENT_CONFIG[winKind].label} 窗口`,
         windowSession: winSid, windowKind: winKind,
+        ...(lastD.error ? { error: lastD.error } : {}),
+        ...(lastD.stopped ? { stopped: true } : {}),
       } as any)
-      return mainMsgs.map(encodeMsg)
-    } catch {
-      return finalMsgs.map(encodeMsg)
     }
+    // 主对话：窗口写全成功 → 剥除委派段 + 摘要；否则全量兜底（不丢数据）
+    const decoded = windowAllOk
+      ? [...finalMsgs.filter((m) => !removed.has(m)), ...summaries]
+      : finalMsgs
+    const ok = await saveMessages(sid, decoded.map(encodeMsg), title)
+    return { decoded, split: true, ok }
+  }
+
+  // 剥离委派段后下标整体前移——feedback 按 message_index 定位，必须同步重映射
+  // （审查修复：否则点赞挂到错误气泡；#30 消息 id 落地后按 id 定位可退役）
+  const remapFeedback = (prev: Record<number, any>, oldMsgs: ChatMessage[], newMsgs: ChatMessage[]) => {
+    const seen = new Map<ChatMessage, number>()
+    oldMsgs.forEach((m, i) => { if (!seen.has(m)) seen.set(m, i) })
+    const map = new Map<number, number>()
+    newMsgs.forEach((m, ni) => { const oi = seen.get(m); if (oi !== undefined) map.set(oi, ni) })
+    const next: Record<number, any> = {}
+    for (const [k, v] of Object.entries(prev)) {
+      const nk = map.get(Number(k))
+      if (nk !== undefined) next[nk] = v
+    }
+    return next
   }
 
   // 通用发送链路：msgs 为发送时的完整消息数组（不含新的 assistant 占位气泡），
@@ -999,12 +1103,14 @@ ${full}
     setLoading(true)
     // 普通消息自动撤销未决审批（桥接侧会 deny pending 后正常处理）
     setPendingApproval(null)
-    // 执行窗口会话（dmTargets）持久定向不复位；主对话走统筹自行路由——
-    // @ 面板与粘性定向已退役（多窗口 v2，2026-11-13）
+    // 执行窗口会话（dmTargets）持久定向；主对话走统筹自行路由——
+    // @ 面板与粘性定向已退役（多窗口 v2，2026-11-13）。审查修复：执行窗口按
+    // 窗口类型兜底定向——自动建窗的会话可能暂无 dmTargets 映射（刚写入 state
+    // 未更新 ref 的窗口期），且不再有「单次定向复位」清掉窗口固定定向
     // 娱乐模式（E1）：不委派——忽略窗口定向，纯云端小元AI 回答
     const dmTarget = entMode ? '' : (dmTargetsRef.current[sid] || '')
-    const target = entMode ? '' : (targetAgentRef.current || dmTarget)
-    if (target && !dmTarget) setTargetAgent('')
+    const kindTarget = entMode ? '' : (agentKindRef.current !== 'chat' ? agentKindRef.current : '')
+    const target = dmTarget || kindTarget || (entMode ? '' : targetAgentRef.current)
     const isClaude = !entMode && (target === 'claude' || chatMode === 'claude')
     // 信封协议：最后一条 user 消息打 recipient（定向 @target）；说话人身份
     // 走信封字段，【xx】前缀渲染由后端 views.py 视图滤波负责
@@ -1024,9 +1130,15 @@ ${full}
     const { onEvent, onError } = makeStreamHandlers(isClaude || (!entMode && !!dmTarget))
     const controller = streamChat(
       { model, temperature: 0.7, prompt, images: sentImages, history, system_prompt: sysPrompt,
-        session_id: sid, claude: isClaude, force_cloud: !isClaude && (chatMode === 'cloud' || entMode),
+        session_id: sid, claude: isClaude,
+        // sweep 审查修复：force_cloud 优先级高于 chat_backend——离线时 chatMode 自动
+        // 落 cloud 会把执行窗口请求推去云端兜底（role_hint 冒充执行体），
+        // 执行窗口必须关掉 force_cloud 才能真正强制本机
+        force_cloud: !isClaude && (chatMode === 'cloud' || entMode) && agentKindRef.current === 'chat',
         reasoning_effort: effort, target_agent: target || undefined, chat_mode: entMode ? 'entertainment' : 'work',
-        chat_backend: entMode ? 'cloud' : chatBackend },
+        // 审查修复：执行窗口强制本机（local 语义=离线报错不回退）——用户在主对话
+        // 把执行位置设为云端后，执行窗口发送不得被云端兜底冒充智能体
+        chat_backend: entMode ? 'cloud' : (agentKindRef.current !== 'chat' ? 'local' : chatBackend) },
       onEvent, onError,
       () => {
         const s = streamRef.current
@@ -1040,16 +1152,28 @@ ${full}
         messagesRef.current = restored
         setMessages(restored)
         const finalMsgs = flushVoiceTranscripts(restored)
-        // 多窗口 #16：委派块双写（执行日志 → 执行窗口会话，主对话只落任务卡摘要）
+        // 多窗口 #16：委派块双写（执行日志 → 执行窗口会话，主对话只落任务卡摘要）；
+        // 审查修复：保存后把 UI 状态换成剥除后的版本（状态与落库一致，
+        // 下一轮不会重复拆分历史委派块；feedback 下标同步重映射）
         void (async () => {
-          const msgs = await persistWithDelegationSplit(finalMsgs)
-          // C AI 会话标题：只透传显式 title（新会话首次发送），普通发送不再覆盖标题
+          const { decoded, split } = await persistSession(finalMsgs, sid, title)
+          // sweep 审查修复：替换 UI 前校验尾部同一性——persist 的 await 期间
+          // 用户可能已发出下一条消息（或 syncPoll 合入对端消息），此时整组替换
+          // 会把新消息抹掉；尾部不匹配则放弃替换（状态保留，库里已是摘要版）
+          if (split && sidRef.current === sid) {
+            const cur = messagesRef.current
+            const tailSame = cur.length === finalMsgs.length
+              && cur.every((m, i) => m === finalMsgs[i])
+            if (tailSame) {
+              messagesRef.current = decoded
+              setMessages(decoded)
+              setFeedbackState((p) => remapFeedback(p, cur, decoded))
+            }
+          }
           // 会话日期更新（2026-10-19 修复）：等 /chat/save 落库提交后再刷新列表——
           // 此前未 await，列表查询先于保存提交返回旧 update_time，旧对话日期永不更新
-          saveMessages(sid, msgs, title).finally(() => {
-            refreshSessions()
-            window.dispatchEvent(new Event('yuan-ctx-refresh'))  // 上下文用量徽标即时刷新
-          })
+          refreshSessions()
+          window.dispatchEvent(new Event('yuan-ctx-refresh'))  // 上下文用量徽标即时刷新
         })()
         noteLastAssistant(finalMsgs)
       },
@@ -1060,6 +1184,8 @@ ${full}
   const handleSend = (textOverride?: string) => {
     const text = (textOverride ?? input).trim()
     if (!currentSid) { flashNotice('请先选择或创建一个会话'); return }
+    // sweep 审查修复：历史加载失败时禁止发送——/chat/save 全量替换会清空既有历史
+    if (loadFailed) { flashNotice('历史加载失败：直接发送会覆盖本会话历史，请刷新页面重试'); return }
     if (loading) { flashNotice('正在生成中，可点击「停止」或等待完成'); return }
     if (!text) return
     const sentImages = images.length > 0 ? [...images] : undefined
@@ -1279,12 +1405,14 @@ ${full}
             </span>
             {activePlans.length > 0 && (
               <span onClick={() => handleOpenPanel('/chat/plan')} className="yuan-tip" data-tip="打开计划面板"
+                aria-label="打开计划面板"
                 style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', borderRadius: 999, padding: '1px 9px', border: '1px solid var(--border)', lineHeight: 1.7 }}>
                 计划 {activePlans.length}
               </span>
             )}
             {ccBusy && agentKind === 'chat' && (
               <span onClick={() => handleSwitchKind('claude')} className="yuan-tip" data-tip="切到 Claude Code 执行窗口"
+                aria-label="切到 Claude Code 执行窗口"
                 style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', borderRadius: 999, padding: '1px 9px', border: `1px solid ${AGENT_CONFIG.claude.color}`, color: AGENT_CONFIG.claude.color, lineHeight: 1.7 }}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: AGENT_CONFIG.claude.color, animation: 'pulse 1.2s ease-in-out infinite' }} />
                 CC 执行中

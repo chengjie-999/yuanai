@@ -434,8 +434,14 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     }
     audioRef.current = null
     setSpeaking(false)
-    if (globalStopReading === stopReading) globalStopReading = null
+    // 无条件清全局引用：globalStopReading 永远指向当前正在播的气泡，
+    // 任何朗读结束（正常播完/打断/卸载）都该清（sweep 审查修复：此前按
+    // 包装闭包身份比对永远不命中，残留引用会把同一气泡的下一次朗读 seq 立即作废）
+    globalStopReading = null
+    stopRef.current.fn = null
   }
+  // 当前朗读循环的打断包装（标记 aborted，供「全失败才提示」判断）
+  const stopRef = useRef<{ fn: (() => void) | null }>({ fn: null })
   // 卸载时停止朗读
   useEffect(() => () => stopReading()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -466,14 +472,22 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   // P1-6：单段合成失败跳过继续下一段（不再整体停）；自动朗读失败静默
   const toggleRead = async (isAuto = false) => {
     if (speaking) {
-      readSeqRef.current += 1  // 作废在途合成请求
+      // 作废在途合成请求；先经打断包装把旧循环标记为 aborted（全失败提示不误弹）
+      stopRef.current.fn?.()
+      stopRef.current.fn = null
+      readSeqRef.current += 1
       stopReading()
       return
     }
     const seq = ++readSeqRef.current
+    // 审查修复：区分「正常播完」与「被用户/其它气泡打断」——stopReading 已改为
+    // 总是作废 seq（双音轨修复），全失败提示不能再靠 seq 判断，改显式 aborted 标记
+    let aborted = false
+    const wrappedStop = () => { aborted = true; stopReading() }
+    stopRef.current.fn = wrappedStop
     // 全局互斥：打断其它气泡正在播放的朗读
     if (globalStopReading) globalStopReading()
-    globalStopReading = stopReading
+    globalStopReading = wrappedStop
     setSpeaking(true)
     // C5 音频标识（2026-10-29）：朗读开始前播双音提示音（《标识办法》对合成音频的
     // 提示音要求；Web Audio 合成零依赖；整条消息一次，分段连播不重复；失败静默）
@@ -572,8 +586,9 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
           if (allFetched && !queue.length && !playing && activeFetches === 0) { clearInterval(timer); resolve(); return }
         }, 150)
       })
-      // 全部段都失败才提示；自动朗读失败静默（P1-6）
-      if (seq === readSeqRef.current && failedSegments >= segments.length && !isAuto) {
+      // 全部段都失败才提示；自动朗读失败静默（P1-6）；
+      // 被打断（含其它气泡接走朗读）不提示（审查修复）
+      if (!aborted && failedSegments >= segments.length && !isAuto) {
         stopReading()
         alert('语音合成失败，请稍后重试')
       }
@@ -794,7 +809,10 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             }} />
             {delegationFailed ? '执行失败' : delegationRunning ? '执行中' : delegationStopped ? '已停止' : '已完成'}
           </span>
-          {onSwitchWindow && (
+          {/* 审查修复：执行中不渲染跳转按钮——点击会触发 guardBusySession 确认，
+              确认即 stopStream 杀掉正在跑的委派（按钮承诺「查看」变成「中断」）；
+              执行中看进度靠状态徽章+最近活动，完成后按钮出现 */}
+          {onSwitchWindow && !delegationRunning && (
             <button onClick={() => onSwitchWindow(delegationKind as 'claude' | 'automation', msg.windowSession)} className="yuan-tip"
               data-tip={`切到 ${AGENT_CONFIG[delegationKind]?.label} 独立窗口查看执行过程`}
               aria-label={`去${AGENT_CONFIG[delegationKind]?.label}执行窗口`}

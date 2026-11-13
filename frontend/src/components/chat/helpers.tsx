@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ChatMessage } from '../../types'
 import { API_BASE, authHeaders, getToken } from '../../api'
 
-export type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean }
+export type SessionInfo = { session_id: string; title: string; create_time: string; update_time: string; is_main?: boolean; agent_kind?: string }
 
 /* token 数展示（2026-11-06 用量脚注/上下文徽标）：≥1000 → 1.2K 形态 */
 export function fmtTokens(n: number): string {

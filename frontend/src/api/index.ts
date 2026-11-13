@@ -562,28 +562,33 @@ export async function renameSession(sessionId: string, title: string): Promise<b
 }
 
 // ---- Messages ----
-export async function loadMessages(sessionId: string): Promise<{ role: string; content: string; images?: string[] }[]> {
+// 2026-11-13 审查修复：失败返回 null（与「空会话 []」区分）——委派双写里
+// loadMessages 失败若当空数组，全量替换会把执行窗口历史清空
+export async function loadMessages(sessionId: string): Promise<{ role: string; content: string; images?: string[] }[] | null> {
   try {
     const res = await fetch(`${API_BASE}/chat/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ session_id: sessionId }),
     })
-    if (!res.ok) return []
+    if (!res.ok) return null
     return await res.json()
-  } catch { return [] }
+  } catch { return null }
 }
 
-export async function saveMessages(sessionId: string, messages: { role: string; content: string; images?: string[] }[], title?: string) {
+// 2026-11-13 审查修复：返回是否成功——此前静默吞错，调用方「写失败回退全量」的
+// 兜底是死代码（执行日志只落主对话摘要却丢失全量的路径）
+export async function saveMessages(sessionId: string, messages: { role: string; content: string; images?: string[] }[], title?: string): Promise<boolean> {
   try {
     const body: any = { session_id: sessionId, messages }
     if (title) body.title = title
-    await fetch(`${API_BASE}/chat/save`, {
+    const res = await fetch(`${API_BASE}/chat/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body),
     })
-  } catch (e) { console.error('API 调用失败:', e) }
+    return res.ok
+  } catch (e) { console.error('API 调用失败:', e); return false }
 }
 
 // ---- Feedback ----

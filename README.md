@@ -267,8 +267,8 @@ skills/
 |------|------|------|
 | POST | `/api/v1/chat/stream` | SSE 流式聊天 |
 | POST | `/api/v1/chat/claude-stream` | Claude Code 桥接对话（admin/白名单；桥离线回退云端） |
-| POST | `/api/v1/chat/session/new` | 创建会话 |
-| GET | `/api/v1/chat/sessions` | 会话列表 |
+| POST | `/api/v1/chat/session/new` | 创建会话（`agent_kind`：chat/claude/automation，多窗口打标） |
+| GET | `/api/v1/chat/sessions` | 会话列表（`agent_kind=` 过滤，空=全部） |
 | DELETE | `/api/v1/chat/session/{id}` | 删除会话 |
 | POST | `/api/v1/chat/messages` | 获取消息 |
 | POST | `/api/v1/chat/save` | 保存消息 |

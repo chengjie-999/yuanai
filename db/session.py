@@ -29,6 +29,9 @@ class ChatSession(Base):
     title = Column(String(200), default='新对话')
     model = Column(String(50), default='doubao-seed-2-0-pro-260628')
     is_main = Column(Integer, default=0)  # 1 = 豆包式置顶主对话（每用户一条）
+    # 多智能体窗口 P0（2026-11-13，迁移 0031）：chat=对话窗口（小元）/ claude /
+    # automation=执行窗口。执行窗口消息不进记忆折叠、不可分享、AI 自动标题不适用
+    agent_kind = Column(String(20), default="chat", server_default="chat")
     # 主对话唯一性（迁移 0018）：is_main=1 时等于 user_id，否则 NULL——唯一索引在
     # NULL 上不冲突，相当于 MySQL 版的部分唯一索引（MySQL 不支持 WHERE 过滤索引）
     main_uid = Column(BigInteger, Computed("CASE WHEN is_main = 1 THEN user_id END", persisted=True))
@@ -455,30 +458,35 @@ class AgentDatabase:
     # --------------------------------------------------------------------------
     # 会话操作
     # --------------------------------------------------------------------------
-    def create_session(self, title: str = "新对话", model: str = DEFAULT_MODEL, user_id: int = None) -> dict:
-        """创建新会话"""
+    def create_session(self, title: str = "新对话", model: str = DEFAULT_MODEL, user_id: int = None,
+                       agent_kind: str = "chat") -> dict:
+        """创建新会话（多窗口 P0：agent_kind 白名单外一律回落 chat，防脏值）"""
         session = self.Session()
         try:
             sid = str(uuid.uuid4())
-            cs = ChatSession(session_id=sid, title=title, model=model, user_id=user_id)
+            cs = ChatSession(session_id=sid, title=title, model=model, user_id=user_id,
+                             agent_kind=agent_kind if agent_kind in ("chat", "claude", "automation") else "chat")
             session.add(cs)
             session.commit()
-            return {"session_id": sid, "title": title, "model": model}
+            return {"session_id": sid, "title": title, "model": model, "agent_kind": cs.agent_kind}
         finally:
             session.close()
 
-    def get_sessions(self, limit: int = 50, user_id: int = None) -> list:
+    def get_sessions(self, limit: int = 50, user_id: int = None, agent_kind: str = "") -> list:
         """获取会话列表（按最后活跃时间倒序：旧对话发新消息后自动置顶）。
-        回收站软删除（2026-10-30）：deleted_at 非空的会话不出现在列表。"""
+        回收站软删除（2026-10-30）：deleted_at 非空的会话不出现在列表。
+        agent_kind 非空时只返回该类会话（多窗口 P0 侧栏切换器过滤用）。"""
         session = self.Session()
         try:
             q = session.query(ChatSession).filter(ChatSession.deleted_at.is_(None))
             if user_id is not None:
                 q = q.filter(ChatSession.user_id == user_id)
+            if agent_kind:
+                q = q.filter(ChatSession.agent_kind == agent_kind)
             q = q.order_by(ChatSession.is_main.desc(), ChatSession.update_time.desc()).limit(limit).all()
             return [{"session_id": s.session_id, "title": s.title, "model": s.model,
                      "create_time": str(s.create_time), "update_time": str(s.update_time),
-                     "is_main": bool(s.is_main)} for s in q]
+                     "is_main": bool(s.is_main), "agent_kind": s.agent_kind or "chat"} for s in q]
         finally:
             session.close()
 

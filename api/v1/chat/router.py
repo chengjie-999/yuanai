@@ -1117,6 +1117,9 @@ async def context_usage(request: Request, sid: str = Query(..., min_length=1)):
 
 class NewSessionRequest(BaseModel):
     title: str = Field("新对话", description="会话标题")
+    # 多窗口 P0（2026-11-13）：执行窗口会话创建时打标（claude/automation）；
+    # 白名单校验防脏值（超范围一律回落 chat，见 db.create_session）
+    agent_kind: str = Field("chat", description="会话类型 chat/claude/automation")
 
 
 @router.post("/demote-main")
@@ -1176,11 +1179,13 @@ async def generate_session_title(req: MessagesRequest, request: Request):
 
 @router.post("/session/new")
 async def new_session(req: NewSessionRequest, request: Request):
-    """创建新会话"""
+    """创建新会话（多窗口 P0：agent_kind 打标，白名单外回落 chat）"""
     try:
         db = _get_db()
         user_id = _get_user_id(request)
-        result = db.create_session(title=req.title, user_id=user_id)
+        if req.agent_kind not in ("chat", "claude", "automation"):
+            raise HTTPException(status_code=400, detail="会话类型不正确")
+        result = db.create_session(title=req.title, user_id=user_id, agent_kind=req.agent_kind)
         return result
     except HTTPException:
         raise
@@ -1190,13 +1195,16 @@ async def new_session(req: NewSessionRequest, request: Request):
 
 
 @router.get("/sessions")
-async def list_sessions(request: Request, own: bool = False):
+async def list_sessions(request: Request, own: bool = False, agent_kind: str = ""):
     """获取会话列表（管理员看全部，普通用户只看自己的）
     own=1（聊天侧栏专用）：一律只看当前用户的——否则 admin 侧栏会把
-    其他用户的主对话也带📌显示（每用户一条主对话 → 侧栏出现多个置顶）。"""
+    其他用户的主对话也带📌显示（每用户一条主对话 → 侧栏出现多个置顶）。
+    agent_kind（多窗口 P0）：侧栏切换器过滤——空=全部（旧客户端兼容）。"""
     try:
         db = _get_db()
         is_admin = getattr(request.state, "role", "") == "admin"
+        if agent_kind and agent_kind not in ("chat", "claude", "automation"):
+            raise HTTPException(status_code=400, detail="会话类型不正确")
         if own:
             user_id = _get_user_id(request)
             limit = 50
@@ -1209,7 +1217,7 @@ async def list_sessions(request: Request, own: bool = False):
             db.auto_archive_inactive(AUTO_ARCHIVE_DAYS)
         except Exception as e:
             logger.warning("自动归档失败（不影响列表）: %s", e)
-        sessions = db.get_sessions(user_id=user_id, limit=limit)
+        sessions = db.get_sessions(user_id=user_id, limit=limit, agent_kind=agent_kind or "")
         # 管理员补充用户名和消息数（侧栏 own=1 无需补充）
         if is_admin and not own:
             from db.session import User, ChatSession, AIChat
@@ -1389,6 +1397,18 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
         user_id = _get_user_id(request)
         _verify_session_owner(db, req.session_id, user_id)
 
+        # 多窗口 P0（2026-11-13）：执行窗口会话（claude/automation）是执行日志——
+        # 不进记忆折叠/自动整理、AI 自动标题不适用（标题保持用户命名）
+        from db.session import ChatSession
+        _sess_kind = "chat"
+        with db.session() as _s:
+            try:
+                _row = _s.query(ChatSession).filter_by(session_id=req.session_id).first()
+                _sess_kind = (_row.agent_kind or "chat") if _row else "chat"
+            finally:
+                _s.close()
+        is_chat_kind = _sess_kind == "chat"
+
         from db.session import AIChat, AIChatFeedback
         with db.session() as sess:
             try:
@@ -1430,7 +1450,7 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
                 chat_update = {"update_time": func.now()}
                 # C AI 会话标题：仅当现标题仍是自动标题（空/新对话/首条截断）才覆盖，
                 # AI 已生成的标题不被后续消息的自动标题压掉
-                if req.title:
+                if req.title and is_chat_kind:
                     from api.v1.chat.title_gen import _is_auto_title
                     from yuanai_core.core.message import text_of
                     cur = sess.query(ChatSession).filter_by(session_id=req.session_id).first()
@@ -1449,30 +1469,33 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
         from db.cache import clear_chat_cache
         clear_chat_cache(req.session_id)
 
-        # 记忆折叠触发（fire-and-forget）：超阈值才真正入队；任何异常不影响保存
-        try:
-            from api.v1.chat.memory_fold import maybe_schedule_memory_fold
-            maybe_schedule_memory_fold(
-                req.session_id, user_id, len(req.messages),
-                sum(len(m.get("content") or "") for m in req.messages),
-            )
-        except Exception:
-            logger.warning("记忆压缩调度失败（不影响保存）", exc_info=True)
+        # 记忆折叠/自动整理/AI 标题生成（fire-and-forget）：仅对话窗口会话——
+        # 执行窗口是执行日志非用户事实（多窗口 P0，2026-11-13）
+        if is_chat_kind:
+            # 记忆折叠触发：超阈值才真正入队；任何异常不影响保存
+            try:
+                from api.v1.chat.memory_fold import maybe_schedule_memory_fold
+                maybe_schedule_memory_fold(
+                    req.session_id, user_id, len(req.messages),
+                    sum(len(m.get("content") or "") for m in req.messages),
+                )
+            except Exception:
+                logger.warning("记忆压缩调度失败（不影响保存）", exc_info=True)
 
-        # 记忆定期自动整理触发（fire-and-forget，2026-10-25）：Redis 间隔节流 +
-        # 条目数阈值；模型重写清单合并重复/清理过时，系统写回（与折叠同挂点）
-        try:
-            from api.v1.chat.memory_organize import maybe_schedule_memory_organize
-            maybe_schedule_memory_organize(user_id)
-        except Exception:
-            logger.warning("记忆自动整理调度失败（不影响保存）", exc_info=True)
+            # 记忆定期自动整理触发（2026-10-25）：Redis 间隔节流 +
+            # 条目数阈值；模型重写清单合并重复/清理过时，系统写回（与折叠同挂点）
+            try:
+                from api.v1.chat.memory_organize import maybe_schedule_memory_organize
+                maybe_schedule_memory_organize(user_id)
+            except Exception:
+                logger.warning("记忆自动整理调度失败（不影响保存）", exc_info=True)
 
-        # 会话标题 AI 生成（fire-and-forget）：仅当标题仍是自动标题时触发一次
-        try:
-            from api.v1.chat.title_gen import maybe_generate_title
-            maybe_generate_title(req.session_id, req.messages)
-        except Exception:
-            logger.warning("标题生成调度失败（不影响保存）", exc_info=True)
+            # 会话标题 AI 生成：仅当标题仍是自动标题时触发一次
+            try:
+                from api.v1.chat.title_gen import maybe_generate_title
+                maybe_generate_title(req.session_id, req.messages)
+            except Exception:
+                logger.warning("标题生成调度失败（不影响保存）", exc_info=True)
 
         return {"saved": count}
     except HTTPException:

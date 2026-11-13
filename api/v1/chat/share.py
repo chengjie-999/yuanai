@@ -172,14 +172,20 @@ async def share_session(session_id: str, request: Request):
     if not msgs:
         raise HTTPException(status_code=400, detail="会话暂无内容，无法分享")
     title = ""
+    kind = "chat"
     try:
         from db.session import ChatSession
         with db.session() as sess:
             row = sess.query(ChatSession).filter_by(session_id=session_id).first()
             if row:
                 title = row.title or ""
+                kind = row.agent_kind or "chat"
     except Exception:
         pass
+    # 多窗口 P0（2026-11-13，决策点 D4）：执行窗口是执行日志（终端输出/文件
+    # 操作过程），分享价值低且合规面窄——仅对话窗口会话可分享
+    if kind != "chat":
+        raise HTTPException(status_code=400, detail="执行窗口会话暂不支持分享")
     from yuanai_core.pure.beijing_time import beijing_now
     created = beijing_now().strftime("%Y-%m-%d %H:%M")
     html = render_share_html(session_id, title, created, msgs)

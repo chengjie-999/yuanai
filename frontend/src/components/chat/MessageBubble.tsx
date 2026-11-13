@@ -348,7 +348,7 @@ function SvgBlock({ code }: { code: string }) {
   )
 }
 
-const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, onFollowup, autoRead, autoReadTick, onOpenPanel, onSwitchWindow, variant }: {
+const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, onFollowup, autoRead, autoReadTick, onOpenPanel, onSwitchWindow, ccActivity, variant }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
@@ -362,8 +362,11 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   onContinue?: () => void
   autoRead?: boolean; autoReadTick?: number
   onOpenPanel?: (link: string) => void
-  // 多窗口 P3（2026-11-13）：委派任务卡「去执行窗口」——切到该智能体独立窗口
-  onSwitchWindow?: (kind: 'chat' | 'claude' | 'automation') => void
+  // 多窗口 P3（2026-11-13）：委派任务卡「去执行窗口」——切到该智能体独立窗口；
+  // #16：sid 可选（任务卡摘要消息带窗口会话引用 → 精确定位）
+  onSwitchWindow?: (kind: 'chat' | 'claude' | 'automation', sid?: string) => void
+  // CC 活动（任务卡执行中显示最近活动；来源 /chat/cc-activity 15s 轮询）
+  ccActivity?: { latest: { message: string; detail: string; ts?: number; time: string } | null; age_s?: number } | null
   // 多窗口 P2（2026-11-13）：exec=执行窗口渲染（长任务智能体执行时间线：
   // 扁平块+全宽+操作行裁剪，无点赞点踩朗读重生成追问）；chat=气泡对话式
   variant?: 'chat' | 'exec'
@@ -373,12 +376,15 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   const agent = sender ? AGENT_CONFIG[sender] : null
   const isExec = variant === 'exec'
   // 委派任务卡（多窗口 P3）：主对话里 CC/自动化 的执行以任务卡呈现——
-  // 状态徽章 + 去执行窗口入口；状态源=现状事件流（事件双流/落库双写后置）
-  const delegationKind = sender === 'claude' ? 'claude' : sender === 'automation' ? 'automation'
-    : (msg.toolCalls || []).some((tc) => (tc.name || '').startsWith('delegate_to_claude')) ? 'claude'
-    : (msg.toolCalls || []).some((tc) => (tc.name || '').startsWith('delegate_to_automation')) ? 'automation' : ''
+  // 状态徽章 + 去执行窗口入口；#16：摘要消息自带窗口引用（w/wk → 持久化后
+  // 刷新/换端仍可精确定位执行会话）；流式期间 sender 推导（实时任务卡）
+  const delegationKind = (msg.windowKind
+    || (sender === 'claude' ? 'claude' : sender === 'automation' ? 'automation' : '')
+    || ((msg.toolCalls || []).some((tc) => (tc.name || '').startsWith('delegate_to_claude')) ? 'claude' : '')
+    || ((msg.toolCalls || []).some((tc) => (tc.name || '').startsWith('delegate_to_automation')) ? 'automation' : '')) as 'claude' | 'automation' | ''
   const isDelegation = !isExec && !!delegationKind
-  const delegationRunning = isDelegation && loading && isLast
+  // 摘要消息是落库产物（不在流中）——恒显示「已完成」；实时任务卡才有执行中
+  const delegationRunning = isDelegation && !msg.windowKind && loading && isLast
   const delegationFailed = isDelegation && !!msg.error
   const delegationStopped = isDelegation && !!msg.stopped
   const [copied, setCopied] = useState(false)
@@ -728,7 +734,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
       maxWidth: '100%',
       minWidth: 0,  // 溢出修复：防止行内 flex 链把整页撑出横向滚动
     }}>
-      {agent && (
+      {agent && !msg.windowKind && (
         <div style={{
           fontSize: 12, fontWeight: 600, marginBottom: 3, marginLeft: 2,
           color: agent.color, display: 'flex', alignItems: 'center', gap: 6,
@@ -747,9 +753,25 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
         </div>
       )}
       {/* 委派任务卡（多窗口 P3）：主对话里长任务智能体的执行状态徽章 +
-          去执行窗口入口——排队/执行中（脉冲）/完成/失败/停止 */}
+          去执行窗口入口——排队/执行中（脉冲）/完成/失败/停止；
+          #16 摘要消息（sender=orchestrator + windowKind）也补智能体身份 */}
       {isDelegation && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, marginLeft: 2, flexWrap: 'wrap' }}>
+          {msg.windowKind && (
+            <span style={{
+              fontSize: 12, fontWeight: 600, color: AGENT_CONFIG[delegationKind].color,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: AGENT_CONFIG[delegationKind].color, display: 'inline-block', flexShrink: 0 }} />
+              委派 · {AGENT_CONFIG[delegationKind].label}
+            </span>
+          )}
+          {/* 执行中：CC 最近活动（/chat/cc-activity 15s 轮询） */}
+          {delegationRunning && delegationKind === 'claude' && ccActivity?.latest && (
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              最近活动 · {ccActivity.latest.time}
+            </span>
+          )}
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600,
             padding: '2px 9px', borderRadius: 999, lineHeight: 1.6,
@@ -773,7 +795,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             {delegationFailed ? '执行失败' : delegationRunning ? '执行中' : delegationStopped ? '已停止' : '已完成'}
           </span>
           {onSwitchWindow && (
-            <button onClick={() => onSwitchWindow(delegationKind as 'claude' | 'automation')} className="yuan-tip"
+            <button onClick={() => onSwitchWindow(delegationKind as 'claude' | 'automation', msg.windowSession)} className="yuan-tip"
               data-tip={`切到 ${AGENT_CONFIG[delegationKind]?.label} 独立窗口查看执行过程`}
               aria-label={`去${AGENT_CONFIG[delegationKind]?.label}执行窗口`}
               style={{

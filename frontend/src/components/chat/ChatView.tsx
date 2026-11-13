@@ -9,18 +9,17 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, agentKind, input, setInput, handleSend, images, setImages, currentSid, sessions, dmTarget, activeTarget, onExitActiveTarget, ccActivity, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onReport, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, onStop, notice, onSuggest, sendTick, onOpenPanel, onSwitchWindow }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, agentKind, input, setInput, handleSend, images, setImages, currentSid, sessions, dmTarget, ccActivity, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onReport, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, onStop, notice, onSuggest, sendTick, onOpenPanel, onSwitchWindow }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   agentKind: 'chat' | 'claude' | 'automation'
-  onSwitchWindow: (kind: 'chat' | 'claude' | 'automation') => void
+  // 多窗口 #16：sid 可选——任务卡「去执行窗口」精确定位到执行会话
+  onSwitchWindow: (kind: 'chat' | 'claude' | 'automation', sid?: string) => void
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
   sessions: SessionInfo[]
   dmTarget: string
-  activeTarget: string
-  onExitActiveTarget: () => void
   ccActivity: { online: boolean; agent_name: string; latest: { message: string; detail: string; ts?: number; time: string } | null; age_s?: number } | null
   claudeOnline: boolean
   model: string; setModel: (v: string) => void
@@ -198,7 +197,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
               onFollowup={onSuggest}
               onContinue={onContinue}
               onOpenPanel={onOpenPanel}
-              onSwitchWindow={onSwitchWindow} />
+              onSwitchWindow={onSwitchWindow}
+              ccActivity={ccActivity} />
           ))}
           {/* 空对话推荐问题（豆包式：欢迎页已退场，登录直接落主对话，此处承接快捷入口）；
               E5：娱乐模式换娱乐话题卡。
@@ -282,7 +282,6 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
         effort={effort} setEffort={setEffort}
         onStartVoiceCall={onStartVoiceCall}
         entMode={entMode} toggleEntMode={toggleEntMode} chatBackend={chatBackend} setChatBackend={setChatBackend}
-        activeTarget={activeTarget} onExitActiveTarget={onExitActiveTarget}
         onStop={onStop} notice={notice} />
     </>
   )

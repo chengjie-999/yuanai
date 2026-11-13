@@ -68,6 +68,8 @@ function parseHistory(history: any[]): ChatMessage[] {
     let stopped: boolean | undefined
     let htmls: string[] | undefined
     let truncated: boolean | undefined
+    let windowSession: string | undefined
+    let windowKind: any = undefined
     let content = m.content || ''
     if (typeof content === 'string' && content.startsWith('\x00META\x00')) {
       const end = content.indexOf('\x00', 6)
@@ -82,6 +84,9 @@ function parseHistory(history: any[]): ChatMessage[] {
           if (meta.sp) stopped = true
           if (meta.h) htmls = meta.h
           if (meta.tr) truncated = true
+          // 多窗口 #16：委派任务卡摘要 → 执行窗口会话引用
+          if (meta.w) windowSession = meta.w
+          if (meta.wk) windowKind = meta.wk
         } catch {}
         content = content.substring(end + 1)
       }
@@ -92,7 +97,8 @@ function parseHistory(history: any[]): ChatMessage[] {
     if (m.turn) turn = m.turn
     if (m.type) msgType = m.type
     return { role: m.role, content, images: m.images, sender, toolCalls,
-             reasoning, finalReasoning, pageLink, recipient, turn, msgType, error, stopped, htmls, truncated }
+             reasoning, finalReasoning, pageLink, recipient, turn, msgType, error, stopped, htmls, truncated,
+             windowSession, windowKind }
   })
 }
 
@@ -195,29 +201,6 @@ export default function ChatPage({ user }: { user?: any }) {
       return next
     })
   }
-  // @ 粘性定向（P2-1，2026-11-09）：主对话 @某智能体后进入「定向对话期」——
-  // 后续消息默认继续发同一目标，直到换 @ 或点输入区「退出定向」徽标
-  const [activeTargets, setActiveTargets] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem('activeTargets') || '{}') } catch { return {} }
-  })
-  const activeTargetsRef = useRef(activeTargets)
-  activeTargetsRef.current = activeTargets
-  const setActiveTarget = (sid: string, target: string) => {
-    setActiveTargets((prev) => {
-      const next = target ? { ...prev, [sid]: target } : { ...prev }
-      try { localStorage.setItem('activeTargets', JSON.stringify(next)) } catch { /* 存储受限，仅本次会话 */ }
-      return next
-    })
-  }
-  const clearActiveTarget = (sid: string) => {
-    setActiveTargets((prev) => {
-      if (!(sid in prev)) return prev
-      const next = { ...prev }
-      delete next[sid]
-      try { localStorage.setItem('activeTargets', JSON.stringify(next)) } catch { /* 存储受限，仅本次会话 */ }
-      return next
-    })
-  }
   // 推理强度开关（快答/深思）：localStorage 持久化，仅对 DeepSeek 系列生效
   const [effort, setEffortState] = useState<'low' | 'medium' | 'high'>(getStoredEffort())
   const setEffort = (v: 'low' | 'medium' | 'high') => { setEffortState(v); setStoredEffort(v) }
@@ -305,16 +288,14 @@ export default function ChatPage({ user }: { user?: any }) {
       if (prefs.autoRead === '0' || prefs.autoRead === '1') {
         setAutoReadValue(prefs.autoRead === '1')
       }
-      for (const key of ['dmTargets', 'activeTargets'] as const) {
-        const server = prefs[key]
-        if (server && typeof server === 'object' && !Array.isArray(server)) {
-          const setter = key === 'dmTargets' ? setDmTargets : setActiveTargets
-          setter((prev) => {
-            const next = { ...prev, ...server }  // 服务端条目覆盖本地同名会话
-            try { localStorage.setItem(key, JSON.stringify(next)) } catch { /* 忽略 */ }
-            return next
-          })
-        }
+      // @ 粘性定向已退役（多窗口 v2，2026-11-13）：只回填执行窗口定向映射
+      const server = prefs.dmTargets
+      if (server && typeof server === 'object' && !Array.isArray(server)) {
+        setDmTargets((prev) => {
+          const next = { ...prev, ...server }  // 服务端条目覆盖本地同名会话
+          try { localStorage.setItem('dmTargets', JSON.stringify(next)) } catch { /* 忽略 */ }
+          return next
+        })
       }
       prefsReadyRef.current = true
     })()
@@ -326,7 +307,6 @@ export default function ChatPage({ user }: { user?: any }) {
   useEffect(() => { if (prefsReadyRef.current) putUserPrefs({ chatBackend }) }, [chatBackend])
   useEffect(() => { if (prefsReadyRef.current) putUserPrefs({ autoRead: autoRead ? '1' : '0' }) }, [autoRead])
   useEffect(() => { if (prefsReadyRef.current) putUserPrefs({ dmTargets }) }, [dmTargets])
-  useEffect(() => { if (prefsReadyRef.current) putUserPrefs({ activeTargets }) }, [activeTargets])
   // 回答完成提示音（U5，默认开启，设置页可关）
   const answerTone = useAnswerTone()
   // 模型自主界面联动（2026-10-22）：set_theme 工具 → 后端 theme_event → 主题切换
@@ -590,16 +570,19 @@ export default function ChatPage({ user }: { user?: any }) {
     await openSession(sid)
   }
 
-  // 切换智能体窗口（侧边栏切换器）：会话列表换成该智能体的；优先回到该窗口
-  // 上次打开的会话，该智能体还没有会话则自动新建（豆包式点智能体即有对话）
-  const handleSwitchKind = async (kind: 'chat' | 'claude' | 'automation') => {
-    if (kind === agentKindRef.current) return
+  // 切换智能体窗口（侧边栏切换器 / 任务卡「去执行窗口」）：会话列表换成该智能体的；
+  // 优先回到该窗口上次打开的会话；任务卡跳转传 sidOverride 精确定位执行会话；
+  // 该智能体还没有会话则自动新建（豆包式点智能体即有对话）
+  const handleSwitchKind = async (kind: 'chat' | 'claude' | 'automation', sidOverride?: string) => {
+    if (kind === agentKindRef.current && !sidOverride) return
     if (!guardBusySession()) return
     setAgentKind(kind)
     if (kind === 'chat') setTargetAgent('')
     const list = await listSessions(kind === 'chat' ? undefined : kind)
     setSessions(list)
-    let sid = lastSidByKindRef.current[kind]
+    let sid = ''
+    if (sidOverride && list.some((s) => s.session_id === sidOverride)) sid = sidOverride
+    if (!sid) sid = lastSidByKindRef.current[kind]
     if (!sid || !list.some((s) => s.session_id === sid)) sid = list[0]?.session_id || ''
     let created = false
     if (!sid) {
@@ -708,7 +691,6 @@ ${full}
       try { localStorage.setItem("dmTargets", JSON.stringify(next)) } catch { /* 存储受限，仅本次会话 */ }
       return next
     })
-    clearActiveTarget(sid)  // @ 粘性定向同清
     refreshSessions()
   }
 
@@ -960,6 +942,54 @@ ${full}
     return { onEvent, onError }
   }
 
+  // 多窗口 #16（2026-11-13）：委派块双写——主对话里统筹委派 CC/自动化 的执行段
+  // 从主对话落库中剥出，全量落执行窗口会话（切过去可回看完整执行日志）；
+  // 主对话只落一条任务卡摘要（带 w/wk 窗口引用），60 条截断不被执行日志吃掉。
+  // 任何一步失败都退回全量落主对话（不丢数据）。
+  const persistWithDelegationSplit = async (finalMsgs: ChatMessage[]) => {
+    if (agentKindRef.current !== 'chat') return finalMsgs.map(encodeMsg)
+    // 委派段 = sender 为 claude/automation 的 assistant 消息（@ 已退役，delegate 工具是唯一来源）
+    const dlgt = finalMsgs.filter((m) => m.role === 'assistant'
+      && (m.sender === 'claude' || m.sender === 'automation'))
+    if (!dlgt.length) return finalMsgs.map(encodeMsg)
+    const winKind = dlgt[0].sender as 'claude' | 'automation'
+    try {
+      // 执行窗口会话：优先该窗口上次会话（校验仍存在），否则列表最新或自动新建
+      const list = await listSessions(winKind)
+      let winSid = lastSidByKindRef.current[winKind] || ''
+      if (!winSid || !list.some((s) => s.session_id === winSid)) winSid = list[0]?.session_id || ''
+      if (!winSid) {
+        winSid = await createSession(AGENT_CONFIG[winKind].label, winKind)
+        await refreshSessions()
+      }
+      saveLastSid(winKind, winSid)
+      // 窗口历史 append（saveMessages 是全量替换语义 → 读旧 + 拼新 = 天然幂等）
+      const winRows = await loadMessages(winSid)
+      const winMsgs = [...winRows]
+      // 指令块：本轮用户原话副本（窗口尾部不是同一指令时追加）
+      const userMsg = [...finalMsgs].reverse().find((m) => m.role === 'user')
+      const lastRow = winMsgs[winMsgs.length - 1]
+      if (userMsg && (lastRow?.role !== 'user' || lastRow.content !== encodeMsg({ ...userMsg }).content)) {
+        winMsgs.push(encodeMsg({ ...userMsg, sender: undefined, recipient: undefined }))
+      }
+      for (const d of dlgt) winMsgs.push(encodeMsg(d))
+      saveMessages(winSid, winMsgs).catch(() => { /* 执行窗口落库失败不阻塞主对话 */ })
+      // 主对话：剥除委派段 → 追加任务卡摘要消息（w=窗口会话 / wk=窗口类型）
+      const mainMsgs = finalMsgs.filter((m) => !dlgt.includes(m))
+      const lastD = dlgt[dlgt.length - 1]
+      const raw = (lastD.content?.trim() || (lastD.toolCalls || []).slice(-1)[0]?.result?.trim() || '')
+      const summary = raw.length > 300 ? raw.slice(0, 300) + '…' : (raw || '（无文本输出，详见执行窗口）')
+      mainMsgs.push({
+        role: 'assistant', sender: 'orchestrator', msgType: 'note',
+        content: `${summary}\n\n— 完整执行过程与结果见 ${AGENT_CONFIG[winKind].label} 窗口`,
+        windowSession: winSid, windowKind: winKind,
+      } as any)
+      return mainMsgs.map(encodeMsg)
+    } catch {
+      return finalMsgs.map(encodeMsg)
+    }
+  }
+
   // 通用发送链路：msgs 为发送时的完整消息数组（不含新的 assistant 占位气泡），
   // 普通发送与「修改后截断重发」共用；sid 在发送时捕获，防止流式期间切换会话写错库。
   // 注意：Claude 桥接模式按 cloud session_id 续接 claude 会话（无法回退），
@@ -969,20 +999,12 @@ ${full}
     setLoading(true)
     // 普通消息自动撤销未决审批（桥接侧会 deny pending 后正常处理）
     setPendingApproval(null)
-    // @指定智能体：发送时捕获并复位（单次生效，下一条恢复统筹自行路由）；
-    // 小窗会话（dmTargets）持久定向不复位；@Claude Code = 原 ⌘ 桥接模式
-    // 娱乐模式（E1）：不委派——忽略 @定向与小窗持久定向，纯云端小元AI 回答
+    // 执行窗口会话（dmTargets）持久定向不复位；主对话走统筹自行路由——
+    // @ 面板与粘性定向已退役（多窗口 v2，2026-11-13）
+    // 娱乐模式（E1）：不委派——忽略窗口定向，纯云端小元AI 回答
     const dmTarget = entMode ? '' : (dmTargetsRef.current[sid] || '')
-    const activeTarget = entMode ? '' : (activeTargetsRef.current[sid] || '')
-    const target = entMode ? '' : (targetAgentRef.current || activeTarget || dmTarget)
-    if (target && !dmTarget) {
-      // P2-1 @ 粘性定向：单次 @ 提升为会话级定向期（微信式 @人=持续对话）；
-      // 统筹是默认，无需粘性
-      if (targetAgentRef.current && targetAgentRef.current !== 'orchestrator') {
-        setActiveTarget(sid, targetAgentRef.current)
-      }
-      setTargetAgent('')
-    }
+    const target = entMode ? '' : (targetAgentRef.current || dmTarget)
+    if (target && !dmTarget) setTargetAgent('')
     const isClaude = !entMode && (target === 'claude' || chatMode === 'claude')
     // 信封协议：最后一条 user 消息打 recipient（定向 @target）；说话人身份
     // 走信封字段，【xx】前缀渲染由后端 views.py 视图滤波负责
@@ -1018,14 +1040,17 @@ ${full}
         messagesRef.current = restored
         setMessages(restored)
         const finalMsgs = flushVoiceTranscripts(restored)
-        const msgs = finalMsgs.map(encodeMsg)
-        // C AI 会话标题：只透传显式 title（新会话首次发送），普通发送不再覆盖标题
-        // 会话日期更新（2026-10-19 修复）：等 /chat/save 落库提交后再刷新列表——
-        // 此前未 await，列表查询先于保存提交返回旧 update_time，旧对话日期永不更新
-        saveMessages(sid, msgs, title).finally(() => {
-          refreshSessions()
-          window.dispatchEvent(new Event('yuan-ctx-refresh'))  // 上下文用量徽标即时刷新
-        })
+        // 多窗口 #16：委派块双写（执行日志 → 执行窗口会话，主对话只落任务卡摘要）
+        void (async () => {
+          const msgs = await persistWithDelegationSplit(finalMsgs)
+          // C AI 会话标题：只透传显式 title（新会话首次发送），普通发送不再覆盖标题
+          // 会话日期更新（2026-10-19 修复）：等 /chat/save 落库提交后再刷新列表——
+          // 此前未 await，列表查询先于保存提交返回旧 update_time，旧对话日期永不更新
+          saveMessages(sid, msgs, title).finally(() => {
+            refreshSessions()
+            window.dispatchEvent(new Event('yuan-ctx-refresh'))  // 上下文用量徽标即时刷新
+          })
+        })()
         noteLastAssistant(finalMsgs)
       },
     )
@@ -1340,8 +1365,6 @@ ${full}
             currentSid={currentSid}
             sessions={sessions}
             dmTarget={dmTargets[currentSid] || ''}
-            activeTarget={activeTargets[currentSid] || ''}
-            onExitActiveTarget={() => clearActiveTarget(currentSid)}
             ccActivity={ccActivity}
             claudeOnline={claudeOnline}
             model={model} setModel={handleModelChange}

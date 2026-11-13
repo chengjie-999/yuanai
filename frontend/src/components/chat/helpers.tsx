@@ -109,6 +109,9 @@ export function encodeMsg(m: any) {
   if (m.error) meta.e = m.error
   if (m.stopped) meta.sp = 1
   if (m.truncated) meta.tr = 1  // U4 继续生成
+  // 多窗口 #16：委派任务卡摘要 → 执行窗口会话引用（w=session / wk=kind）
+  if (m.windowSession) meta.w = m.windowSession
+  if (m.windowKind) meta.wk = m.windowKind
   // B0：交互图表 URL 持久化（META 短键 h=htmls 数组；此前刷新即丢）
   if (m.htmls?.length) meta.h = m.htmls
   const content = Object.keys(meta).length > 0

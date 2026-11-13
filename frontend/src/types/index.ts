@@ -22,6 +22,10 @@ export interface ChatMessage {
   truncated?: boolean // 回答被 max_tokens 截断（U4 继续生成；META 短键 tr）
   complianceWarning?: boolean // C6 输出侧审核命中（2026-10-29）：气泡挂警告条，人工复核中
   suggestions?: string[]      // 追问预测（2026-10-31）：AI 预测用户接下来可能问的问题（可点发送）
+  // 多窗口 #16（2026-11-13）：委派任务卡摘要消息（META 短键 w/wk）——
+  // 指向执行窗口会话，「去执行窗口」精确定位
+  windowSession?: string
+  windowKind?: 'claude' | 'automation'
   usage?: {                   // 本次消耗（2026-11-06）：后端 usage_event（done 前发）
     prompt_tokens: number
     completion_tokens: number

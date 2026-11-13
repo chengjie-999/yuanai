@@ -186,6 +186,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
           {messages.map((msg, i) => (
             <MessageBubble key={`${currentSid}-${i}`} msg={msg} index={i} isLast={i === messages.length - 1}
               loading={loading} user={user}
+              variant={agentKind === 'chat' ? 'chat' : 'exec'}
               liked={!!likes[i]?.liked} disliked={!!likes[i]?.disliked} editing={editingIndex === i}
               autoRead={autoRead} autoReadTick={autoReadTick}
               setExpandedImage={setExpandedImage}
@@ -205,9 +206,16 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
               出错后/停止后空泡）都显示吉祥物 + 推荐问题 */}
           {isEmpty && !loading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', marginTop: 6 }}>
-              {/* 空对话吉祥物：只显示主页 logo 形象，不加问候语（2026-10-31 用户拍板） */}
+              {/* 空对话吉祥物：只显示主页 logo 形象，不加问候语（2026-10-31 用户拍板）；
+                  执行窗口（多窗口 P2）：换成任务下达引导，不显示聊天推荐 */}
               <Mascot size={72} />
               <div style={{ height: 12 }} />
+              {agentKind !== 'chat' && (
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.8 }}>
+                  向 {AGENT_CONFIG[agentKind].label} 下达任务，执行过程与结果在本窗口按时间线展示<br />
+                  （本窗口消息不进入主对话与长期记忆）
+                </div>
+              )}
             </div>
           )}
           {isEmpty && !loading && agentKind === 'chat' && (

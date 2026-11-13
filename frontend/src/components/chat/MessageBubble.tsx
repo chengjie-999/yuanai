@@ -348,7 +348,7 @@ function SvgBlock({ code }: { code: string }) {
   )
 }
 
-const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, onFollowup, autoRead, autoReadTick, onOpenPanel }: {
+const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, onFollowup, autoRead, autoReadTick, onOpenPanel, variant }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
@@ -362,10 +362,14 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   onContinue?: () => void
   autoRead?: boolean; autoReadTick?: number
   onOpenPanel?: (link: string) => void
+  // 多窗口 P2（2026-11-13）：exec=执行窗口渲染（长任务智能体执行时间线：
+  // 扁平块+全宽+操作行裁剪，无点赞点踩朗读重生成追问）；chat=气泡对话式
+  variant?: 'chat' | 'exec'
 }) {
   const isUser = msg.role === 'user'
   const sender = !isUser ? (msg.sender || 'orchestrator') : null
   const agent = sender ? AGENT_CONFIG[sender] : null
+  const isExec = variant === 'exec'
   const [copied, setCopied] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
   const [draft, setDraft] = useState(msg.content)
@@ -386,7 +390,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   const autoReadFired = useRef(0)
   useEffect(() => {
     if (!autoRead || !autoReadTick || autoReadTick <= autoReadFired.current) return
-    if (isLast && !isUser && msg.content.trim()) {
+    // 多窗口 P2：执行窗口无朗读（语音仅对话窗口）
+    if (isLast && !isUser && !isExec && msg.content.trim()) {
       autoReadFired.current = autoReadTick
       toggleRead(true)  // 自动朗读：失败静默不弹窗
     }
@@ -590,10 +595,11 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     return segs
   })()
 
-  // 气泡内操作行（常显，按钮本体 0.65 → 1 hover 微反馈）
+  // 气泡内操作行（常显，按钮本体 0.65 → 1 hover 微反馈）；
+  // 多窗口 P2：执行窗口裁剪——无朗读/点赞/点踩/举报/重新生成/继续生成，只留复制与修改
   const bubbleActions = showActions ? (
     <div className="msg-actions" style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', marginTop: 6, marginBottom: -4 }}>
-      {!isUser && (
+      {!isUser && !isExec && (
         <button onClick={() => toggleRead()} className="yuan-tip" data-tip={speaking ? '打断朗读' : '朗读'} aria-label={speaking ? '打断朗读' : '朗读'}
           style={iconBtnStyle(false, speaking)}
           onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
@@ -635,7 +641,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
           onMouseLeave={(e) => e.currentTarget.style.opacity = '0.65'}>
           <svg {...iconProps}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
         </button>
-      ) : (
+      ) : isExec ? null : (
         <>
         <button onClick={() => onFeedback(index, 'like')} disabled={loading}
           className="yuan-tip" data-tip={liked ? '取消点赞' : '点赞'} aria-label={liked ? '取消点赞' : '点赞'}
@@ -700,10 +706,10 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
 
   return (
     <div className="chat-msg-row" style={{
-      marginBottom: 14,
+      marginBottom: isExec ? 10 : 14,
       display: 'flex',
       flexDirection: 'column',
-      alignItems: isUser ? 'flex-end' : 'flex-start',
+      alignItems: !isExec && isUser ? 'flex-end' : 'flex-start',
       maxWidth: '100%',
       minWidth: 0,  // 溢出修复：防止行内 flex 链把整页撑出横向滚动
     }}>
@@ -733,16 +739,18 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
 
       <div className="chat-msg-bubble" style={{
         padding: '10px 16px',
-        borderRadius: isUser ? '18px 18px 4px 18px' : '4px 14px 14px 14px',
-        maxWidth: '75%',
+        borderRadius: isExec ? 8 : (isUser ? '18px 18px 4px 18px' : '4px 14px 14px 14px'),
+        maxWidth: isExec ? '100%' : '75%',
         minWidth: 0,  // 2026-10-26 溢出修复：flex 项默认 min-width:auto 会被
                       // 超长内容撑开——min-width:0 让气泡严守 75% 上限
-        background: isUser ? 'var(--accent)' : 'var(--bg-tertiary)',
-        color: isUser ? '#fff' : 'var(--text-primary)',
-        borderLeft: agent ? `3px solid ${agent.color}` : undefined,
-        boxShadow: isUser
+        // 执行窗口（多窗口 P2）：扁平块全宽灰底（Linear 式左色条），无气泡圆角/阴影
+        background: isExec ? 'var(--bg-secondary)' : isUser ? 'var(--accent)' : 'var(--bg-tertiary)',
+        color: isExec ? 'var(--text-primary)' : isUser ? '#fff' : 'var(--text-primary)',
+        borderLeft: agent ? `3px solid ${agent.color}`
+          : isExec && isUser ? '3px solid var(--accent)' : undefined,
+        boxShadow: isExec ? 'none' : (isUser
           ? '0 1px 3px rgba(88,157,246,0.2)'
-          : '0 1px 2px var(--shadow-sm)',
+          : '0 1px 2px var(--shadow-sm)'),
         whiteSpace: 'pre-wrap',
         fontSize: 14,
         lineHeight: 1.65,
@@ -1036,7 +1044,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
       {/* 追问预测（2026-10-31 用户拍板）：放在聊天气泡外面——AI 预测用户接下来
           可能问的问题；普通/娱乐对话出现，coding/工具轮次不出 */}
       {!isUser && !loading && onFollowup && (msg.suggestions?.length || 0) > 0
-        && !msg.toolCalls?.length && sender !== 'claude' && (
+        && !msg.toolCalls?.length && sender !== 'claude' && !isExec && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
           {(msg.suggestions || []).slice(0, 3).map((s) => (
             <button key={s} onClick={() => onFollowup(s)}

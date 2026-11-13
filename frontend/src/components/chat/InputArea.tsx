@@ -393,6 +393,8 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   </>
                 )}
               </div>
+              {/* 多窗口 P2：语音仅对话窗口——执行窗口是任务下发，无语音通话 */}
+              {agentKind === 'chat' && (
               <button onClick={onStartVoiceCall} className="yuan-tip" data-tip="语音通话" aria-label="语音通话"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
@@ -403,6 +405,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
                 </svg>
               </button>
+              )}
               <button onClick={() => {
                 const s = sessions.find(s => s.session_id === currentSid)
                 downloadChat(messages, `${s?.title || 'chat'}.txt`)

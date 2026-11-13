@@ -3,8 +3,12 @@ import type { SessionInfo } from './helpers'
 import { groupSessions } from './helpers'
 import { PlusIcon, TrashIcon, PinIcon, SearchIcon, EditIcon, ArchiveIcon, LinkIcon } from '../icons'
 
-export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, onNewSession, onSelect, onDelete, onRename, onDemoteMain, onOpenTrash, onShare }: {
+export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, agents, activeKind, onSwitchKind, showSwitcher, onNewSession, onSelect, onDelete, onRename, onDemoteMain, onOpenTrash, onShare }: {
   sessions: SessionInfo[]; currentSid: string; sidebarOpen: boolean; isMobile: boolean
+  agents: { key: 'chat' | 'claude' | 'automation'; label: string; fullLabel: string; color: string; online: boolean }[]
+  activeKind: 'chat' | 'claude' | 'automation'
+  onSwitchKind: (kind: 'chat' | 'claude' | 'automation') => void
+  showSwitcher: boolean
   onNewSession: () => void; onSelect: (sid: string) => void; onDelete: (e: React.MouseEvent, sid: string) => void
   onRename: (sid: string, title: string) => void
   onDemoteMain: (sid: string) => void
@@ -25,6 +29,39 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, o
       transition: isMobile ? 'left 0.25s ease' : 'width 0.2s',
     }}>
       <div style={{ padding: '12px 12px 8px', flexShrink: 0 }}>
+        {/* 多智能体窗口 P1（2026-11-13）：智能体切换器——新对话上方横向平铺，
+            点击切换各自窗口（对话式 AI=小元气泡布局 / 长任务智能体=独立执行窗口）；
+            离线置灰可点（进窗口看历史，发送时走离线提示） */}
+        {showSwitcher && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {agents.map((a) => {
+              const active = activeKind === a.key
+              return (
+                <button key={a.key} onClick={() => onSwitchKind(a.key)} aria-label={`切换到${a.fullLabel}`}
+                  className="yuan-tip" data-tip={a.fullLabel}
+                  style={{
+                    flex: 1, minWidth: 0, padding: '6px 2px 5px', borderRadius: 8, cursor: 'pointer',
+                    border: `1px solid ${active ? a.color : 'var(--border)'}`,
+                    background: active ? 'var(--accent-soft)' : 'var(--bg-input)',
+                    position: 'relative',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                    fontSize: 11.5, fontWeight: active ? 600 : 400, lineHeight: 1.2,
+                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    opacity: a.online ? 1 : 0.72, transition: 'all 0.12s',
+                  }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: a.color, flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.label}</span>
+                  {/* 在线状态点：绿=在线 / 灰=离线（小元云端恒在线） */}
+                  <span style={{
+                    position: 'absolute', top: 3, right: 3, width: 5, height: 5, borderRadius: '50%',
+                    background: a.online ? 'var(--success)' : 'var(--text-muted)', flexShrink: 0,
+                  }} />
+                </button>
+              )
+            })}
+          </div>
+        )}
         <button onClick={onNewSession} aria-label="新对话"
           style={{
             width: '100%', padding: '10px 0', borderRadius: 8,

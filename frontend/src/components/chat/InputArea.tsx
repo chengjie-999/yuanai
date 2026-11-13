@@ -17,11 +17,12 @@ const TARGET_AGENTS = [
   { key: 'claude', desc: '本机代码、终端、Git 任务' },
 ]
 
-export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, activeTarget, onExitActiveTarget, onOpenDirectChat, onStop, notice }: {
+export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, agentKind, localOnline, claudeOnline, model, setModel, effort, setEffort, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, activeTarget, onExitActiveTarget, onStop, notice }: {
   input: string; setInput: (v: string | ((p: string) => string)) => void; loading: boolean; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
   currentSid: string
   sessions: SessionInfo[]; messages: ChatMessage[]
+  agentKind: 'chat' | 'claude' | 'automation'
   model: string; setModel: (v: string) => void
   effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   localOnline: boolean; claudeOnline: boolean
@@ -30,7 +31,6 @@ export default function InputArea({ input, setInput, loading, handleSend, images
   chatBackend: 'auto' | 'cloud' | 'local'; setChatBackend: (v: 'auto' | 'cloud' | 'local') => void
   targetAgent: string; setTargetAgent: (v: string) => void
   activeTarget: string; onExitActiveTarget: () => void
-  onOpenDirectChat: (target: string) => void
   onStop: () => void
   notice: string
 }) {
@@ -45,6 +45,10 @@ export default function InputArea({ input, setInput, loading, handleSend, images
     }
   }, [input])
   const [uploading, setUploading] = useState(false)
+  // 多窗口 P1（2026-11-13）：执行窗口无 @（固定定向该智能体）——切窗时收起残留面板
+  useEffect(() => {
+    if (agentKind !== 'chat') setPickerOpen(false)
+  }, [agentKind])
   // 模式菜单（2026-11-06 用户拍板：工作/娱乐 + 云端/本机两开关收进菜单，输入区不拥挤）
   const [modeMenuOpen, setModeMenuOpen] = useState(false)
   const modeMenuRef = useRef<HTMLDivElement>(null)
@@ -236,7 +240,10 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                   .filter((f): f is File => !!f)
                 if (files.length) { e.preventDefault(); handleFiles(files) }
               }}
-              placeholder={entMode ? '想聊点什么？八卦、脑洞、安利都行~' : '输入消息，@ 可指定智能体...'}
+              placeholder={entMode ? '想聊点什么？八卦、脑洞、安利都行~'
+                : agentKind === 'claude' ? '向 Claude Code 下达任务…'
+                : agentKind === 'automation' ? '向自动化 Agent 下达任务…'
+                : '输入消息，@ 可指定智能体...'}
               rows={1}
               style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflow: 'hidden', color: 'var(--text-primary)' }}
             />
@@ -264,8 +271,8 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                 }}
               />
               {/* @ 面板与按钮为兄弟节点：面板点击不冒泡回按钮（曾因冒泡 toggle 导致面板关不掉）；
-                  娱乐模式不委派——隐藏 @ 入口 */}
-              {!entMode && (
+                  娱乐模式不委派——隐藏 @ 入口；执行窗口固定定向该智能体——隐藏 @（多窗口 P1） */}
+              {!entMode && agentKind === 'chat' && (
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <button onClick={() => setPickerOpen((o) => !o)} className="yuan-tip"
                   data-tip={targetAgent ? `已指定：${AGENT_CONFIG[targetAgent]?.label || ''}` : '指定智能体回答'} aria-label="指定智能体"
@@ -297,8 +304,6 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                         const available = a.key === 'orchestrator'
                           ? true
                           : a.key === 'claude' ? claudeOnline : localOnline
-                        // 长任务小窗：claude/automation 可开独立会话（不占主对话 60 条截断）
-                        const canDirect = available && a.key !== 'orchestrator'
                         const highlighted = ai === pickIndex
                         return (
                           <div key={a.key}
@@ -317,15 +322,6 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                             <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {available ? a.desc : '离线'}
                             </span>
-                            {canDirect && (
-                              <span onClick={(e) => { e.stopPropagation(); setPickerOpen(false); onOpenDirectChat(a.key) }}
-                                className="yuan-tip" data-tip="开小窗：独立会话与该智能体长任务对话（不占主对话历史）"
-                                aria-label={`与 ${cfg.label} 开小窗`}
-                                style={{ fontSize: 11, color: 'var(--accent)', padding: '2px 8px', borderRadius: 999, border: '1px solid var(--accent)', cursor: 'pointer', flexShrink: 0 }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = '#fff' }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--accent)' }}
-                              >小窗</span>
-                            )}
                           </div>
                         )
                       })}

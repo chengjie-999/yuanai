@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, reportMessage, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken, authHeaders, shareSession, fetchUserPrefs, putUserPrefs } from '../api'
 import type { ChatMessage } from '../types'
-import { senderFromTool, AGENT_CONFIG } from '../config/agents'
+import { senderFromTool, AGENT_CONFIG, WINDOW_AGENTS } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
 import { setContextSid } from './chat/ContextUsageBadge'
 import Modal from './Modal'
@@ -151,9 +151,29 @@ export default function ChatPage({ user }: { user?: any }) {
       prevChatModeRef.current = chatMode
       setChatMode('cloud')
       setTargetAgent('')  // 娱乐模式不委派，清掉残留定向
+      // 娱乐模式纯云端无本地智能体：执行窗口切回小元主对话（切换器随 entMode 隐藏）
+      if (agentKindRef.current !== 'chat') handleSwitchKind('chat')
     } else {
       setChatMode(prevChatModeRef.current || 'local')
     }
+  }
+  // 多智能体窗口 P1（2026-11-13）：当前窗口类型——chat=对话窗口（小元），
+  // claude/automation=执行窗口（独立上下文+会话，受统筹监控领导）
+  const [agentKind, setAgentKind] = useState<'chat' | 'claude' | 'automation'>('chat')
+  const agentKindRef = useRef<'chat' | 'claude' | 'automation'>('chat')
+  agentKindRef.current = agentKind
+  // 每窗口记住最后打开的会话：切换回来落回原会话（localStorage 持久化）
+  const [lastSidByKind, setLastSidByKind] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('agentLastSid') || '{}') } catch { return {} }
+  })
+  const lastSidByKindRef = useRef(lastSidByKind)
+  lastSidByKindRef.current = lastSidByKind
+  const saveLastSid = (kind: string, sid: string) => {
+    setLastSidByKind((prev) => {
+      const next = { ...prev, [kind]: sid }
+      try { localStorage.setItem('agentLastSid', JSON.stringify(next)) } catch { /* 存储受限，仅本次会话 */ }
+      return next
+    })
   }
   // @指定智能体（群聊式定向委派；空 = 统筹自行路由；发送后自动复位）
   const [targetAgent, setTargetAgent] = useState('')
@@ -444,8 +464,11 @@ export default function ChatPage({ user }: { user?: any }) {
   }, [chatMode, localOnline, claudeOnline, statusKnown])
 
   const refreshSessions = useCallback(async () => {
-    const list = await listSessions()
+    // 多窗口 P1：只拉当前窗口的会话列表（切换器过滤在服务端）
+    const kind = agentKindRef.current
+    const list = await listSessions(kind === 'chat' ? undefined : kind)
     setSessions(list)
+    return list
   }, [])
 
   // 会话切换/挂载后滚到最新消息：历史是异步加载的（loadMessages await 后 setMessages），
@@ -488,7 +511,9 @@ export default function ChatPage({ user }: { user?: any }) {
     handleVoiceTranscript, flushVoiceTranscripts, noteLastAssistant,
   } = useVoiceCall({
     sidRef, messagesRef, loadingRef,
-    setMessages, setCurrentSid, refreshSessions,
+    setMessages, setCurrentSid,
+    // 多窗口 P1：refreshSessions 返回会话列表供切换器用；voice hook 只关心刷新副作用
+    refreshSessions: () => refreshSessions().then(() => undefined),
   })
 
   // 麦克风权限必须在点击手势内同步申请：Chrome 的用户激活（约 5s）过期后
@@ -507,10 +532,17 @@ export default function ChatPage({ user }: { user?: any }) {
 
   const handleNewSession = async () => {
     if (!guardBusySession()) return
-    // 新建普通对话并立即打开（登录已直接落主对话，新对话按钮=另开一个会话）
-    const sid = await createSession()
+    // 新建当前窗口的会话并立即打开（登录已直接落主对话，新对话按钮=另开一个会话）
+    const kind = agentKindRef.current
+    const cfg = AGENT_CONFIG[kind === 'chat' ? 'orchestrator' : kind]
+    const sid = await createSession(kind === 'chat' ? undefined : cfg.label, kind === 'chat' ? undefined : kind)
+    if (kind !== 'chat') {
+      saveDmTarget(sid, kind)
+      setTargetAgent(kind)
+    }
+    saveLastSid(kind, sid)
     setCurrentSid(sid)
-    setMessages([])  // 空对话显示吉祥物 logo（2026-10-31）
+    setMessages(kind === 'chat' ? [] : [{ role: 'assistant', content: `已打开「${cfg.label}」独立窗口：本窗口内的消息都将直接交给${cfg.label}处理，执行过程与结果不占用主对话历史。`, sender: kind as any, toolCalls: [] }])
     setInput('')
     setImages([])
     setFeedbackState({})
@@ -518,30 +550,13 @@ export default function ChatPage({ user }: { user?: any }) {
     refreshSessions()
   }
 
-  // 长任务小窗：新建独立会话并固定定向该智能体（后续消息持久定向，
-  // 不进主对话 60 条截断——claude 走 claude-stream 天然不截断，automation 后端放宽）
-  const openDirectChat = async (target: string) => {
-    const cfg = AGENT_CONFIG[target]
-    if (!cfg) return
-    // 2026-10-19 修复：流式生成中开小窗会把 messagesRef 切走，旧流 onDone 用旧 sid
-    // 保存小窗问候语，覆盖原会话全量消息——先走忙碌守卫
-    if (!guardBusySession()) return
-    const sid = await createSession(`${cfg.label} 私聊`)
-    saveDmTarget(sid, target)
-    setTargetAgent(target)
-    setCurrentSid(sid)
-    setMessages([{ role: 'assistant', content: `已开「${cfg.label}」小窗：本会话内的消息都将直接交给${cfg.label}处理，长任务对话不占用主对话历史。`, sender: target as any, toolCalls: [] }])
-    refreshSessions()
-  }
-
-  const handleSelectSession = async (sid: string) => {
-    if (sid === currentSid) return
-    if (!guardBusySession()) return
+  // 打开一个会话（切换器/会话列表/新建共用）：加载消息与点赞态
+  const openSession = async (sid: string) => {
     setCurrentSid(sid)
     // 2026-10-19 修复①：切换会话清掉上一会话的审批卡——残留时点「同意」会把
     // 决议发给新会话（错会话审批）
     setPendingApproval(null)
-    // 小窗会话：恢复持久定向；普通会话：不动（@ 定向单次生效机制不变）
+    // 旧小窗会话（@私聊）：恢复持久定向；普通会话：不动
     const dm = dmTargetsRef.current[sid]
     if (dm) setTargetAgent(dm)
     // 2026-10-19 修复②：请求序号守卫——快速 A→B 切换时先发的 loadMessages(A)/
@@ -562,6 +577,41 @@ export default function ChatPage({ user }: { user?: any }) {
     }
     scrollToLatest()  // 历史异步加载完成后补滚（时序缺口）
     if (isMobile) setSidebarOpen(false)  // P2：移动端选中会话后收起侧栏
+  }
+
+  const handleSelectSession = async (sid: string) => {
+    if (sid === currentSid) return
+    if (!guardBusySession()) return
+    saveLastSid(agentKindRef.current, sid)
+    await openSession(sid)
+  }
+
+  // 切换智能体窗口（侧边栏切换器）：会话列表换成该智能体的；优先回到该窗口
+  // 上次打开的会话，该智能体还没有会话则自动新建（豆包式点智能体即有对话）
+  const handleSwitchKind = async (kind: 'chat' | 'claude' | 'automation') => {
+    if (kind === agentKindRef.current) return
+    if (!guardBusySession()) return
+    setAgentKind(kind)
+    if (kind === 'chat') setTargetAgent('')
+    const list = await listSessions(kind === 'chat' ? undefined : kind)
+    setSessions(list)
+    let sid = lastSidByKindRef.current[kind]
+    if (!sid || !list.some((s) => s.session_id === sid)) sid = list[0]?.session_id || ''
+    let created = false
+    if (!sid) {
+      const cfg = AGENT_CONFIG[kind]
+      sid = await createSession(cfg.label, kind)
+      saveDmTarget(sid, kind)
+      created = true
+      await refreshSessions()
+    }
+    saveLastSid(kind, sid)
+    if (kind !== 'chat') setTargetAgent(kind)  // 执行窗口固定定向该智能体
+    await openSession(sid)
+    if (created) {
+      const cfg = AGENT_CONFIG[kind]
+      setMessages([{ role: 'assistant', content: `已打开「${cfg.label}」独立窗口：本窗口内的消息都将直接交给${cfg.label}处理，执行过程与结果不占用主对话历史。`, sender: kind as any, toolCalls: [] }])
+    }
   }
 
   // U2 会话重命名（2026-10-25）：prompt 输入新标题 → 后端归属校验更新 →
@@ -1161,6 +1211,9 @@ ${full}
     `}</style>
     <div style={{ height: '100%', display: 'flex', position: 'relative' }}>
       <Sidebar sessions={sessions} currentSid={currentSid} sidebarOpen={sidebarOpen} isMobile={isMobile}
+        agents={WINDOW_AGENTS.map((a) => ({ key: a.key, label: a.label, fullLabel: a.fullLabel, color: a.color,
+          online: a.onlineKey === 'always' ? true : a.onlineKey === 'claude' ? claudeOnline : localOnline }))}
+        activeKind={agentKind} onSwitchKind={handleSwitchKind} showSwitcher={!entMode}
         onNewSession={handleNewSession} onSelect={handleSelectSession} onDelete={handleDeleteSession} onRename={handleRenameSession} onDemoteMain={handleDemoteMain} onOpenTrash={openTrash} onShare={handleShareSession} />
 
       {sidebarOpen && <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
@@ -1233,8 +1286,34 @@ ${full}
           </button>
         </div>
       )}
+      {/* 执行窗口壳（多窗口 P1，2026-11-13）：长任务智能体头部条——身份/在线/最近活动；
+          P2 起消息流换执行时间线渲染，本条保留为窗口身份栏 */}
+      {agentKind !== 'chat' && (
+        <div style={{
+          margin: '8px 16px 0', padding: '6px 12px', borderRadius: 8,
+          background: 'var(--bg-primary)', border: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)',
+          boxShadow: '0 1px 3px var(--shadow-sm)', flexShrink: 0,
+        }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: AGENT_CONFIG[agentKind].color, flexShrink: 0 }} />
+          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{AGENT_CONFIG[agentKind].label}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+              background: (agentKind === 'claude' ? claudeOnline : localOnline) ? 'var(--success)' : 'var(--text-muted)',
+            }} />
+            {(agentKind === 'claude' ? claudeOnline : localOnline) ? '在线' : '离线'}
+          </span>
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>
+            {agentKind === 'claude' && ccActivity?.latest
+              ? `最近活动 · ${ccActivity.latest.time}`
+              : '独立上下文 · 执行过程不占用主对话'}
+          </span>
+        </div>
+      )}
       <ChatView
             messages={messages} loading={loading} user={user}
+            agentKind={agentKind}
             chatBackend={chatBackend} setChatBackend={setChatBackend}
             setExpandedImage={setExpandedImage}
             input={input} setInput={setInput} handleSend={handleSend}
@@ -1257,7 +1336,6 @@ ${full}
             onStartVoiceCall={startVoiceCallWithPermission}
             entMode={entMode} toggleEntMode={toggleEntMode}
             targetAgent={targetAgent} setTargetAgent={setTargetAgent}
-            onOpenDirectChat={openDirectChat}
             onStop={stopStream} notice={notice}
             onSuggest={handleSend}
             sendTick={sendTick}

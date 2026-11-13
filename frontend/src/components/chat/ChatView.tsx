@@ -9,8 +9,9 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, input, setInput, handleSend, images, setImages, currentSid, sessions, dmTarget, activeTarget, onExitActiveTarget, ccActivity, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onReport, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, onOpenDirectChat, onStop, notice, onSuggest, sendTick, onOpenPanel }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, agentKind, input, setInput, handleSend, images, setImages, currentSid, sessions, dmTarget, activeTarget, onExitActiveTarget, ccActivity, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onReport, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, onStop, notice, onSuggest, sendTick, onOpenPanel }: {
   messages: ChatMessage[]; loading: boolean; user?: any
+  agentKind: 'chat' | 'claude' | 'automation'
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
@@ -40,7 +41,6 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
   toggleEntMode: () => void
   targetAgent: string
   setTargetAgent: (v: string) => void
-  onOpenDirectChat: (target: string) => void
   onStop: () => void
   notice: string
   onSuggest: (text: string) => void
@@ -210,7 +210,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
               <div style={{ height: 12 }} />
             </div>
           )}
-          {isEmpty && !loading && (
+          {isEmpty && !loading && agentKind === 'chat' && (
             <div className="chat-suggest-row" style={{
               display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4,
             }}>
@@ -269,6 +269,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         handleSend={handleSend} images={images} setImages={setImages}
         currentSid={currentSid}
         sessions={sessions} messages={messages}
+        agentKind={agentKind}
         localOnline={localOnline} claudeOnline={claudeOnline}
         model={model} setModel={setModel}
         effort={effort} setEffort={setEffort}
@@ -276,7 +277,6 @@ export default function ChatView({ messages, loading, user, setExpandedImage, in
         entMode={entMode} toggleEntMode={toggleEntMode} chatBackend={chatBackend} setChatBackend={setChatBackend}
         targetAgent={targetAgent} setTargetAgent={setTargetAgent}
         activeTarget={activeTarget} onExitActiveTarget={onExitActiveTarget}
-        onOpenDirectChat={onOpenDirectChat}
         onStop={onStop} notice={notice} />
     </>
   )

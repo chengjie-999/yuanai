@@ -23,6 +23,15 @@ export const SUB_AGENTS = [
   { key: 'claude', label: 'Claude Code', desc: '本机代码编写、终端命令、Git 操作', color: '#d97757' },
 ]
 
+// 多智能体窗口 P1（2026-11-13）：侧边栏切换器平铺清单。
+// 排序 小元 → CC → 自动化（用户拍板：CC 是主力）；key 即后端 agent_kind。
+// onlineKey：always=云端恒在线 / claude=桥接在线 / local=本地 Agent 在线
+export const WINDOW_AGENTS: { key: 'chat' | 'claude' | 'automation'; label: string; fullLabel: string; color: string; onlineKey: 'always' | 'claude' | 'local' }[] = [
+  { key: 'chat', label: '小元AI', fullLabel: '小元AI 主对话', color: '#2563eb', onlineKey: 'always' },
+  { key: 'claude', label: 'CC', fullLabel: 'Claude Code 独立窗口', color: '#d97757', onlineKey: 'claude' },
+  { key: 'automation', label: '自动化', fullLabel: '自动化 Agent 独立窗口', color: '#e65100', onlineKey: 'local' },
+]
+
 export function senderFromTool(name: string): string | null {
   // 旧 delegate 名保留识别（历史会话信封兼容）；新链路脚本工具不再开独立气泡
   if (name.startsWith('delegate_to_analysis')) return 'analysis'

@@ -513,20 +513,24 @@ export async function unshareSession(session_id: string) {
 }
 
 // ---- Sessions ----
-export async function createSession(title?: string): Promise<string> {
+// 多窗口 P1（2026-11-13）：agentKind 打标（chat/claude/automation）——
+// 执行窗口会话由后端按 kind 隔离（过滤/记忆折叠/分享收口）
+export async function createSession(title?: string, agentKind?: string): Promise<string> {
   const res = await fetch(`${API_BASE}/chat/session/new`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ title: title || '新对话' }),
+    body: JSON.stringify({ title: title || '新对话', agent_kind: agentKind || 'chat' }),
   })
   const data = await res.json()
   return data.session_id
 }
 
-export async function listSessions(): Promise<any[]> {
+export async function listSessions(agentKind?: string): Promise<any[]> {
   try {
     // own=1：聊天侧栏只看自己的会话（admin 也不混入其他用户的主对话，避免多个置顶）
-    const res = await fetch(`${API_BASE}/chat/sessions?own=1`, { headers: authHeaders() })
+    // agent_kind：侧栏切换器按窗口过滤（空=当前窗口全量，兼容旧调用）
+    const q = agentKind ? `&agent_kind=${encodeURIComponent(agentKind)}` : ''
+    const res = await fetch(`${API_BASE}/chat/sessions?own=1${q}`, { headers: authHeaders() })
     return await res.json()
   } catch { return [] }
 }

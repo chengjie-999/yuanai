@@ -227,6 +227,10 @@ export default function ChatPage({ user }: { user?: any }) {
   // P3-5 执行观测面进对话（2026-11-09）：电脑执行状态 15s 轮询——
   // 愿景「手机看电脑在干什么」的对话内闭环（执行中/卡死/空闲 + 最近活动）
   const [ccActivity, setCcActivity] = useState<{ online: boolean; agent_name: string; latest: { message: string; detail: string; ts?: number; time: string } | null; age_s?: number } | null>(null)
+  // 多窗口 P3：CC 执行中判定（活动心跳 <60s 且处于工具/思考态）——
+  // 「后台执行中」指示条按智能体分组展示
+  const ccBusy = claudeOnline && ccActivity?.age_s != null && ccActivity.age_s < 60
+    && /工具调用|思考中|等待审批/.test(ccActivity?.latest?.message || '')
   useEffect(() => {
     const poll = async () => {
       try {
@@ -1231,26 +1235,41 @@ ${full}
       >{sidebarOpen ? <ChevronLeftIcon size={12} /> : <ChevronRightIcon size={12} />}</div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {/* 后台执行中的计划指示条（只显示不动手；点击由用户手动打开计划面板） */}
-        {activePlans.length > 0 && (
+        {/* 后台执行中指示条（多窗口 P3 升级：按智能体分组——计划队列 + CC 执行；
+            只显示不动手，点击切到对应执行面） */}
+        {(activePlans.length > 0 || (ccBusy && agentKind === 'chat')) && (
           <div style={{
             margin: '8px 16px 0', display: 'flex', alignItems: 'center', gap: 8,
             padding: '6px 12px', borderRadius: 8,
             background: 'var(--bg-primary)', border: '1px solid var(--border)',
-            cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)',
+            fontSize: 12, color: 'var(--text-secondary)',
             boxShadow: '0 1px 3px var(--shadow-sm)',
-          }} onClick={() => handleOpenPanel('/chat/plan')}>
+          }}>
             <span style={{
               width: 7, height: 7, borderRadius: '50%', background: 'var(--warning)', flexShrink: 0,
               animation: 'pulse 1.2s ease-in-out infinite',
             }} />
             <span style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-              后台执行中（{activePlans.length}）
+              后台执行中
             </span>
+            {activePlans.length > 0 && (
+              <span onClick={() => handleOpenPanel('/chat/plan')} className="yuan-tip" data-tip="打开计划面板"
+                style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', borderRadius: 999, padding: '1px 9px', border: '1px solid var(--border)', lineHeight: 1.7 }}>
+                计划 {activePlans.length}
+              </span>
+            )}
+            {ccBusy && agentKind === 'chat' && (
+              <span onClick={() => handleSwitchKind('claude')} className="yuan-tip" data-tip="切到 Claude Code 执行窗口"
+                style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', borderRadius: 999, padding: '1px 9px', border: `1px solid ${AGENT_CONFIG.claude.color}`, color: AGENT_CONFIG.claude.color, lineHeight: 1.7 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: AGENT_CONFIG.claude.color, animation: 'pulse 1.2s ease-in-out infinite' }} />
+                CC 执行中
+              </span>
+            )}
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-              {activePlans.map((p) => `「${p.title}」${p.done_steps}/${p.total_steps}`).join(' · ')}
+              {activePlans.length > 0
+                ? activePlans.map((p) => `「${p.title}」${p.done_steps}/${p.total_steps}`).join(' · ')
+                : (ccActivity?.latest?.message || '')}
             </span>
-            <span style={{ whiteSpace: 'nowrap', color: 'var(--accent)' }}>打开计划面板</span>
           </div>
         )}
         {!currentSid ? (
@@ -1340,6 +1359,7 @@ ${full}
             onSuggest={handleSend}
             sendTick={sendTick}
             onOpenPanel={handleOpenPanel}
+            onSwitchWindow={handleSwitchKind}
           />
       </>
         )}

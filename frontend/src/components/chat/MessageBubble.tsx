@@ -348,7 +348,7 @@ function SvgBlock({ code }: { code: string }) {
   )
 }
 
-const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, onFollowup, autoRead, autoReadTick, onOpenPanel, variant }: {
+const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, onFollowup, autoRead, autoReadTick, onOpenPanel, onSwitchWindow, variant }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
   user?: any; setExpandedImage: (v: string | null) => void
@@ -362,6 +362,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   onContinue?: () => void
   autoRead?: boolean; autoReadTick?: number
   onOpenPanel?: (link: string) => void
+  // 多窗口 P3（2026-11-13）：委派任务卡「去执行窗口」——切到该智能体独立窗口
+  onSwitchWindow?: (kind: 'chat' | 'claude' | 'automation') => void
   // 多窗口 P2（2026-11-13）：exec=执行窗口渲染（长任务智能体执行时间线：
   // 扁平块+全宽+操作行裁剪，无点赞点踩朗读重生成追问）；chat=气泡对话式
   variant?: 'chat' | 'exec'
@@ -370,6 +372,15 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   const sender = !isUser ? (msg.sender || 'orchestrator') : null
   const agent = sender ? AGENT_CONFIG[sender] : null
   const isExec = variant === 'exec'
+  // 委派任务卡（多窗口 P3）：主对话里 CC/自动化 的执行以任务卡呈现——
+  // 状态徽章 + 去执行窗口入口；状态源=现状事件流（事件双流/落库双写后置）
+  const delegationKind = sender === 'claude' ? 'claude' : sender === 'automation' ? 'automation'
+    : (msg.toolCalls || []).some((tc) => (tc.name || '').startsWith('delegate_to_claude')) ? 'claude'
+    : (msg.toolCalls || []).some((tc) => (tc.name || '').startsWith('delegate_to_automation')) ? 'automation' : ''
+  const isDelegation = !isExec && !!delegationKind
+  const delegationRunning = isDelegation && loading && isLast
+  const delegationFailed = isDelegation && !!msg.error
+  const delegationStopped = isDelegation && !!msg.stopped
   const [copied, setCopied] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
   const [draft, setDraft] = useState(msg.content)
@@ -729,6 +740,49 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             background: 'var(--bg-tertiary)', color: 'var(--text-muted)',
             flexShrink: 0, lineHeight: 1.5,
           }}>AI 生成</span>
+        </div>
+      )}
+      {/* 委派任务卡（多窗口 P3）：主对话里长任务智能体的执行状态徽章 +
+          去执行窗口入口——排队/执行中（脉冲）/完成/失败/停止 */}
+      {isDelegation && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, marginLeft: 2, flexWrap: 'wrap' }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600,
+            padding: '2px 9px', borderRadius: 999, lineHeight: 1.6,
+            background: delegationFailed ? 'var(--danger-soft)'
+              : delegationRunning ? 'var(--accent-soft)'
+              : delegationStopped ? 'var(--bg-tertiary)'
+              : 'var(--success-soft)',
+            color: delegationFailed ? 'var(--danger)'
+              : delegationRunning ? 'var(--accent)'
+              : delegationStopped ? 'var(--text-muted)'
+              : 'var(--success)',
+          }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+              background: delegationFailed ? 'var(--danger)'
+                : delegationRunning ? 'var(--accent)'
+                : delegationStopped ? 'var(--text-muted)'
+                : 'var(--success)',
+              animation: delegationRunning ? 'pulse 1.2s ease-in-out infinite' : 'none',
+            }} />
+            {delegationFailed ? '执行失败' : delegationRunning ? '执行中' : delegationStopped ? '已停止' : '已完成'}
+          </span>
+          {onSwitchWindow && (
+            <button onClick={() => onSwitchWindow(delegationKind as 'claude' | 'automation')} className="yuan-tip"
+              data-tip={`切到 ${AGENT_CONFIG[delegationKind]?.label} 独立窗口查看执行过程`}
+              aria-label={`去${AGENT_CONFIG[delegationKind]?.label}执行窗口`}
+              style={{
+                fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 999, lineHeight: 1.6,
+                border: `1px solid ${AGENT_CONFIG[delegationKind]?.color || 'var(--accent)'}`,
+                background: 'none', cursor: 'pointer',
+                color: AGENT_CONFIG[delegationKind]?.color || 'var(--accent)',
+                transition: 'all 0.12s',
+              }}
+            >
+              去执行窗口 ›
+            </button>
+          )}
         </div>
       )}
       {isUser && (

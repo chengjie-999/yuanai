@@ -9,9 +9,10 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, agentKind, input, setInput, handleSend, images, setImages, currentSid, sessions, dmTarget, activeTarget, onExitActiveTarget, ccActivity, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onReport, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, onStop, notice, onSuggest, sendTick, onOpenPanel }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, agentKind, input, setInput, handleSend, images, setImages, currentSid, sessions, dmTarget, activeTarget, onExitActiveTarget, ccActivity, localOnline, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onReport, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, targetAgent, setTargetAgent, onStop, notice, onSuggest, sendTick, onOpenPanel, onSwitchWindow }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   agentKind: 'chat' | 'claude' | 'automation'
+  onSwitchWindow: (kind: 'chat' | 'claude' | 'automation') => void
   setExpandedImage: (v: string | null) => void
   input: string; setInput: (v: string | ((p: string) => string)) => void; handleSend: (textOverride?: string) => void
   images: string[]; setImages: (v: string[] | ((p: string[]) => string[])) => void
@@ -198,7 +199,8 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
               onRegenerate={onRegenerate}
               onFollowup={onSuggest}
               onContinue={onContinue}
-              onOpenPanel={onOpenPanel} />
+              onOpenPanel={onOpenPanel}
+              onSwitchWindow={onSwitchWindow} />
           ))}
           {/* 空对话推荐问题（豆包式：欢迎页已退场，登录直接落主对话，此处承接快捷入口）；
               E5：娱乐模式换娱乐话题卡。

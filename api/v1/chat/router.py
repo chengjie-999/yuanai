@@ -119,26 +119,20 @@ _CHAT_IMG_DIR = os.path.join(root_path(), "data", "chat_images")
 # 工具调用（同一工具名连续多次），且简单任务也先计划委派。
 _OFFLINE_SYSTEM_PROMPT = (
     "你是小元AI助手，当前用户的本地智能体离线，由你在云端直接服务。"
-    "重要：数据分析/数据采集/自动化等子智能体全部运行在用户本地电脑上，"
-    "此时不可用——不要提及「委派」，不要调用任何 delegate 工具，"
-    "所有请求都由你自己直接处理，简单任务直接完成，不要计划委派。\n"
+    "数据分析/数据采集/自动化等本地能力此时不可用——不要提及「委派」，"
+    "不要调用任何 delegate 工具；简单任务直接完成，不要计划委派。\n"
     "多步骤组合任务（如「先抓取数据再做统计分析」）：用 create_plan 工具"
     "把任务拆成 1-8 步草稿计划（每步写清 skill 和意图，信息不足先问用户），"
     "建好后向用户复述步骤并说明「说『执行』才会开始」；用户明确说执行时"
     "再调用 execute_plan。不要用文字代替计划，不要自行开始执行。\n"
-    "可直接使用的工具：create_plan(制定计划)、execute_plan(执行计划)、"
-    "get_plan_status(查计划进度)、list_datasets(列出数据集)、"
-    "preview_dataset(预览数据集)、analyze_dataset(分析数据)、"
-    "search_web(联网搜索，query 用核心短语分词；摘要通常已足够回答，不必逐条抓取)、fetch_url(抓取网页)、parse_html(解析HTML)、get_today_temperature(天气)、"
-    "calculate_sum(计算)、get_user_memory(读取用户记忆)、"
-    "remember_user_info(记住用户信息)、organize_user_memory(整理记忆)、"
-    "retrieve_planet_knowledge(检索知识星球)、search_pubmed(PubMed 文献检索)、"
-    "get_species_info(物种导航) 等。\n"
+    "工具使用：优先使用系统提供的工具（search_web 联网搜索 query 核心短语分词；"
+    "get_user_memory 读记忆、remember_user_info 记用户信息；"
+    "retrieve_planet_knowledge 查知识星球等）——可用工具清单以系统下发的为准。\n"
     "群聊说话人协议：历史消息中带【xx Agent】前缀或其他智能体身份的内容不是你说的，"
     "不要复述、冒充或替其他智能体总结。\n"
     "工作原则：直接用工具处理用户请求，简洁回复；工具不可用时直接说明原因；"
     "任务完成或对话结束时，用自然语言简短总结本次完成了什么（几句话要点）；"
-    "数据对比优先用图表直观表达。"
+    "数据对比优先用图表直观表达；"
     "回答结尾必须使用句号等完整标点收尾，不要戛然而止（用户会误以为回复被截断）。"
 )
 
@@ -359,7 +353,7 @@ _AUDIT_WARNING = "本条回复可能包含违规内容，已按平台规则移�
 
 _SUGGEST_PROMPT = (
     "根据以上对话，推测用户接下来最可能问的 3 个问题。"
-    "只输出 3 行，每行 ≤20 字、不加序号不加解释，直接写问题本身。"
+    "只输出 3 行，每行 ≤40 字、不加序号不加解释，直接写问题本身。"
     "问题要具体可执行，风格与用户当前对话一致。")
 
 
@@ -646,9 +640,11 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         # C8（2026-10-29）：服务端固定 canonical system prompt——客户端提交的
         # system_prompt 一律忽略（审计 13 条：客户端可覆盖平台人设/安全指令）。
-        # 人设单一事实源 = 后台设定中心 chat_system_prompt（热更新，前端同源读取）
-        from config.settings import CHAT_SYSTEM_PROMPT
-        system_prompt = CHAT_SYSTEM_PROMPT
+        # 人设单一事实源 = 后台设定中心 chat_system_prompt（热更新，前端同源读取）。
+        # 提示词优化（2026-11-14）：能力说明 CAPABILITY_NOTE 服务端同源注入，
+        # 与前端拼装一致（此前只在 ChatPage 拼接、服务端实际不生效）
+        from config.settings import CHAT_SYSTEM_PROMPT, CAPABILITY_NOTE
+        system_prompt = f"{CHAT_SYSTEM_PROMPT}\n\n{CAPABILITY_NOTE}".strip()
         # 注意（2026-10-17）：桥接路径不在此注入自报——本地统筹用自己的
         # orch_model（AGENT_MODEL_MAP）注入，此处用 req.model 会造成两条互斥
         # 的「你实际运行的模型 ID」；自报注入只在云端回退分支做
@@ -959,7 +955,8 @@ async def claude_stream(req: ChatRequest, request: Request):
         # C8：回退分支同样用服务端固定提示（此后整段重写为去委派化离线提示）
         input_messages = _langchain_from_items(view, req.prompt, req.images, CHAT_SYSTEM_PROMPT)
         # P1-1 回退提示重写（2026-11-09）：云端兜底如实自报身份，不再假扮本机
-        # Claude Code；含 P1-5 首句自报与 P2-3 引导话术
+        # Claude Code；提示词优化（2026-11-14）：与 /stream 回退对齐——注入
+        # cloud_fallback 身份卡（能力边界单一事实源）与当前日期
         offline_prompt = (
             "你是小元AI的云端兜底助手，不是本机 Claude Code——本机 Claude Code 当前离线，"
             "本次对话由云端模型代为应答。"
@@ -971,8 +968,16 @@ async def claude_stream(req: ChatRequest, request: Request):
             "不要提及「委派」、不要调用任何 delegate 工具。可以直接使用云端工具完成任务。"
             "【结尾引导】涉及本机任务时结尾引导：本地 Agent 上线后我会自动转回本机"
             "Claude Code；着急可去设置页检查 Agent 状态。"
-            "简洁回复，任务完成时用自然语言总结本次完成了什么（不用表格罗列）。"
+            "简洁回复，任务完成时用自然语言总结本次完成了什么（几句话要点）。"
         )
+        # 身份卡注入（与 /stream 回退同源，能力边界单一事实源）
+        try:
+            from yuanai_core.agent_docs import agent_doc as _agent_doc
+            _CC_DOC = _agent_doc("cloud_fallback")
+            if _CC_DOC:
+                offline_prompt += "\n\n" + _CC_DOC
+        except Exception:
+            pass
         # 模型如实自报（2026-10-17 补齐：claude-stream 回退此前漏注入）
         from yuanai_core.core.lc import resolve_model_id
         from config.settings import self_report_text

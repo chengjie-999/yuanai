@@ -45,29 +45,10 @@ _DISALLOWED_TOOLS = "WebFetch,WebSearch"
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 _STDERR_TAIL = 2000  # 失败时带回 stderr 末尾字数（失败不再无日志）
 
-# 能力边界身份卡（docs/agents/claude_code.md，单一事实源）：CLI 与 SDK 共用
-try:
-    from yuanai_core.agent_docs import agent_doc as _agent_doc
-    _CC_DOC = _agent_doc("claude_code")
-except Exception:
-    _CC_DOC = ""
-
-_BRIDGE_SYSTEM_PROMPT = (
-    "你在以无头模式（非交互）为小元AI平台执行委派任务，无法与用户实时交互，"
-    "遇到需要人工确认的操作时选择安全做法或说明原因。"
-    "严格遵守以下安全规则（违反即任务失败）："
-    "绝不执行 git push / git remote add/set-url / git reset --hard / git clean / rm -rf / rmdir /s / "
-    "curl / wget / ssh / scp / rsync 等外联命令；绝不读取 ~/.ssh、~/.aws 等凭据文件或导出环境变量；"
-    "绝不使用 sudo / runas 提权；绝不执行 npm install -g / pip install --user；"
-    "绝不执行 shutdown / format / diskpart / taskkill /f 等系统命令；"
-    "文件写入仅限本仓库目录内。git commit 可以做，但绝不推送。"
-    "【联网搜索通道】实时联网搜索的唯一允许方式："
-    "python -m yuanai_core.pure.cc_search \"查询词\"（走平台内置三级搜索通道，可加第二参数 1-20 控制条数）。"
-    "WebSearch/WebFetch 工具与 curl/wget 已被禁，直接执行 python 脚本文件（python xxx.py）也会被权限表拦截——"
-    "不要反复尝试这些被禁途径；需要深度检索或用户要求交互式搜索时，"
-    "说明搜索结果可在小元AI对话里用联网搜索获取。"
-    "完成后用简洁中文总结：做了什么、改了哪些文件、如何验证。"
-) + (("\n\n" + _CC_DOC) if _CC_DOC else "")
+# 提示词优化（2026-11-14）：桥接提示统一为 claude_loop.bridge_system_prompt()
+# 单一事实源（安全规则 + cc_search 通道 + claude_code.md 身份卡 + 环境自述）——
+# 此前本文件维护一份分叉版本（无 TodoWrite/【记住】协议，有 cc_search/身份卡），
+# 两链路能力描述不一致；现删除本地定义，与终端 /claude、云端桥接共用一份
 
 # 第三方网关模式（ANTHROPIC_BASE_URL 指向非官方地址，如 deepseek 网关）下
 # Claude Code hooks 不注册，命令级拦截降级为提示词约束 + 进程级白名单
@@ -77,7 +58,7 @@ _IS_3P_MODE = bool(os.getenv("ANTHROPIC_BASE_URL")) and \
 
 def _build_command(claude_path: str, prompt: str) -> list:
     # P3-1 环境自述：工作目录/shell/文件工具边界随每次调用重新解析
-    from agent.claude_loop import env_hint
+    from agent.claude_loop import bridge_system_prompt
     return [
         claude_path, "-p", prompt,
         "--output-format", "stream-json",
@@ -87,7 +68,7 @@ def _build_command(claude_path: str, prompt: str) -> list:
         "--disallowedTools", _DISALLOWED_TOOLS,
         "--setting-sources", "project",
         "--max-budget-usd", "10",
-        "--append-system-prompt", _BRIDGE_SYSTEM_PROMPT + env_hint(),
+        "--append-system-prompt", bridge_system_prompt(),
     ]
 
 

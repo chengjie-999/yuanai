@@ -186,23 +186,24 @@ class IntentClassifier:
         return intent.confidence < 0.4 or intent.group == "general_chat"
 
 
-# 降级 LLM 分类提示词（仅在高置信度失败时使用，无工具调用，token 极省）
-LLM_CLASSIFIER_PROMPT = """Classify this user message into ONE category. Reply ONLY with the category name.
+# 降级 LLM 分类提示词（仅在高置信度失败时使用，无工具调用，token 极省；
+# 2026-11-14 中文化——全库提示词统一中文）
+LLM_CLASSIFIER_PROMPT = """把这条用户消息归入一个类别。只回复类别名，不要任何解释。
 
-Categories:
-simple_query - calculation, weather, datetime, unit conversion
-data_task - dataset, statistics, analysis, preview
-crawl_task - web scraping, URL fetching, HTML parsing
-web_query - real-time web search: news, latest updates, "search the web for..." (uses search_web tool)
-memory_task - remember/recall user personal info
-medical_q - PubMed literature, clinical trials, species, drug feasibility
-plan_task - creating a plan, checking plan progress, executing a plan
-knowledge_q - knowledge base search or general web search (联网搜索)
-delegate_automation - browser control, auditing, automation
-delegate_claude - coding, writing/modifying code, terminal commands, git, local file creation
+类别：
+simple_query - 计算、天气、日期时间、单位换算
+data_task - 数据集、统计、分析、预览
+crawl_task - 网页抓取、URL 抓取、HTML 解析
+web_query - 实时联网搜索：新闻、最新动态、「帮我搜一下…」（用 search_web 工具）
+memory_task - 记住/回忆用户个人信息
+medical_q - PubMed 文献、临床试验、物种、药物可行性
+plan_task - 制定计划、查计划进度、执行计划
+knowledge_q - 知识库检索或一般联网搜索
+delegate_automation - 浏览器控制、审核、自动化
+delegate_claude - 写代码、改代码、终端命令、git、本地文件操作
 
-Message: {message}
-Category:"""
+消息：{message}
+类别："""
 
 
 # 全局单例

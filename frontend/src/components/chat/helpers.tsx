@@ -242,8 +242,16 @@ export function toSpeechText(text: string): string {
     .replace(/```[\s\S]*?```/g, '（这里有一段代码）')
     .replace(/`[^`]*`/g, '')
   t = stripMarkdown(t)
-  // 表格残留行（含 | 分隔）→ 口语占位
-  t = t.split('\n').map((ln) => (/^\s*\|.*\|\s*$/.test(ln) ? '（这里有一张表格）' : ln)).join('\n')
+  // 表格残留行（含 | 分隔）→ 口语占位；连续表格行合并为一句
+  // （2026-11-14 修复：此前每行一句，一张 N 行表格会连读 N 遍「这里有一张表格」）
+  t = t.split('\n').reduce<string[]>((acc, ln) => {
+    if (/^\s*\|.*\|\s*$/.test(ln)) {
+      if (!acc.length || acc[acc.length - 1] !== '（这里有一张表格）') acc.push('（这里有一张表格）')
+      return acc
+    }
+    acc.push(ln)
+    return acc
+  }, []).join('\n')
   // 裸 URL → （链接）
   t = t.replace(/https?:\/\/[^\s)\]]+/g, '（链接）')
   // HTML 标签（模型输出里的 <br>/<div>/<span> 等，乱读来源之一）

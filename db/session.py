@@ -53,6 +53,9 @@ class AIChat(Base):
     turn = Column(Integer, default=0)                # 1-based 轮次
     type = Column(String(16), default='chat')        # chat/tool_call/tool_result/summary/note
     aigc = Column(Integer, default=0)                 # C5：AI 生成标识（1=AI 生成，迁移 0021）
+    # #30 消息 id（2026-11-14，迁移 0032）：按 id 定位/幂等保存/同步 diff；
+    # 可空——旧数据与旧客户端（不带 id 的保存）走全量替换兼容路径
+    msg_id = Column(String(36), nullable=True, index=False)
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -656,6 +659,7 @@ class AgentDatabase:
             result = [{"role": c.role, "content": c.content,
                        "sender": c.sender or "", "recipient": c.recipient or "",
                        "turn": c.turn or 0, "type": c.type or "chat",
+                       "msg_id": c.msg_id or "",  # #30：id 透传（前端同步 diff/保存幂等）
                        "create_time": str(c.create_time)} for c in chats]
             for i, c in enumerate(chats):
                 if c.images:

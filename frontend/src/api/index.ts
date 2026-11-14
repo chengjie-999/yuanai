@@ -589,10 +589,12 @@ export async function loadMessages(sessionId: string): Promise<{ role: string; c
 
 // 2026-11-13 审查修复：返回是否成功——此前静默吞错，调用方「写失败回退全量」的
 // 兜底是死代码（执行日志只落主对话摘要却丢失全量的路径）
-export async function saveMessages(sessionId: string, messages: { role: string; content: string; images?: string[] }[], title?: string): Promise<boolean> {
+export async function saveMessages(sessionId: string, messages: { role: string; content: string; images?: string[] }[], title?: string, deletedIds?: string[]): Promise<boolean> {
   try {
     const body: any = { session_id: sessionId, messages }
     if (title) body.title = title
+    // #30：显式删除列表（编辑重发截断；增量 upsert 防旧快照晚到覆盖）
+    if (deletedIds && deletedIds.length) body.deleted_ids = deletedIds
     const res = await fetch(`${API_BASE}/chat/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },

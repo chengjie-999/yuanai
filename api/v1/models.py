@@ -45,3 +45,7 @@ class SaveMessagesRequest(BaseModel):
     session_id: str = Field(..., description="会话ID")
     messages: List[dict] = Field(..., description='[{"role": "user/assistant", "content": "..."}]')
     title: Optional[str] = Field(None, description="会话标题（可选）")
+    # #30 消息 id（2026-11-14）：messages 项可带 msg_id（36 位 UUID）——
+    # 全带 id 时走增量 upsert（防旧快照晚到覆盖新消息）；显式删除列表
+    # （编辑重发截断其后消息时前端传入被删 id）
+    deleted_ids: List[str] = Field(default_factory=list, description="显式删除的消息 id 列表")

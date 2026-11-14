@@ -1396,6 +1396,31 @@ async def get_messages(req: MessagesRequest, request: Request):
         raise HTTPException(status_code=500, detail=_SAFE_ERROR)
 
 
+def _build_ai_chat(session_id: str, msg: dict):
+    """构建一条 ai_chat 记录（#30 抽取：增量 upsert 与全量替换共用）"""
+    from db.session import AIChat
+    record = AIChat(
+        session_id=session_id, role=msg["role"], content=msg["content"],
+        sender=msg.get("sender") or ("user" if msg["role"] == "user" else "orchestrator"),
+        recipient=msg.get("recipient") or "",
+        turn=msg.get("turn") or 0,
+        type=msg.get("type") or "chat",
+        # C5（2026-10-29）：AI 生成内容落库标识（《标识办法》第 7 条存储要求）
+        aigc=1 if msg["role"] == "assistant" else 0,
+        msg_id=msg.get("msg_id") or None,
+    )
+    if msg.get("images"):
+        # data: URL 是新的需要保存；/api/v1/chat/image/ 是已保存的跳过
+        saved = []
+        for img in msg["images"]:
+            if isinstance(img, str) and img.startswith("/api/v1/"):
+                saved.append(img)  # 已经是文件 URL
+            else:
+                saved.append(_save_chat_image(session_id, img))
+        record.images = json.dumps(saved, ensure_ascii=False)
+    return record
+
+
 @router.post("/save")
 async def save_messages(req: SaveMessagesRequest, request: Request):
     """保存对话到数据库（先删旧记录，再批量插入，避免重复）"""
@@ -1419,38 +1444,46 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
         from db.session import AIChat, AIChatFeedback
         with db.session() as sess:
             try:
-                # 先删除该会话的全部旧消息，避免重复累积
-                sess.query(AIChat).filter_by(session_id=req.session_id).delete()
-                # 同步清理孤儿点赞：消息被截断后，下标超出新消息范围的反馈行一并删除
-                sess.query(AIChatFeedback).filter(
-                    AIChatFeedback.session_id == req.session_id,
-                    AIChatFeedback.message_index >= len(req.messages),
-                ).delete(synchronize_session=False)
-                # 信封落列：turn 兜底补齐（旧客户端无信封时按 user 计数推导）
-                from yuanai_core.core.message import assign_turns
-                assign_turns(req.messages)
+                # #30 消息 id（2026-11-14）：全带 msg_id → 增量 upsert + 显式删除
+                # （防「旧快照晚到覆盖新消息」竞态——不再全量替换，未知消息不动）；
+                # 部分/全无 id（旧客户端）→ 旧全量替换兼容路径
+                has_ids = bool(req.messages) and all(m.get("msg_id") for m in req.messages)
                 count = 0
-                for msg in req.messages:
-                    record = AIChat(
-                        session_id=req.session_id, role=msg["role"], content=msg["content"],
-                        sender=msg.get("sender") or ("user" if msg["role"] == "user" else "orchestrator"),
-                        recipient=msg.get("recipient") or "",
-                        turn=msg.get("turn") or 0,
-                        type=msg.get("type") or "chat",
-                        # C5（2026-10-29）：AI 生成内容落库标识（《标识办法》第 7 条存储要求）
-                        aigc=1 if msg["role"] == "assistant" else 0,
-                    )
-                    if msg.get("images"):
-                        # data: URL 是新的需要保存；/api/v1/chat/image/ 是已保存的跳过
-                        saved = []
-                        for img in msg["images"]:
-                            if isinstance(img, str) and img.startswith("/api/v1/"):
-                                saved.append(img)  # 已经是文件 URL
-                            else:
-                                saved.append(_save_chat_image(req.session_id, img))
-                        record.images = json.dumps(saved, ensure_ascii=False)
-                    sess.add(record)
-                    count += 1
+                if has_ids:
+                    # 信封落列：turn 兜底补齐（新消息无 turn 时按 user 计数推导）
+                    from yuanai_core.core.message import assign_turns
+                    assign_turns(req.messages)
+                    existing = {mid for (mid,) in sess.query(AIChat.msg_id).filter(
+                        AIChat.session_id == req.session_id,
+                        AIChat.msg_id.isnot(None)).all()}
+                    # 显式删除（编辑重发截断：前端传入被截断消息的 id）
+                    if req.deleted_ids:
+                        sess.query(AIChat).filter(
+                            AIChat.session_id == req.session_id,
+                            AIChat.msg_id.in_(req.deleted_ids),
+                        ).delete(synchronize_session=False)
+                    # 插入新消息（消息内容不可变——已存在的 id 跳过，幂等）
+                    for msg in req.messages:
+                        mid = msg.get("msg_id")
+                        if mid in existing:
+                            continue
+                        existing.add(mid)
+                        sess.add(_build_ai_chat(req.session_id, msg))
+                        count += 1
+                else:
+                    # 旧客户端兼容：全量替换（先删旧记录再批量插入）
+                    sess.query(AIChat).filter_by(session_id=req.session_id).delete()
+                    # 同步清理孤儿点赞：消息被截断后，下标超出新消息范围的反馈行一并删除
+                    sess.query(AIChatFeedback).filter(
+                        AIChatFeedback.session_id == req.session_id,
+                        AIChatFeedback.message_index >= len(req.messages),
+                    ).delete(synchronize_session=False)
+                    # 信封落列：turn 兜底补齐（旧客户端无信封时按 user 计数推导）
+                    from yuanai_core.core.message import assign_turns
+                    assign_turns(req.messages)
+                    for msg in req.messages:
+                        sess.add(_build_ai_chat(req.session_id, msg))
+                        count += 1
                 # 更新会话：标题按需、update_time 每次必刷（会话列表按最后活跃排序依赖此字段）
                 from db.session import ChatSession
                 from sqlalchemy.sql import func

@@ -100,7 +100,7 @@ function parseHistory(history: any[]): ChatMessage[] {
     if (m.type) msgType = m.type
     return { role: m.role, content, images: m.images, sender, toolCalls,
              reasoning, finalReasoning, pageLink, recipient, turn, msgType, error, stopped, htmls, truncated,
-             windowSession, windowKind }
+             windowSession, windowKind, msg_id: m.msg_id || undefined }
   })
 }
 
@@ -223,6 +223,8 @@ export default function ChatPage({ user }: { user?: any }) {
   // 重新生成只替换本条气泡：其后消息暂存，流结束后按原序回挂（2026-10-25 修复——
   // 此前截断其后所有消息 = 静默数据丢失）
   const pendingAfterRef = useRef<{ sid: string; index: number; after: ChatMessage[] } | null>(null)
+  // #30：编辑重发截断的被删消息 id（发送落库时显式删除——替代全量替换的隐式截断）
+  const pendingDeletedIdsRef = useRef<string[]>([])
   const saveDmTarget = (sid: string, target: string) => {
     setDmTargets((prev) => {
       const next = target ? { ...prev, [sid]: target } : { ...prev }
@@ -287,10 +289,15 @@ export default function ChatPage({ user }: { user?: any }) {
       }
       pollMsgSigRef.current = sig
       if (history.length > local.length) {
-        // 对端追加：尾部合入（本地流式态不动；贴底才跟随由 ChatView 滚动逻辑保证）
+        // 对端追加：尾部合入（本地流式态不动；贴底才跟随由 ChatView 滚动逻辑保证）；
+        // #30：按 msg_id 去重（多端同 id 不重复；旧数据无 id 时退回按条追加）
         const extra = parseHistory(history.slice(local.length))
-        setMessages([...local, ...extra])
-        setAutoReadTick((t) => t + 1)  // 自动朗读联动（新消息到达即播）
+        const localIds = new Set(local.map((m) => m.msg_id).filter(Boolean))
+        const fresh = extra.filter((m) => !m.msg_id || !localIds.has(m.msg_id))
+        if (fresh.length) {
+          setMessages([...local, ...fresh])
+          setAutoReadTick((t) => t + 1)  // 自动朗读联动（新消息到达即播）
+        }
       }
     } catch { /* 静默：同步失败下轮再试 */ }
   }, [])
@@ -1038,8 +1045,10 @@ ${full}
   // 返回剥除后的主对话消息（decoded）：调用方用它替换 UI 状态——状态与落库一致，
   // 下一轮保存不会再命中历史委派块（审查修复：此前内存保留 CC 气泡导致每轮重复拆分）。
   const persistSession = async (finalMsgs: ChatMessage[], sid: string, title?: string) => {
+    // #30：编辑重发截断的显式删除列表（handleEditMessage 收集，发送即消费）
+    const deletedIds = pendingDeletedIdsRef.current.splice(0)
     if (agentKindRef.current !== 'chat') {
-      const ok = await saveMessages(sid, finalMsgs.map(encodeMsg), title)
+      const ok = await saveMessages(sid, finalMsgs.map(encodeMsg), title, deletedIds)
       return { decoded: finalMsgs, split: false, ok }
     }
     // 委派段按发送者分组（审查修复：一轮同时委派 CC+自动化 → 各自落各自窗口）
@@ -1051,7 +1060,7 @@ ${full}
     }
     const kinds = Object.keys(groups) as ('claude' | 'automation')[]
     if (!kinds.length) {
-      const ok = await saveMessages(sid, finalMsgs.map(encodeMsg), title)
+      const ok = await saveMessages(sid, finalMsgs.map(encodeMsg), title, deletedIds)
       return { decoded: finalMsgs, split: false, ok }
     }
     const removed = new Set<ChatMessage>()
@@ -1108,7 +1117,7 @@ ${full}
     const decoded = windowAllOk
       ? [...finalMsgs.filter((m) => !removed.has(m)), ...summaries]
       : finalMsgs
-    const ok = await saveMessages(sid, decoded.map(encodeMsg), title)
+    const ok = await saveMessages(sid, decoded.map(encodeMsg), title, deletedIds)
     return { decoded, split: true, ok }
   }
 
@@ -1238,6 +1247,9 @@ ${full}
     const base = [...messages]
     base[index] = { ...base[index], content: newContent.trim() }
     const truncated = base.slice(0, index + 1)
+    // #30：被截断消息的 id 进显式删除列表（落库时按 id 删，不再依赖全量替换）
+    const dropped = messages.slice(index + 1)
+    pendingDeletedIdsRef.current = dropped.map((m) => m.msg_id).filter((x): x is string => !!x)
     setMessages(truncated)
     // 2026-10-19 修复：与重新生成同规则——截断其后消息的点赞/点踩态一并清理，
     // 否则孤儿点赞挂到随后新建的助手消息上

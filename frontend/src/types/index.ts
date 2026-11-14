@@ -4,6 +4,7 @@ export type MsgType = 'chat' | 'tool_call' | 'tool_result' | 'summary' | 'note'
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
+  msg_id?: string  // #30 消息 id（2026-11-14）：保存幂等/同步 diff/编辑删除定位
   images?: string[]
   htmls?: string[]
   toolCalls?: ToolCall[]

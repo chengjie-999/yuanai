@@ -153,6 +153,9 @@ export function downloadChat(messages: ChatMessage[], filename: string) {
 }
 
 export function encodeMsg(m: any) {
+  // #30：新消息生成 id（历史消息透传已有 id）——保存幂等/同步 diff 的键
+  if (!m.msg_id) m.msg_id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID() : `m${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   const meta: any = {}
   if (m.sender && m.sender !== 'orchestrator') meta.s = m.sender
   if (m.toolCalls?.length) meta.t = m.toolCalls
@@ -183,6 +186,7 @@ export function encodeMsg(m: any) {
     ...(m.recipient ? { recipient: m.recipient } : {}),
     ...(m.turn ? { turn: m.turn } : {}),
     ...(m.msgType && m.msgType !== 'chat' ? { type: m.msgType } : {}),
+    ...(m.msg_id ? { msg_id: m.msg_id } : {}),
   }
 }
 

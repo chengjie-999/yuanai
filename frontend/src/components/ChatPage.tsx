@@ -316,7 +316,8 @@ export default function ChatPage({ user }: { user?: any }) {
   // Claude Code 桥接待审批命令
   const [pendingApproval, setPendingApproval] = useState<{ decision_id: string; tool_name: string; command: string; claude: boolean } | null>(null)
   // 消息点赞（下标 → 已赞）与修改编辑态（消息下标，null = 非编辑态）
-  const [feedback, setFeedbackState] = useState<Record<number, { liked: boolean; disliked: boolean }>>({})
+  // #30：反馈键=msg_id（字符串）或下标回退——统一 string 键
+const [feedback, setFeedbackState] = useState<Record<string, { liked: boolean; disliked: boolean }>>({})
   // 自动朗读（默认开启，与顶部栏喇叭/设置页开关共享 useAutoRead 同步）
   const autoRead = useAutoRead()
   // 多端同步 P1（2026-11-09）：偏好上云——挂载拉服务端覆盖本地，之后变更回写。
@@ -359,7 +360,7 @@ export default function ChatPage({ user }: { user?: any }) {
   // 模型自主界面联动（2026-10-22）：set_theme 工具 → 后端 theme_event → 主题切换
   const { setTheme: applyTheme } = useTheme()
   const [autoReadTick, setAutoReadTick] = useState(0)
-  const feedbackPendingRef = useRef<Set<number>>(new Set())
+  const feedbackPendingRef = useRef<Set<string>>(new Set())
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   // 发送计数：每次发送/修改重发 +1，ChatView 据此无条件滚底并恢复跟随
   const [sendTick, setSendTick] = useState(0)
@@ -1218,6 +1219,20 @@ ${full}
           window.dispatchEvent(new Event('yuan-ctx-refresh'))  // 上下文用量徽标即时刷新
         })()
       },
+      false,
+      // #28（2026-11-14）：SSE 自动重连——重试前重置占位气泡（新流从头续显，
+      // 旧 token/工具卡清掉防重复；落库因消息 id 幂等不受影响）
+      () => {
+        setMessages((prev) => {
+          const next = [...prev]
+          const last = next[next.length - 1]
+          if (last && last.role === 'assistant') {
+            next[next.length - 1] = { ...last, content: '', toolCalls: [], reasoning: '', finalReasoning: '' }
+          }
+          messagesRef.current = next
+          return next
+        })
+      },
     )
     streamRef.current = { sid, controller }
   }
@@ -1255,7 +1270,9 @@ ${full}
     // 否则孤儿点赞挂到随后新建的助手消息上
     setFeedbackState((p) => {
       const next = { ...p }
-      Object.keys(next).forEach((k) => { if (Number(k) > index) delete next[Number(k)] })
+      // #30：被截断消息的反馈键（msg_id 或下标）一并清理
+      const dropKeys = new Set(dropped.map((m) => (m.msg_id || String(messages.indexOf(m)))).filter(Boolean))
+      Object.keys(next).forEach((k) => { if (dropKeys.has(k) || Number(k) > index) delete next[k] })
       return next
     })
     setSendTick((t) => t + 1)
@@ -1313,18 +1330,21 @@ ${full}
   }
 
   // 点赞/点踩 三态互斥：乐观更新 + 失败回滚 + pending 防并发（流式期间禁止索引操作）
-  const handleFeedback = async (index: number, kind: 'like' | 'dislike') => {
-    if (loading || feedbackPendingRef.current.has(index) || !currentSid) return
-    const cur = feedback[index] || { liked: false, disliked: false }
+  // #30（2026-11-14）：反馈按消息 id 定位（msg_id 作键，消息增删不错位）；
+  // 旧数据无 id 时回落下标键
+  const handleFeedback = async (msgId: string | number, index: number, kind: 'like' | 'dislike') => {
+    const key = typeof msgId === 'string' && msgId ? msgId : String(index)
+    if (loading || feedbackPendingRef.current.has(key) || !currentSid) return
+    const cur = feedback[key] || { liked: false, disliked: false }
     const next = kind === 'like'
       ? { liked: !cur.liked, disliked: false }
       : { liked: false, disliked: !cur.disliked }
     const state = next.liked ? 'like' : next.disliked ? 'dislike' : 'none'
-    feedbackPendingRef.current.add(index)
-    setFeedbackState((p) => ({ ...p, [index]: next }))
-    const ok = await setFeedback(currentSid, index, state)
-    if (!ok) setFeedbackState((p) => ({ ...p, [index]: cur }))
-    feedbackPendingRef.current.delete(index)
+    feedbackPendingRef.current.add(key)
+    setFeedbackState((p) => ({ ...p, [key]: next }))
+    const ok = await setFeedback(currentSid, index, state, typeof msgId === 'string' ? msgId : undefined)
+    if (!ok) setFeedbackState((p) => ({ ...p, [key]: cur }))
+    feedbackPendingRef.current.delete(key)
   }
 
   // ---- 举报（C7 投诉举报机制，2026-10-29）：AI 气泡举报按钮 → 弹窗选原因 → 落工单 ----

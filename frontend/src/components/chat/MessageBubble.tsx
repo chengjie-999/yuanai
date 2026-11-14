@@ -361,7 +361,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   onEditStart: (i: number) => void
   onEditConfirm: (i: number, content: string) => void
   onEditCancel: () => void
-  onFeedback: (i: number, kind: 'like' | 'dislike') => void
+  onFeedback: (msgId: string | number, i: number, kind: 'like' | 'dislike') => void
   onReport?: (i: number) => void
   onRegenerate?: (i: number) => void
   onFollowup?: (text: string) => void
@@ -685,7 +685,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
         </button>
       ) : (isExec || isDelegation) ? null : (
         <>
-        <button onClick={() => onFeedback(index, 'like')} disabled={loading}
+        <button onClick={() => onFeedback(msg.msg_id || index, index, 'like')} disabled={loading}
           className="yuan-tip" data-tip={liked ? '取消点赞' : '点赞'} aria-label={liked ? '取消点赞' : '点赞'}
           style={iconBtnStyle(false, !!liked)}
           onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
@@ -695,7 +695,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
             <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z" />
           </svg>
         </button>
-        <button onClick={() => onFeedback(index, 'dislike')} disabled={loading}
+        <button onClick={() => onFeedback(msg.msg_id || index, index, 'dislike')} disabled={loading}
           className="yuan-tip" data-tip={disliked ? '取消点踩' : '点踩（内容不会进入记忆）'} aria-label={disliked ? '取消点踩' : '点踩'}
           style={{ ...iconBtnStyle(false, !!disliked), color: disliked ? 'var(--danger)' : undefined }}
           onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}

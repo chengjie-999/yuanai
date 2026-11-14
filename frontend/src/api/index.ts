@@ -644,13 +644,14 @@ export async function loadFeedback(sessionId: string): Promise<Record<number, Fe
 }
 
 export async function setFeedback(sessionId: string, messageIndex: number,
-  state: 'like' | 'dislike' | 'none'): Promise<boolean> {
+  state: 'like' | 'dislike' | 'none', messageId?: string): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/chat/feedback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         session_id: sessionId, message_index: messageIndex,
+        ...(messageId ? { message_id: messageId } : {}),
         liked: state === 'like', disliked: state === 'dislike',
       }),
     })
@@ -831,6 +832,7 @@ export function streamChat(
   onError: (error: string) => void,
   onDone: () => void,
   browserContext: boolean = false,
+  onRetry?: () => void,  // #28（2026-11-14）：SSE 自动重连——重试前回调（UI 重置占位气泡）
 ): AbortController {
   const controller = new AbortController()
 
@@ -839,13 +841,33 @@ export function streamChat(
     : browserContext
       ? `${API_BASE}/chat/stream?browser_context=true`
       : `${API_BASE}/chat/stream`
-  fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify(params),
-    signal: controller.signal,
-  })
+
+  // #28：网络错误/5xx 自动重试一次（同一请求体——消息 id 已保证落库幂等，
+  // 重复流经 onRetry 重置占位气泡后从头续显，不重复落库）
+  const doFetch = (attempt: number): Promise<Response> =>
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(params),
+      signal: controller.signal,
+    }).catch((e) => {
+      if (attempt === 0 && onRetry) { onRetry(); return doFetch(1) }
+      throw e
+    })
+
+  doFetch(0)
     .then(async (response) => {
+      if ((response.status >= 500 || response.status === 0) && onRetry) {
+        // 5xx：先重试一次，仍失败再走错误提示
+        onRetry()
+        const retryResp = await doFetch(1).catch(() => null)
+        if (retryResp) {
+          response = retryResp
+        } else {
+          onError('服务暂时不可用，请稍后重试')
+          return
+        }
+      }
       if (!response.ok) {
         // 提取后端错误详情（配额 429 等业务提示直接展示给用户）
         const text = await response.text()

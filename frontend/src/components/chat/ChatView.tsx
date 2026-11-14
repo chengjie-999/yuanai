@@ -24,11 +24,11 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
   autoRead: boolean; autoReadTick: number
   pendingApproval: { decision_id: string; tool_name: string; command: string; claude: boolean } | null
   handleDecision: (approve: boolean) => void
-  likes: Record<number, { liked: boolean; disliked: boolean }>
+  likes: Record<string, { liked: boolean; disliked: boolean }>
   editingIndex: number | null
   setEditingIndex: (v: number | null) => void
   onEditMessage: (index: number, content: string) => void
-  onFeedback: (index: number, kind: 'like' | 'dislike') => void
+  onFeedback: (msgId: string | number, index: number, kind: 'like' | 'dislike') => void
   onReport: (index: number) => void
   onRegenerate: (index: number) => void
   onContinue: () => void
@@ -182,7 +182,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
             <MessageBubble key={`${currentSid}-${i}`} msg={msg} index={i} isLast={i === messages.length - 1}
               loading={loading} user={user}
               variant={agentKind === 'chat' ? 'chat' : 'exec'}
-              liked={!!likes[i]?.liked} disliked={!!likes[i]?.disliked} editing={editingIndex === i}
+              liked={!!likes[(msg.msg_id as string) || String(i)]?.liked} disliked={!!likes[(msg.msg_id as string) || String(i)]?.disliked} editing={editingIndex === i}
               autoRead={autoRead} autoReadTick={autoReadTick}
               setExpandedImage={setExpandedImage}
               onEditStart={setEditingIndex}

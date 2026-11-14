@@ -65,6 +65,7 @@ class AIChatFeedback(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String(36), nullable=False, index=True)
     message_index = Column(Integer, nullable=False)
+    message_id = Column(String(36), nullable=True)  # #30（迁移 0033）：按消息 id 定位
     liked = Column(Integer, default=0)       # 0=未赞 1=已赞
     disliked = Column(Integer, default=0)    # 0=未踩 1=已踩（与 liked 不可同时为 1）
     user_id = Column(Integer, nullable=True, index=True)

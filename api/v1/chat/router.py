@@ -266,7 +266,10 @@ class MessagesRequest(BaseModel):
 
 class FeedbackRequest(BaseModel):
     session_id: str = Field(..., min_length=1, description="会话 ID")
-    message_index: int = Field(..., ge=0, description="消息下标（0 起，与前端数组一致）")
+    message_index: int = Field(..., ge=0, description="消息下标（0 起，与前端数组一致；旧客户端定位键）")
+    # #30（2026-11-14）：按消息 id 定位（消息增删后下标错位的根治）；
+    # 可选——不传时回落 message_index 兼容路径
+    message_id: Optional[str] = Field(None, description="消息 msg_id（优先按 id 定位）")
     liked: Optional[bool] = Field(None, description="点赞（true=赞，false=取消；与 disliked 互斥）")
     disliked: Optional[bool] = Field(None, description="点踩（true=踩，false=取消；与 liked 互斥）")
 
@@ -1564,9 +1567,15 @@ async def set_message_feedback(req: FeedbackRequest, request: Request):
         from db.session import AIChatFeedback
         with db.session() as sess:
             try:
-                row = sess.query(AIChatFeedback).filter_by(
-                    session_id=req.session_id, message_index=req.message_index,
-                ).first()
+                # #30：按 message_id 定位优先，回落 message_index（旧客户端兼容）
+                if req.message_id:
+                    row = sess.query(AIChatFeedback).filter_by(
+                        session_id=req.session_id, message_id=req.message_id,
+                    ).first()
+                else:
+                    row = sess.query(AIChatFeedback).filter_by(
+                        session_id=req.session_id, message_index=req.message_index,
+                    ).first()
                 if row:
                     row.liked = liked
                     row.disliked = disliked
@@ -1575,6 +1584,7 @@ async def set_message_feedback(req: FeedbackRequest, request: Request):
                     sess.add(AIChatFeedback(
                         session_id=req.session_id,
                         message_index=req.message_index,
+                        message_id=req.message_id,
                         liked=liked,
                         disliked=disliked,
                         user_id=user_id,
@@ -1602,8 +1612,14 @@ async def get_message_feedback(request: Request, session_id: str = Query(..., mi
         from db.session import AIChatFeedback
         with db.session() as sess:
             rows = sess.query(AIChatFeedback).filter_by(session_id=session_id).all()
-            return {str(r.message_index): {"liked": bool(r.liked), "disliked": bool(r.disliked)}
-                    for r in rows if r.liked or r.disliked}
+            # #30：有 message_id 的行按 id 作键（消息增删后不错位），旧数据回落下标键
+            out = {}
+            for r in rows:
+                if not (r.liked or r.disliked):
+                    continue
+                key = r.message_id or str(r.message_index)
+                out[key] = {"liked": bool(r.liked), "disliked": bool(r.disliked)}
+            return out
     except HTTPException:
         raise
     except Exception as e:

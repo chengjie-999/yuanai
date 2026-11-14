@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
-import { checkToken, setStoredUser, setAuthFailedHandler } from '../api'
+import { checkToken, getToken, getStoredUser, setStoredUser, setAuthFailedHandler } from '../api'
 
 interface AuthState {
   token: string | null
@@ -22,21 +22,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    let saved: string | null = null
-    try { saved = localStorage.getItem('token') || sessionStorage.getItem('token') } catch { /* 存储受限 */ }
+    // 2026-11-14 掉登录修复：本地优先——token 与缓存的用户信息同步恢复，
+    // 登录态不依赖服务端校验的往返（此前挂载即发 /auth/check，任何一次
+    // 网络抖动/后端重启/限流都判失效清 token，频繁刷新=反复抽检必掉登录）；
+    // 服务端校验改后台软校验：明确 401/403 才登出，瞬时失败保持现状
+    const saved = getToken()
     if (saved) {
+      setToken(saved)
+      const stored = getStoredUser()
+      if (stored) setUser(stored)
+      setLoading(false)  // 本地态即登录态：不等服务端校验（校验仅后台软刷新）
       checkToken().then((data) => {
         if (data.valid && data.user) {
-          setToken(saved)
           setUser(data.user)
-        } else {
+          setStoredUser(data.user)  // 服务端用户信息更新本地缓存
+        } else if (!data.transient) {
+          // 明确鉴权拒绝（401/403）：清 token 提示重新登录
           if (data.detail) {
             try { sessionStorage.setItem('loginError', data.detail) } catch { /* 存储受限 */ }
           }
           try { localStorage.removeItem('token') } catch { /* 存储受限 */ }
           try { sessionStorage.removeItem('token') } catch { /* 存储受限 */ }
+          setStoredUser(null)
+          setToken(null)
+          setUser(null)
         }
-        setLoading(false)
+        // transient（网络/5xx/限流）：保持本地登录态，下次刷新再校验
       })
     } else {
       setLoading(false)

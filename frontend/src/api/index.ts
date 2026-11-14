@@ -121,6 +121,13 @@ export function setStoredUser(user: any) {
   else localStorage.removeItem(USER_KEY)
 }
 
+export function getStoredUser(): any {
+  try {
+    const raw = localStorage.getItem(USER_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+
 export function authHeaders(): Record<string, string> {
   const token = getToken()
   return token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -477,7 +484,7 @@ export async function emailLogin(email: string, code: string, agreementAccepted:
   }
 }
 
-export async function checkToken(): Promise<{ valid: boolean; user?: any; detail?: string }> {
+export async function checkToken(): Promise<{ valid: boolean; user?: any; detail?: string; transient?: boolean }> {
   const token = getToken()
   if (!token) return { valid: false }
   try {
@@ -486,12 +493,16 @@ export async function checkToken(): Promise<{ valid: boolean; user?: any; detail
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ token }),
     })
-    if (!res.ok) {
+    // 2026-11-14 掉登录修复：只有明确鉴权拒绝（401/403）才判失效；
+    // 网络抖动/后端重启 502/限流 429/500 一律 transient——此前任何失败都
+    // 判失效并清 token，频繁刷新时任何一次瞬时故障都直接踢登录
+    if (res.status === 401 || res.status === 403) {
       try { const err = await res.json(); return { valid: false, detail: err.detail || '登录已过期' } }
-      catch { return { valid: false } }
+      catch { return { valid: false, detail: '登录已过期' } }
     }
+    if (!res.ok) return { valid: false, transient: true }
     return await res.json()
-  } catch { return { valid: false } }
+  } catch { return { valid: false, transient: true } }
 }
 
 // V1-4 会话分享（2026-11-06）：分享=服务端渲染静态页（含 AI 标识+举报入口）；

@@ -7,7 +7,7 @@ import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { useTheme } from '../../contexts/ThemeContext'
 import { voiceTtsStream } from '../../api'
-import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks, fmtTokens, downloadBlob, downloadTs, svgToPngBlob } from './helpers'
+import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks, fmtTokens, downloadBlob, downloadTs, svgToPngBlob, injectBrandFooter } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, DownloadIcon } from '../icons'
 import { ZoomViewer } from './ZoomableImage'
 
@@ -98,10 +98,11 @@ function InlineHtmlFrame({ html }: { html: string }) {
           }}>
           {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
         </button>
-        {/* 下载（2026-11-04 用户要求）：自包含完整 HTML（含主题适配），打开即所见 */}
+        {/* 下载（2026-11-04 用户要求）：自包含完整 HTML（含主题适配），打开即所见；
+            下载版注入品牌页脚（用户拍板「下载的 html 有入口」，模型已写的跳过） */}
         <button onClick={() => downloadBlob(
           `xiaoyuan-html-${downloadTs()}.html`,
-          `<!-- 内容由 AI 生成 -->\n${srcDoc}`, 'text/html')}
+          `<!-- 内容由 AI 生成 -->\n${injectBrandFooter(srcDoc)}`, 'text/html')}
           title="下载 HTML 文件（浏览器打开即所见）" aria-label="下载 HTML 文件"
           style={{
             background: 'none', border: 'none', cursor: 'pointer', padding: 2,

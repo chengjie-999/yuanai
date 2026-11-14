@@ -75,6 +75,20 @@ export function stripMarkdown(text: string): string {
     .trim()
 }
 
+/* 下载版品牌页脚（2026-11-14 用户拍板「下载的 html 有入口」）：仅在下载路径注入——
+   渲染保持模型代码原样；模型已写官网链接/已有页脚则跳过（幂等不重复） */
+export function injectBrandFooter(html: string): string {
+  if (!html || html.includes('xiaoyuan-brand-footer') || html.includes('cjyuanai.cn')) return html
+  const footer = `
+<div class="xiaoyuan-brand-footer" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;text-align:center;padding:5px 12px;font-family:'PingFang SC','Microsoft YaHei',sans-serif;font-size:12px;box-shadow:0 -2px 8px rgba(15,23,42,0.12);">
+  由 <a href="https://cjyuanai.cn/" target="_blank" style="color:#fff;font-weight:700;text-decoration:underline;">小元AI</a> 生成 · 云边协同 · 对话即执行 · <a href="https://cjyuanai.cn/" target="_blank" style="color:#fff;text-decoration:underline;">打开官网</a>
+</div>
+<style>body{padding-bottom:44px;}</style>`
+  const idx = html.search(/<\/body>/i)
+  if (idx >= 0) return html.slice(0, idx) + footer + html.slice(idx)
+  return html + footer
+}
+
 /* ============ 统一下载工具（2026-11-14 收敛，唯一实现点） ============ */
 
 /** 统一文件下载：Blob + a[download] 零依赖——HTML/SVG/PNG/聊天记录全部走这里 */

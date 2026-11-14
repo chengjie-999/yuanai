@@ -65,3 +65,52 @@ def test_cleanup_silent_on_error(fake_temp, monkeypatch):
     monkeypatch.setattr(tray.logger, "info", lambda *a, **k: (_ for _ in ()).throw(OSError("boom")))
     (fake_temp / "_MEIx").mkdir()
     tray._cleanup_mei_residue()  # 不抛异常
+
+
+# ---- #41 终端窗口一体化（2026-11-14）：管道感知 + WT 承载 ----
+
+class _FakeStream:
+    """可配置 fileno 的假 stdio 流"""
+
+    def __init__(self, fileno_result):
+        self._fileno = fileno_result
+        self.reconfigure = lambda *a, **k: None
+
+    def fileno(self):
+        if isinstance(self._fileno, Exception):
+            raise self._fileno
+        return self._fileno
+
+
+def test_stdio_attached_detects_valid_host(monkeypatch):
+    """stdio 有效（WT/集成终端管道）→ True；无效/None → False"""
+    monkeypatch.setattr(tray.sys, "stdout", _FakeStream(1))
+    monkeypatch.setattr(tray.sys, "stderr", _FakeStream(2))
+    assert tray._stdio_attached() is True
+
+    monkeypatch.setattr(tray.sys, "stdout", None)
+    monkeypatch.setattr(tray.sys, "stderr", None)
+    assert tray._stdio_attached() is False
+
+    monkeypatch.setattr(tray.sys, "stdout", _FakeStream(ValueError("closed")))
+    monkeypatch.setattr(tray.sys, "stderr", None)
+    assert tray._stdio_attached() is False
+
+
+def test_run_terminal_skips_alloc_console_when_attached(monkeypatch):
+    """stdio 已有宿主 → 不弹自建控制台；无宿主 → 兜底自建"""
+    import agent.terminal as terminal_mod
+
+    async def _fake_main():
+        return None
+    monkeypatch.setattr(terminal_mod, "main", _fake_main)
+
+    called = []
+    monkeypatch.setattr(tray, "_alloc_console", lambda: called.append(1))
+    monkeypatch.setattr(tray, "_stdio_attached", lambda: True)
+    tray._run_terminal_mode()
+    assert called == []
+
+    monkeypatch.setattr(tray, "_stdio_attached", lambda: False)
+    tray._run_terminal_mode()
+    assert called == [1]

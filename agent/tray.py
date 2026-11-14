@@ -255,10 +255,31 @@ def _open_in_windows_terminal(cmd: list, cwd: str, title: str = "小元AI") -> b
         return False
 
 
+def _stdio_attached() -> bool:
+    """stdio 是否有有效宿主（#41 2026-11-14 管道感知）：从 WT 标签页/IDE 集成
+    终端启动的进程继承管道/控制台句柄——复用宿主窗口即可；双击启动的 GUI
+    进程 sys.stdout 为 None/无效——需自建控制台。"""
+    try:
+        for s in (sys.stdout, sys.stderr):
+            if s is None:
+                continue
+            try:
+                if s.fileno() >= 0:
+                    return True
+            except Exception:
+                pass
+        return False
+    except Exception:
+        return False
+
+
 def _run_terminal_mode() -> int:
-    """发布版内置终端入口：自建控制台 → 跑 agent.terminal REPL。
+    """发布版内置终端入口：跑 agent.terminal REPL。
+    #41 管道感知：stdio 已挂真实终端（WT 标签/IDE 集成终端）→ 复用继承
+    控制台不新建窗口；无宿主（双击/托盘无 WT 兜底）→ 自建控制台。
     spawn 侧传 --no-agent（托盘进程已持有云端连接，避免双连互踢）"""
-    _alloc_console()
+    if not _stdio_attached():
+        _alloc_console()
     import asyncio
     from agent.terminal import main as terminal_main
     try:
@@ -737,9 +758,12 @@ class AgentTray:
             _TERMINAL_LAST_LAUNCH = now
             if getattr(sys, "frozen", False):
                 # 发布版内置终端：--no-agent 跳过内嵌 Agent（托盘进程已持云端
-                # 连接，再拉同身份双连互踢）
-                subprocess.Popen([sys.executable, "--run-terminal", "--no-agent"],
-                                 stdin=subprocess.DEVNULL)
+                # 连接，再拉同身份双连互踢）。#41（2026-11-14）：优先 WT 标签页
+                # 承载（与源码形态一致：颜色/历史/多行全功能，--run-terminal
+                # 感知到管道直接复用宿主）；未装 WT 回落自建控制台
+                cmd = [sys.executable, "--run-terminal", "--no-agent"]
+                if not _open_in_windows_terminal(cmd, cwd=os.path.dirname(sys.executable)):
+                    subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
                 return
             from agent.terminal import find_terminal_launcher
             launcher = find_terminal_launcher()

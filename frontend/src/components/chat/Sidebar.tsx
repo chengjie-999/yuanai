@@ -38,7 +38,7 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, a
               const active = activeKind === a.key
               return (
                 <button key={a.key} onClick={() => onSwitchKind(a.key)} aria-label={`切换到${a.fullLabel}`}
-                  className="yuan-tip" data-tip={a.fullLabel}
+                  title={a.fullLabel}
                   style={{
                     flex: 1, minWidth: 0, padding: '6px 2px 5px', borderRadius: 8, cursor: 'pointer',
                     border: `1px solid ${active ? a.color : 'var(--border)'}`,
@@ -113,7 +113,7 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, a
               >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                   {s.is_main && (
-                    <span className="yuan-tip" data-tip="置顶主对话" aria-label="置顶主对话"
+                    <span title="置顶主对话" aria-label="置顶主对话"
                       style={{ color: 'var(--accent)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                       <PinIcon size={11} />
                     </span>
@@ -126,8 +126,7 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, a
                   {/* 主对话降级（2026-10-30）：不清数据——转普通对话 + 自动新建空主对话；2026-10-31 用户拍板：位置放最前 */}
                   {s.is_main && (
                     <span onClick={(e) => { e.stopPropagation(); onDemoteMain(s.session_id) }}
-                      title="转为普通对话" aria-label="转为普通对话"
-                      className="yuan-tip" data-tip="转为普通对话（保留全部历史，自动新建空主对话）"
+                      title="转为普通对话（保留全部历史，自动新建空主对话）" aria-label="转为普通对话"
                       style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
                       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
@@ -144,7 +143,6 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, a
                       去掉手动星光按钮——自动链路在 /chat/save fire-and-forget） */}
                   <span onClick={(e) => { e.stopPropagation(); onRename(s.session_id, s.title) }}
                     title="重命名" aria-label="重命名"
-                    className="yuan-tip" data-tip="重命名"
                     style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
@@ -154,8 +152,7 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, a
                       隐藏优于报错按钮 */}
                   {s.agent_kind === undefined || s.agent_kind === 'chat' ? (
                   <span onClick={(e) => { e.stopPropagation(); onShare(s.session_id) }}
-                    title="分享对话" aria-label="分享对话"
-                    className="yuan-tip" data-tip="分享对话（生成公开链接）"
+                    title="分享对话（生成公开链接）" aria-label="分享对话"
                     style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
@@ -176,7 +173,7 @@ export default function Sidebar({ sessions, currentSid, sidebarOpen, isMobile, a
       {/* 回收站入口（2026-10-31 用户拍板：侧边栏最底端） */}
       <div style={{ padding: '8px 12px 14px', borderTop: '1px solid var(--border-light)', flexShrink: 0 }}>
         <button onClick={onOpenTrash} aria-label="回收站"
-          className="yuan-tip" data-tip="回收站（已删除的对话可恢复）"
+          title="回收站（已删除的对话可恢复）"
           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', width: '100%' }}
           onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
           onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}>

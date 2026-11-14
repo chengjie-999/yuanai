@@ -101,7 +101,7 @@ export default function TerminalView({ calls, defaultOpen = false }: { calls: To
               )}
               {tc.status !== 'running' && (
                 <button
-                  className="yuan-tip" data-tip="复制命令"
+                  title="复制命令"
                   aria-label="复制命令"
                   onClick={(e) => { e.stopPropagation(); copy(idx, commandText(tc)) }}
                   style={{

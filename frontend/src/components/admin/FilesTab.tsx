@@ -256,10 +256,10 @@ export default function FilesTab() {
                   <td style={{ padding: '10px 14px' }} onClick={(e) => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={() => { setRenameTarget({ path: d.path, name: d.name }); setRenameDraft(d.name) }}
-                        title="重命名" aria-label="重命名" className="yuan-tip" data-tip="重命名"
+                        title="重命名" aria-label="重命名"
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: 12 }}>重命名</button>
                       <button onClick={() => handleDelete(d)}
-                        title="删除" aria-label="删除" className="yuan-tip" data-tip="删除"
+                        title="删除" aria-label="删除"
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: 12 }}>删除</button>
                     </div>
                   </td>

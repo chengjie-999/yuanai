@@ -1664,8 +1664,7 @@ ${full}
                 const url = window.location.origin + panel.path
                 navigator.clipboard.writeText(url).then(() => flashNotice('链接已复制，可直接在浏览器打开')).catch(() => {})
               }}
-                className="yuan-tip" data-tip="点击复制此链接（可直接在浏览器打开）"
-                title="复制页面链接" aria-label="复制页面链接"
+                title="点击复制此链接（可直接在浏览器打开）" aria-label="复制页面链接"
                 style={{
                   flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
                   padding: '4px 10px', borderRadius: 999, background: 'var(--bg-input)',
@@ -1737,8 +1736,7 @@ ${full}
               const url = window.location.origin + panel.path
               navigator.clipboard.writeText(url).then(() => flashNotice('链接已复制，可直接在浏览器打开')).catch(() => {})
             }}
-              className="yuan-tip" data-tip="点击复制此链接（可直接在浏览器打开）"
-              title="复制页面链接" aria-label="复制页面链接"
+              title="点击复制此链接（可直接在浏览器打开）" aria-label="复制页面链接"
               style={{
                 flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
                 padding: '4px 10px', borderRadius: 999, background: 'var(--bg-input)',

@@ -205,7 +205,7 @@ export default function PlanPage({ onClose, hideBack }: { onClose?: () => void; 
               setTimeout(() => setCopiedUrl(false), 1500)
             }).catch(() => {})
           }}
-            className="yuan-tip" data-tip="点击复制此链接" title="复制页面链接" aria-label="复制页面链接"
+            title="点击复制此链接" aria-label="复制页面链接"
             style={{
               flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
               padding: '4px 10px', borderRadius: 999, background: 'var(--bg-input)',

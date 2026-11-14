@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getStoredModel, setStoredModel, fetchModels } from '../api'
+import { getStoredModel, setStoredModel, fetchModels, getStoredEffort, setStoredEffort } from '../api'
 import { fetchAgentModels, updateAgentModel } from '../api'
 import { fetchAgentVoices, updateAgentVoice } from '../api'
 import MemoryCard from './MemoryCard'
@@ -60,6 +60,19 @@ export default function SettingsPage() {
   // 回答完成提示音（U5，默认开启）
   const answerTone = useAnswerTone()
   const [agentModels, setAgentModels] = useState<Record<string, string>>({})
+  // 2026-11-14 子页面化：执行位置 / 推理强度 / 数据集（写 localStorage + 事件同步聊天页）
+  const [backendLocal, setBackendLocal] = useState<'auto' | 'cloud' | 'local'>(() => {
+    try { const v = localStorage.getItem('chatBackend'); return v === 'cloud' || v === 'local' ? v : 'auto' } catch { return 'auto' }
+  })
+  const [effortLocal, setEffortLocal] = useState<'low' | 'medium' | 'high'>(getStoredEffort())
+  const [dsList, setDsList] = useState<{ id: number; name: string; row_count: number }[]>([])
+  const [dsLoading, setDsLoading] = useState(false)
+  const loadDs = () => {
+    setDsLoading(true)
+    import('../api').then(({ fetchDatasets }) => fetchDatasets()
+      .then((list: any[]) => { setDsList(Array.isArray(list) ? list : []); setDsLoading(false) })
+      .catch(() => setDsLoading(false)))
+  }
   const [savingRole, setSavingRole] = useState('')
   // 语音音色
   const [agentVoices, setAgentVoices] = useState<Record<string, string>>({})
@@ -158,6 +171,84 @@ export default function SettingsPage() {
                 transition: 'left 0.2s',
               }} />
             </button>
+          </div>
+        </div>
+
+        {/* ---- 执行位置（2026-11-14 子页面化：从输入区移入） ---- */}
+        <div style={C.card}>
+          <div style={C.title}>
+            执行位置
+            <span style={C.sub}>　自动：本机优先，离线回退云端；本机：强制本机（离线报错）</span>
+          </div>
+          <div style={{ ...C.row, borderBottom: 'none', gap: 8 }}>
+            {(['cloud', 'auto', 'local'] as const).map((b) => (
+              <button key={b} onClick={() => {
+                try { localStorage.setItem('chatBackend', b) } catch { /* 忽略 */ }
+                setBackendLocal(b)
+                window.dispatchEvent(new Event('yuan-backend-changed'))
+              }}
+                aria-label={b === 'cloud' ? '云端' : b === 'auto' ? '自动' : '本机'}
+                style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer',
+                  padding: '6px 0', fontSize: 12.5, fontWeight: 600,
+                  background: backendLocal === b ? 'var(--accent-light)' : 'transparent',
+                  color: backendLocal === b ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
+                {b === 'cloud' ? '云端' : b === 'auto' ? '自动（推荐）' : '本机'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ---- 推理强度（2026-11-14 子页面化；三档） ---- */}
+        <div style={C.card}>
+          <div style={C.title}>
+            推理强度
+            <span style={C.sub}>　快答省时；深思适合复杂任务（仅 DeepSeek 系列生效）</span>
+          </div>
+          <div style={{ ...C.row, borderBottom: 'none', gap: 8 }}>
+            {(['low', 'medium', 'high'] as const).map((v) => (
+              <button key={v} onClick={() => {
+                setStoredEffort(v)
+                setEffortLocal(v)
+                window.dispatchEvent(new Event('yuan-effort-changed'))
+              }}
+                aria-label={v === 'low' ? '快答' : v === 'medium' ? '均衡' : '深思'}
+                style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer',
+                  padding: '6px 0', fontSize: 12.5, fontWeight: 600,
+                  background: effortLocal === v ? 'var(--accent-light)' : 'transparent',
+                  color: effortLocal === v ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
+                {v === 'low' ? '快答' : v === 'medium' ? '均衡' : '深思'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ---- 数据集（2026-11-14 子页面化：历史数据集引用复制） ---- */}
+        <div style={C.card}>
+          <div style={C.title}>
+            数据集
+            <span style={C.sub}>　点击复制引用文本，回到对话粘贴即可使用（或直接用输入框回形针上传）</span>
+          </div>
+          <div style={{ ...C.row, borderBottom: 'none', flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+            {dsList.length === 0 ? (
+              <button onClick={loadDs}
+                style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'none',
+                  cursor: 'pointer', fontSize: 12.5, color: 'var(--text-secondary)', padding: '6px 0' }}>
+                {dsLoading ? '加载中…' : '加载历史数据集'}
+              </button>
+            ) : dsList.map((ds) => (
+              <button key={ds.id}
+                onClick={() => {
+                  const ref = ` [数据集 #${ds.id}: ${ds.name}]`
+                  navigator.clipboard?.writeText(ref).catch(() => {})
+                  window.alert(`已复制引用：${ref}\n\n回到对话粘贴进输入框即可。`)
+                }}
+                style={{ border: '1px solid var(--border-light)', borderRadius: 8, background: 'var(--bg-input)',
+                  cursor: 'pointer', padding: '6px 10px', fontSize: 12.5, color: 'var(--text-primary)',
+                  display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left' }}>
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ds.name}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{ds.row_count} 行</span>
+              </button>
+            ))}
           </div>
         </div>
 

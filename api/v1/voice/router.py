@@ -355,9 +355,10 @@ def voice_tts(req: VoiceTtsRequest, request: Request):
             body = {
                 "text": req.text,
                 "voice_id": speaker if speaker in ("stella", "tide") else "tide",
-                # 真机实测（2026-11-14）：响应为 mp3 流（ID3 头）——显式声明 mp3，
-                # 防官方后续实现 wav 后行为切换；前端首字节嗅探已兼容 ID3
-                "format": "mp3",
+                # format 只认 wav/pcm（真机实测 400 拒绝 mp3 值）；请求 wav 时
+                # 官方实际返回 mp3 流（ID3 头）——前端首字节嗅探已兼容 ID3，
+                # 无需与官方返回值强绑定
+                "format": "wav",
                 "filter_markdown": True,
             }
             r = urllib.request.Request(

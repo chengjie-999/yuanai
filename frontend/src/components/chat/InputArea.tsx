@@ -3,11 +3,9 @@ import { downloadChat } from './helpers'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
 import type { ReasoningEffort } from './ReasoningSelector'
-import ReasoningSelector from './ReasoningSelector'
 import { ModelSelector } from '../ModelSelector'
 import { compressImage } from './imageUtils'
 import { uploadDataset } from '../../api'
-import { useIsMobile } from '../../hooks/useIsMobile'
 import { PaperclipIcon, XIcon } from '../icons'
 
 export default function InputArea({ input, setInput, loading, handleSend, images, setImages, currentSid, sessions, messages, agentKind, model, setModel, effort, setEffort, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, onStop, notice }: {
@@ -35,18 +33,6 @@ export default function InputArea({ input, setInput, loading, handleSend, images
     }
   }, [input])
   const [uploading, setUploading] = useState(false)
-  // 任务设置弹层（2026-11-14 用户立项：模型/推理/执行位置/数据集四合一收进齿轮，
-  // 输入区只留工作/娱乐分段开关——高频动作近手、低频设置收纳）
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const settingsRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!settingsOpen) return
-    const onDown = (e: MouseEvent) => {
-      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) setSettingsOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [settingsOpen])
   // 切换即时反馈（方案 C1）：任何设置切换 → 提示条 2s 消失
   const [tip, setTip] = useState('')
   const tipTimerRef = useRef<number | null>(null)
@@ -55,13 +41,12 @@ export default function InputArea({ input, setInput, loading, handleSend, images
     if (tipTimerRef.current) window.clearTimeout(tipTimerRef.current)
     tipTimerRef.current = window.setTimeout(() => setTip(''), 2000)
   }
-  const isMobile = useIsMobile()
   const [uploadType, setUploadType] = useState<'image' | 'dataset'>('image')
   const [uploadErr, setUploadErr] = useState('')
   // B1：本地上传的数据集卡片（名称/行数/列数，可移除）
   const [uploadedDs, setUploadedDs] = useState<{ id: number; name: string; row_count: number; columns: { name: string }[] }[]>([])
   // B1：数据集选择弹层
-  const [dsPickOpen, setDsPickOpen] = useState(false)
+  const [dsPickerOpen, setDsPickerOpen] = useState(false)
   const [dsList, setDsList] = useState<{ id: number; name: string; row_count: number; file_type: string }[]>([])
   const [dsLoading, setDsLoading] = useState(false)
 
@@ -212,6 +197,64 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
                 onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
               ><PaperclipIcon size={17} /></button>
+{/* B1：数据集选择弹层（历史数据集一键注入 [数据集 #id]） */}
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <button onClick={() => {
+                  if (!dsPickerOpen) {
+                    setDsLoading(true)
+                    import('../../api').then(({ fetchDatasets }) => fetchDatasets()
+                      .then((list: any[]) => { setDsList(Array.isArray(list) ? list : []); setDsLoading(false) })
+                      .catch(() => setDsLoading(false)))
+                  }
+                  setDsPickerOpen((o) => !o)
+                }} className="yuan-tip" data-tip="选择数据集" aria-label="选择数据集"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
+                >
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <ellipse cx="12" cy="5" rx="9" ry="3" />
+                    <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+                    <path d="M3 12a9 3 0 0 0 18 0" />
+                  </svg>
+                </button>
+                {dsPickerOpen && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setDsPickerOpen(false)} />
+                    <div style={{
+                      position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 41,
+                      minWidth: 260, maxWidth: '78vw', maxHeight: 280, overflowY: 'auto',
+                      background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                      borderRadius: 10, boxShadow: '0 8px 28px var(--shadow-md)', padding: 6, textAlign: 'left',
+                    }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px 6px', fontWeight: 600 }}>
+                        选择数据集（点击注入引用）
+                      </div>
+                      {dsLoading ? (
+                        <div style={{ padding: '12px 8px', fontSize: 12, color: 'var(--text-muted)' }}>加载中…</div>
+                      ) : dsList.length === 0 ? (
+                        <div style={{ padding: '12px 8px', fontSize: 12, color: 'var(--text-muted)' }}>暂无数据集，用回形针上传</div>
+                      ) : dsList.map((ds) => (
+                        <div key={ds.id}
+                          onClick={() => {
+                            setInput((p) => p + ` [数据集 #${ds.id}: ${ds.name}]`)
+                            setDsPickerOpen(false)
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover-bg)' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                          style={{
+                            padding: '7px 8px', borderRadius: 7, cursor: 'pointer', fontSize: 12,
+                            color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8,
+                          }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{ds.name}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{ds.row_count} 行</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
               {/* 多窗口 P2：语音仅对话窗口——执行窗口是任务下发，无语音通话 */}
               {agentKind === 'chat' && (
               <button onClick={onStartVoiceCall} className="yuan-tip" data-tip="语音通话" aria-label="语音通话"
@@ -242,10 +285,10 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                            {/* 工作/娱乐：工具行上唯一常驻分段开关（产品模式=人设级决策）；
-                  其余设置收敛进齿轮「任务设置」弹层（2026-11-14 用户立项 #22） */}
+                                          {/* 工具行右侧平铺直选（2026-11-14 用户实测否决齿轮弹层——嵌套下拉
+                  像二级子页面）：工作/娱乐 + 模型简称 + 执行位置 + 推理强度 */}
               {agentKind === 'chat' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}>
                   <button onClick={() => { if (entMode) { toggleEntMode(); flashTip('已切换：工作模式') } }} aria-label="工作模式"
                     style={{ border: 'none', cursor: 'pointer', padding: '4px 12px', fontSize: 12, fontWeight: 600,
@@ -258,101 +301,29 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                     娱乐
                   </button>
                 </div>
-                {/* 任务设置齿轮：模型/推理强度/执行位置/数据集四合一 */}
-                <div ref={settingsRef} style={{ position: 'relative', flexShrink: 0 }}>
-                  <button onClick={() => setSettingsOpen((o) => !o)} aria-label="任务设置"
-                    className="yuan-tip" data-tip="任务设置：模型 / 推理强度 / 执行位置 / 数据集"
-                    style={{ border: '1px solid var(--border)', borderRadius: 999, background: 'none',
-                      cursor: 'pointer', padding: '4px 10px', color: settingsOpen ? 'var(--accent)' : 'var(--text-secondary)',
-                      display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
+                <ModelSelector model={model} onChange={(v) => { setModel(v); flashTip('已切换模型') }} />
+                <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden', opacity: entMode ? 0.5 : 1 }}>
+                  {(['cloud', 'auto', 'local'] as const).map((b) => (
+                    <button key={b} onClick={() => { if (!entMode) { setChatBackend(b); flashTip(b === 'cloud' ? '已切换：云端执行' : b === 'local' ? '已切换：本机执行' : '已切换：自动（本机优先）') } }}
+                      aria-label={b === 'cloud' ? '云端' : b === 'auto' ? '自动' : '本机'}
+                      style={{ flex: 1, border: 'none', cursor: entMode ? 'default' : 'pointer', padding: '4px 10px', fontSize: 12, fontWeight: 600,
+                        background: (!entMode && chatBackend === b) ? 'var(--accent-light)' : 'transparent',
+                        color: (!entMode && chatBackend === b) ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
+                      {b === 'cloud' ? '云端' : b === 'auto' ? '自动' : '本机'}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}>
+                  <button onClick={() => { if (effort !== 'low') { setEffort('low'); flashTip('已切换：快答') } }} aria-label="快答"
+                    style={{ border: 'none', cursor: 'pointer', padding: '4px 10px', fontSize: 12, fontWeight: 600,
+                      background: effort === 'low' ? 'var(--accent-light)' : 'transparent', color: effort === 'low' ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
+                    快答
                   </button>
-                  {settingsOpen && (
-                    <>
-                      <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setSettingsOpen(false)} />
-                      <div style={isMobile ? {
-                        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 41,
-                        background: 'var(--bg-primary)', borderTop: '1px solid var(--border)',
-                        borderRadius: '14px 14px 0 0', boxShadow: '0 -8px 28px var(--shadow-md)',
-                        padding: '14px 16px 20px', maxHeight: '60vh', overflowY: 'auto',
-                      } : {
-                        position: 'absolute', bottom: 'calc(100% + 10px)', right: 0, zIndex: 41,
-                        minWidth: 280, background: 'var(--bg-primary)', border: '1px solid var(--border)',
-                        borderRadius: 12, boxShadow: '0 8px 28px var(--shadow-md)', padding: '14px', textAlign: 'left',
-                      }}>
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
-                          一般不用管——直接说需求即可，这里只做显式覆盖
-                        </div>
-                        <div style={{ fontWeight: 600, color: 'var(--text-secondary)', fontSize: 12, marginBottom: 6 }}>模型</div>
-                        <ModelSelector model={model} onChange={(v) => { setModel(v); flashTip('已切换模型') }} />
-                        <div style={{ fontWeight: 600, color: 'var(--text-secondary)', fontSize: 12, margin: '10px 0 6px' }}>推理强度</div>
-                        <ReasoningSelector effort={effort} setEffort={(v) => { setEffort(v); flashTip('已切换推理强度') }} />
-                        <div style={{ fontWeight: 600, color: 'var(--text-secondary)', fontSize: 12, margin: '10px 0 6px' }}>
-                          执行位置{entMode && <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>（娱乐模式固定云端）</span>}
-                        </div>
-                        <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden', opacity: entMode ? 0.5 : 1 }}>
-                          {(['cloud', 'auto', 'local'] as const).map((b) => (
-                            <button key={b} onClick={() => { if (!entMode) { setChatBackend(b); flashTip(b === 'cloud' ? '已切换：云端执行' : b === 'local' ? '已切换：本机执行' : '已切换：自动（本机优先）') } }}
-                              aria-label={b === 'cloud' ? '云端' : b === 'auto' ? '自动' : '本机'}
-                              style={{ flex: 1, border: 'none', cursor: entMode ? 'default' : 'pointer', padding: '5px 0', fontSize: 12, fontWeight: 600,
-                                background: (!entMode && chatBackend === b) ? 'var(--accent-light)' : 'transparent',
-                                color: (!entMode && chatBackend === b) ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
-                              {b === 'cloud' ? '云端' : b === 'auto' ? '自动' : '本机'}
-                            </button>
-                          ))}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.6 }}>
-                          自动：本机优先，离线回退云端；本机：强制本机（离线报错）
-                        </div>
-                        <div style={{ fontWeight: 600, color: 'var(--text-secondary)', fontSize: 12, margin: '10px 0 6px' }}>数据集</div>
-                        {uploadedDs.length === 0 ? (
-                          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                            上传（回形针）后自动注入引用；也可从历史数据集选择
-                          </div>
-                        ) : uploadedDs.map((ds) => (
-                          <div key={ds.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-primary)', padding: '3px 0' }}>
-                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ds.name}（{ds.row_count} 行）</span>
-                            <span onClick={() => setUploadedDs((p) => p.filter((x) => x.id !== ds.id))}
-                              className="yuan-tip" data-tip="移除" aria-label="移除数据集"
-                              style={{ cursor: 'pointer', color: 'var(--text-muted)', padding: '2px', display: 'flex' }}>
-                              <XIcon size={12} />
-                            </span>
-                          </div>
-                        ))}
-                        <button onClick={() => {
-                          if (dsList.length === 0) {
-                            setDsLoading(true)
-                            import('../../api').then(({ fetchDatasets }) => fetchDatasets()
-                              .then((list: any[]) => { setDsList(Array.isArray(list) ? list : []); setDsLoading(false) })
-                              .catch(() => setDsLoading(false)))
-                          }
-                          setDsPickOpen(true)
-                        }}
-                          style={{ marginTop: 6, border: '1px solid var(--border)', borderRadius: 8, background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)', padding: '5px 12px' }}>
-                          {dsLoading ? '加载中…' : '选择历史数据集'}
-                        </button>
-                        {dsPickOpen && (
-                          <div style={{ maxHeight: 160, overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: 8, marginTop: 6 }}>
-                            {dsList.length === 0 ? (
-                              <div style={{ padding: '10px 8px', fontSize: 12, color: 'var(--text-muted)' }}>暂无数据集，用回形针上传</div>
-                            ) : dsList.map((ds) => (
-                              <div key={ds.id}
-                                onClick={() => { setInput((p) => p + ` [数据集 #${ds.id}: ${ds.name}]`); setDsPickOpen(false); flashTip('已引用数据集') }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover-bg)' }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                                style={{ padding: '7px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{ds.name}</span>
-                                <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{ds.row_count} 行</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
+                  <button onClick={() => { if (effort !== 'high') { setEffort('high'); flashTip('已切换：深思') } }} aria-label="深思"
+                    style={{ border: 'none', cursor: 'pointer', padding: '4px 10px', fontSize: 12, fontWeight: 600,
+                      background: effort === 'high' ? 'var(--accent-light)' : 'transparent', color: effort === 'high' ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.15s' }}>
+                    深思
+                  </button>
                 </div>
               </div>
               )}

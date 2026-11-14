@@ -64,17 +64,16 @@ export function ModelSelector({ model, onChange }: { model: string; onChange: (v
   const provider = current.provider
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={toggle} aria-label={`选择模型: ${current.value}`} className="yuan-tip" data-tip="切换模型" style={{
-        padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)',
+      {/* 2026-11-14 用户拍板：按钮只显简称（全 ID 进悬浮提示）——此前 ID 副显
+          又长又丑，且弹层内嵌套下拉像「二级子页面」 */}
+      <button onClick={toggle} aria-label={`选择模型: ${current.label}`} title={`${current.label}（${current.value}）`} style={{
+        padding: '4px 10px', borderRadius: 999, border: '1px solid var(--border)',
         background: 'var(--bg-input)', cursor: 'pointer', color: 'var(--text-primary)',
-        display: 'flex', alignItems: 'center', gap: 6, maxWidth: 260,
+        display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
       }} onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--text-secondary)')}
         onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}>
-        <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: provider === 'Doubao' ? '#10a37f' : '#6366f1' }} />
-        {/* 显示名主显 + 真实模型 ID 副显（monospace 小字） */}
-        <span style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{current.label}</span>
-        <span style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{current.value}</span>
-        <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 2, flexShrink: 0 }}>▼</span>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: provider === 'Doubao' ? '#10a37f' : '#6366f1' }} />
+        <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{current.label}</span>
       </button>
       {open && (
         <div ref={menuRef} style={{

@@ -358,6 +358,19 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **发布版 exe 内置终端（2026-11-11，11c2050）**：此前发布版无控制台、托盘「终端对话」只能提示无源码环境——现 spec 打包 agent.terminal + rich/prompt_toolkit；exe 加 `--run-terminal` 入口（窗口化程序 AllocConsole 自建控制台 + stdio 重指 CONIN$/CONOUT$，位置在单实例保护之前）；托盘菜单冻结模式 spawn 自身 `--run-terminal --no-agent`（--no-agent 跳过内嵌 Agent，托盘进程已持云端连接防双连互踢）；源码模式沿用解释器探测
 - **本地设置面板网页化（2026-11-11 用户拍板，b3d8ab7）**：托盘原生弹窗老旧——`agent/panel.py` 内置本地 HTTP 服务（127.0.0.1 随机端口，stdlib 零新依赖），网页面板复用网站配色变量/圆角/吉祥物呼吸球（明暗自适应）：状态卡/能力开关（网页 toggle）/选择 CC 工作目录（网页按钮→托盘跑原生目录选择器的唯一例外）/重新注册（网页输码替代 InputBox）/检查更新+立即更新/退出。菜单「设置 Claude 工作目录…」→「打开设置面板…」；重新注册与注销兜底改开面板 `?reinstall`。右键菜单本身保持原生（Windows 系统渲染无法换肤）
 
+## 消息 id 架构债 #30 + SSE 重连 #28（2026-11-14 完成，迁移 0032/0033）
+
+- **保存幂等化**：ai_chat.msg_id（36 位 UUID 可空+索引）——/chat/save 消息全带 id
+  走增量 upsert（只插新 id、不动未知消息——「旧快照晚到覆盖新消息」竞态根治），
+  编辑重发截断改 `deleted_ids` 显式按 id 删；旧客户端不带 id 自动走全量替换兼容
+- **反馈按 id 定位**：ai_chat_feedback.message_id（index 兼容保留），POST 双键
+  （message_id 优先）、GET 返回 id 键；前端 feedback state/pending 键全切 msg_id
+- **多端同步 diff**：syncPoll 按 msg_id 去重合并
+- **#28 SSE 自动重连**：streamChat 网络错误/5xx 自动重试一次（同请求体，落库
+  幂等不重复），onRetry 重置占位气泡（新流从头续显）
+- 前端消息 id 全链路：encodeMsg 生成（crypto.randomUUID，历史透传）/parseHistory
+  读回/编辑截断收集 deleted_ids
+
 ## 多端同步（2026-11-09 立项，方案 plans/multi-device-sync-2026-11.md；P0-1+P1 已落地，P2 消息 id 架构债待开工）
 
 - **P0-1 会话消息增量轮询**：当前会话 15s + 窗口聚焦/切回拉 `/chat/messages`，`(条数, 末条哈希)` 指纹一致跳过；有新增且无进行中 SSE → 尾部合入（只追加不缩减，防误删本端未落库瞬时气泡）；会话切换重置指纹基线；自动朗读联动

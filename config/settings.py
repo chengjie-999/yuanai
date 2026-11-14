@@ -43,7 +43,12 @@ def _load_models() -> dict:
             with open(custom_path, "r", encoding="utf-8") as f:
                 custom = _json.load(f)
             if isinstance(custom, dict):
-                models.update(custom)
+                # 2026-11-14 修复：models.json 顶层混着 _agent_models/_system_config/
+                # _smtp 等配置键——此前全量 update 把它们当模型合并进 MODELS，
+                # 前端模型下拉出现 "_agent_models"/"custom" 之类垃圾条目
+                for k, v in custom.items():
+                    if not k.startswith("_") and isinstance(v, dict) and v.get("label"):
+                        models[k] = v
     except Exception:
         pass
     return models

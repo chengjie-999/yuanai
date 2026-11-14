@@ -330,14 +330,17 @@ MEMORY_ORGANIZE_AUTO_DELETE_MAX = int(os.getenv("MEMORY_ORGANIZE_AUTO_DELETE_MAX
 CHAT_MODE_ROUTER_LLM = os.getenv("CHAT_MODE_ROUTER_LLM", "1") == "1"   # 关键词无信号时豆包 lite 兜底判定（0=纯关键词零成本）
 CHAT_MODE_ROUTER_MODEL = os.getenv("CHAT_MODE_ROUTER_MODEL", _DOUBAO_LITE)  # 判定模型（轻量即可）
 
-# Agent 音色分配 — 气泡朗读按消息归属 Agent 选音色（均实测有效；须为 2.0 系列配 seed-tts-2.0）
+# Agent 音色分配 — 气泡朗读按消息归属 Agent 选音色。
+# 2026-11-14 语音换 DeepSeek（用户拍板）：TTS 音色仅 stella（女）/ tide（男）两档，
+# 小元与本地统筹用 tide（男，贴近原少年梓辛），子智能体用 stella（女）区分身份。
+# 用户设置页可改（白名单两档）；VOICE_TTS_PROVIDER=volcano 时忽略此映射用火山音色。
 _DEFAULT_AGENT_VOICE_MAP = {
-    "orchestrator": "zh_male_shaonianzixin_uranus_bigtts",   # 小元：少年梓辛（小男孩）
-    "local": "zh_male_shaonianzixin_uranus_bigtts",          # 本机小元：同音
-    "analysis": "zh_female_xiaohe_uranus_bigtts",            # 数据分析：小鹤（女声）
-    "collection": "zh_male_kailangdidi_uranus_bigtts",       # 数据采集：开朗弟弟
-    "automation": "zh_female_qingxinnvsheng_uranus_bigtts",  # 自动化：清新女生
-    "claude": "zh_male_yangguangqingnian_uranus_bigtts",     # Claude Code：阳光青年
+    "orchestrator": "tide",     # 小元：男声
+    "local": "tide",            # 本机小元：同音
+    "analysis": "stella",       # 数据分析：女声
+    "collection": "tide",       # 数据采集
+    "automation": "stella",     # 自动化：女声
+    "claude": "tide",           # Claude Code：男声
 }
 
 
@@ -529,8 +532,9 @@ VOLCANO_RTC_APP_KEY = os.getenv("VOLCANO_RTC_APP_KEY", "")      # RTC 应用 App
 VOICE_LLM_ENDPOINT_ID = os.getenv("VOICE_LLM_ENDPOINT_ID", "")  # 火山方舟推理接入点 ID（语音对话 LLM）
 VOICE_ASR_APP_ID = os.getenv("VOICE_ASR_APP_ID", "")            # 豆包语音控制台 ASR AppId
 VOICE_ASR_ACCESS_TOKEN = os.getenv("VOICE_ASR_ACCESS_TOKEN", "")  # 豆包语音控制台 ASR AccessToken
-VOICE_TTS_APP_ID = os.getenv("VOICE_TTS_APP_ID", "")            # 豆包语音控制台 TTS AppId
-VOICE_TTS_ACCESS_TOKEN = os.getenv("VOICE_TTS_ACCESS_TOKEN", "")  # 豆包语音控制台 TTS AccessToken
+VOICE_TTS_PROVIDER = os.getenv("VOICE_TTS_PROVIDER", "deepseek")  # deepseek（默认，2026-11-14 换）/ volcano（旧豆包链路回退）
+VOICE_TTS_APP_ID = os.getenv("VOICE_TTS_APP_ID", "")            # 豆包语音控制台 TTS AppId（volcano 分支用）
+VOICE_TTS_ACCESS_TOKEN = os.getenv("VOICE_TTS_ACCESS_TOKEN", "")  # 豆包语音控制台 TTS AccessToken（volcano 分支用）
 
 # 语音模型配置（易淘汰项，后台「模型配置」页可改：models.json _voice_config，
 # PUT /admin/voice-config 热更新 reload_voice_config；env 优先）
@@ -568,7 +572,7 @@ def _voice_with_override(env_key: str, cfg_key: str, default: str) -> str:
 
 
 VOICE_TTS_MODEL = _voice_with_override("VOICE_TTS_MODEL", "tts_model", "seed-tts-2.0")
-VOICE_TTS_VOICE = _voice_with_override("VOICE_TTS_VOICE", "tts_voice", "zh_female_xiaohe_uranus_bigtts")  # 气泡朗读音色
+VOICE_TTS_VOICE = _voice_with_override("VOICE_TTS_VOICE", "tts_voice", "tide")  # 气泡朗读默认音色（deepseek：stella/tide；volcano 分支沿用旧值则 .env 覆盖）
 VOICE_TTS_VOICE_BOT = _voice_with_override("VOICE_TTS_VOICE_BOT", "tts_voice_bot", "zh_male_shaonianzixin_uranus_bigtts")  # 通话机器人音色
 VOICE_ASR_RESOURCE_ID = _voice_with_override("VOICE_ASR_RESOURCE_ID", "asr_resource", "volc.bigasr.sauc.concurrent")  # ASR 资源
 

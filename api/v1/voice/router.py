@@ -275,59 +275,108 @@ def voice_tts(req: VoiceTtsRequest, request: Request):
         audit_log(_gid(request) or 0, "voice_tts", _h, req.text or "")
         raise HTTPException(status_code=400, detail=BLOCK_MESSAGE)
 
-    """文字转语音（消息气泡「朗读」按钮）：调用豆包语音合成大模型 2.0，按消息归属 Agent 选音色。
+    """文字转语音（消息气泡「朗读」按钮）：默认 DeepSeek TTS（2026-11-14 用户拍板换源，
+    根治读不全——裸 wav 字节流无 JSON 分片错位），VOICE_TTS_PROVIDER=volcano 回退旧豆包链路。
 
-    流式帧协议（api/v1/voice/tts_proto.py）：火山分片边到边转发并聚合到
-    ≥VOICE_TTS_CHUNK_BYTES 再发一帧（碎帧是断续根源）；合成中途失败/异常发
-    显式错误帧（不再静默断流）；EOF 冲刷残余 buf（修丢尾段）。nginx /api/v1/
-    已 proxy_buffering off，帧可实时透传；前端首字节嗅探兼容新旧两端。
+    流式帧协议（api/v1/voice/tts_proto.py）：音频聚合到 ≥VOICE_TTS_CHUNK_BYTES 再发一帧
+    （碎帧是断续根源）；合成中途失败/异常发显式错误帧（不再静默断流）；EOF 冲刷残余 buf
+    （修丢尾段）。nginx /api/v1/ 已 proxy_buffering off，帧可实时透传；前端首字节嗅探
+    兼容旧裸 mp3 与新 wav。
     """
-    from config.settings import (VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN, VOICE_TTS_VOICE,
-                                 VOICE_TTS_MODEL, AGENT_VOICE_MAP, VOICE_ENABLED, VOICE_TTS_MAX_CHARS,
-                                 VOICE_TTS_CHUNK_BYTES, VOICE_TTS_SPEECH_RATE_BUBBLE)
+    from config.settings import (VOICE_TTS_PROVIDER, VOICE_TTS_APP_ID, VOICE_TTS_ACCESS_TOKEN,
+                                 VOICE_TTS_VOICE, VOICE_TTS_MODEL, AGENT_VOICE_MAP, VOICE_ENABLED,
+                                 VOICE_TTS_MAX_CHARS, VOICE_TTS_CHUNK_BYTES,
+                                 VOICE_TTS_SPEECH_RATE_BUBBLE)
     from fastapi.responses import StreamingResponse
     from api.v1.voice.tts_proto import (pack_frame, pack_error, pack_end, KIND_AUDIO,
                                         clamp_speech_rate)
     if not VOICE_ENABLED:
         raise HTTPException(status_code=503, detail="语音功能已关闭")
-    if not (VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN):
-        raise HTTPException(status_code=503, detail="语音合成未配置：请先配置 VOICE_TTS_* 凭据")
     if VOICE_TTS_MAX_CHARS > 0 and len(req.text) > VOICE_TTS_MAX_CHARS:
         raise HTTPException(status_code=400,
                             detail=f"文本过长（{len(req.text)} 字，上限 {VOICE_TTS_MAX_CHARS} 字）")
-    # 音色按 Agent 查表（用户设置页可改），未知 sender 回退 env 默认音色
+    # 音色按 Agent 查表（用户设置页可改，两档），未知 sender 回退默认音色
     speaker = AGENT_VOICE_MAP.get(req.sender, VOICE_TTS_VOICE) if req.sender else VOICE_TTS_VOICE
-    body = {
-        "user": {"uid": f"tts_{getattr(request.state, 'user_id', 0)}"},
-        "req_params": {
-            "text": req.text,
-            "speaker": speaker,
-            "audio_params": {
-                "format": "mp3",
-                "sample_rate": 24000,
-                "bit_rate": 64000,
-                # 语速 int [-50,100]，100=2.0x（v3 unidirectional 语义，与 RTC float 倍率不同）
-                "speech_rate": clamp_speech_rate(VOICE_TTS_SPEECH_RATE_BUBBLE),
-            },
-        },
-    }
-    headers = {
-        "X-Api-App-Key": VOICE_TTS_APP_ID,
-        "X-Api-Access-Key": VOICE_TTS_ACCESS_TOKEN,
-        # 语音合成大模型（VOICE_TTS_MODEL 可配：env/后台语音配置；默认 seed-tts-2.0，
-        # 音色须匹配其版本系列，如 2.0 的 zh_female_xiaohe_uranus_bigtts）
-        "X-Api-Resource-Id": VOICE_TTS_MODEL,
-        "X-Api-Request-Id": uuid.uuid4().hex,
-        "X-Api-Connect-Id": uuid.uuid4().hex,
-        "Content-Type": "application/json",
-    }
-    url = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
 
-    def gen():
-        """逐行解析火山流式响应，音频聚合到 ≥CHUNK_BYTES 发帧；错误显式帧；EOF flush"""
-        import base64
+    def gen_deepseek():
+        """DeepSeek TTS：POST /v1/tools/tts 流式裸 wav 字节——直接聚合发帧，
+        无逐行 JSON/base64 分片拼接（火山链路读不全的根源）；wav 前端 Audio 原生支持"""
+        from utils.sensitive_data import get_api_key
+        pending = b""
         yielded_audio = False
-        pending = b""  # 音频聚合缓冲
+        try:
+            body = {
+                "text": req.text,
+                "voice_id": speaker if speaker in ("stella", "tide") else "tide",
+                # 真机实测（2026-11-14）：响应为 mp3 流（ID3 头）——显式声明 mp3，
+                # 防官方后续实现 wav 后行为切换；前端首字节嗅探已兼容 ID3
+                "format": "mp3",
+                "filter_markdown": True,
+            }
+            r = urllib.request.Request(
+                "https://api.deepseek.com/v1/tools/tts",
+                data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {get_api_key('dsllm')}",
+                    "Content-Type": "application/json",
+                }, method="POST",
+            )
+            with urllib.request.urlopen(r, timeout=60) as resp:
+                for chunk in iter(lambda: resp.read(4096), b""):
+                    pending += chunk
+                    if len(pending) >= VOICE_TTS_CHUNK_BYTES:
+                        yield pack_frame(KIND_AUDIO, pending)
+                        yielded_audio = True
+                        pending = b""
+            if pending:  # EOF 冲刷残余
+                yield pack_frame(KIND_AUDIO, pending)
+                yielded_audio = True
+            yield pack_end()
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace")[:300]
+            logger.error("DeepSeek TTS 合成失败(%s): %s", e.code, detail)
+            if pending:
+                yield pack_frame(KIND_AUDIO, pending)
+            if not yielded_audio:
+                yield pack_error(getattr(e, "code", 0), "语音合成失败，请稍后重试")
+            yield pack_end()
+        except Exception as e:
+            logger.error("DeepSeek TTS 流式转发异常: %s", e)
+            if pending:
+                yield pack_frame(KIND_AUDIO, pending)
+            if not yielded_audio:
+                yield pack_error(0, "语音合成失败，请稍后重试")
+            yield pack_end()
+
+    def gen_volcano():
+        """旧豆包链路（VOICE_TTS_PROVIDER=volcano 时启用）：逐行 JSON + base64 分片"""
+        import base64
+        if not (VOICE_TTS_APP_ID and VOICE_TTS_ACCESS_TOKEN):
+            raise HTTPException(status_code=503, detail="语音合成未配置：请先配置 VOICE_TTS_* 凭据")
+        body = {
+            "user": {"uid": f"tts_{getattr(request.state, 'user_id', 0)}"},
+            "req_params": {
+                "text": req.text,
+                "speaker": speaker,
+                "audio_params": {
+                    "format": "mp3",
+                    "sample_rate": 24000,
+                    "bit_rate": 64000,
+                    "speech_rate": clamp_speech_rate(VOICE_TTS_SPEECH_RATE_BUBBLE),
+                },
+            },
+        }
+        headers = {
+            "X-Api-App-Key": VOICE_TTS_APP_ID,
+            "X-Api-Access-Key": VOICE_TTS_ACCESS_TOKEN,
+            "X-Api-Resource-Id": VOICE_TTS_MODEL,
+            "X-Api-Request-Id": uuid.uuid4().hex,
+            "X-Api-Connect-Id": uuid.uuid4().hex,
+            "Content-Type": "application/json",
+        }
+        url = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+        yielded_audio = False
+        pending = b""
         try:
             r = urllib.request.Request(
                 url, data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
@@ -350,7 +399,7 @@ def voice_tts(req: VoiceTtsRequest, request: Request):
                         if code is None:
                             continue
                         if code == 20000000:
-                            if pending:  # 正常结束前冲刷残余聚合缓冲
+                            if pending:
                                 yield pack_frame(KIND_AUDIO, pending)
                                 pending = b""
                             yield pack_end()
@@ -368,13 +417,11 @@ def voice_tts(req: VoiceTtsRequest, request: Request):
                             try:
                                 pending += base64.b64decode(payload["data"])
                             except Exception:
-                                # 单个坏分片跳过，不因一段损坏中断整条流
                                 logger.warning("TTS 音频分片 base64 解码失败，跳过该段")
                             if len(pending) >= VOICE_TTS_CHUNK_BYTES:
                                 yield pack_frame(KIND_AUDIO, pending)
                                 yielded_audio = True
                                 pending = b""
-            # EOF 后冲刷残余（最后一行可能无换行符——修丢尾段）
             if pending:
                 yield pack_frame(KIND_AUDIO, pending)
                 yielded_audio = True
@@ -391,9 +438,10 @@ def voice_tts(req: VoiceTtsRequest, request: Request):
             if pending:
                 yield pack_frame(KIND_AUDIO, pending)
             if not yielded_audio:
-                # 一个音频都没出：显式错误帧（前端「未返回音频」兜底升级为明确文案）
                 yield pack_error(0, "语音合成失败，请稍后重试")
             yield pack_end()
 
+    gen = gen_volcano if VOICE_TTS_PROVIDER == "volcano" else gen_deepseek
     return StreamingResponse(gen(), media_type="application/octet-stream",
                              headers={"X-Accel-Buffering": "no", "Cache-Control": "no-store"})
+

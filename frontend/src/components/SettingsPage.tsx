@@ -45,19 +45,10 @@ const VOICE_ROLE_LABELS: Record<string, string> = {
   claude: 'Claude Code',
 }
 
+// 语音换 DeepSeek（2026-11-14）：TTS 音色仅两档
 const VOICE_OPTIONS = [
-  { value: 'zh_male_shaonianzixin_uranus_bigtts', label: '少年梓辛（小男孩）' },
-  { value: 'zh_male_naiqimengwa_uranus_bigtts', label: '奶气萌娃（小男孩）' },
-  { value: 'zh_male_tiancaitongsheng_uranus_bigtts', label: '天才童声（小男孩）' },
-  { value: 'zh_male_kailangdidi_uranus_bigtts', label: '开朗弟弟（少年）' },
-  { value: 'zh_male_linjiananhai_uranus_bigtts', label: '邻家男孩（少年）' },
-  { value: 'zh_male_kailangxuezhang_uranus_bigtts', label: '开朗学长（男）' },
-  { value: 'zh_male_huolixiaoge_uranus_bigtts', label: '活力小哥（男）' },
-  { value: 'zh_male_wenrouxiaoge_uranus_bigtts', label: '温柔小哥（男）' },
-  { value: 'zh_male_qingshuangnanda_uranus_bigtts', label: '清爽男大（男）' },
-  { value: 'zh_male_yangguangqingnian_uranus_bigtts', label: '阳光青年（男）' },
-  { value: 'zh_female_xiaohe_uranus_bigtts', label: '小鹤（女声）' },
-  { value: 'zh_female_qingxinnvsheng_uranus_bigtts', label: '清新女生（女声）' },
+  { value: 'stella', label: '海星（女声）' },
+  { value: 'tide', label: '暗潮（男声）' },
 ]
 
 export default function SettingsPage() {

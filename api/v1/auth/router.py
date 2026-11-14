@@ -664,7 +664,7 @@ def update_agent_models(req: AgentModelUpdate, request: Request):
 
 class AgentVoiceUpdate(BaseModel):
     role: str       # orchestrator / local / analysis / collection / automation / claude
-    voice_id: str   # 分配给该角色的 TTS 音色 ID（2.0 系列）
+    voice_id: str   # 分配给该角色的 TTS 音色 ID（DeepSeek 两档：stella/tide，2026-11-14 换源）
 
 
 @router.get("/agent-voices")
@@ -685,6 +685,9 @@ def update_agent_voices(req: AgentVoiceUpdate, request: Request):
     valid_roles = list(AGENT_VOICE_MAP.keys())
     if req.role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"无效角色: {req.role}，可选: {valid_roles}")
+    # 2026-11-14 换 DeepSeek：音色白名单收窄为两档（旧火山音色配置在换源后无效）
+    if req.voice_id not in ("stella", "tide"):
+        raise HTTPException(status_code=400, detail="音色仅支持 stella（女）/ tide（男）")
     data = _read_models_file()
     agent_voices = data.get("_agent_voices", {})
     if not isinstance(agent_voices, dict):

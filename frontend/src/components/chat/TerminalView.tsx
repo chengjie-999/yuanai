@@ -41,6 +41,39 @@ function commandText(tc: ToolCall): string {
 
 const MAX_OUTPUT = 2000  // 显示截断（对齐工具输出回传上限）
 
+/* 变更预览（#18，2026-11-14）：Edit 工具 old_string→new_string 轻量 diff——
+   删除行红淡底、新增行绿淡底（片段级，整文件 diff 挂账）；
+   Write 无 old 不渲染。行数封顶防超长片段撑爆面板 */
+function DiffPreview({ tc }: { tc: ToolCall }) {
+  const o = parseArgs(tc.args)
+  const oldS = o?.old_string
+  const newS = o?.new_string
+  if (typeof oldS !== 'string' || typeof newS !== 'string') return null
+  const MAX_LINES = 8
+  const lines: { kind: 'del' | 'add'; text: string }[] = [
+    ...oldS.split('\n').map((t) => ({ kind: 'del' as const, text: t })),
+    ...newS.split('\n').map((t) => ({ kind: 'add' as const, text: t })),
+  ]
+  if (!lines.length) return null
+  const shown = lines.slice(0, MAX_LINES)
+  const more = lines.length - shown.length
+  return (
+    <div style={{ margin: '4px 0 0 16px', fontSize: 11.5, fontFamily: 'monospace', lineHeight: 1.55 }}>
+      {shown.map((l, i) => (
+        <div key={i} style={{
+          padding: '0 6px', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+          background: l.kind === 'del' ? 'var(--danger-soft)' : 'var(--success-soft)',
+          color: l.kind === 'del' ? 'var(--danger)' : 'var(--success)',
+          borderRadius: 3, marginBottom: 1,
+        }}>
+          {l.kind === 'del' ? '− ' : '+ '}{l.text}
+        </div>
+      ))}
+      {more > 0 && <div style={{ color: 'var(--text-muted)' }}>…还有 {more} 行</div>}
+    </div>
+  )
+}
+
 /* A1 精简（2026-11-03 用户拍板）：终端面板默认折叠（命令/输出属专业细节）；
    流式期间（当前正在执行的命令）由父层传 defaultOpen 展开显示当前活动 */
 export default function TerminalView({ calls, defaultOpen = false }: { calls: ToolCall[]; defaultOpen?: boolean }) {
@@ -113,6 +146,8 @@ export default function TerminalView({ calls, defaultOpen = false }: { calls: To
                 </button>
               )}
             </div>
+            {/* 变更预览（#18）：Edit 的 -/+ 行着色（置于输出区上方） */}
+            <DiffPreview tc={tc} />
             {/* 输出区：等宽原文（长输出内部滚动） */}
             {tc.status === 'done' && output && (
               <pre style={{

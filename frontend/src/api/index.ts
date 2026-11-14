@@ -602,6 +602,24 @@ export async function saveMessages(sessionId: string, messages: { role: string; 
   } catch (e) { console.error('API 调用失败:', e); return false }
 }
 
+// 语音识别（2026-11-14 半双工语音聊天）：multipart 上传 WAV → DeepSeek ASR
+// 注意：multipart 不带 Content-Type（浏览器自动加 boundary——手动带会 400）
+export async function voiceAsr(wavBlob: Blob): Promise<string> {
+  const form = new FormData()
+  form.append('file', wavBlob, 'voice.wav')
+  const res = await fetch(`${API_BASE}/voice/asr`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: form,
+  })
+  if (!res.ok) {
+    const data = await safeJson(res)
+    throw new Error(data?.detail || `语音识别失败（${res.status}）`)
+  }
+  const data = await res.json()
+  return data.text || ''
+}
+
 // ---- Feedback ----
 export type FeedbackState = { liked: boolean; disliked: boolean }
 

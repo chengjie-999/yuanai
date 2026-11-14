@@ -512,11 +512,11 @@ export default function ChatPage({ user }: { user?: any }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshSessions])
 
-  // 语音通话状态机（会话锚定/转录队列/保存快照 flush，独立 hook）
+  // 语音聊天状态机（会话锚定/转录队列/保存快照 flush，独立 hook）
   const {
-    voiceCallOpen, setVoiceCallOpen, lastAssistantText,
+    voiceCallOpen, setVoiceCallOpen,
     ensureVoiceSession, startVoiceCall,
-    handleVoiceTranscript, flushVoiceTranscripts, noteLastAssistant,
+    handleVoiceTranscript, flushVoiceTranscripts,
   } = useVoiceCall({
     sidRef, messagesRef, loadingRef,
     setMessages, setCurrentSid,
@@ -1175,7 +1175,6 @@ ${full}
           refreshSessions()
           window.dispatchEvent(new Event('yuan-ctx-refresh'))  // 上下文用量徽标即时刷新
         })()
-        noteLastAssistant(finalMsgs)
       },
     )
     streamRef.current = { sid, controller }
@@ -1281,11 +1280,6 @@ ${full}
     const ok = await setFeedback(currentSid, index, state)
     if (!ok) setFeedbackState((p) => ({ ...p, [index]: cur }))
     feedbackPendingRef.current.delete(index)
-  }
-
-  // 语音通话结束：刷新会话列表（新会话标题/最近对话）
-  const handleVoiceCallEnd = () => {
-    refreshSessions()
   }
 
   // ---- 举报（C7 投诉举报机制，2026-10-29）：AI 气泡举报按钮 → 弹窗选原因 → 落工单 ----
@@ -1600,11 +1594,10 @@ ${full}
 
       {voiceCallOpen && (
         <VoiceCall
-          onClose={() => { setVoiceCallOpen(false); handleVoiceCallEnd() }}
+          onClose={() => setVoiceCallOpen(false)}
           ensureSession={ensureVoiceSession}
           onTranscript={handleVoiceTranscript}
-          lastAssistantText={lastAssistantText}
-          entMode={entMode}
+          onSendText={(text) => { setInput(''); handleSend(text) }}
         />
       )}
 

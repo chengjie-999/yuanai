@@ -38,18 +38,32 @@ def test_run_terminal_mode_calls_terminal(monkeypatch):
 
 
 def test_terminal_action_frozen_spawns_self(monkeypatch):
-    """冻结 exe：托盘「终端对话」= 拉起自身 --run-terminal --no-agent 子进程
-    （不再提示「无源码环境」）"""
+    """冻结 exe（#41 2026-11-14）：托盘「终端对话」优先 WT 标签页承载
+    （--run-terminal --no-agent）；未装 WT 回落直接 spawn 自身自建控制台"""
     t = tray.AgentTray("ws://localhost", "1", "t")
     t._icon = SimpleNamespace(notify=lambda *a, **k: None)
     monkeypatch.setattr(tray.sys, "frozen", True, raising=False)
     monkeypatch.setattr(tray.sys, "executable", "C:/x/小元AI Agent.exe", raising=False)
+    monkeypatch.setattr(tray.os, "name", "nt", raising=False)
     spawned = []
+
+    # 无 WT：回落 Popen 自身（旧行为）
+    monkeypatch.setattr(tray, "_open_in_windows_terminal", lambda *a, **k: False)
     monkeypatch.setattr(tray.subprocess, "Popen", lambda *a, **k: spawned.append(a))
     t._terminal_action()
     assert spawned and spawned[0][0][0].endswith("小元AI Agent.exe")
     assert "--run-terminal" in spawned[0][0]
     assert "--no-agent" in spawned[0][0]
+
+    # 有 WT：wt 承载（exe 参数同款），不再直接 Popen
+    spawned.clear()
+    wt_calls = []
+    monkeypatch.setattr(tray, "_TERMINAL_LAST_LAUNCH", 0.0)  # 重置防连点冷却
+    monkeypatch.setattr(tray, "_open_in_windows_terminal",
+                        lambda cmd, cwd, title="": wt_calls.append(cmd) or True)
+    t._terminal_action()
+    assert not spawned
+    assert wt_calls and "--run-terminal" in wt_calls[0] and "--no-agent" in wt_calls[0]
 
 
 def test_alloc_console_non_windows_noop(monkeypatch):

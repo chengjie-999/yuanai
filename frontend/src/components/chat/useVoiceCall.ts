@@ -18,8 +18,6 @@ export function useVoiceCall(ctx: {
   refreshSessions: () => Promise<void>
 }) {
   const [voiceCallOpen, setVoiceCallOpen] = useState(false)
-  // 最近一条 AI 文字回复（供语音通话「朗读文字回复」朗读）
-  const [lastAssistantText, setLastAssistantText] = useState('')
   const voiceSessionRef = useRef<string | null>(null)
   const pendingVoiceTranscriptsRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
 
@@ -33,9 +31,8 @@ export function useVoiceCall(ctx: {
     return sid
   }
 
-  // 开始语音通话：清掉历史文字回复，避免通话时误朗读旧消息造成重音
+  // 打开语音聊天卡（2026-11-14 半双工：按住说话 → ASR → 发送 → 自动朗读）
   const startVoiceCall = () => {
-    setLastAssistantText('')
     pendingVoiceTranscriptsRef.current = []
     setVoiceCallOpen(true)
   }
@@ -68,15 +65,9 @@ export function useVoiceCall(ctx: {
     return msgs
   }
 
-  // 记录最新 AI 回复全文（语音通话朗读用；排除转录气泡：带 sender 的才是模型回复）
-  const noteLastAssistant = (msgs: ChatMessage[]) => {
-    const lastA = [...msgs].reverse().find((m) => m.role === 'assistant' && m.content && m.sender)
-    if (lastA) setLastAssistantText(lastA.content)
-  }
-
   return {
-    voiceCallOpen, setVoiceCallOpen, lastAssistantText,
+    voiceCallOpen, setVoiceCallOpen,
     ensureVoiceSession, startVoiceCall,
-    handleVoiceTranscript, flushVoiceTranscripts, noteLastAssistant,
+    handleVoiceTranscript, flushVoiceTranscripts,
   }
 }

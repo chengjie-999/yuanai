@@ -14,7 +14,7 @@ import json
 import logging
 import uuid
 import urllib.request
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel, Field
 
 from api.v1.voice.rtc_token import generate_rtc_token
@@ -187,6 +187,53 @@ class VoiceMessageRequest(BaseModel):
 class VoiceTtsRequest(BaseModel):
     text: str = Field(..., min_length=1, description="要朗读的文本（长度上限由 VOICE_TTS_MAX_CHARS 校验；前端已按句分段）")
     sender: str = Field(None, description="消息归属 Agent（orchestrator/analysis/collection/automation/claude/local），缺省用默认音色")
+
+
+class VoiceAsrResponse(BaseModel):
+    text: str
+    duration_ms: int = 0
+
+
+@router.post("/asr", response_model=VoiceAsrResponse)
+async def voice_asr(request: Request, file: UploadFile = File(...)):
+    """语音识别（2026-11-14 半双工语音聊天，DeepSeek 替代火山 RTC）：
+    multipart 上传音频 → DeepSeek ASR。限制与 DeepSeek 对齐：
+    ≤8MiB、16 位 PCM WAV（8-48kHz）或 Ogg Opus。"""
+    from config.settings import VOICE_ENABLED
+    if not VOICE_ENABLED:
+        raise HTTPException(status_code=503, detail="语音功能已关闭")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="音频文件为空")
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="音频过大（上限 8MB）")
+    from utils.sensitive_data import get_api_key
+    import io as _io
+    boundary = uuid.uuid4().hex
+    buf = _io.BytesIO()
+    buf.write(f"--{boundary}\r\nContent-Disposition: form-data; "
+              f'name="file"; filename="{file.filename or "voice.wav"}"\r\n'
+              f"Content-Type: {file.content_type or 'audio/wav'}\r\n\r\n".encode())
+    buf.write(data)
+    buf.write(f"\r\n--{boundary}--\r\n".encode())
+    req = urllib.request.Request(
+        "https://api.deepseek.com/v1/tools/asr",
+        data=buf.getvalue(), method="POST",
+        headers={"Authorization": f"Bearer {get_api_key('dsllm')}",
+                 "Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+        return VoiceAsrResponse(text=result.get("text") or "",
+                                duration_ms=result.get("duration_ms") or 0)
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace")[:300]
+        logger.error("DeepSeek ASR 失败(%s): %s", e.code, detail)
+        raise HTTPException(status_code=502, detail="语音识别失败，请重试")
+    except Exception as e:
+        logger.error("DeepSeek ASR 异常: %s", e)
+        raise HTTPException(status_code=502, detail="语音识别失败，请重试")
 
 
 @router.post("/start", response_model=VoiceStartResponse)

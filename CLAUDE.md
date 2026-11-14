@@ -251,6 +251,7 @@ data/                   数据目录
 - **用户下载入口**：设置页「本地 Agent 下载」卡（版本列表+自服务安装码——生成即预绑定 user_id，注册即绑定）；小元身份卡含下载指引段
 - **yuan --update**：终端下载默认版本（sha256 fail-closed、明文远程拒绝）
 - **全局 401 自动登出**：fetch 全局包装（68+ 调用点零改动）→ AuthContext 清 token 跳登录 + loginError 原因提示
+- **认证恢复本地优先（2026-11-14 修复「频繁刷新掉登录」）**：刷新时 token + 缓存用户（localStorage currentUser）同步恢复，登录态不等服务端往返；后台 /auth/check 软校验三分——401/403=明确失效（清 token + loginError 提示）、网络/5xx/429=transient（保持本地态下次再验）。教训：**身份校验的失败处理必须区分「凭证无效」与「校验通道故障」——把通道故障当凭证无效处理 = 故障期全员被踢**
 - **主对话降级**：POST /chat/demote-main（is_main=0 + ensure 新建空主对话）；侧栏归档图标
 - **会话回收站 v1**：ChatSession.deleted_at（迁移 0024）；删除=软删除可恢复；两级惰性清理（AUTO_ARCHIVE_DAYS 365 不活跃归档 / RECYCLE_RETENTION_DAYS 365 回收站超期级联删）；侧栏回收站入口+恢复/彻底删除
 - **欠费阈值后台可管**：arrears_limit 系统参数化热更新（SettingsTab 行）

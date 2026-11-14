@@ -75,21 +75,6 @@ export function stripMarkdown(text: string): string {
     .trim()
 }
 
-/* 品牌页脚注入（2026-11-14 用户要求）：AI 生成的 HTML 底部植入小元AI 首页入口——
-   渲染 iframe 与下载文件同源注入，幂等（已含标记则跳过） */
-export function injectBrandFooter(html: string): string {
-  if (!html || html.includes('xiaoyuan-brand-footer')) return html
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const footer = `
-<div class="xiaoyuan-brand-footer" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;text-align:center;padding:5px 12px;font-family:'PingFang SC','Microsoft YaHei',sans-serif;font-size:12px;box-shadow:0 -2px 8px rgba(15,23,42,0.12);">
-  由 <a href="${origin}/" target="_blank" style="color:#fff;font-weight:700;text-decoration:underline;">小元AI</a> 生成 · 云边协同 · 对话即执行 · <a href="${origin}/" target="_blank" style="color:#fff;text-decoration:underline;">打开官网</a>
-</div>
-<style>body{padding-bottom:44px;}</style>`
-  const idx = html.search(/<\/body>/i)
-  if (idx >= 0) return html.slice(0, idx) + footer + html.slice(idx)
-  return html + footer
-}
-
 /* ============ 统一下载工具（2026-11-14 收敛，唯一实现点） ============ */
 
 /** 统一文件下载：Blob + a[download] 零依赖——HTML/SVG/PNG/聊天记录全部走这里 */

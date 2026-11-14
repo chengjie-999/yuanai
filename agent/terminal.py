@@ -543,8 +543,11 @@ class FullscreenRenderer:
             cwd = "…" + cwd[-41:]
         backend = {"local": "本机执行", "cloud": "云端执行"}.get(self._backend, "")
         return Text.assemble(
-            (dot, dot_style), ("  ", ""),
-            (self._mode, "bold cyan"),
+            # 品牌对齐 #39（2026-11-14）：状态栏首段「小元AI」品牌蓝标识，
+            # 模式色统一品牌蓝（此前 cyan 与网站品牌色不一致）
+            ("小元AI", "bold blue"),
+            ("  ", ""), (dot, dot_style),
+            ("  ", ""), (self._mode, "bold blue"),
             ("  ", ""), (backend, "green" if self._backend == "local" else "yellow"),
             ("  ", ""), (cwd or "—", "dim"), ("  ", ""),
             (f"会话 {self._session_id[:8]}" if self._session_id else "", "dim"),
@@ -1322,13 +1325,13 @@ def _print_plan_detail(render, detail: dict) -> None:
 
 
 def _print_help(render) -> None:
-    render.info("命令: /claude 本机Claude(默认)  /chat 云端对话(与网站同会话)  "
+    render.info("小元AI · 云边协同 · 对话即执行（品牌对齐 #39）\n"
+                "命令: /claude 本机Claude(默认)  /chat 云端对话(与网站同会话)  "
                 "/sessions 网站会话  /web 网站对话  /plan 计划队列  /status 本机状态  "
                 "/panel 设置面板  /pet on|off 桌宠  /history /clear /quit\n"
                 "按键: F2 网站对话  Ctrl+R 搜索历史  ↑↓ 选择块  Enter 展开/折叠  "
                 "PgUp/PgDn 滚动  Esc 取消  Esc+Enter 换行  Ctrl+C 停止生成\n"
-                "v3.2: 右栏执行观测（15s 轮询最近活动）/ 计划视图 Esc 返回  "
-                "/plan <序号> 看步骤进度")
+                "右栏: 执行观测（15s 轮询最近活动）· /plan <序号> 看步骤进度")
 
 
 async def _list_history(store: TerminalSessionStore, render) -> None:

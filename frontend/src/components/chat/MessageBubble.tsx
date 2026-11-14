@@ -7,7 +7,7 @@ import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { useTheme } from '../../contexts/ThemeContext'
 import { voiceTtsStream } from '../../api'
-import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks, fmtTokens, downloadBlob, downloadTs, svgToPngBlob } from './helpers'
+import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks, fmtTokens, downloadBlob, downloadTs, svgToPngBlob, injectBrandFooter } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, DownloadIcon } from '../icons'
 import { ZoomViewer } from './ZoomableImage'
 
@@ -50,8 +50,9 @@ function InlineHtmlFrame({ html }: { html: string }) {
   const { isDark } = useTheme()
   const isDoc = /^\s*<!DOCTYPE html/i.test(html) || /^\s*<html[\s>]/i.test(html)
   // 主题适配（2026-10-26）：完整文档注入 color-scheme（尊重文档自带配色）；
-  // 片段外壳按站点明暗显式上色（iframe 不继承站点的 data-theme）
-  const srcDoc = isDoc
+  // 片段外壳按站点明暗显式上色（iframe 不继承站点的 data-theme）；
+  // 品牌页脚（2026-11-14 用户要求）：渲染与下载同源注入小元AI 首页入口
+  const srcDoc = injectBrandFooter(isDoc
     ? html.replace(/(<head[^>]*>)/i, `$1<meta name="color-scheme" content="light dark">`)
     : (
       `<!DOCTYPE html><html><head><meta charset="utf-8">`
@@ -60,7 +61,7 @@ function InlineHtmlFrame({ html }: { html: string }) {
         ? `background:#0b1220;color:#e2e8f0}table{border-collapse:collapse}td,th{border:1px solid #2b3b56;padding:6px 10px}`
         : `color:#1f2937}table{border-collapse:collapse}td,th{border:1px solid #d1d5db;padding:6px 10px}`)
       + `a{color:#60a5fa}</style></head><body>${html}</body></html>`
-    )
+    ))
   const copy = () => {
     navigator.clipboard?.writeText(html).catch(() => {})
     setCopied(true)
@@ -117,7 +118,7 @@ function InlineHtmlFrame({ html }: { html: string }) {
           whiteSpace: 'pre-wrap', wordBreak: 'break-all',
         }}>{html}</pre>
       )}
-      <iframe srcDoc={srcDoc} sandbox="allow-scripts" title="HTML 渲染"
+      <iframe srcDoc={srcDoc} sandbox="allow-scripts allow-popups" title="HTML 渲染"
         style={{ width: '100%', height: 420, border: 'none', display: 'block' }} />
       {zoom && <HtmlViewer html={srcDoc} onClose={() => setZoom(false)} />}
     </div>
@@ -138,7 +139,7 @@ function HtmlViewer({ html, onClose, title = 'HTML 全屏查看' }: { html: stri
   ), [html])
   return (
     <ZoomViewer onClose={onClose} title={title}>
-      <iframe srcDoc={zoomed} sandbox="allow-scripts" title="全屏查看"
+      <iframe srcDoc={zoomed} sandbox="allow-scripts allow-popups" title="全屏查看"
         style={{
           width: 'min(1180px, 95vw)', height: 'min(80vh, 850px)',
           border: 'none', display: 'block', background: '#fff',

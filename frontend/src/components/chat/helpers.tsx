@@ -75,6 +75,56 @@ export function stripMarkdown(text: string): string {
     .trim()
 }
 
+/* ============ 统一下载工具（2026-11-14 收敛，唯一实现点） ============ */
+
+/** 统一文件下载：Blob + a[download] 零依赖——HTML/SVG/PNG/聊天记录全部走这里 */
+export function downloadBlob(filename: string, content: string | Blob, mime: string) {
+  const blob = typeof content === 'string' ? new Blob([content], { type: mime }) : content
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** 下载文件名时间戳：2026-11-14-15-30-20 形态 */
+export function downloadTs(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`
+}
+
+/** SVG 渲染成 PNG（canvas，2x 清晰度）——微信/Windows 双击打不开 SVG 的通用兜底。
+    返回 null = 转换失败（svg 含外部资源致 canvas 污染等）。 */
+export function svgToPngBlob(svg: string): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }))
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth || 800
+        const h = img.naturalHeight || 600
+        const scale = 2
+        const canvas = document.createElement('canvas')
+        canvas.width = w * scale
+        canvas.height = h * scale
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { resolve(null); return }
+        ctx.scale(scale, scale)
+        ctx.drawImage(img, 0, 0, w, h)
+        canvas.toBlob((b) => resolve(b), 'image/png')
+      } catch { resolve(null) } finally {
+        URL.revokeObjectURL(url)
+      }
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null) }
+    img.src = url
+  })
+}
+
 export function downloadChat(messages: ChatMessage[], filename: string) {
   // C5 AI 标识（2026-10-29）：导出文件头部显式声明（《标识办法》第 4 条）
   const AIGC_HEADER = '【说明】本对话记录中的 AI 回复均由人工智能生成，仅供参考，请自行核实重要信息。\n\n'
@@ -85,13 +135,7 @@ export function downloadChat(messages: ChatMessage[], filename: string) {
       return `[${role}]\n${content}\n`
     })
     .join('\n---\n')
-  const blob = new Blob([AIGC_HEADER + text], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadBlob(filename, AIGC_HEADER + text, 'text/plain;charset=utf-8')
 }
 
 export function encodeMsg(m: any) {

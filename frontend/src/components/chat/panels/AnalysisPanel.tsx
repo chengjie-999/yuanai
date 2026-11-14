@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchDatasets, fetchDatasetAnalysis, uploadDataset, API_BASE, authHeaders } from '../../../api'
 import AnalysisResultView from '../../AnalysisResultView'
+import { downloadBlob } from '../helpers'
 import { UploadIcon, DownloadIcon } from '../../icons'
 
 export default function AnalysisPanel() {
@@ -77,14 +78,8 @@ export default function AnalysisPanel() {
           const ds = datasets.find((d: any) => d.id === selectedId)
           filename = `${(ds?.name || '数据集').replace(/\.[^.]+$/, '')}_分析报告.xlsx`
         }
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-        URL.revokeObjectURL(url)
+        // 落盘统一走 downloadBlob（2026-11-14 收敛，helpers 单点实现）
+        downloadBlob(filename, blob, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         setTip('导出成功')
       }
     } catch {

@@ -1,5 +1,5 @@
 import { API_BASE, getToken } from '../api'
-import { useSecuredUrl } from './chat/helpers'
+import { useSecuredUrl, downloadBlob } from './chat/helpers'
 
 /* 图表 iframe：5 秒 sse token + 沙箱（S1.2，不落长期 JWT、不给 allow-same-origin） */
 function ChartFrame({ url, name }: { url: string; name: string }) {
@@ -21,7 +21,8 @@ const tdStyle: React.CSSProperties = {
 export default function AnalysisResultView({ analysis }: { analysis: any }) {
   const { id, name, row_count, columns, num_cols, describe, missing, corr, corr_labels, charts, time_series } = analysis
 
-  // 导出走 blob fetch 带 Authorization（<a href download> 无法带 token 会 401）
+  // 导出走 blob fetch 带 Authorization（<a href download> 无法带 token 会 401）；
+  // 下载落盘统一走 downloadBlob（2026-11-14 收敛，helpers 单点实现）
   const handleExport = async (format: 'excel' | 'html') => {
     try {
       const res = await fetch(`${API_BASE}/data/export/${id}?format=${format}`, {
@@ -30,14 +31,7 @@ export default function AnalysisResultView({ analysis }: { analysis: any }) {
       if (!res.ok) { alert('导出失败'); return }
       const blob = await res.blob()
       const ext = format === 'excel' ? 'xlsx' : 'html'
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${name || 'dataset'}_分析报告.${ext}`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
+      downloadBlob(`${name || 'dataset'}_分析报告.${ext}`, blob, format === 'excel' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/html')
     } catch { alert('导出失败') }
   }
 

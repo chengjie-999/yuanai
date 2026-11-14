@@ -7,30 +7,12 @@ import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { useTheme } from '../../contexts/ThemeContext'
 import { voiceTtsStream } from '../../api'
-import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks, fmtTokens } from './helpers'
+import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks, fmtTokens, downloadBlob, downloadTs, svgToPngBlob } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, DownloadIcon } from '../icons'
 import { ZoomViewer } from './ZoomableImage'
 
-/* 下载渲染内容（2026-11-04 用户要求）：Blob + a[download] 零依赖；
-   C5 合规：AI 生成内容下载附显式标识注释（《标识办法》下载/导出须含标识） */
-function downloadContent(filename: string, content: string, mime: string) {
-  const blob = new Blob([content], { type: mime })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-/* 下载文件名时间戳（浏览器运行时）：2026-11-04-15-30-20 形态 */
-function downloadTs(): string {
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`
-}
+/* 统一下载（2026-11-14 收敛）：downloadBlob/downloadTs/svgToPngBlob 在 helpers.tsx
+   单一实现点——HTML/SVG/PNG/聊天记录同款 Blob + a[download] 链路 */
 
 // 气泡内图标按钮统一样式（复制/修改/点赞；用户气泡为 accent 底配白色图标）
 const iconBtnStyle = (inUserBubble: boolean, active = false): React.CSSProperties => ({
@@ -117,10 +99,10 @@ function InlineHtmlFrame({ html }: { html: string }) {
           {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
         </button>
         {/* 下载（2026-11-04 用户要求）：自包含完整 HTML（含主题适配），打开即所见 */}
-        <button onClick={() => downloadContent(
+        <button onClick={() => downloadBlob(
           `xiaoyuan-html-${downloadTs()}.html`,
           `<!-- 内容由 AI 生成 -->\n${srcDoc}`, 'text/html')}
-          className="yuan-tip" data-tip="下载 HTML 文件" aria-label="下载 HTML 文件"
+          title="下载 HTML 文件（浏览器打开即所见）" aria-label="下载 HTML 文件"
           style={{
             background: 'none', border: 'none', cursor: 'pointer', padding: 2,
             color: 'var(--text-muted)', display: 'flex',
@@ -249,16 +231,29 @@ function MermaidBlock({ code }: { code: string }) {
                    color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex' }}>
           {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
         </button>
-        {/* 下载渲染结果 SVG（2026-11-04 用户要求；svg 渲染完成才可下载） */}
+        {/* 下载（2026-11-14 统一）：PNG 通用（微信可发/双击可开）为主，SVG 源文件为辅。
+            SVG 的 AI 标识注释放根元素之后（XML 声明前放注释部分查看器解析失败） */}
         {svg && (
-          <button onClick={() => downloadContent(
-            `xiaoyuan-chart-${downloadTs()}.svg`,
-            `<!-- 内容由 AI 生成 -->\n${svg}`, 'image/svg+xml')}
-            className="yuan-tip" data-tip="下载 SVG 图表" aria-label="下载 SVG 图表"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-                     color: 'var(--text-muted)', display: 'flex' }}>
-            <DownloadIcon size={13} />
-          </button>
+          <>
+            <button onClick={async () => {
+              const png = await svgToPngBlob(svg)
+              if (png) downloadBlob(`xiaoyuan-chart-${downloadTs()}.png`, png, 'image/png')
+              else window.alert('PNG 转换失败：该图表引用了外部资源，请改下 SVG 格式')
+            }}
+              title="下载 PNG 图片（微信可直接发送）" aria-label="下载 PNG"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                       color: 'var(--accent)', padding: '2px 4px' }}>
+              PNG
+            </button>
+            <button onClick={() => downloadBlob(
+              `xiaoyuan-chart-${downloadTs()}.svg`,
+              `${svg}\n<!-- 内容由 AI 生成 -->`, 'image/svg+xml;charset=utf-8')}
+              title="下载 SVG 源文件（浏览器可开；微信与部分软件不支持该格式）" aria-label="下载 SVG 图表"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                       color: 'var(--text-muted)', padding: '2px 4px' }}>
+              SVG
+            </button>
+          </>
         )}
       </div>
       {showSource && (
@@ -319,14 +314,24 @@ function SvgBlock({ code }: { code: string }) {
                    color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex' }}>
           {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
         </button>
-        {/* 下载 SVG（2026-11-04 用户要求） */}
-        <button onClick={() => downloadContent(
+        {/* 下载（2026-11-14 统一）：PNG 通用为主，SVG 源文件为辅（AI 标识注释放根元素后） */}
+        <button onClick={async () => {
+          const png = await svgToPngBlob(code)
+          if (png) downloadBlob(`xiaoyuan-svg-${downloadTs()}.png`, png, 'image/png')
+          else window.alert('PNG 转换失败：该图形引用了外部资源，请改下 SVG 格式')
+        }}
+          title="下载 PNG 图片（微信可直接发送）" aria-label="下载 PNG"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                   color: 'var(--accent)', padding: '2px 4px' }}>
+          PNG
+        </button>
+        <button onClick={() => downloadBlob(
           `xiaoyuan-svg-${downloadTs()}.svg`,
-          `<!-- 内容由 AI 生成 -->\n${code}`, 'image/svg+xml')}
-          className="yuan-tip" data-tip="下载 SVG 文件" aria-label="下载 SVG 文件"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-                   color: 'var(--text-muted)', display: 'flex' }}>
-          <DownloadIcon size={13} />
+          `${code}\n<!-- 内容由 AI 生成 -->`, 'image/svg+xml;charset=utf-8')}
+          title="下载 SVG 源文件（浏览器可开；微信与部分软件不支持该格式）" aria-label="下载 SVG 文件"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                   color: 'var(--text-muted)', padding: '2px 4px' }}>
+          SVG
         </button>
       </div>
       {showSource && (

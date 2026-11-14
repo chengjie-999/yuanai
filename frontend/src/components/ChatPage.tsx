@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
-import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, reportMessage, getStoredModel, setStoredModel, getStoredEffort, setStoredEffort, API_BASE, getToken, authHeaders, shareSession, fetchUserPrefs, putUserPrefs } from '../api'
+import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, reportMessage, getStoredModel, getStoredEffort, API_BASE, getToken, authHeaders, shareSession, fetchUserPrefs, putUserPrefs } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG, WINDOW_AGENTS } from '../config/agents'
 import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
@@ -27,10 +27,12 @@ const DashboardLazy = lazy(() => import('../pages/AnalysisDashboard'))
 const RfmLazy = lazy(() => import('../pages/RFMDashboard'))
 const PlanetLazy = lazy(() => import('../pages/PlanetPage'))
 const BillingLazy = lazy(() => import('./BillingPage'))
+const SettingsLazy = lazy(() => import('./SettingsPage'))
 
 // 页面路径 → 懒加载组件 + 标题（浮窗/浮层标题栏与地址栏用）
 function resolvePanel(path: string): { Comp: any; props: any; title: string } | null {
   if (!path) return null
+  if (path.split('?')[0] === '/settings') return { Comp: SettingsLazy, props: {}, title: '对话设置' }
   if (path.split('?')[0] === '/chat/plan') return { Comp: PlanPageLazy, props: {}, title: '计划面板' }
   if (path.startsWith('/chat/agent/dashboard/')) return { Comp: DashboardLazy, props: { sessionId: path.split('/').pop() }, title: '分析大屏' }
   if (path.startsWith('/chat/agent/board/')) return { Comp: BoardLazy, props: { boardKey: path.split('/').pop() }, title: '分析看板' }
@@ -116,8 +118,18 @@ export default function ChatPage({ user }: { user?: any }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [model, setModel] = useState(getStoredModel)
-  // 聊天页模型下拉（输入区工具行）：切换即持久化 localStorage
-  const handleModelChange = (v: string) => { setModel(v); setStoredModel(v) }
+  // 模型/推理强度选择已子页面化（2026-11-14）：状态仅供发送链路读取，
+  // 设置页写 localStorage 后由挂载/事件同步
+  useEffect(() => {
+    const onModelChanged = () => {
+      try {
+        const v = localStorage.getItem('selectedModel')
+        if (v) setModel(v)
+      } catch { /* 忽略 */ }
+    }
+    window.addEventListener('yuan-model-changed', onModelChanged)
+    return () => window.removeEventListener('yuan-model-changed', onModelChanged)
+  }, [])
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth > 768)
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
   // 微信内置浏览器提示（2026-10-29）：其 SSE 流式兼容差导致长回复截断——
@@ -150,6 +162,17 @@ export default function ChatPage({ user }: { user?: any }) {
     setChatBackendState(v)
     try { localStorage.setItem('chatBackend', v) } catch { /* 忽略 */ }
   }
+  // 设置页（子页面）切执行位置后同步状态（2026-11-14 子页面化）
+  useEffect(() => {
+    const onBackendChanged = () => {
+      try {
+        const v = localStorage.getItem('chatBackend')
+        if (v === 'cloud' || v === 'local' || v === 'auto') setChatBackendState(v)
+      } catch { /* 忽略 */ }
+    }
+    window.addEventListener('yuan-backend-changed', onBackendChanged)
+    return () => window.removeEventListener('yuan-backend-changed', onBackendChanged)
+  }, [])
   const prevChatModeRef = useRef<'local' | 'cloud' | 'claude'>('local')
   const toggleEntMode = async () => {
     const next = !entMode
@@ -207,9 +230,19 @@ export default function ChatPage({ user }: { user?: any }) {
       return next
     })
   }
-  // 推理强度开关（快答/深思）：localStorage 持久化，仅对 DeepSeek 系列生效
+  // 推理强度：localStorage 持久化（设置页子页面写），仅对 DeepSeek 系列生效
   const [effort, setEffortState] = useState<'low' | 'medium' | 'high'>(getStoredEffort())
-  const setEffort = (v: 'low' | 'medium' | 'high') => { setEffortState(v); setStoredEffort(v) }
+  // 设置页切推理强度后同步状态（2026-11-14 子页面化）
+  useEffect(() => {
+    const onEffortChanged = () => {
+      try {
+        const v = localStorage.getItem('reasoningEffort')
+        if (v === 'low' || v === 'medium' || v === 'high') setEffortState(v)
+      } catch { /* 忽略 */ }
+    }
+    window.addEventListener('yuan-effort-changed', onEffortChanged)
+    return () => window.removeEventListener('yuan-effort-changed', onEffortChanged)
+  }, [])
   const [localOnline, setLocalOnline] = useState(false)
   const [claudeOnline, setClaudeOnline] = useState(false)
   const [statusKnown, setStatusKnown] = useState(false)
@@ -1480,7 +1513,6 @@ ${full}
       <ChatView
             messages={messages} loading={loading} user={user}
             agentKind={agentKind}
-            chatBackend={chatBackend} setChatBackend={setChatBackend}
             setExpandedImage={setExpandedImage}
             input={input} setInput={setInput} handleSend={handleSend}
             images={images} setImages={setImages}
@@ -1489,8 +1521,6 @@ ${full}
             dmTarget={dmTargets[currentSid] || ''}
             ccActivity={ccActivity}
             claudeOnline={claudeOnline}
-            model={model} setModel={handleModelChange}
-            effort={effort} setEffort={setEffort}
             autoRead={autoRead}
             autoReadTick={autoReadTick}
             pendingApproval={pendingApproval} handleDecision={handleDecision}
@@ -1504,6 +1534,7 @@ ${full}
             sendTick={sendTick}
             onOpenPanel={handleOpenPanel}
             onSwitchWindow={handleSwitchKind}
+            onOpenSettings={() => handleOpenPanel('/settings')}
           />
       </>
         )}

@@ -1,7 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
-import type { ReasoningEffort } from './ReasoningSelector'
 import { SUGGESTIONS, ENT_SUGGESTIONS, AGENT_CONFIG } from '../../config/agents'
 import { ArrowDownIcon } from '../icons'
 import Mascot from '../Mascot'
@@ -9,7 +8,7 @@ import MessageBubble from './MessageBubble'
 import InputArea from './InputArea'
 import ApprovalCard from './ApprovalCard'
 
-export default function ChatView({ messages, loading, user, setExpandedImage, agentKind, input, setInput, handleSend, images, setImages, currentSid, sessions, dmTarget, ccActivity, claudeOnline, model, setModel, effort, setEffort, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onReport, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, chatBackend, setChatBackend, onStop, notice, onSuggest, sendTick, onOpenPanel, onSwitchWindow }: {
+export default function ChatView({ messages, loading, user, setExpandedImage, agentKind, input, setInput, handleSend, images, setImages, currentSid, sessions, dmTarget, ccActivity, claudeOnline, autoRead, autoReadTick, pendingApproval, handleDecision, likes, editingIndex, setEditingIndex, onEditMessage, onFeedback, onReport, onRegenerate, onContinue, onStartVoiceCall, entMode, toggleEntMode, onOpenSettings, onStop, notice, onSuggest, sendTick, onOpenPanel, onSwitchWindow }: {
   messages: ChatMessage[]; loading: boolean; user?: any
   agentKind: 'chat' | 'claude' | 'automation'
   // 多窗口 #16：sid 可选——任务卡「去执行窗口」精确定位到执行会话
@@ -22,8 +21,6 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
   dmTarget: string
   ccActivity: { online: boolean; agent_name: string; latest: { message: string; detail: string; ts?: number; time: string } | null; age_s?: number } | null
   claudeOnline: boolean
-  model: string; setModel: (v: string) => void
-  effort: ReasoningEffort; setEffort: (v: ReasoningEffort) => void
   autoRead: boolean; autoReadTick: number
   pendingApproval: { decision_id: string; tool_name: string; command: string; claude: boolean } | null
   handleDecision: (approve: boolean) => void
@@ -37,7 +34,7 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
   onContinue: () => void
   onStartVoiceCall: () => void
   entMode: boolean
-  chatBackend: 'auto' | 'cloud' | 'local'; setChatBackend: (v: 'auto' | 'cloud' | 'local') => void
+  onOpenSettings: () => void
   toggleEntMode: () => void
   onStop: () => void
   notice: string
@@ -278,10 +275,9 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
         currentSid={currentSid}
         sessions={sessions} messages={messages}
         agentKind={agentKind}
-        model={model} setModel={setModel}
-        effort={effort} setEffort={setEffort}
         onStartVoiceCall={onStartVoiceCall}
-        entMode={entMode} toggleEntMode={toggleEntMode} chatBackend={chatBackend} setChatBackend={setChatBackend}
+        entMode={entMode} toggleEntMode={toggleEntMode}
+        onOpenSettings={onOpenSettings}
         onStop={onStop} notice={notice} />
     </>
   )

@@ -1646,6 +1646,11 @@ ${full}
         const h = Math.max(360, Math.min(size.h, window.innerHeight - 80))
         const { Comp, props } = resolved
         return (
+          <>
+          {/* 点击浮窗外侧关闭（2026-11-14 用户反馈：此前必须点「返回对话」）——
+              透明遮罩在浮窗下层，点击即关；不影响浮窗内拖拽/交互 */}
+          <div onClick={() => setPanel(null)} aria-hidden="true"
+            style={{ position: 'fixed', inset: 0, zIndex: 299, background: 'transparent' }} />
           <div style={{
             position: 'fixed', zIndex: 300,
             left: Math.max(8, Math.min(pos.x, window.innerWidth - 200)),
@@ -1732,6 +1737,7 @@ ${full}
               </svg>
             </div>
           </div>
+          </>
         )
       })()}
       {panel && isMobile && (() => {

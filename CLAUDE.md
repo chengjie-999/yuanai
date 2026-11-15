@@ -22,6 +22,10 @@
    └─ yuan 终端：零依赖桌面客户端（网站第三端，保留维护）
 ```
 
+## 本地 MCP（T13 大方向核心，2026-11-15 A1 落地）
+
+`agent/mcp_server.py`——小元AI 本地 MCP 服务器（mcp SDK 2.x stdio）：CC 终端发现+调用本地智能体。发现=`list_local_agents`（统筹/自动化/脚本清单/桌宠状态）；调用=`script_*`（10 个工具，签名与参数校验从 ScriptRegistry 动态生成——与统筹 function calling 同一咽喉）；跨系统=脚本子进程/看板产物/桌宠六态联动一个入口。注册：`claude mcp add xiaoyuan -- venv\Scripts\python.exe -m agent.mcp_server`（真机握手 ✔）。A2 挂账：automation/计划/记忆/知识星球/cloud_chat 调用面扩展；冻结 exe --run-mcp 入口随打包批次。测试 test_mcp_server.py 6 项。
+
 ## 开发待办看板
 
 全局待办/状态/优先级索引见 **`plans/todo-2026-11.md`**（2026-11-15 建立）。口径：看板只做状态索引，细节以各 `plans/*.md` 方案文件为事实源；批次落地时同步改「看板状态列 + 方案文件状态段」两处。新增立项先写方案文件，再到看板挂一行。

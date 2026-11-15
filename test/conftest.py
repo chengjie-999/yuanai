@@ -80,5 +80,17 @@ def auth_headers(client):
     })
     if resp.status_code == 200:
         token = resp.json()["token"]
+        # 测试配额自清（2026-11-15 事故排查）：/chat/stream 每日 50 条配额——
+        # 全天多轮全量跑会打满，命中配额的测试（chat_backend/C8 等）静默 403
+        # 且无配额字样断言 → 症状是「backend_event 缺失」这类误导性失败。
+        # 会话级清一次（与 test_context_usage 数据债同款防御）
+        try:
+            from db.redis_client import get_redis
+            import datetime
+            _r = get_redis()
+            for _k in list(_r.keys(f"quota:msg:*:{datetime.date.today():%Y%m%d}")):
+                _r.delete(_k)
+        except Exception:
+            pass
         return {"Authorization": f"Bearer {token}"}
     return {}

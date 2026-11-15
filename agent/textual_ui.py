@@ -67,36 +67,59 @@ from agent.terminal import (  # terminal 懒加载本模块，反向引用安全
     run_turn,
 )
 
-# 流式刷新节流（秒）：Markdown/思考行解析与重建是同步重活，每 token 全刷会
-# 吃掉 diff 渲染省下的预算——窗口内 token 累积、到点一次刷新
-STREAM_FLUSH_INTERVAL = 0.08
+# 流式刷新节流（秒）：窗口内 token 累积、到点一次刷新（Markdown.append 增量
+# 解析 + 50ms ≈ 20fps——用户「不丝滑」反馈后收紧）
+STREAM_FLUSH_INTERVAL = 0.05
 
 _HINT_BASE = "↑↓ 选择 · Enter 展开/折叠 · PgUp/PgDn 滚动 · Esc+Enter 换行 · Ctrl+C 停止 · ? 帮助"
 
+# 说话人身份标签（网页端 MessageBubble 同款：色点 + 名称 + AI 徽标；
+# 用户反馈「混在模型输出里分辨不了」——气泡身份对齐网页 agents.ts 配色）
+AGENT_LABELS = {"orchestrator": ("小元AI", "blue"),
+                "claude": ("Claude Code", "orange3"),
+                "automation": ("自动化", "orange1"),
+                "cloud_fallback": ("云端兜底", "grey58")}
+
+
+def _agent_label_text(sender: str) -> Text:
+    """身份标签行：● 色点 + 名称 + AI 徽标（C5 标识办法同网页气泡）"""
+    label, color = AGENT_LABELS.get(sender or "orchestrator", AGENT_LABELS["orchestrator"])
+    return Text.assemble((f"● {label}", f"bold {color}"), ("  AI", "dim"))
+
 
 class BlockWidget(Vertical):
-    """对话块容器：answer=Markdown（富文本）、user/info/error=Static、thinking/
-    tool=折叠块（标题行 + 展开时内容行）。folded 切换 = 内容子件挂载/卸载
-    （in-place 改，不重建 widget、不丢滚动位置）。选中态 .selected 由 app 同步。"""
+    """对话块容器（网页端 MessageBubble 同款形态，用户反馈「混在模型输出里
+    分辨不了」后对齐）：
+    - user = 右对齐品牌蓝底白字气泡（网页 var(--accent) 底 + #fff 字 + 右圆角）
+    - answer = 左对齐气泡：身份标签行（● 色点 + 名称 + AI 徽标）+ 左侧品牌
+      色条 + 面板底（网页 bg-tertiary + 3px 身份色条）
+    - info/error = 居中弱化行；thinking/tool = 折叠块（标题行 + 展开内容）
+    folded 切换 = 内容子件挂载/卸载（in-place，不重建 widget）。选中态
+    .selected 由 app 同步。"""
 
-    def __init__(self, bid: str, kind: str, title: str, content: str, folded: bool):
-        super().__init__(classes="block")
+    def __init__(self, bid: str, kind: str, title: str, content: str, folded: bool,
+                 sender: str = "orchestrator"):
+        super().__init__(classes=f"block {kind}-block")
         self.bid = bid
         self.block_kind = kind
         self.block_title = title
         self.block_content = content
         self.block_folded = bool(folded)
+        self.block_sender = sender or "orchestrator"
 
     def compose(self):
         kind = self.block_kind
         if kind == "answer":
-            yield Markdown(self.block_content or "（空）", classes="banswer")
+            yield Static(_agent_label_text(self.block_sender), classes="alabel")
+            yield Markdown(self.block_content or "（空）", classes="abubble")
         elif kind == "user":
-            yield Static(Text(f"你 ▸ {self.block_content}", style="bold cyan"))
+            # 右对齐需容器级 align（Textual 8 子件级 align-horizontal 不生效）
+            with Horizontal(classes="urow"):
+                yield Static(Text(self.block_content, style="bold"), classes="ububble")
         elif kind == "info":
-            yield Static(Text(self.block_content, style="dim"))
+            yield Static(Text(self.block_content, style="dim"), classes="iline")
         elif kind == "error":
-            yield Static(Text(f"✗ {self.block_content}", style="bold red"))
+            yield Static(Text(f"✗ {self.block_content}", style="bold red"), classes="iline")
         else:  # thinking / tool 折叠块
             yield Static(self._title_text(), classes="btitle")
             if not self.block_folded:
@@ -285,15 +308,24 @@ class DockInput(TextArea):
 
     def action_dock_page_up(self) -> None:
         self._disarm_esc()
-        self._scroll_target().scroll_page_up()
+        target = self._scroll_target()
+        target.scroll_page_up()
+        if target is self.app._blocks_container:
+            self.app._following = False  # 键盘回看 = 暂停跟随（同滚轮语义）
 
     def action_dock_page_down(self) -> None:
         self._disarm_esc()
-        self._scroll_target().scroll_page_down()
+        target = self._scroll_target()
+        target.scroll_page_down()
+        if target is self.app._blocks_container:
+            target.call_after_refresh(target._maybe_refollow)
 
     def action_dock_end(self) -> None:
         self._disarm_esc()
-        self._scroll_target().scroll_end(animate=False)
+        target = self._scroll_target()
+        target.scroll_end(animate=False)
+        if target is self.app._blocks_container:
+            self.app._following = True  # End 回底 = 恢复跟随
 
     def action_dock_complete(self) -> None:
         """斜杠命令补全（ptk WordCompleter 同口径：仅 ^/\w*$ 时生效；
@@ -398,25 +430,39 @@ class ApprovalModal(ModalScreen):
 class BlocksScroll(VerticalScroll):
     """对话块流/计划视图滚动容器（鼠标滚轮原生；不抢焦点——输入 dock 保持聚焦）。
 
-    follow_tracking=True（仅 #blocks 实例）时经 watch_scroll_y 区分程序滚动
-    与用户滚动：用户上滑 = 暂停贴底跟随、滚回接近底部 = 恢复（补漏扫描修复：
-    此前 _at_end 几何判定滞后一帧——内容增长后 scroll_y 尚未跟上，误差超阈值
-    一次即永久丢失跟随）。"""
+    follow_tracking=True（仅 #blocks 实例）时维护贴底跟随态——**事件驱动**
+    （用户实测：「滚轮不能滑动/结束停首页」根因=watch_scroll_y 把 reflow 引起
+    的 scroll_y 抖动误判为用户滚动：跟随被误杀、流式 flush 又把滚轮拉回底部）。
+    用户信号三路：鼠标滚轮上滑（事件）、PgUp/End（键盘 action）、滚动条拖拽
+    （grabbed 时 watch）；其余 scroll_y 变化一律视为程序/reflow，不干预。"""
 
     can_focus = False
     follow_tracking = False
-    _programmatic_scroll = False
+
+    def on_mouse_scroll_up(self, event) -> None:
+        """滚轮上滑 = 用户主动回看历史 → 暂停贴底跟随（生成中的 flush 不再
+        拉回底部）"""
+        if self.follow_tracking:
+            self.app._following = False
+
+    def on_mouse_scroll_down(self, event) -> None:
+        """滚轮下滑：滚回底部附近恢复跟随（滚动落位后判定）"""
+        if self.follow_tracking:
+            self.call_after_refresh(self._maybe_refollow)
+
+    def _maybe_refollow(self) -> None:
+        if self.is_vertical_scroll_end:
+            self.app._following = True
 
     def watch_scroll_y(self, old: int, new: int) -> None:
-        if not self.follow_tracking:
+        """仅滚动条拖拽时解读为用户操作（拖拽不经滚轮事件）；reflow/程序
+        滚动不带 grabbed 标记，不误判"""
+        if not self.follow_tracking or not self.is_vertical_scrollbar_grabbed:
             return
-        app = self.app
-        if self._programmatic_scroll:
-            return  # scroll_end 跟随自己的落位（不误判为用户操作）
         if new < old:
-            app._following = False  # 用户上滑阅读历史
+            self.app._following = False
         elif new >= self.max_scroll_y - 2:
-            app._following = True  # 滚回接近底部恢复跟随
+            self.app._following = True
 
 
 class YuanTerminalApp(App):
@@ -482,7 +528,24 @@ class YuanTerminalApp(App):
     #plan.show {{ display: block; }}
     BlockWidget {{ height: auto; padding: 0 1; }}
     BlockWidget.selected {{ background: $boost; }}
+    /* 网页端气泡形态（用户反馈「混在模型输出里分辨不了」后对齐
+       MessageBubble）：用户=右对齐品牌蓝底白字；AI=左对齐面板底 + 左侧
+       品牌色条 + 身份标签行（$primary 两种主题均为蓝，白字对比最佳）。
+       气泡样式挂子件——容器 width:auto 会致内容测量塌缩（标签一字一行、
+       内容不可见，真机截图抓出） */
+    BlockWidget.user-block .urow {{ align-horizontal: right; }}
+    BlockWidget.user-block .ububble {{
+        width: auto; max-width: 80%;
+        background: $primary; color: #ffffff; padding: 0 1; text-style: bold;
+    }}
+    BlockWidget.answer-block .abubble {{
+        background: $panel; border-left: heavy $primary; padding: 0 1;
+    }}
     .bcontent {{ color: $text-muted; }}
+    #stream-answer-label {{ height: 1; }}
+    #stream-answer {{
+        border-left: heavy $primary; background: $panel;
+    }}
     #approval-box {{
         width: 72%;
         height: auto;
@@ -526,6 +589,9 @@ class YuanTerminalApp(App):
         self._stream_working = None
         self._stream_thinking = None
         self._stream_answer = None
+        self._stream_answer_label = None
+        self._flushed_len = 0        # 已 flush 进 Markdown.append 的字符数（增量）
+        self._stream_sender = "orchestrator"
         self._observe_widget = None
         self._observe_box = None
         self._plan_container = None
@@ -557,6 +623,7 @@ class YuanTerminalApp(App):
                 with Vertical(id="streams"):
                     yield Static("", id="stream-working", classes="hidden")
                     yield Static("", id="stream-thinking", classes="hidden")
+                    yield Static("", id="stream-answer-label", classes="hidden")
                     yield Markdown("", id="stream-answer", classes="hidden")
             with BlocksScroll(id="plan"):
                 yield Static("计划队列（/plan <序号> 查看步骤 · Esc/Enter 返回对话）",
@@ -582,6 +649,7 @@ class YuanTerminalApp(App):
         self._stream_working = self.query_one("#stream-working", Static)
         self._stream_thinking = self.query_one("#stream-thinking", Static)
         self._stream_answer = self.query_one("#stream-answer", Markdown)
+        self._stream_answer_label = self.query_one("#stream-answer-label", Static)
         self._observe_widget = self.query_one("#observe-content", Static)
         self._observe_box = self.query_one("#observe", Vertical)
         self._plan_container = self.query_one("#plan", BlocksScroll)
@@ -700,7 +768,8 @@ class YuanTerminalApp(App):
             w = by_bid.get(bid)
             if w is None:
                 w = BlockWidget(bid, b.get("kind", ""), b.get("title", ""),
-                                b.get("content", ""), b.get("folded", False))
+                                b.get("content", ""), b.get("folded", False),
+                                b.get("sender", "orchestrator"))
                 self._blocks_container.mount(w, before=self._streams)
                 self._content_version += 1
             if w.block_folded != b.get("folded", False):
@@ -749,23 +818,21 @@ class YuanTerminalApp(App):
         return c.max_scroll_y - c.scroll_y < 2
 
     def _follow_end(self) -> None:
-        """贴底跟随：内容版本变化（流式 flush/新块）且处于跟随态才滚。跟随态
-        由 BlocksScroll.watch_scroll_y 维护（用户上滑暂停/滚回底部恢复）——
-        补漏扫描修复：几何 _at_end 判定滞后一帧，一次误差即永久丢失跟随"""
+        """贴底跟随：内容版本变化（流式 flush/新块）且处于跟随态才滚（用户
+        实测「结束停首页」根因：watch_scroll_y 把 reflow 抖动误判为用户滚动，
+        跟随被误杀后 done 的最终 scroll 被跳过）。跟随态由 BlocksScroll 事件
+        驱动维护（滚轮上滑/PgUp/拖拽上滑=暂停，滚回底部/End=恢复）"""
         if self._content_version == self._last_scroll_version:
             return
-        c = self._blocks_container
-        if self._following or c.is_vertical_scroll_end:
-            c._programmatic_scroll = True
-            try:
-                c.scroll_end(animate=False)
-            finally:
-                c._programmatic_scroll = False
+        if self._following:
+            self._blocks_container.scroll_end(animate=False)
             self._last_scroll_version = self._content_version
 
     def _sync_streams(self, render) -> None:
-        """流式三行：执行中工具 / 思考 / 流式回答。Markdown 与思考行均节流
-        （monotonic 计时——审查修复：time.time() 遇 NTP 回拨会冻结流式显示）"""
+        """流式区：执行中工具 / 思考 / 流式回答（身份标签 + 品牌色条气泡）。
+        回答走 Markdown.append 增量解析（用户「不丝滑」根因之一：整文重解析
+        每帧重建全部块）；思考行与回答同节流（monotonic 计时——审查修复：
+        time.time() 遇 NTP 回拨会冻结流式显示）"""
         changed = False
         if render._working:
             self._stream_working.update(
@@ -795,15 +862,32 @@ class YuanTerminalApp(App):
             now = time.monotonic()
             if now - self._last_stream_flush >= STREAM_FLUSH_INTERVAL:
                 self._last_stream_flush = now
-                self._stream_answer.update((render._answer or "…") + " ▍")
-                changed = True
+                delta = render._answer[self._flushed_len:]
+                if delta:
+                    self._flushed_len = len(render._answer)
+                    self._stream_answer.append(delta)  # 增量解析，diff 渲染
+                    changed = True
+            if self._stream_sender != render._sender:
+                self._stream_sender = render._sender
+                self._stream_answer_label.update(
+                    _agent_label_text(render._sender))
             if self._stream_answer.has_class("hidden"):
                 self._stream_answer.remove_class("hidden")
                 changed = True
+            if self._stream_answer_label.has_class("hidden"):
+                # 首次显示也刷新（初始 sender 相同会跳过上面的比对——测试抓出）
+                self._stream_answer_label.update(
+                    _agent_label_text(render._sender))
+                self._stream_answer_label.remove_class("hidden")
+                changed = True
         else:
             self._last_stream_flush = 0.0
+            self._flushed_len = 0
             if not self._stream_answer.has_class("hidden"):
                 self._stream_answer.add_class("hidden")
+                changed = True
+            if not self._stream_answer_label.has_class("hidden"):
+                self._stream_answer_label.add_class("hidden")
                 changed = True
         if changed:
             self._content_version += 1
@@ -956,6 +1040,7 @@ class TextualRenderer:
         self._observe_ready = False
         self._usage = None
         self._plan_view = None
+        self._sender = "orchestrator"  # 当前说话人（气泡身份标签，网页同款）
 
     # ———— App 生命周期 ————
 
@@ -1012,6 +1097,12 @@ class TextualRenderer:
         cloud=云端执行；状态栏可见（云边协同透明化）"""
         self._backend = ("local" if backend == "local"
                          else "cloud" if backend == "cloud" else "")
+        self._notify()
+
+    def set_sender(self, sender: str) -> None:
+        """当前说话人（气泡身份标签，网页 MessageBubble 同款）：
+        run_claude_query 设 claude（棕色标签）、云端/本地 LLM 默认统筹"""
+        self._sender = sender or "orchestrator"
         self._notify()
 
     def load_history(self, messages: list) -> None:
@@ -1073,7 +1164,8 @@ class TextualRenderer:
         title = (f"最终思考 ({secs}s)" if final else
                  f"思考 ({secs}s) · {self._tool_count} 次工具调用")
         self._blocks.append({"kind": "thinking", "title": title,
-                             "content": self._reasoning, "folded": True})
+                             "content": self._reasoning, "folded": True,
+                             "sender": self._sender})
         self._reasoning = ""
         self._think_start = None
 
@@ -1099,7 +1191,7 @@ class TextualRenderer:
     def tool_end(self, name: str, output: str) -> None:
         self._blocks.append({"kind": "tool", "title": f"⚙ {name}",
                              "content": _truncate_tool_output(output),
-                             "folded": True})
+                             "folded": True, "sender": self._sender})
         self._working = None
         self._notify()
 
@@ -1107,7 +1199,8 @@ class TextualRenderer:
         self._snapshot_thinking(final=True)
         if self._answer:
             self._blocks.append({"kind": "answer", "title": "",
-                                 "content": self._answer, "folded": False})
+                                 "content": self._answer, "folded": False,
+                                 "sender": self._sender})
             self._answer = ""
         self._working = None
         self._notify()
@@ -1122,12 +1215,12 @@ class TextualRenderer:
         self._think_start = None
         self._answer = ""
         self._blocks.append({"kind": "error", "title": "", "content": text,
-                             "folded": False})
+                             "folded": False, "sender": self._sender})
         self._notify()
 
     def info(self, text: str) -> None:
         self._blocks.append({"kind": "info", "title": "", "content": text,
-                             "folded": False})
+                             "folded": False, "sender": self._sender})
         self._notify()
 
     def interrupted(self) -> None:
@@ -1136,7 +1229,7 @@ class TextualRenderer:
         self._reasoning = ""
         self._think_start = None
         self._blocks.append({"kind": "info", "title": "", "content": "（已停止生成）",
-                             "folded": False})
+                             "folded": False, "sender": self._sender})
         self._notify()
 
     # ———— 审批（v4 modal 形态；v3 语义不变：120s 超时默认 deny） ————

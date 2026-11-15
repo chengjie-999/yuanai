@@ -545,6 +545,81 @@ def test_app_stream_scope_upgrades_when_snapshot_blocks(tmp_path, monkeypatch):
     _run_app_test(body, tmp_path, monkeypatch)
 
 
+# ==================== 展示层修复回归（网页端气泡形态，2026-11-15 用户实测） ====================
+
+
+def test_app_user_block_right_aligned_blue_bubble(tmp_path, monkeypatch):
+    """用户消息 = 右对齐品牌蓝底白字气泡（网页 MessageBubble 同款）——
+    用户实测「混在模型输出里分辨不了」"""
+    async def body(pilot, app, render, s, store):
+        store.append(s["id"], "user", "我的问题", "claude")
+        render._blocks.append({"kind": "user", "title": "", "content": "我的问题",
+                               "folded": False, "sender": "orchestrator"})
+        render._notify()
+        await pilot.pause()
+        w = app.query("BlockWidget.user-block").first()
+        assert w is not None
+        bubble = w.query(".ububble").first()
+        assert "我的问题" in bubble.render().plain
+        from textual.color import Color
+        # 蓝底白字（网页 var(--accent) + #fff 同款）
+        assert bubble.styles.background == Color(1, 120, 212)  # $primary 品牌蓝
+        assert bubble.styles.color == Color(255, 255, 255)
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_answer_block_has_label_and_color_bar(tmp_path, monkeypatch):
+    """模型输出 = 左对齐气泡 + 身份标签行（色点+名称+AI 徽标）+ 品牌色条"""
+    async def body(pilot, app, render, s, store):
+        render.done() if False else None
+        render._blocks.append({"kind": "answer", "title": "",
+                               "content": "回答正文", "folded": False,
+                               "sender": "orchestrator"})
+        render._notify()
+        await pilot.pause()
+        w = app.query("BlockWidget.answer-block").first()
+        label = w.query(".alabel").first()
+        assert "小元AI" in label.render().plain
+        assert "AI" in label.render().plain
+        assert "回答正文" in w.query(".abubble").first().source  # Markdown render() 恒 Blank
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_renderer_blocks_stamped_with_sender():
+    """块带说话人戳记：/claude 轮次的回答块标记 claude（棕色标签）"""
+    r = TextualRenderer()
+    r.set_sender("claude")
+    r.token("回答")
+    r.done()
+    assert r._blocks[-1]["sender"] == "claude"
+    r.set_sender("orchestrator")
+    r.token("统筹回答")
+    r.done()
+    assert r._blocks[-1]["sender"] == "orchestrator"
+
+
+def test_renderer_history_blocks_carry_sender():
+    """云端历史 sender 透传（网页多智能体身份标签同款）"""
+    r = TextualRenderer()
+    r.load_history([
+        {"role": "user", "content": "问题"},
+        {"role": "assistant", "content": "回答", "sender": "claude"},
+    ])
+    assert r._blocks[1]["sender"] == "claude"
+
+
+def test_app_stream_answer_shows_label_and_bubble(tmp_path, monkeypatch):
+    """流式回答同样带身份标签 + 气泡样式（生成中即可分辨说话人）"""
+    async def body(pilot, app, render, s, store):
+        render.token("流式回答")
+        await pilot.pause()
+        label = app._stream_answer_label
+        assert not label.has_class("hidden")
+        assert "小元AI" in label.render().plain
+        assert "流式回答" in app._stream_answer.source
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
 def test_repl_context_shares_mode_ref_list(tmp_path):
     """审查修复：ReplContext 曾自建 mode_ref 列表——ptk 提示符闭包读旧列表，
     /chat /claude 后提示符冻结旧模式"""
@@ -561,23 +636,59 @@ def test_repl_context_shares_mode_ref_list(tmp_path):
 
 
 def test_app_follow_pauses_on_user_scroll_up(tmp_path, monkeypatch):
-    """补漏扫描：_at_end 几何判定滞后一帧曾致跟随永久丢失——改跟随态
-    维护（用户上滑暂停/滚回底部恢复）"""
+    """用户实测「结束停首页/滚轮失灵」根因修复：跟随态改事件驱动——
+    watch_scroll_y 曾把 reflow 抖动误判为用户滚动（跟随被误杀、流式 flush
+    把滚轮拉回底部）。滚轮上滑=暂停、滚回底部=恢复"""
     async def body(pilot, app, render, s, store):
+        from textual.events import MouseScrollUp, MouseScrollDown
         for i in range(40):
             render.info(f"填充块 {i}")  # 造出可滚动内容
         await pilot.pause()
         blocks = app._blocks_container
-        # 前序 mount 的延迟 scroll_end（call_after_refresh）先沉降再断言
         blocks.scroll_end(animate=False)
         await pilot.pause()
         assert blocks.max_scroll_y > 0
         assert app._following is True  # 初始跟随
-        blocks.scroll_y = 1  # 用户上滑（watch_scroll_y 触发；5 会被钳到 max 无变化）
+        blocks.post_message(MouseScrollUp(None, 50.0, 20.0, 0, 3, 0, False, False, False))
         await pilot.pause()
+        assert app._following is False  # 滚轮上滑 = 暂停跟随
+        blocks.post_message(MouseScrollDown(None, 50.0, 20.0, 0, -3, 0, False, False, False))
+        await pilot.pause()
+        await pilot.pause()  # call_after_refresh 回底判定落位
+        assert app._following is True  # 滚回底部恢复
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_reflow_does_not_kill_follow(tmp_path, monkeypatch):
+    """reflow 引起的 scroll_y 变化（无 grabbed 标记）不得误判为用户滚动——
+    用户实测「输出结束停在首页」的直接根因"""
+    async def body(pilot, app, render, s, store):
+        for i in range(40):
+            render.info(f"填充块 {i}")
+        await pilot.pause()
+        blocks = app._blocks_container
+        blocks.scroll_end(animate=False)
+        await pilot.pause()
+        assert app._following is True
+        blocks.scroll_y = 1  # 模拟 reflow/程序滚动（非 grabbed 非滚轮事件）
+        await pilot.pause()
+        assert app._following is True  # 不误判
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_pgup_pauses_follow_end_resumes(tmp_path, monkeypatch):
+    """键盘翻页同滚轮语义：PgUp 暂停跟随、End 回底恢复"""
+    async def body(pilot, app, render, s, store):
+        for i in range(40):
+            render.info(f"填充块 {i}")
+        await pilot.pause()
+        blocks = app._blocks_container
+        blocks.scroll_end(animate=False)
+        await pilot.pause()
+        assert app._following is True
+        await pilot.press("pageup")
         assert app._following is False
-        blocks.scroll_end(animate=False)  # End 回底
-        await pilot.pause()
+        await pilot.press("end")
         assert app._following is True
     _run_app_test(body, tmp_path, monkeypatch)
 

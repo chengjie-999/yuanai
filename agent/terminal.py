@@ -94,7 +94,8 @@ def _truncate_tool_output(output: str) -> str:
 
 def history_to_blocks(messages: list) -> list:
     """云端会话历史 → 块（v3 FullscreenRenderer 与 v4 TextualRenderer 共用）：
-    user → 「你 ▸」块、assistant → answer 块；其余（META/system/tool）跳过。"""
+    user → 「你 ▸」块、assistant → answer 块；其余（META/system/tool）跳过。
+    带 sender（v4 气泡身份标签用；v3 忽略该键）"""
     blocks = []
     for m in messages or []:
         if not isinstance(m, dict):
@@ -105,10 +106,10 @@ def history_to_blocks(messages: list) -> list:
             continue
         if role == "user":
             blocks.append({"kind": "user", "title": "", "content": content,
-                           "folded": False})
+                           "folded": False, "sender": m.get("sender") or "orchestrator"})
         elif role == "assistant":
             blocks.append({"kind": "answer", "title": "", "content": content,
-                           "folded": False})
+                           "folded": False, "sender": m.get("sender") or "orchestrator"})
     return blocks
 
 
@@ -968,6 +969,8 @@ async def run_claude_query(messages: list, on_approval=None, render=None) -> str
                      "端点）后重试，或 /chat 切本地 LLM")
         return ""
 
+    if hasattr(render, "set_sender"):
+        render.set_sender("claude")  # v4 气泡身份标签（网页 Claude Code 棕色同款）
     _emit_pet("thinking")
     final = ""
     async for ev in run_sdk_loop(messages, api_key=api_key,

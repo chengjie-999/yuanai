@@ -207,6 +207,7 @@ _HELP_TEXT = """[bold blue]命令[/bold blue]
   /chat     小元窗口（网站主对话，多端同步）
   /local    本机直连（Claude SDK 草稿，不与网站同步）
   /sessions 当前窗口会话列表 / 切换（/sessions <序号>）
+  /new      新建会话（按当前窗口，对称网页「新对话」）
   /plan     计划队列（/plan <序号> 看步骤）
   /web      打开网站对话    /status 本机状态
   /panel    打开设置面板    /pet on|off 桌宠
@@ -646,6 +647,26 @@ class YuanTerminalApp(App):
     .hstitle {{ margin-bottom: 1; }}
     #hfilter {{ margin-bottom: 1; }}
     #hlist {{ height: 1fr; }}
+    /* P1（2026-11-15，D4 拍板仅 CC 窗口）：执行时间线形态——扁平块全宽 +
+       左色条（网站 exec 视觉语言，CC 身份棕 #e8a06b）；身份标签行隐藏
+       （状态栏「CC 窗口」徽标替代） */
+    YuanTerminalApp.exec-mode BlockWidget.user-block .urow {{
+        align-horizontal: left;
+    }}
+    YuanTerminalApp.exec-mode BlockWidget.user-block .ububble {{
+        width: 1fr; max-width: 100%; background: $panel;
+        color: $text; text-style: none; border-left: heavy #e8a06b;
+    }}
+    YuanTerminalApp.exec-mode BlockWidget.answer-block .abubble {{
+        border-left: heavy #e8a06b;
+    }}
+    YuanTerminalApp.exec-mode BlockWidget.thinking-block,
+    YuanTerminalApp.exec-mode BlockWidget.tool-block {{
+        border-left: heavy #e8a06b;
+    }}
+    YuanTerminalApp.exec-mode BlockWidget.answer-block .alabel {{
+        display: none;
+    }}
     #help-box {{
         width: 80%;
         height: 85%;
@@ -701,6 +722,7 @@ class YuanTerminalApp(App):
         self._flash_text = ""
         self._flash_timer = None
         self._following = True  # 贴底跟随态（BlocksScroll.watch_scroll_y 维护）
+        self._exec_sig = None  # exec-mode（CC 窗口执行时间线形态）签名
 
     @property
     def busy(self) -> bool:
@@ -903,6 +925,11 @@ class YuanTerminalApp(App):
         elif not plan_active:
             self._plan_sig = None
         self._sync_observe()
+        # P1（D4 拍板仅 CC 窗口）：exec 形态开关（claude=执行时间线/其余气泡）
+        exec_active = render._mode == "claude"
+        if self._exec_sig != exec_active:
+            self._exec_sig = exec_active
+            self.set_class(exec_active, "exec-mode")
         self._follow_end()
         self.sync_hint()
 
@@ -1245,6 +1272,18 @@ class TextualRenderer:
                              "folded": False, "sender": "orchestrator"})
         self._notify()
 
+    def merge_remote_messages(self, messages: list) -> None:
+        """对端设备新消息尾部合入（愿景 P0 2026-11-15 消息同步闭环）：按
+        msg_id 去重；只追加不缩减。轮询线程调用——_notify 跨线程投递安全"""
+        blocks = history_to_blocks(messages)
+        existing_ids = {b.get("msg_id") for b in self._blocks if b.get("msg_id")}
+        for b in blocks:
+            mid = b.get("msg_id")
+            if mid and mid in existing_ids:
+                continue
+            self._blocks.append(b)
+        self._notify()
+
     def redraw(self) -> None:
         """全量同步（Textual 增量渲染——等价重绘，实际只动变化 widget）"""
         self._notify()
@@ -1408,30 +1447,30 @@ async def run_textual_repl(session: dict, store, render: TextualRenderer) -> Non
     2026-11-15）：启动即接续云端窗口（claude=网站 CC 窗口 / chat=小元主
     对话，与网站完全同步）；云端不可达静默回退本地历史。观测轮询与 v3 同源
     （15s /chat/cc-activity）；客户端注入 ctx。App 自带 alt-screen。"""
-    from agent.terminal import _make_cloud_client, _normalize_mode
-    mode = _normalize_mode(session.get("mode", "claude"))
+    from agent.terminal import _make_cloud_client, _start_sync_poll
+    # D1 拍板（2026-11-15）：启动永远接续网站 CC 窗口（/local 需手动进入）
+    mode = "claude"
     app = YuanTerminalApp(session, store, render)
     client = _make_cloud_client()
     if client is not None:
         app.ctx.cloud_client = client  # 与 v3 run_repl 同口径（/status 可见已连接）
         _wire_observe(render, client)
-        if mode in ("chat", "claude"):
-            try:
-                loop = asyncio.get_running_loop()
-                if mode == "claude":
-                    sessions = await loop.run_in_executor(
-                        None, client.list_sessions, "claude")
-                    sid = (str(sessions[0].get("session_id", "")) if sessions
-                           else await loop.run_in_executor(
-                               None, client.create_session, "claude"))
-                else:
-                    sid = await loop.run_in_executor(
-                        None, client.main_session_id)
-                msgs = await loop.run_in_executor(
-                    None, client.load_messages, sid)
-                app.resume = {"mode": mode, "sid": sid, "messages": msgs}
-            except Exception:
-                app.resume = None  # 云端不可达：on_mount 回退本地历史
+        try:
+            loop = asyncio.get_running_loop()
+            sessions = await loop.run_in_executor(
+                None, client.list_sessions, "claude")
+            sid = (str(sessions[0].get("session_id", "")) if sessions
+                   else await loop.run_in_executor(
+                       None, client.create_session, "claude"))
+            msgs = await loop.run_in_executor(
+                None, client.load_messages, sid)
+            app.resume = {"mode": mode, "sid": sid, "messages": msgs}
+        except Exception:
+            app.resume = None  # 云端不可达：on_mount 回退本地历史
+        # 愿景 P0（2026-11-15 消息同步闭环）：15s 增量轮询——网站发的消息
+        # 终端实时上屏（进行中回合跳过，不打断本地流式）
+        _start_sync_poll(render, lambda: client,
+                         lambda: (app.ctx.cloud_sid, app.busy))
     try:
         await app.run_async()
     finally:

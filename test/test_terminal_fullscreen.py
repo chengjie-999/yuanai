@@ -66,7 +66,7 @@ def test_redraw_contains_header_and_blocks():
     r.redraw()       # 干净的空闲重绘帧
     out = _out(r)
     assert "在线" in out
-    assert "claude" in out
+    assert "CC 窗口" in out  # 窗口徽标中文（终端=网站桌面客户端）
     assert "yuanai" in out          # cwd 截断保留尾部
     assert "abcd1234" in out        # 会话号
     assert "⚙ bash" in out

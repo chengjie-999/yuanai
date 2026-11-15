@@ -601,8 +601,10 @@ def test_app_stream_scope_upgrades_when_snapshot_blocks(tmp_path, monkeypatch):
 
 def test_app_user_block_right_aligned_blue_bubble(tmp_path, monkeypatch):
     """用户消息 = 右对齐品牌蓝底白字气泡（网页 MessageBubble 同款）——
-    用户实测「混在模型输出里分辨不了」"""
+    用户实测「混在模型输出里分辨不了」。小元窗口形态（CC 窗口为 exec 扁平
+    形态，见 exec 测试）"""
     async def body(pilot, app, render, s, store):
+        render.set_mode("chat")  # 小元窗口=气泡形态
         store.append(s["id"], "user", "我的问题", "claude")
         render._blocks.append({"kind": "user", "title": "", "content": "我的问题",
                                "folded": False, "sender": "orchestrator"})
@@ -926,6 +928,137 @@ def test_run_repl_v3_resumes_local_history(monkeypatch, tmp_path):
 
     asyncio.run(terminal.run_repl(s, store, prompt_fn=prompt, render=RecFSR()))
     assert [b["kind"] for b in created[0]._blocks] == ["user", "answer"]
+
+
+# ==================== 愿景批次回归（2026-11-15：P0 同步闭环 / D1 / D3 / P1） ====================
+
+
+def test_sync_messages_once_fingerprint_protocol():
+    """P0 指纹协议：一致跳过；新增合入；只追加不缩减（网页多端同步同款）"""
+    import agent.terminal as terminal
+
+    class FakeClient:
+        def __init__(self, messages):
+            self.messages = messages
+
+        def load_messages(self, sid):
+            return self.messages
+
+    class FakeRender:
+        def __init__(self):
+            self.merged = []
+
+        def merge_remote_messages(self, messages):
+            self.merged.append(list(messages))
+
+    base = [{"role": "user", "content": "A", "msg_id": "m1"},
+            {"role": "assistant", "content": "B", "msg_id": "m2"}]
+    client = FakeClient(base)
+    render = FakeRender()
+    state = {}
+    # 首轮：建立指纹，合入
+    terminal._sync_messages_once(render, client, "s1", state)
+    assert len(render.merged) == 1
+    # 第二轮：指纹一致 → 跳过
+    terminal._sync_messages_once(render, client, "s1", state)
+    assert len(render.merged) == 1
+    # 新增一条 → 合入
+    client.messages = base + [{"role": "assistant", "content": "C", "msg_id": "m3"}]
+    terminal._sync_messages_once(render, client, "s1", state)
+    assert len(render.merged) == 2
+    # 对端缩减（编辑删除）→ 不缩减
+    client.messages = base
+    terminal._sync_messages_once(render, client, "s1", state)
+    assert len(render.merged) == 2
+
+
+def test_renderer_merge_remote_dedup_by_msg_id():
+    """P0 合入按 msg_id 去重；无 id 旧数据按条追加"""
+    r = TextualRenderer()
+    r.load_history([{"role": "user", "content": "已有", "msg_id": "m1"}])
+    r.merge_remote_messages([
+        {"role": "user", "content": "已有", "msg_id": "m1"},   # 重复 → 跳过
+        {"role": "assistant", "content": "新增", "msg_id": "m2"},  # 追加
+        {"role": "assistant", "content": "旧数据无id"},        # 无 id → 追加
+    ])
+    assert len(r._blocks) == 3
+    assert r._blocks[1]["content"] == "新增"
+
+
+def test_app_exec_mode_only_for_cc_window(tmp_path, monkeypatch):
+    """P1/D4：exec 形态仅 CC 窗口（claude）——/chat 小元窗口保持气泡"""
+    async def body(pilot, app, render, s, store):
+        await pilot.pause()
+        assert app.has_class("exec-mode")  # 默认 claude=CC 窗口
+        render.set_mode("chat")
+        await pilot.pause()
+        assert not app.has_class("exec-mode")
+        render.set_mode("claude")
+        await pilot.pause()
+        assert app.has_class("exec-mode")
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_header_shows_window_badge_chinese(tmp_path, monkeypatch):
+    """P1：状态栏窗口徽标中文（CC 窗口/小元/本机直连）"""
+    async def body(pilot, app, render, s, store):
+        await pilot.pause()
+        header = app.query_one("#header")
+        assert "CC 窗口" in header.render().plain
+        render.set_mode("chat")
+        await pilot.pause()
+        assert "小元" in header.render().plain
+        assert "CC 窗口" not in header.render().plain
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_new_command_creates_session_in_current_window(tmp_path):
+    """D3：/new 按当前窗口新建并切入（对称网页「新对话」）"""
+    import agent.terminal as terminal
+    store = TerminalSessionStore(path=str(tmp_path / "s.json"))
+    s = store.new_session("claude")
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        def create_session(self, agent_kind):
+            self.calls.append(agent_kind)
+            return f"new-{agent_kind}"
+
+    class FakeRender:
+        blocks_mode = True
+
+        def __init__(self):
+            self.calls = []
+
+        def set_mode(self, m):
+            self.calls.append(("mode", m))
+
+        def set_session(self, sid):
+            self.calls.append(("session", sid))
+
+        def load_history(self, msgs, default_sender="orchestrator"):
+            self.calls.append(("history", len(msgs)))
+
+        def redraw(self):
+            pass
+
+        def info(self, t):
+            pass
+
+        def error(self, t):
+            pass
+
+    r = FakeRender()
+    ctx = terminal.ReplContext(s, store, r, ["claude"])
+    client = FakeClient()
+    ctx.cloud_client = client
+    asyncio.run(terminal.dispatch_command("/new", ctx))
+    assert client.calls == ["claude"]
+    assert ctx.cloud_sid == "new-claude"
+    assert ctx.mode_ref[0] == "claude"
+    assert any(c[0] == "history" and c[1] == 0 for c in r.calls)  # 空历史切入
 
 
 def test_repl_context_shares_mode_ref_list(tmp_path):

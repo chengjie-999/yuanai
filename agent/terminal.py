@@ -80,8 +80,9 @@ PLAN_ST_STYLE = {"queued": "bold cyan", "running": "bold yellow",
 
 # 斜杠命令清单（v3 ptk WordCompleter 与 v4 Textual Tab 补全共用——单一事实源，
 # 新增命令只改这里 + dispatch_command；2026-11-15 审查后收敛）
-SLASH_COMMANDS = ["/claude", "/chat", "/local", "/web", "/sessions", "/history",
-                  "/clear", "/quit", "/help", "/plan", "/status", "/panel", "/pet"]
+SLASH_COMMANDS = ["/claude", "/chat", "/local", "/new", "/web", "/sessions",
+                  "/history", "/clear", "/quit", "/help", "/plan", "/status",
+                  "/panel", "/pet"]
 
 
 def _normalize_mode(mode: str) -> str:
@@ -114,10 +115,12 @@ def history_to_blocks(messages: list, default_sender: str = "orchestrator") -> l
             continue
         if role == "user":
             blocks.append({"kind": "user", "title": "", "content": content,
-                           "folded": False, "sender": m.get("sender") or default_sender})
+                           "folded": False, "sender": m.get("sender") or default_sender,
+                           "msg_id": m.get("msg_id")})
         elif role == "assistant":
             blocks.append({"kind": "answer", "title": "", "content": content,
-                           "folded": False, "sender": m.get("sender") or default_sender})
+                           "folded": False, "sender": m.get("sender") or default_sender,
+                           "msg_id": m.get("msg_id")})
     return blocks
 
 
@@ -559,6 +562,20 @@ class FullscreenRenderer:
         self.scroll_blocks = 0
         self.redraw()
 
+    def merge_remote_messages(self, messages: list) -> None:
+        """对端设备新消息尾部合入（愿景 P0 2026-11-15 消息同步闭环）：按
+        msg_id 去重（多端同 id 不重复；旧数据无 id 退回按条追加）。只追加
+        不缩减（网页多端同步同款——防误删本端未落库瞬时气泡）"""
+        blocks = history_to_blocks(messages)
+        existing_ids = {b.get("msg_id") for b in self._blocks if b.get("msg_id")}
+        for b in blocks:
+            mid = b.get("msg_id")
+            if mid and mid in existing_ids:
+                continue
+            self._blocks.append(b)
+        self.scroll_blocks = 0
+        self.redraw()
+
     def _agent_dot(self):
         return _agent_dot_tuple(self)
 
@@ -935,12 +952,16 @@ def _header_text(renderer):
     if len(cwd) > 42:
         cwd = "…" + cwd[-41:]
     backend = {"local": "本机执行", "cloud": "云端执行"}.get(renderer._backend, "")
+    # 窗口徽标中文（终端=网站桌面客户端：claude=网站 CC 窗口 / chat=小元
+    # 主对话 / local=本机直连——2026-11-15 愿景 P1）
+    mode_label = {"claude": "CC 窗口", "chat": "小元", "local": "本机直连"}.get(
+        renderer._mode, renderer._mode)
     return Text.assemble(
         # 品牌对齐 #39（2026-11-14）：状态栏首段「小元AI」品牌蓝标识，
         # 模式色统一品牌蓝（此前 cyan 与网站品牌色不一致）
         ("小元AI", "bold blue"),
         ("  ", ""), (dot, dot_style),
-        ("  ", ""), (renderer._mode, "bold blue"),
+        ("  ", ""), (mode_label, "bold blue"),
         ("  ", ""), (backend, "green" if renderer._backend == "local" else "yellow"),
         ("  ", ""), (cwd or "—", "dim"), ("  ", ""),
         (f"会话 {renderer._session_id[:8]}" if renderer._session_id else "", "dim"),
@@ -1183,6 +1204,53 @@ def _quiet_background_loggers() -> None:
                  "agent.chat_client", "httpx", "httpcore",
                  "sqlalchemy.engine", "alembic"):
         logging.getLogger(name).setLevel(logging.ERROR)
+
+
+def _sync_messages_once(render, client, sid: str, state: dict) -> None:
+    """单次消息增量同步（愿景 P0 2026-11-15；纯函数可测）：指纹 (条数, 末条)
+    一致跳过；新增按 msg_id 去重尾部合入（网页多端同步 P0-1 同款协议）。
+    只追加不缩减——对端编辑/重发等缩量场景等切换会话刷新。"""
+    messages = client.load_messages(sid)
+    if not messages:
+        return
+    tail = str(messages[-1].get("content", "") or "")
+    sig = (sid, len(messages), tail)
+    prev = state.get("sig")
+    state["sig"] = sig
+    if prev and prev[0] == sid and prev[1] == sig[1] and prev[2] == sig[2]:
+        return  # 指纹一致：无新增
+    if prev and prev[0] == sid and len(messages) <= prev[1]:
+        return  # 只追加不缩减
+    render.merge_remote_messages(messages)
+
+
+def _start_sync_poll(render, client_getter, snapshot_getter,
+                     interval: float = OBSERVE_POLL_S):
+    """终端消息增量同步轮询（愿景 P0 2026-11-15）：15s 拉当前窗口会话——
+    网站发的消息终端实时上屏（此前只有切会话才加载，「消息同步没有」的另
+    一半）。snapshot_getter() → (sid, busy)；进行中回合跳过（不打断流式）。
+    失败静默下轮再试；渲染器 detach 后退出（与观测轮询同款守卫）。"""
+    import threading
+    state = {"sig": None}
+
+    def _loop():
+        while True:
+            time.sleep(interval)
+            if not getattr(render, "is_attached", lambda: True)():
+                return
+            try:
+                client = client_getter()
+                snap = snapshot_getter() if snapshot_getter else None
+                if client is None or not snap:
+                    continue
+                sid, busy = snap
+                if not sid or busy:
+                    continue
+                _sync_messages_once(render, client, sid, state)
+            except Exception:
+                pass
+
+    threading.Thread(target=_loop, daemon=True, name="sync-poll").start()
 
 
 def _start_observe_poll(render, client_getter, interval: float = OBSERVE_POLL_S):
@@ -1678,6 +1746,32 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
         want_on = arg.lower() not in ("off", "stop", "0")
         ok, msg = launch_pet() if want_on else stop_pet()
         render.info(msg)
+    elif cmd == "/new":
+        # 新会话（D3 拍板 2026-11-15）：按当前窗口新建并切入（对称网页
+        # 「新对话」按钮——终端不是二等端）
+        if ctx.cloud_client is None:
+            ctx.cloud_client = _make_cloud_client()
+        if ctx.cloud_client is None:
+            render.error("未找到本机 Agent 身份——请先在网页绑定设备")
+            return None
+        kind = "claude" if ctx.mode_ref[0] != "chat" else "chat"
+        try:
+            loop = asyncio.get_running_loop()
+            ctx.cloud_sid = await loop.run_in_executor(
+                None, ctx.cloud_client.create_session, kind)
+            ctx.cloud_messages = []
+        except Exception as e:
+            render.error(f"新建会话失败：{str(e)[:160]}")
+            return None
+        ctx.mode_ref[0] = kind
+        if blocks:
+            render.set_mode(kind)
+            render.set_session(ctx.cloud_sid)
+            render.load_history([], kind)
+            render.redraw()
+        else:
+            render.info(f"已新建{'CC 窗口' if kind == 'claude' else '小元窗口'}"
+                        f"会话 {ctx.cloud_sid[:8]}")
     elif cmd == "/web":
         # 网站对话入口（2026-11-12 用户诉求，与状态栏 F2 同款）
         url = _open_web_chat()
@@ -1793,7 +1887,8 @@ async def run_repl(session: dict, store: TerminalSessionStore,
                 cwd=getattr(render, "_cwd", ""), session_id=session.get("id", ""))
             fallback_notice = True
 
-    mode = _normalize_mode(session.get("mode", "claude"))
+    # D1 拍板（2026-11-15）：启动永远接续网站 CC 窗口（/local 需手动进入）
+    mode = "claude"
     mode_ref = [mode]
     rich_mode = render is not None and isinstance(render, (RichRenderer, FullscreenRenderer))
     render = render or PlainRenderer()
@@ -1886,6 +1981,14 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     ctx.cloud_client = cloud_client
     ctx.cloud_sid = cloud_sid
     ctx.cloud_messages = cloud_messages
+    if cloud_client is not None and not custom_prompt:
+        # 愿景 P0（2026-11-15 消息同步闭环）：15s 增量轮询——网站发的消息
+        # 终端实时上屏（进行中回合跳过，不打断本地流式）
+        _start_sync_poll(
+            render, lambda: cloud_client,
+            lambda: (ctx.cloud_sid,
+                     isinstance(render, FullscreenRenderer)
+                     and render._live is not None))
 
     while True:
         if isinstance(render, FullscreenRenderer):

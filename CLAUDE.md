@@ -719,3 +719,11 @@ GitHub Actions（`.github/workflows/ci.yml`）：
 ## 开发待办看板（2026-11-15 用户建立）
 
 `plans/todo-2026-11.md` = 全局待办/挂账/已完成的一张表索引（T1-T12 + 建议执行序）——细节以各方案文件为事实源；**维护约定**：批次落地时同步改两处（看板状态列 + 对应方案文件状态段），新增立项先登记方案文件再挂行。基线 `develop` @ aa9d5c9（2026-11-15）。
+
+## 下载源纪律（2026-11-15 用户立规：「以后下载都走国内镜像」）
+
+所有下载类配置一律国内镜像，禁止境外直连——新增任何依赖/下载先问「走哪个国内源」：
+- pip：清华源（Dockerfile.backend 主源）；**torch：阿里云 pytorch-wheels**（download.pytorch.org 境外直连曾卡 50+ 分钟）
+- npm：npmmirror；apk：阿里云→清华→中科大三源容错；apt：阿里云 debian 源
+- docker 镜像：/etc/docker/daemon.json 三源容错（xuanyuan/1ms/daocloud）
+- 排查口径：grep deploy/ 与 scripts/ 不得出现 download.pytorch.org / pypi.org / registry.npmjs.org / deb.debian.org 直连（国内镜像 URL 除外）

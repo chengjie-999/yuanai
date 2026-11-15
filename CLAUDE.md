@@ -727,3 +727,4 @@ GitHub Actions（`.github/workflows/ci.yml`）：
 - npm：npmmirror；apk：阿里云→清华→中科大三源容错；apt：阿里云 debian 源
 - docker 镜像：/etc/docker/daemon.json 三源容错（xuanyuan/1ms/daocloud）
 - 排查口径：grep deploy/ 与 scripts/ 不得出现 download.pytorch.org / pypi.org / registry.npmjs.org / deb.debian.org 直连（国内镜像 URL 除外）
+- **配置镜像前先验证**（2026-11-15 用户批评「先看一下有没有，别等出错了再改」）：curl 确认镜像可达 + 所需包/版本真实存在（如 torch-2.13.0+cpu-cp310-manylinux_2_28_x86_64 在 SJTU 有、阿里云 pytorch-wheels 已下线 404）——验证过了才写进 Dockerfile/配置

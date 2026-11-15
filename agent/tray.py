@@ -208,6 +208,12 @@ def _alloc_console() -> None:
                           buffering=1)
         sys.stderr = open("CONOUT$", "w", encoding="utf-8", errors="replace",
                           buffering=1)
+        # Textual WindowsDriver 读 sys.__stdout__/__stdin__（非 sys.stdout）——
+        # windowed 启动时它们是 None，v4 渲染层在此路径必崩。补指到位
+        # （2026-11-15 审查修复；v3 ptk 路径用 sys.stdout 本就不受影响）
+        sys.__stdout__ = sys.stdout
+        sys.__stderr__ = sys.stderr
+        sys.__stdin__ = sys.stdin
         _enable_console_vt()
     except Exception:
         pass  # 控制台建立失败：按窗口化模式静默继续（终端内容仍可经日志排查）

@@ -278,37 +278,49 @@ def test_app_approval_blocking_from_executor_thread(tmp_path, monkeypatch):
 
 def test_app_busy_guard_ignores_enter(tmp_path, monkeypatch):
     async def body(pilot, app, render, s, store):
-        app.busy = True
+        app._busy_task = object()  # busy 为派生属性（无 setter）
         inp = app.query_one("#input")
         inp.text = "/help"
         await pilot.press("enter")
         await pilot.pause()
         assert inp.text == "/help"  # 生成中不消费输入
         assert len(app.query("BlockWidget")) == 0
-        app.busy = False
+        app._busy_task = None
     _run_app_test(body, tmp_path, monkeypatch)
 
 
-def test_app_ctrl_c_cancels_busy_not_exit(tmp_path, monkeypatch):
+def test_app_ctrl_c_stops_real_submit_turn(tmp_path, monkeypatch):
+    """审查回归（真实提交链路）：回合在独立任务跑、消息泵不被阻塞——Ctrl+C
+    生成中即停不退出。此前回合整段 await 在消息 handler 内：泵被阻塞，Ctrl+C
+    排队到回合结束后按空闲分支退出整个终端（旧测试用合成任务掩盖了真实泵模型）"""
     async def body(pilot, app, render, s, store):
         cancelled = {}
+        started = threading.Event()
 
-        async def slow():
-            app.busy = True
-            app._busy_task = asyncio.current_task()
+        async def slow_turn(line, ctx, rich_mode=True):
+            started.set()
             try:
                 await asyncio.sleep(30)
             except asyncio.CancelledError:
                 cancelled["yes"] = True
                 raise
-        task = asyncio.create_task(slow())
-        await pilot.pause()
+            return ""
+
+        monkeypatch.setattr("agent.textual_ui.run_turn", slow_turn)
+        inp = app.query_one("#input")
+        inp.text = "帮我写代码"
+        await pilot.press("enter")
+        for _ in range(200):
+            if started.is_set():
+                break
+            await asyncio.sleep(0.01)
+        assert started.is_set()
+        assert app.busy is True
         await pilot.press("ctrl+c")
         await pilot.pause()
-        assert cancelled.get("yes") is True
-        assert not app._exit  # 生成中 Ctrl+C 只停止不退出
-        task.cancel()
-        app.busy = False
+        assert cancelled.get("yes") is True  # 回合任务被取消
+        assert not app._exit  # 停止生成不退出
+        assert app.busy is False  # finally 清理
     _run_app_test(body, tmp_path, monkeypatch)
 
 
@@ -377,6 +389,171 @@ def test_app_clear_command_clears_blocks(tmp_path, monkeypatch):
         assert app.query("BlockWidget").first().block_content.startswith("当前会话已清空")
         assert render._blocks[-1]["kind"] == "info"
     _run_app_test(body, tmp_path, monkeypatch)
+
+
+# ==================== 审查修复回归（2026-11-15 五角度审查批次） ====================
+
+
+def test_app_esc_armed_disarmed_by_typing(tmp_path, monkeypatch):
+    """审查修复：Esc 武装不解除曾致 Esc 后首次 Enter 误插换行不提交"""
+    async def body(pilot, app, render, s, store):
+        await pilot.press("escape", "slash", "h", "e", "l", "p", "enter")
+        await pilot.pause()
+        blocks = list(app.query("BlockWidget"))
+        assert len(blocks) == 1 and blocks[0].block_kind == "info"  # 正常提交了
+        assert app.query_one("#input").text == ""
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_enter_selected_nonfoldable_does_not_submit(tmp_path, monkeypatch):
+    """审查修复：选中非折叠块时 Enter 曾把半写消息发给模型（v3 只刷新不提交）"""
+    async def body(pilot, app, render, s, store):
+        render.info("提示块")
+        await pilot.pause()
+        await pilot.press("up")  # 选中 info 块
+        assert render.sel == 0
+        inp = app.query_one("#input")
+        inp.text = "/help"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert inp.text == "/help"  # 未提交，输入保留
+        assert render.sel == 0
+        assert len(list(app.query("BlockWidget"))) == 1  # 无新块
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_tab_completion_cursor_stays_at_end(tmp_path, monkeypatch):
+    """审查修复：Tab 补全走 load_text 光标回 0 位——后续输入曾插到命令前"""
+    async def body(pilot, app, render, s, store):
+        inp = app.query_one("#input")
+        inp.text = "/pl"
+        await pilot.press("tab")
+        await pilot.pause()
+        assert inp.text == "/plan"
+        inp.insert(" 3")
+        await pilot.pause()
+        assert inp.text == "/plan 3"
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_approval_default_focus_is_deny(tmp_path, monkeypatch):
+    """审查修复：modal 曾自动聚焦「执行」按钮——回车即批准，与 v3 [y/N]
+    fail-closed 语义相反"""
+    async def body(pilot, app, render, s, store):
+        async def ask():
+            return await render.approve_async("bash", "git push")
+        task = asyncio.create_task(ask())
+        await pilot.pause()
+        assert isinstance(app.screen, ApprovalModal)
+        assert app.focused is app.screen.query_one("#approve-no")
+        await pilot.press("enter")
+        assert await task == "deny"
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_interrupt_dismisses_approval_modal(tmp_path, monkeypatch):
+    """审查修复：CancelledError 不过 except Exception——停止时收起审批卡防滞留"""
+    async def body(pilot, app, render, s, store):
+        async def ask():
+            return await render.approve_async("bash", "rm x")
+        app._busy_task = asyncio.create_task(ask())
+        await pilot.pause()
+        assert isinstance(app.screen, ApprovalModal)
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        assert not isinstance(app.screen, ApprovalModal)
+        try:
+            await app._busy_task
+        except asyncio.CancelledError:
+            pass
+        app._busy_task = None
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_interrupted_clears_stream_indicators(tmp_path, monkeypatch):
+    """审查修复：停止/出错曾残留「⚙ X 执行中…/思考中…」流式行"""
+    async def body(pilot, app, render, s, store):
+        render.tool_start("bash")
+        render.reasoning("在想")
+        await pilot.pause()
+        assert not app._stream_working.has_class("hidden")
+        assert not app._stream_thinking.has_class("hidden")
+        render.interrupted()
+        await pilot.pause()
+        assert app._stream_working.has_class("hidden")
+        assert app._stream_thinking.has_class("hidden")
+        assert app._stream_answer.has_class("hidden")
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_history_file_ptk_compatible(tmp_path, monkeypatch):
+    """审查修复（CLAUDE.md 教训 #3 单一写路径）：历史文件与 v3 ptk FileHistory
+    同格式——v4 输入在 v3 回退路径的 ↑ 历史里必须可读"""
+    async def body(pilot, app, render, s, store):
+        app.query_one("#input").text = "/help"
+        await pilot.press("enter")
+        await pilot.pause()
+        from prompt_toolkit.history import FileHistory
+        items = FileHistory(str(tmp_path / "history.txt")).load_history_strings()
+        assert "/help" in items
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_ctrl_r_history_modal_backfills_input(tmp_path, monkeypatch):
+    """Ctrl+R 历史（v4 形态：列表回填——/help 文案键位对齐）"""
+    async def body(pilot, app, render, s, store):
+        inp = app.query_one("#input")
+        inp.text = "/help"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.press("ctrl+r")
+        await pilot.pause()
+        from agent.textual_ui import HistoryModal
+        assert isinstance(app.screen, HistoryModal)
+        await pilot.press("enter")  # 选中第一项（最近）
+        await pilot.pause()
+        assert inp.text == "/help"
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_plan_view_pagedown_scrolls_plan(tmp_path, monkeypatch):
+    """审查修复：PgUp/PgDn 曾恒滚块流容器——计划视图键盘翻页失效"""
+    async def body(pilot, app, render, s, store):
+        steps = [{"step_no": i, "skill": "analysis", "desc": f"步骤{i}",
+                  "status": "pending"} for i in range(1, 40)]
+        render.show_plans([], detail={"title": "长计划", "status": "running",
+                                      "progress": 10, "steps": steps,
+                                      "done_steps": 1, "total_steps": 39})
+        await pilot.pause()
+        assert render._plan_view is not None
+        assert app._plan_container.max_scroll_y > 0
+        await pilot.press("pagedown")
+        await pilot.pause()
+        assert app._plan_container.scroll_y > 0
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_stream_scope_upgrades_when_snapshot_blocks(tmp_path, monkeypatch):
+    """流式快速路径块数校验：首个 token 快照「最终思考」落块 → 自动升级全量对账"""
+    async def body(pilot, app, render, s, store):
+        render.reasoning("先想")
+        render.token("答")
+        await pilot.pause()
+        kinds = [w.block_kind for w in app.query("BlockWidget")]
+        assert kinds == ["thinking"]
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_repl_context_shares_mode_ref_list(tmp_path):
+    """审查修复：ReplContext 曾自建 mode_ref 列表——ptk 提示符闭包读旧列表，
+    /chat /claude 后提示符冻结旧模式"""
+    from agent.terminal import ReplContext
+    store = TerminalSessionStore(path=str(tmp_path / "s.json"))
+    s = store.new_session("claude")
+    mode_ref = ["claude"]
+    ctx = ReplContext(s, store, None, mode_ref)
+    ctx.mode_ref[0] = "cloud"
+    assert mode_ref[0] == "cloud"  # 同一列表（prompt_fn 闭包同步可见）
 
 
 # ==================== 回退链（run_repl 委托 v4，失败回退 v3） ====================

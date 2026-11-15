@@ -18,6 +18,18 @@ plans/terminal-renderer-textual-2026-11.md）。
 
 本模块顶层 import textual——所有引用方（terminal.main / run_repl / 测试）都
 经 try/except 懒加载，本地 Agent 零硬依赖。
+
+审查修复批次（2026-11-15 五角度审查后）：
+- **回合不阻塞消息泵**：submit_line 同步创建独立任务跑回合——此前 handler 内
+  整段 await 致泵阻塞（Ctrl+C 停不下且回合结束后误退出 + 审批 modal 死锁
+  120s 自动拒绝 + 生成中滚轮/输入全部排队）
+- **流式快速路径**：token/reasoning 走 stream scope（只刷流式三行+跟随滚动），
+  header/hint/observe/plan 全部签名比对防每 token 重建（性能审查：此前每
+  token 全量对账重演「抽搐」）
+- Esc 武装限时/被其它键解除；Tab 补全后光标归位；选中态 Enter 不提交；
+  审批 modal 默认焦点=拒绝（v3 [y/N] fail-closed）；停止时收起审批卡；
+  interrupted/error 清流式残留；历史文件与 ptk FileHistory 同格式（同一数据
+  实体单一写路径）；观测接线/命令清单/截断/历史映射共享 terminal 助手
 """
 
 from __future__ import annotations
@@ -34,31 +46,29 @@ from rich.text import Text
 from textual.app import App
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.message import Message
 from textual.screen import ModalScreen
-from textual.widgets import Button, Markdown, ProgressBar, Static, TextArea
+from textual.widgets import Button, Markdown, OptionList, ProgressBar, Static, TextArea
+from textual.widgets._option_list import Option
 
 from agent.terminal import (  # terminal 懒加载本模块，反向引用安全
     HISTORY_FILE,
-    MAX_TOOL_OUTPUT,
     OBSERVE_PANEL_W,
-    OBSERVE_STALE_S,
     PLAN_ST_STYLE,
     PLAN_ST_WORD,
+    SLASH_COMMANDS,
     ReplContext,
     _emit_pet,
     _header_text,
     _observe_lines,
+    _truncate_tool_output,
+    _wire_observe,
     dispatch_command,
+    history_to_blocks,
     run_turn,
 )
 
-# 斜杠命令补全清单（与 v3 ptk WordCompleter 同口径）
-_COMMANDS = ["/claude", "/chat", "/web", "/sessions", "/history", "/clear",
-             "/quit", "/help", "/plan", "/status", "/panel", "/pet"]
-
-# 流式回答 Markdown 刷新节流（秒）：Markdown 解析是同步重活，每 token 全解析
-# 会吃掉 diff 渲染省下的预算——80ms 窗口内 token 累积、到点一次刷新
+# 流式刷新节流（秒）：Markdown/思考行解析与重建是同步重活，每 token 全刷会
+# 吃掉 diff 渲染省下的预算——窗口内 token 累积、到点一次刷新
 STREAM_FLUSH_INTERVAL = 0.08
 
 _HINT_BASE = "↑↓ 选择 · Enter 展开/折叠 · PgUp/PgDn 滚动 · Esc+Enter 换行 · Ctrl+C 停止 · ? 帮助"
@@ -123,18 +133,38 @@ class BlockWidget(Vertical):
                 break
 
 
-class SubmitLine(Message):
-    """输入 dock 提交一条消息（命令或对话文本；提交后输入框已清空）"""
+class HistoryModal(ModalScreen):
+    """Ctrl+R 命令历史（v4 形态）：最近提交列表，Enter/点击回填输入框。
+    v3 的 ptk 增量搜索增强挂账 P2——键位与 /help 文案先对齐。"""
 
-    def __init__(self, line: str):
+    BINDINGS = [Binding("escape", "cancel", "取消", priority=True)]
+
+    def __init__(self, items: list):
         super().__init__()
-        self.line = line
+        self._items = list(items)[-50:][::-1]  # 最近在前
+
+    def compose(self):
+        with Vertical(id="history-box"):
+            yield Static("命令历史（↑↓ 选择 · Enter 回填 · Esc 取消）",
+                         classes="hstitle")
+            if self._items:
+                yield OptionList(
+                    *[Option(item, id=f"h{i}") for i, item in enumerate(self._items)],
+                    id="hlist")
+            else:
+                yield Static("(暂无历史)", classes="ahint")
+
+    def on_option_list_option_selected(self, event) -> None:
+        self.dismiss(event.option.prompt)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
 
 
 class DockInput(TextArea):
-    """输入 dock：Enter 提交（计划视图退出/选中块折叠优先；生成中忽略）、
+    """输入 dock：Enter 提交（计划视图退出/选中块优先；生成中忽略）、
     Esc+Enter 换行、↑↓ 块选择、PgUp/PgDn 滚动、End 回到底部、Tab 斜杠命令
-    补全。v3 ptk 交互语义不动（#36 键盘契约）。"""
+    补全、Ctrl+R 历史。v3 ptk 交互语义不动（#36 键盘契约）。"""
 
     BINDINGS = [
         Binding("enter", "dock_enter", "提交", priority=True),
@@ -145,6 +175,7 @@ class DockInput(TextArea):
         Binding("pagedown", "dock_page_down", "下翻", priority=True),
         Binding("end", "dock_end", "回到底部", priority=True),
         Binding("tab", "dock_complete", "补全", priority=True),
+        Binding("ctrl+r", "dock_history", "历史", priority=True),
     ]
 
     def __init__(self, *args, **kwargs):
@@ -152,22 +183,41 @@ class DockInput(TextArea):
         self._esc_armed = False  # Esc 后下一次 Enter = 换行（ptk escape+enter 同款）
 
     def on_mount(self) -> None:
-        # 输入历史落盘（v3 ptk FileHistory 同源文件；Ctrl+R 搜索迁移 P2）
+        # 输入历史：与 v3 prompt_toolkit FileHistory 同文件同格式（'+' 行 +
+        # 时间戳注释）——同一数据实体单一写路径（CLAUDE.md 教训 #3），
+        # 纯文本重写会把 v4 输入从 v3 ↑ 历史里抹掉
         try:
-            with open(HISTORY_FILE, "r", encoding="utf-8", errors="replace") as f:
-                self._history = [ln.rstrip("\n") for ln in f if ln.strip()]
+            from prompt_toolkit.history import FileHistory
+            # load_history_strings 返回最近在前的反向迭代器——倒序还原时序
+            self._history = list(FileHistory(HISTORY_FILE).load_history_strings())[::-1]
         except Exception:
             self._history = []
+
+    def on_key(self, event) -> None:
+        if event.key != "escape":
+            self._esc_armed = False  # 任意其它键解除 Esc 武装（审查修复：
+            # 此前武装永不解除，Esc 后首次 Enter 误插换行不提交）
+
+    def _disarm_esc(self) -> None:
+        self._esc_armed = False
 
     def _remember(self, line: str) -> None:
         self._history.append(line)
         if len(self._history) > 500:
             self._history = self._history[-500:]
         try:
-            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-                f.write("\n".join(self._history) + "\n")
+            from prompt_toolkit.history import FileHistory
+            FileHistory(HISTORY_FILE).store_string(line)  # ptk 格式追加
         except Exception:
             pass
+
+    def _scroll_target(self):
+        """滚动目标：计划视图滚计划容器，否则滚对话块流（审查修复：此前
+        PgUp/PgDn 恒滚块流，计划视图键盘翻页失效）"""
+        app = self.app
+        if app.renderer._plan_view is not None:
+            return app._plan_container
+        return app._blocks_container
 
     def action_dock_enter(self) -> None:
         app = self.app
@@ -185,10 +235,11 @@ class DockInput(TextArea):
             b = render._blocks[render.sel]
             if b.get("kind") in ("thinking", "tool"):
                 render.toggle_fold(render.sel)
-                return
+            return  # v3 同款：任何选中态 Enter 只刷新不提交（审查修复：
+            # 此前非折叠块选中时 Enter 会把半写消息发给模型）
         line = self.text
         self._remember(line)
-        self.post_message(SubmitLine(line))
+        app.submit_line(line)
         self.clear()
 
     def action_dock_escape(self) -> None:
@@ -204,6 +255,7 @@ class DockInput(TextArea):
         app.sync_hint()
 
     def action_dock_up(self) -> None:
+        self._disarm_esc()
         app = self.app
         render = app.renderer
         if render._plan_view is not None:
@@ -216,6 +268,7 @@ class DockInput(TextArea):
         app.sync_hint()
 
     def action_dock_down(self) -> None:
+        self._disarm_esc()
         app = self.app
         render = app.renderer
         if render._plan_view is not None:
@@ -229,34 +282,54 @@ class DockInput(TextArea):
         app.sync_hint()
 
     def action_dock_page_up(self) -> None:
-        self.app._blocks_container.scroll_page_up()
+        self._disarm_esc()
+        self._scroll_target().scroll_page_up()
 
     def action_dock_page_down(self) -> None:
-        self.app._blocks_container.scroll_page_down()
+        self._disarm_esc()
+        self._scroll_target().scroll_page_down()
 
     def action_dock_end(self) -> None:
-        self.app._blocks_container.scroll_end(animate=False)
+        self._disarm_esc()
+        self._scroll_target().scroll_end(animate=False)
 
     def action_dock_complete(self) -> None:
-        """斜杠命令补全（ptk WordCompleter 同口径：仅 ^/\w*$ 时生效）"""
+        """斜杠命令补全（ptk WordCompleter 同口径：仅 ^/\w*$ 时生效；
+        清单与 v3 共用 SLASH_COMMANDS 单一事实源）"""
+        self._disarm_esc()
         text = self.text
         if not re.match(r"^/\w*$", text):
             return
-        matches = [c for c in _COMMANDS if c.startswith(text)]
+        matches = [c for c in SLASH_COMMANDS if c.startswith(text)]
         if not matches:
             return
         prefix = os.path.commonprefix(matches)
         if len(prefix) > len(text):
             self.text = prefix
+            # 审查修复：load_text 把光标重置到 (0,0)——补到末尾，否则后续
+            # 输入插在命令前面（'/pl'+Tab+' 3' 曾变 ' 3/plan'）
+            self.move_cursor((0, len(prefix)))
         elif len(matches) > 1:
             self.app.flash_hint("  ".join(matches))
+
+    def action_dock_history(self) -> None:
+        self._disarm_esc()
+        self.app.open_history_modal()
+
+
+class _NoFocusButton(Button):
+    """不可聚焦按钮：Tab/回车永不落在「执行」上——v3 [y/N] fail-closed 语义
+    （审查修复：modal 自动聚焦第一个可聚焦件，「执行」曾获默认焦点致回车即
+    批准；Y 键是键盘批准路径，与标签 (Y) 一致）"""
+
+    can_focus = False
 
 
 class ApprovalModal(ModalScreen):
     """审批卡（v4 形态：v3 的 ptk Y/N prompt → App 内 modal）。120s 超时默认
     deny 由调用方（approve_async/approve_blocking 的 wait_for/result timeout）
     执行，模态只负责收一次决议；resolver = asyncio/concurrent Future 同形
-    set_result(bool)。"""
+    set_result(bool)。默认焦点=「拒绝 (N)」（v3 [y/N] fail-closed）。"""
 
     BINDINGS = [
         Binding("y", "approve", "执行", priority=True),
@@ -279,7 +352,7 @@ class ApprovalModal(ModalScreen):
             yield Static(Text(f"`{self._command}`"), classes="acmd")
             yield Static("120 秒超时默认拒绝", classes="ahint")
             with Horizontal(id="abuttons"):
-                yield Button("执行 (Y)", variant="success", id="approve-yes")
+                yield _NoFocusButton("执行 (Y)", variant="success", id="approve-yes")
                 yield Button("拒绝 (N)", variant="error", id="approve-no")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -303,7 +376,7 @@ class ApprovalModal(ModalScreen):
 
 
 class BlocksScroll(VerticalScroll):
-    """对话块流（鼠标滚轮原生滚动；不抢焦点——输入 dock 保持聚焦）"""
+    """对话块流/计划视图滚动容器（鼠标滚轮原生；不抢焦点——输入 dock 保持聚焦）"""
 
     can_focus = False
 
@@ -312,9 +385,9 @@ class YuanTerminalApp(App):
     """终端 TUI v4 三区布局：状态栏 Header（常驻不重绘）+ 对话块流（
     BlocksScroll，diff 增量）+ 输入 dock（DockInput）+ 观测右栏 + 计划视图。
 
-    renderer（TextualRenderer）= 状态唯一真相；任何状态变更经
-    call_from_thread → renderer_sync 增量同步 widget（线程安全，观测轮询
-    线程/查询协程/executor 三路调用统一口径）。"""
+    renderer（TextualRenderer）= 状态唯一真相；状态变更经 _post（App 线程直调
+    / 跨线程 call_from_thread）→ renderer_sync 增量同步。**回合在独立任务里
+    跑**（submit_line 创建）——消息泵不被整段阻塞，Ctrl+C/审批/滚轮全程可用。"""
 
     CSS = f"""
     Screen {{
@@ -383,6 +456,15 @@ class YuanTerminalApp(App):
     .atitle {{ margin-top: 1; }}
     .acmd {{ margin: 0 1; }}
     .ahint {{ color: $text-muted; margin-bottom: 1; }}
+    #history-box {{
+        width: 70%;
+        height: 70%;
+        border: round $primary;
+        background: $surface;
+        padding: 1 2;
+    }}
+    .hstitle {{ margin-bottom: 1; }}
+    #hlist {{ height: 1fr; }}
     """
 
     BINDINGS = [
@@ -395,9 +477,8 @@ class YuanTerminalApp(App):
         self.session = session
         self.store = store
         self.renderer = renderer
-        self.ctx = ReplContext(session, store, renderer, session.get("mode", "claude"))
-        self.busy = False
-        self._busy_task = None
+        self.ctx = ReplContext(session, store, renderer, [session.get("mode", "claude")])
+        self._busy_task = None  # 回合任务（独立于消息泵；busy 属性由它派生）
         self._header_widget = None
         self._hintbar = None
         self._blocks_container = None
@@ -408,9 +489,23 @@ class YuanTerminalApp(App):
         self._observe_box = None
         self._plan_container = None
         self._input = None
+        # 签名/版本缓存（性能审查：避免每 token 重建不变的内容）
+        self._header_sig = None
+        self._hint_sig = None
+        self._observe_sig = None
+        self._plan_sig = None
+        self._block_count = -1
+        self._content_version = 0
+        self._last_scroll_version = -1
         self._last_stream_flush = 0.0
+        self._last_think_flush = None
         self._flash_until = 0.0
         self._flash_text = ""
+        self._flash_timer = None
+
+    @property
+    def busy(self) -> bool:
+        return self._busy_task is not None
 
     def compose(self):
         yield Static("", id="header")
@@ -446,7 +541,7 @@ class YuanTerminalApp(App):
         self._stream_answer = self.query_one("#stream-answer", Markdown)
         self._observe_widget = self.query_one("#observe-content", Static)
         self._observe_box = self.query_one("#observe", Vertical)
-        self._plan_container = self.query_one("#plan", VerticalScroll)
+        self._plan_container = self.query_one("#plan", BlocksScroll)
         self._input = self.query_one(DockInput)
         self.set_focus(self._input)
         self.renderer.attach(self)
@@ -456,20 +551,27 @@ class YuanTerminalApp(App):
         self.sync_hint()
 
     def on_resize(self, event) -> None:
-        # 注意：Textual 启动时序 on_resize 先于 on_mount——守卫在 _sync_observe 内
-        self._sync_observe()
+        # call_after_refresh：on_resize 先于 App 内部尺寸更新（审查修复：
+        # 此前读到旧 size，缩窗后观测右栏滞留到下一次 sync）
+        self.call_after_refresh(self._sync_observe)
 
     # ———— 提交/停止/快捷 ————
 
-    async def on_submit_line(self, message: SubmitLine) -> None:
-        if self.busy:
-            return  # 连点守卫：handler 串行执行，第二次提交在生成中直接忽略
-        line = message.line.strip()
+    def submit_line(self, line: str) -> None:
+        """输入 dock 提交（同步、立即返回）。回合在独立 asyncio 任务里跑——
+        审查根因修复：此前 on_submit_line handler 内整段 await 回合，Textual
+        消息泵被阻塞到生成结束——Ctrl+C 停不下（队列里的 Ctrl+C 在回合结束后
+        走空闲分支直接退出 app）、审批 modal 死锁 120s 自动拒绝、生成中
+        滚轮/输入全部排队。"""
+        line = line.strip()
         if not line:
             return
-        self.busy = True
-        self._busy_task = asyncio.current_task()
+        if self.busy:
+            return  # 连点守卫
+        self._busy_task = asyncio.create_task(self._handle_line(line))
         self.sync_hint()
+
+    async def _handle_line(self, line: str) -> None:
         ctx = self.ctx
         try:
             if ctx.render._plan_view is not None:
@@ -481,17 +583,20 @@ class YuanTerminalApp(App):
                 await run_turn(line, ctx, rich_mode=True)
         except asyncio.CancelledError:
             # Ctrl+C 生成中：run_turn 已做停止清理；此处兜底其余 await 点
-            #（/plan 网络等待等）
+            # （/plan 网络等待等）
             ctx.render.interrupted()
             _emit_pet("idle")
+        except Exception as e:
+            ctx.render.error(f"处理失败：{str(e)[:160]}")
         finally:
-            self.busy = False
             self._busy_task = None
             self.sync_hint()
 
     def action_interrupt(self) -> None:
         """Ctrl+C：生成中=停止本轮（v2 语义第一下）；空闲=退出"""
         if self._busy_task is not None:
+            self.dismiss_approval()  # 停止时收起审批卡（CancelledError 不过
+                                     # except Exception，modal 会滞留）
             self._busy_task.cancel()
         else:
             self.exit()
@@ -500,16 +605,38 @@ class YuanTerminalApp(App):
         from agent.terminal import _open_web_chat
         _open_web_chat()
 
+    def open_history_modal(self) -> None:
+        """Ctrl+R 历史（v4 形态：列表回填）"""
+        if self.busy:
+            return
+        self.push_screen(HistoryModal(self._input._history),
+                         callback=self._history_picked)
+
+    def _history_picked(self, text) -> None:
+        if text:
+            self._input.text = text
+            self._input.move_cursor((0, len(text)))
+            self.set_focus(self._input)
+
     # ———— renderer 状态 → widget 增量同步 ————
 
-    def renderer_sync(self) -> None:
-        """增量同步（renderer 状态变更统一入口，经 call_from_thread 线程安全）。
-        diff 语义：header 文本、新增块、折叠/选中类、流式三行、计划视图切换、
-        观测右栏——只动变化的 widget。"""
+    def renderer_sync(self, stream_only: bool = False) -> None:
+        """增量同步（renderer 状态变更统一入口，经 _post 线程安全）。
+        stream_only = 流式快速路径（token/reasoning）：只刷流式三行 + 跟随滚动
+        ——header/hint/observe/plan 签名比对防每 token 重建（性能审查：此前
+        每 token 全量对账，长会话 O(n)/token 重演「抽搐」）。"""
         render = self.renderer
         if self._header_widget is None:
             return  # on_mount 前的早到消息（call_from_thread 队列）
-        self._header_widget.update(_header_text(render))
+        if stream_only:
+            if self._block_count != len(render._blocks):
+                return self.renderer_sync(False)  # 思考快照落块 → 升级全量对账
+            self._sync_streams(render)
+            self._follow_end()
+            self.sync_hint()
+            return
+        self._block_count = len(render._blocks)
+        self._sync_header(render)
         # 块对账按 bid 身份而非下标：Textual 的 remove() 延迟生效（widget 留到
         # 下一刷新周期才出 DOM）——索引式对账会被残留块顶替（/clear 后新块
         # 挂不上、旧内容残留）。挂失补挂、多余移除，同一刷新周期内 remove+
@@ -527,6 +654,7 @@ class YuanTerminalApp(App):
                 w = BlockWidget(bid, b.get("kind", ""), b.get("title", ""),
                                 b.get("content", ""), b.get("folded", False))
                 self._blocks_container.mount(w, before=self._streams)
+                self._content_version += 1
             if w.block_folded != b.get("folded", False):
                 w.set_folded(b.get("folded", False))
             w.set_class(render.sel == i, "selected")
@@ -537,48 +665,95 @@ class YuanTerminalApp(App):
         plan_active = render._plan_view is not None
         self._blocks_container.set_class(plan_active, "hidden")
         self._plan_container.set_class(plan_active, "show")
-        if plan_active:
+        if plan_active and self._plan_sig != id(render._plan_view):
+            # 计划视图只在数据变化时重建（性能审查：此前每次 sync 重挂全部行，
+            # 15s 观测轮询把用户看长计划的滚动位置重置）
+            self._plan_sig = id(render._plan_view)
             self._build_plan()
+        elif not plan_active:
+            self._plan_sig = None
         self._sync_observe()
-        if self._at_end():
-            self._blocks_container.scroll_end(animate=False)  # 贴底跟随最新
+        self._follow_end()
         self.sync_hint()
 
     @property
     def _streams(self):
         return self.query_one("#streams", Vertical)
 
+    def _sync_header(self, render) -> None:
+        """状态栏：签名不变不重建（品牌对齐 #39 的 Text.assemble 每 token
+        重拼是纯浪费——状态变化是离散事件）"""
+        dot = render._agent_dot_tuple() if hasattr(render, "_agent_dot_tuple") else None
+        pet = ""
+        try:
+            from agent.pet_events import last_state
+            pet = last_state() or ""
+        except Exception:
+            pass
+        sig = (render._mode, render._backend, render._session_id,
+               render._cwd, dot, pet)
+        if sig != self._header_sig:
+            self._header_sig = sig
+            self._header_widget.update(_header_text(render))
+
     def _at_end(self) -> bool:
         c = self._blocks_container
         return c.max_scroll_y - c.scroll_y < 2
 
+    def _follow_end(self) -> None:
+        """贴底跟随：内容版本变化（流式 flush/新块）且用户未上滑时才滚"""
+        if self._content_version != self._last_scroll_version and self._at_end():
+            self._blocks_container.scroll_end(animate=False)
+            self._last_scroll_version = self._content_version
+
     def _sync_streams(self, render) -> None:
-        """流式三行：执行中工具 / 思考 / 流式回答（Markdown 节流刷新）"""
+        """流式三行：执行中工具 / 思考 / 流式回答。Markdown 与思考行均节流
+        （monotonic 计时——审查修复：time.time() 遇 NTP 回拨会冻结流式显示）"""
+        changed = False
         if render._working:
             self._stream_working.update(
                 Text(f"⚙ {render._working} 执行中…", style="bold yellow"))
             self._stream_working.remove_class("hidden")
-        else:
+            changed = True
+        elif not self._stream_working.has_class("hidden"):
             self._stream_working.add_class("hidden")
+            changed = True
         if render._reasoning:
-            self._stream_thinking.update(
-                Text("思考中…\n" + render._reasoning, style="dim italic"))
-            self._stream_thinking.remove_class("hidden")
+            now = time.monotonic()
+            if (self._last_think_flush is None
+                    or now - self._last_think_flush >= STREAM_FLUSH_INTERVAL):
+                self._last_think_flush = now
+                self._stream_thinking.update(
+                    Text("思考中…\n" + render._reasoning, style="dim italic"))
+                changed = True
+            if self._stream_thinking.has_class("hidden"):
+                self._stream_thinking.remove_class("hidden")
+                changed = True
         else:
-            self._stream_thinking.add_class("hidden")
+            self._last_think_flush = None
+            if not self._stream_thinking.has_class("hidden"):
+                self._stream_thinking.add_class("hidden")
+                changed = True
         if render._answer:
-            now = time.time()
+            now = time.monotonic()
             if now - self._last_stream_flush >= STREAM_FLUSH_INTERVAL:
                 self._last_stream_flush = now
                 self._stream_answer.update((render._answer or "…") + " ▍")
-            self._stream_answer.remove_class("hidden")
+                changed = True
+            if self._stream_answer.has_class("hidden"):
+                self._stream_answer.remove_class("hidden")
+                changed = True
         else:
             self._last_stream_flush = 0.0
-            self._stream_answer.add_class("hidden")
+            if not self._stream_answer.has_class("hidden"):
+                self._stream_answer.add_class("hidden")
+                changed = True
+        if changed:
+            self._content_version += 1
 
     def _build_plan(self) -> None:
-        """计划队列视图（v3.2 #38 同内容：列表=状态词+进度条，详情=步骤逐行；
-        rich 形态换 widget 形态——行内容与 terminal._plan_renderable 同口径）"""
+        """计划队列视图（v3.2 #38 同内容：列表=状态词+进度条+计划消息，
+        详情=步骤逐行；行口径与 terminal._plan_renderable 对齐）"""
         render = self.renderer
         head = render._plan_view or {}
         plan = self._plan_container
@@ -619,10 +794,12 @@ class YuanTerminalApp(App):
             title = str(p.get("title") or "(无标题)")[:34]
             st = str(p.get("status") or "draft")
             prog = max(0, min(100, int(p.get("progress") or 0)))
-            plan.mount(Static(Text.assemble(
-                (f"[{i + 1}] ", "bold"), (title, ""), ("  ", ""),
-                (PLAN_ST_WORD.get(st, st), PLAN_ST_STYLE.get(st, "dim")),
-                ("  ", ""), (f"{p.get('done_steps', 0)}/{p.get('total_steps', 0)} 步", "dim"))))
+            parts = [(f"[{i + 1}] ", "bold"), (title, ""), ("  ", ""),
+                     (PLAN_ST_WORD.get(st, st), PLAN_ST_STYLE.get(st, "dim"))]
+            msg = str(p.get("message") or "")[:30]
+            if msg:
+                parts += [("  ", ""), (msg, "dim")]  # 与 v3 rich 行口径一致
+            plan.mount(Static(Text.assemble(*parts)))
             bar = ProgressBar(total=100, show_eta=False)
             bar.progress = prog
             plan.mount(bar)
@@ -630,38 +807,60 @@ class YuanTerminalApp(App):
     def _sync_observe(self) -> None:
         """观测右栏（v3.2 #38 同内容；行内容与 terminal._observe_panel 共用
         _observe_lines）。宽终端（≥72）且云端通道可用才显示——与 v3 同门槛。
-        守卫：Textual 启动时序 on_resize 先于 on_mount。"""
+        签名比对：数据只在 15s 轮询/usage 变化时重建（_observe/_usage 均为
+        整体替换，身份比较即签名）。守卫：on_resize 先于 on_mount。"""
         if self._observe_widget is None:
             return
         render = self.renderer
-        self._observe_widget.update(
-            Text.assemble(*(Text(t, style=s) for t, s in _observe_lines(render))))
         visible = render._observe_ready and self.size.width >= 72
+        sig = (render._observe, render._usage, visible)
+        if sig != self._observe_sig:
+            self._observe_sig = sig
+            self._observe_widget.update(
+                Text.assemble(*(Text(t, style=s) for t, s in _observe_lines(render))))
         self._observe_box.set_class(visible, "show")
 
-    def sync_hint(self) -> None:
-        """输入 dock 上方提示行（v3 ptk bottom_toolbar 同内容 + 忙态）"""
+    def sync_hint(self, stream_only: bool = False) -> None:
+        """输入 dock 上方提示行（v3 ptk bottom_toolbar 同内容 + 忙态）。
+        签名比对：内容只随 busy/选中/计划/临时提示变化"""
         render = self.renderer
         if self._hintbar is None:
             return
+        flash_active = self._flash_until > time.monotonic()
+        sig = (self.busy, flash_active, render._plan_view is not None, render.sel)
+        if sig == self._hint_sig:
+            return
+        self._hint_sig = sig
         if self.busy:
-            self._hintbar.update(Text("生成中…（Ctrl+C 停止）", style="bold yellow"))
-        elif self._flash_until > time.time():
-            self._hintbar.update(Text(self._flash_text, style="cyan"))
+            text = Text("生成中…（Ctrl+C 停止）", style="bold yellow")
+        elif flash_active:
+            text = Text(self._flash_text, style="cyan")
         elif render._plan_view is not None:
-            self._hintbar.update(Text("计划视图 — Esc/Enter 返回对话流 | " + _HINT_BASE))
+            text = Text("计划视图 — Esc/Enter 返回对话流 | " + _HINT_BASE)
         elif render.sel is not None:
             b = render._blocks[render.sel]
-            self._hintbar.update(Text.assemble(
+            text = Text.assemble(
                 ("已选中: " + b.get("title", ""), "bold"),
-                (f" — Enter 展开/折叠 · Esc 取消 | {_HINT_BASE}", "")))
+                (f" — Enter 展开/折叠 · Esc 取消 | {_HINT_BASE}", ""))
         else:
-            self._hintbar.update(Text(_HINT_BASE, style="dim"))
+            text = Text(_HINT_BASE, style="dim")
+        self._hintbar.update(text)
 
     def flash_hint(self, text: str, seconds: float = 3.0) -> None:
-        """临时提示（Tab 补全候选等）：到时自动回落常规提示"""
+        """临时提示（Tab 补全候选等）：定时器到期自动回落常规提示（审查修复：
+        此前无定时器，idle 时过期提示滞留到下一次无关 sync）"""
         self._flash_text = text
-        self._flash_until = time.time() + seconds
+        self._flash_until = time.monotonic() + seconds
+        self._hint_sig = None  # 强制下一次 sync_hint 重画
+        self.sync_hint()
+        if self._flash_timer is not None:
+            self._flash_timer.stop()
+        self._flash_timer = self.set_timer(seconds, self._on_flash_expire)
+
+    def _on_flash_expire(self) -> None:
+        self._flash_until = 0.0
+        self._flash_timer = None
+        self._hint_sig = None
         self.sync_hint()
 
     # ———— 审批 modal ————
@@ -709,6 +908,13 @@ class TextualRenderer:
     def detach(self) -> None:
         self._app = None
 
+    def is_attached(self) -> bool:
+        return self._app is not None
+
+    def _agent_dot_tuple(self) -> tuple:
+        from agent.terminal import _agent_dot_tuple
+        return _agent_dot_tuple(self)
+
     def _post(self, fn, *args) -> None:
         """App 线程直调 / 跨线程投递（Textual 8 的 call_from_thread 拒绝同
         线程调用）。detach 后静默 no-op。"""
@@ -723,15 +929,16 @@ class TextualRenderer:
         except Exception:
             pass
 
-    def _notify(self) -> None:
+    def _notify(self, scope: str = None) -> None:
         """状态已变 → 通知 App 增量同步。调用来源分两路：
-        - App 事件循环线程（查询协程/输入提交 handler）= 直接同步调用
+        - App 事件循环线程（查询协程/回合任务）= 直接同步调用
         - 其他线程（观测轮询 daemon / claude_loop executor）= call_from_thread
           投递消息，队列 FIFO 保序、线程安全
-        detach/未 attach（纯状态模式）静默 no-op。"""
+        scope='stream' = 流式增量（token/reasoning）——App 走快速路径只刷
+        流式三行（性能审查修复）。detach/未 attach 静默 no-op。"""
         app = self._app
         if app is not None:
-            self._post(app.renderer_sync)
+            self._post(app.renderer_sync, scope == "stream")
 
     # ———— 状态设置（共享命令分发调用） ————
 
@@ -751,22 +958,9 @@ class TextualRenderer:
         self._notify()
 
     def load_history(self, messages: list) -> None:
-        """云端会话历史 → 块（v3.1 /sessions 切换与 /chat 进入时用）：
-        user → 「你 ▸」块、assistant → answer 块；其余跳过。"""
-        self._blocks.clear()
-        for m in messages or []:
-            if not isinstance(m, dict):
-                continue
-            role = m.get("role", "")
-            content = str(m.get("content", "") or "").strip()
-            if not content:
-                continue
-            if role == "user":
-                self._blocks.append({"kind": "user", "title": "", "content": content,
-                                     "folded": False})
-            elif role == "assistant":
-                self._blocks.append({"kind": "answer", "title": "", "content": content,
-                                     "folded": False})
+        """云端会话历史 → 块（v3.1 /sessions 切换与 /chat 进入时用）；
+        映射逻辑与 FullscreenRenderer 共用 history_to_blocks"""
+        self._blocks = history_to_blocks(messages)
         self.sel = None
         self._notify()
 
@@ -787,8 +981,7 @@ class TextualRenderer:
 
     def tick_observation(self, data: dict) -> None:
         """观测轮询线程注入（15s /chat/cc-activity）：只更新状态；渲染时机
-        由 call_from_thread 投递——Textual 刷新线程安全，无需 v3 的
-        _prompt_active 守卫（无 ptk 输入行打架问题）"""
+        由 _post 投递——Textual 刷新线程安全，无需 v3 的 _prompt_active 守卫"""
         self._observe = data or None
         self._notify()
 
@@ -829,15 +1022,16 @@ class TextualRenderer:
 
     def token(self, text: str) -> None:
         if self._reasoning:  # 首个回答 token：剩余思考存为「最终思考」（网页同款）
-            self._snapshot_thinking(final=True)
+            self._snapshot_thinking(final=True)  # 可能落块——App stream 快速
+            # 路径会校验块数变化自动升级全量对账
         self._answer += text
-        self._notify()
+        self._notify(scope="stream")
 
     def reasoning(self, text: str) -> None:
         if self._think_start is None:
             self._think_start = time.time()
         self._reasoning += text
-        self._notify()
+        self._notify(scope="stream")
 
     def tool_start(self, name: str) -> None:
         self._tool_count += 1  # 先计数：思考块标题「N 次工具调用」含本次
@@ -846,10 +1040,9 @@ class TextualRenderer:
         self._notify()
 
     def tool_end(self, name: str, output: str) -> None:
-        out = (output if len(output) <= MAX_TOOL_OUTPUT
-               else output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)")
         self._blocks.append({"kind": "tool", "title": f"⚙ {name}",
-                             "content": out, "folded": True})
+                             "content": _truncate_tool_output(output),
+                             "folded": True})
         self._working = None
         self._notify()
 
@@ -859,9 +1052,15 @@ class TextualRenderer:
             self._blocks.append({"kind": "answer", "title": "",
                                  "content": self._answer, "folded": False})
             self._answer = ""
+        self._working = None
         self._notify()
 
     def error(self, text: str) -> None:
+        # 审查修复：清流式残留——v3 的 redraw 只画块，Textual 的流式行是
+        # 常驻 widget，不清会永久显示「⚙ X 执行中…/思考中…」
+        self._working = None
+        self._reasoning = ""
+        self._think_start = None
         self._blocks.append({"kind": "error", "title": "", "content": text,
                              "folded": False})
         self._notify()
@@ -873,6 +1072,9 @@ class TextualRenderer:
 
     def interrupted(self) -> None:
         self._answer = ""
+        self._working = None
+        self._reasoning = ""
+        self._think_start = None
         self._blocks.append({"kind": "info", "title": "", "content": "（已停止生成）",
                              "folded": False})
         self._notify()
@@ -880,15 +1082,21 @@ class TextualRenderer:
     # ———— 审批（v4 modal 形态；v3 语义不变：120s 超时默认 deny） ————
 
     async def approve_async(self, tool_name: str, command: str) -> str:
-        """云端通道审批（run_cloud_query 在 App 事件循环内 await）：推 modal
-        → 等决议；超时默认 deny 并收起 modal。"""
+        """云端通道审批（run_cloud_query 在回合任务内 await）：推 modal →
+        等决议；超时默认 deny 并收起 modal。CancelledError（Ctrl+C 停止）也
+        收起 modal 后重抛（审查修复：except Exception 漏 BaseException，
+        modal 会滞留屏幕）"""
         if self._app is None:
             return "deny"
+        _emit_pet("attention")
         fut = asyncio.get_running_loop().create_future()
         self._post(self._app.push_approval, tool_name, command, fut)
         try:
             ok = await asyncio.wait_for(fut, timeout=120)
             return "approve" if ok else "deny"
+        except asyncio.CancelledError:
+            self._post(self._app.dismiss_approval)
+            raise
         except Exception:
             self._post(self._app.dismiss_approval)
             return "deny"
@@ -898,6 +1106,7 @@ class TextualRenderer:
         推 modal → 阻塞等决议；超时默认 deny 并收起 modal。"""
         if self._app is None:
             return "deny"
+        _emit_pet("attention")
         fut = concurrent.futures.Future()
         self._post(self._app.push_approval, tool_name, command, fut)
         try:
@@ -911,13 +1120,22 @@ class TextualRenderer:
 async def run_textual_repl(session: dict, store, render: TextualRenderer) -> None:
     """v4 Textual 交互循环（terminal.run_repl 委托；运行失败上抛由调用方
     回退 v3 ptk 路径——降级链保留）。观测轮询与 v3 同源（15s /chat/cc-activity，
-    /claude 模式也可用）；仅生产路径启动——测试直驱 YuanTerminalApp 不经此函数
-    不会起线程。App 自带 alt-screen（driver 写 ?1049h），scrollback 天然干净。"""
-    from agent.terminal import _make_cloud_client, _start_observe_poll
+    /claude 模式也可用）；客户端注入 ctx（审查修复：此前只接线轮询，/status
+    误报未连接、云端命令各自再建 client）。App 自带 alt-screen（driver 写
+    ?1049h），scrollback 天然干净。"""
+    from agent.terminal import _make_cloud_client
     app = YuanTerminalApp(session, store, render)
     client = _make_cloud_client()
     if client is not None:
-        render._observe_ready = True
-        _start_observe_poll(render, lambda: client)
-    await app.run_async()
-    render.detach()
+        app.ctx.cloud_client = client  # 与 v3 run_repl 同口径（/status 可见已连接）
+        _wire_observe(render, client)
+    try:
+        await app.run_async()
+    finally:
+        render.detach()  # 轮询线程持旧 render 引用——detach 后 _post no-op 且
+        # 轮询循环经 is_attached() 检查退出（审查修复：回退路径轮询线程泄漏）
+    if getattr(app, "return_code", 0) not in (0, None):
+        # Textual 内部捕获了驱动/handler 异常（run_async 正常返回但 return_code
+        # 非零）——抛给 run_repl 走 v3 回退（审查修复：此前静默吞掉，yuan
+        # 直接死掉而非降级）
+        raise RuntimeError(f"Textual 运行失败（return_code={app.return_code}）")

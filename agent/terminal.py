@@ -78,6 +78,47 @@ PLAN_ST_WORD = {"queued": "排队中", "running": "执行中", "done": "完成",
 PLAN_ST_STYLE = {"queued": "bold cyan", "running": "bold yellow",
                  "done": "bold green", "failed": "bold red", "draft": "dim"}
 
+# 斜杠命令清单（v3 ptk WordCompleter 与 v4 Textual Tab 补全共用——单一事实源，
+# 新增命令只改这里 + dispatch_command；2026-11-15 审查后收敛）
+SLASH_COMMANDS = ["/claude", "/chat", "/web", "/sessions", "/history", "/clear",
+                  "/quit", "/help", "/plan", "/status", "/panel", "/pet"]
+
+
+def _truncate_tool_output(output: str) -> str:
+    """工具输出回显截断（四个渲染器共用单一口径——审查后收敛，此前四处复制
+    会漂移）"""
+    if len(output) <= MAX_TOOL_OUTPUT:
+        return output
+    return output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
+
+
+def history_to_blocks(messages: list) -> list:
+    """云端会话历史 → 块（v3 FullscreenRenderer 与 v4 TextualRenderer 共用）：
+    user → 「你 ▸」块、assistant → answer 块；其余（META/system/tool）跳过。"""
+    blocks = []
+    for m in messages or []:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role", "")
+        content = str(m.get("content", "") or "").strip()
+        if not content:
+            continue
+        if role == "user":
+            blocks.append({"kind": "user", "title": "", "content": content,
+                           "folded": False})
+        elif role == "assistant":
+            blocks.append({"kind": "answer", "title": "", "content": content,
+                           "folded": False})
+    return blocks
+
+
+def _wire_observe(render, cloud_client, custom_prompt: bool = False) -> None:
+    """观测右栏接线（v3 run_repl 与 v4 run_textual_repl 共用）：有身份 → 就绪
+    + 15s 轮询线程（测试注入 prompt_fn 时不启动，防真机身份触发真实网络）"""
+    render._observe_ready = cloud_client is not None
+    if cloud_client is not None and not custom_prompt:
+        _start_observe_poll(render, lambda: cloud_client)
+
 try:
     # errors="replace"：第三方网关流可能含孤立 surrogate（解码脏字节）——
     # utf-8 严格编码会 UnicodeEncodeError 打断整轮对话，替换为 '?' 兜底
@@ -330,7 +371,7 @@ class PlainRenderer:
         print(f"\n{self._c(CYAN)}⚙ {name}{self._c(RESET)}", flush=True)
 
     def tool_end(self, name: str, output: str) -> None:
-        out = output if len(output) <= MAX_TOOL_OUTPUT else output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
+        out = _truncate_tool_output(output)
         print(f"{self._c(GRAY)}{out}{self._c(RESET)}", flush=True)
 
     def done(self) -> None:
@@ -394,7 +435,7 @@ class RichRenderer:
 
     def tool_end(self, name: str, output: str) -> None:
         from rich.text import Text
-        out = output if len(output) <= MAX_TOOL_OUTPUT else output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
+        out = _truncate_tool_output(output)
         self._console.print(Text(out, style="dim"))
 
     def done(self) -> None:
@@ -489,22 +530,9 @@ class FullscreenRenderer:
         self._backend = "local" if backend == "local" else "cloud" if backend == "cloud" else ""
 
     def load_history(self, messages: list) -> None:
-        """云端会话历史 → 块（v3.1 /sessions 切换与 /chat 进入时用）：
-        user → 「你 ▸」块、assistant → answer 块；其余（META/system/tool）跳过"""
-        self._blocks.clear()
-        for m in messages or []:
-            if not isinstance(m, dict):
-                continue
-            role = m.get("role", "")
-            content = str(m.get("content", "") or "").strip()
-            if not content:
-                continue
-            if role == "user":
-                self._blocks.append({"kind": "user", "title": "", "content": content,
-                                     "folded": False})
-            elif role == "assistant":
-                self._blocks.append({"kind": "answer", "title": "", "content": content,
-                                     "folded": False})
+        """云端会话历史 → 块（v3.1 /sessions 切换与 /chat 进入时用）；
+        映射逻辑与 TextualRenderer 共用 history_to_blocks"""
+        self._blocks = history_to_blocks(messages)
         self.scroll_blocks = 0
         self.sel = None
 
@@ -767,7 +795,7 @@ class FullscreenRenderer:
         self._refresh()
 
     def tool_end(self, name: str, output: str) -> None:
-        out = output if len(output) <= MAX_TOOL_OUTPUT else output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
+        out = _truncate_tool_output(output)
         self._blocks.append({"kind": "tool", "title": f"⚙ {name}",
                              "content": out, "folded": True})
         self._working = None
@@ -1141,6 +1169,8 @@ def _start_observe_poll(render, client_getter, interval: float = OBSERVE_POLL_S)
     def _loop():
         while True:
             time.sleep(interval)
+            if not getattr(render, "is_attached", lambda: True)():
+                return  # 渲染器已 detach（v4 App 退出/回退 v3）——停止轮询防泄漏
             try:
                 client = client_getter()
                 if client is None:
@@ -1270,9 +1300,7 @@ def _make_ptk_prompt(mode_ref, renderer=None) -> object:
         #（输入等待中不整屏重绘，ptk 自身重画工具栏是唯一的实时面）
         refresh_interval=1.0,
         completer=WordCompleter(
-            ["/claude", "/chat", "/web", "/sessions", "/history", "/clear",
-             "/quit", "/help", "/plan", "/status", "/panel", "/pet"],
-            pattern=_re.compile(r"^/"), ignore_case=True),
+            SLASH_COMMANDS, pattern=_re.compile(r"^/"), ignore_case=True),
     )
 
     def _toolbar():
@@ -1386,13 +1414,16 @@ def _is_textual(render) -> bool:
 
 class ReplContext:
     """REPL 可变状态（2026-11-15 提取）：ptk（v3）与 Textual（v4）两套交互
-    循环共用同一命令分发与回合执行逻辑——单一行为事实源，防两套循环漂移。"""
+    循环共用同一命令分发与回合执行逻辑——单一行为事实源，防两套循环漂移。
 
-    def __init__(self, session: dict, store: TerminalSessionStore, render, mode: str):
+    mode_ref 由调用方传入（v3 run_repl 的 prompt_fn 闭包消费同一个列表，
+    审查教训：此前此处自建列表致 /chat /claude 后 ptk 提示符冻结旧模式）。"""
+
+    def __init__(self, session: dict, store: TerminalSessionStore, render, mode_ref: list):
         self.session = session
         self.store = store
         self.render = render
-        self.mode_ref = [mode]  # prompt_fn 闭包消费；/claude /chat 写 [0]
+        self.mode_ref = mode_ref  # /claude /chat 写 [0]；prompt_fn 闭包同步读
         self.cloud_client = None
         self.cloud_sid = ""
         self.cloud_messages: list = []
@@ -1514,6 +1545,10 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
     elif cmd == "/plan":
         # v3.2 #38 终端计划队列视图：与网站 /chat/plan 同列表（用户 JWT
         # 口径）；/plan <序号|id> 进单计划详情（步骤 + 进度）
+        # （审查补：/chat /sessions 均有懒构造、此处曾缺失——v4 首命令直接
+        # /plan 会误报未绑定；三命令对齐）
+        if ctx.cloud_client is None:
+            ctx.cloud_client = _make_cloud_client()
         if ctx.cloud_client is None:
             render.error("未找到本机 Agent 身份——请先在网页绑定设备")
             return None
@@ -1723,12 +1758,10 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     cloud_sid = ""
     cloud_messages: list = []
     if isinstance(render, FullscreenRenderer):
-        render._observe_ready = cloud_client is not None
-        if cloud_client is not None and not custom_prompt:
-            _start_observe_poll(render, lambda: cloud_client)
+        _wire_observe(render, cloud_client, custom_prompt)
         render.redraw()  # 启动即画状态栏+右栏（v3.0 遗留：此前要等首次按键才重绘）
 
-    ctx = ReplContext(session, store, render, mode)
+    ctx = ReplContext(session, store, render, mode_ref)
     ctx.cloud_client = cloud_client
     ctx.cloud_sid = cloud_sid
     ctx.cloud_messages = cloud_messages

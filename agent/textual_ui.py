@@ -220,7 +220,7 @@ _HELP_TEXT = """[bold blue]命令[/bold blue]
   Ctrl+R 搜索历史 · F2 网站对话 · Ctrl+C/Ctrl+Q 停止/退出
 
 [bold blue]说明[/bold blue]
-  终端=网站桌面客户端：/chat 与 /claude 的消息网站立即可见，
+  本地终端第三端：/chat 与 /claude 的消息网站立即可见，
   网站发的消息终端同样同步。
   审批弹窗 Y 执行 / N 拒绝（回车=拒绝，120 秒超时默认拒绝）。
   执行过程见对话中的工具行；本机活动见右栏与 /status。"""
@@ -693,7 +693,7 @@ class YuanTerminalApp(App):
         self.renderer = renderer
         self.ctx = ReplContext(session, store, renderer, [session.get("mode", "claude")])
         self.resume = None  # run_textual_repl 注入：{"mode","sid","messages"}
-        # 云端窗口启动接续（终端=网站桌面客户端）；None = 回退本机历史
+        # 云端窗口启动接续（本地终端第三端）；None = 回退本机历史
         self._busy_task = None  # 回合任务（独立于消息泵；busy 属性由它派生）
         self._header_widget = None
         self._hintbar = None
@@ -771,7 +771,7 @@ class YuanTerminalApp(App):
         self.renderer.attach(self)
         self.renderer.set_mode(self.ctx.mode_ref[0])
         if self.resume is not None:
-            # 启动即接续云端窗口（终端=网站桌面客户端，用户拍板 2026-11-15）：
+            # 启动即接续云端窗口（本地终端第三端，用户拍板 2026-11-15）：
             # claude=网站 CC 窗口 / chat=小元主对话——与网站完全同步
             self.ctx.mode_ref[0] = self.resume["mode"]
             self.ctx.cloud_sid = self.resume["sid"]
@@ -1443,7 +1443,7 @@ class TextualRenderer:
 
 async def run_textual_repl(session: dict, store, render: TextualRenderer) -> None:
     """v4 Textual 交互循环（terminal.run_repl 委托；运行失败上抛由调用方
-    回退 v3 ptk 路径——降级链保留）。终端=网站桌面客户端（用户拍板
+    回退 v3 ptk 路径——降级链保留）。本地终端第三端（用户拍板
     2026-11-15）：启动即接续云端窗口（claude=网站 CC 窗口 / chat=小元主
     对话，与网站完全同步）；云端不可达静默回退本地历史。观测轮询与 v3 同源
     （15s /chat/cc-activity）；客户端注入 ctx。App 自带 alt-screen。"""

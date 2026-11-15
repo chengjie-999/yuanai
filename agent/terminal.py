@@ -86,7 +86,7 @@ SLASH_COMMANDS = ["/claude", "/chat", "/local", "/new", "/web", "/sessions",
 
 
 def _normalize_mode(mode: str) -> str:
-    """终端=网站桌面客户端（2026-11-15 语义归一）：cloud（旧值）=云端主对话
+    """本地终端第三端（2026-11-15 语义归一）：cloud（旧值）=云端主对话
     → chat；chat/claude = 云端窗口（主对话 / CC 窗口）；local = 本机直连"""
     return "chat" if mode == "cloud" else mode
 
@@ -952,7 +952,7 @@ def _header_text(renderer):
     if len(cwd) > 42:
         cwd = "…" + cwd[-41:]
     backend = {"local": "本机执行", "cloud": "云端执行"}.get(renderer._backend, "")
-    # 窗口徽标中文（终端=网站桌面客户端：claude=网站 CC 窗口 / chat=小元
+    # 窗口徽标中文（本地终端第三端：claude=网站 CC 窗口 / chat=小元
     # 主对话 / local=本机直连——2026-11-15 愿景 P1）
     mode_label = {"claude": "CC 窗口", "chat": "小元", "local": "本机直连"}.get(
         renderer._mode, renderer._mode)
@@ -1112,7 +1112,7 @@ def _make_cloud_client():
 
 async def run_cloud_query(client, session_id: str, messages: list, render=None,
                           rich_mode: bool = False, kind: str = "chat") -> str:
-    """云端窗口对话（终端=网站桌面客户端）：kind=chat → /chat/stream（小元
+    """云端窗口对话（本地终端第三端）：kind=chat → /chat/stream（小元
     窗口）；kind=claude → /chat/claude-stream（CC 窗口，云端桥接本机 CC）。
     与网站同链路——终端发的消息网站立即可见（多端同步）。事件渲染复用
     renderer 接口；approval 事件 → 终端内 Y/N（rich=ptk / plain=input），
@@ -1484,7 +1484,7 @@ def _print_help(render) -> None:
                 "按键: F2 网站对话  Ctrl+R 搜索历史  ↑↓ 选择块  Enter 展开/折叠  "
                 "PgUp/PgDn 滚动  Esc 取消  Esc+Enter 换行  Ctrl+C 停止生成\n"
                 "右栏: 执行观测（15s 轮询最近活动）· /plan <序号> 看步骤进度\n"
-                "同步: 终端=网站桌面客户端——/chat 与 /claude 的消息网站立即可见")
+                "同步: 本地终端第三端——/chat 与 /claude 的消息网站立即可见")
 
 
 async def _list_history(store: TerminalSessionStore, render) -> None:
@@ -1555,7 +1555,7 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
     elif cmd == "/claude":
         # cc = 续接会话的终端指令（用户拍板 2026-11-15 修正）：接续网站的
         # CC 窗口会话（agent_kind=claude）——云端桥接本机 CC 执行，与网页
-        # CC 窗口完全同步（终端=网站桌面客户端）；本机直连专业模式见 /local
+        # CC 窗口完全同步（本地终端第三端）；本机直连专业模式见 /local
         if ctx.cloud_client is None:
             ctx.cloud_client = _make_cloud_client()
         if ctx.cloud_client is None:
@@ -1586,7 +1586,7 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
                         f"（{len(ctx.cloud_messages)} 条历史，与网站 CC 窗口同步）")
     elif cmd == "/local":
         # 本机直连专业模式（原 /claude 语义）：SDK 直连本机网关，草稿会话
-        # terminal_sessions.json——不接网站（终端=网站桌面客户端后的可选模式）
+        # terminal_sessions.json——不接网站（平台云端为模型层后的可选模式）
         ctx.mode_ref[0] = "local"
         if blocks:
             render.set_mode("local")
@@ -1595,7 +1595,7 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
             render.redraw()
         render.info("已切换本机直连模式（Claude SDK 草稿会话，不与网站同步）")
     elif cmd == "/chat":
-        # 云端小元窗口（主对话）：与网站同一会话体系（终端=网站桌面客户端）
+        # 云端小元窗口（主对话）：与网站同一会话体系（本地终端第三端）
         if ctx.cloud_client is None:
             ctx.cloud_client = _make_cloud_client()
         if ctx.cloud_client is None:
@@ -1793,7 +1793,7 @@ async def run_turn(line: str, ctx: ReplContext, rich_mode: bool) -> None:
     if hasattr(render, "add_user_message"):
         render.add_user_message(line)
     if ctx.mode_ref[0] in ("chat", "claude", "cloud"):
-        # 云端窗口发送（终端=网站桌面客户端）：chat=小元主对话 / claude=CC
+        # 云端窗口发送（本地终端第三端）：chat=小元主对话 / claude=CC
         # 窗口（cloud 旧值兼容=主对话）——消息落网站会话（/chat/save 同链路，
         # 网站立即可见=多端同步）
         kind = "claude" if ctx.mode_ref[0] == "claude" else "chat"
@@ -1894,7 +1894,7 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     render = render or PlainRenderer()
     custom_prompt = prompt_fn is not None  # 测试注入标记（决定是否起观测轮询线程）
 
-    # 终端=网站桌面客户端（用户拍板 2026-11-15）：启动即接续云端窗口会话
+    # 本地终端第三端（用户拍板 2026-11-15）：启动即接续云端窗口会话
     # （claude=网站 CC 窗口 / chat=小元主对话）——与网站完全同步。测试注入
     # prompt_fn（custom_prompt）跳过，防真实网络；云端不可达静默回退本地历史
     cloud_resume_mode = None
@@ -1952,7 +1952,7 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     if isinstance(render, FullscreenRenderer):
         render.set_mode(mode)
         if cloud_resume_mode:
-            # 终端=网站桌面客户端：启动即接续云端窗口（与网站同步）
+            # 本地终端第三端：启动即接续云端窗口（与网站同步）
             render.set_session(cloud_resume_sid)
             render.load_history(cloud_resume_messages,
                                 "claude" if mode == "claude" else "orchestrator")
@@ -1967,7 +1967,7 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     else:
         render.info(f"小元AI 终端对话 — 模式: {mode} | 会话: {session.get('id', '')} | /help 查看命令")
 
-    # v3.1 云端通道（终端=网站桌面客户端）；v3.2 #38：client 提前构造——
+    # v3.1 云端通道（本地终端第三端）；v3.2 #38：client 提前构造——
     # 观测右栏 /claude 模式也可用（CC 活动流），构造零网络（令牌懒取），
     # 无身份 → None（右栏不渲染，/chat 时提示绑定）
     cloud_client = _make_cloud_client()

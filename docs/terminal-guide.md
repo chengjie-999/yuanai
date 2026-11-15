@@ -1,26 +1,34 @@
 # 本地终端使用说明书（2026-11-15 定版，随大方向更新）
 
-小元AI 的本地形态 = **终端**。本说明书覆盖三个入口：CC 终端（主力）、yuan 终端（零依赖桌面客户端）、托盘 Agent（后台执行体）。
+小元AI 的本地形态 = **终端**。本说明书覆盖三个入口：CC 终端（主力）、yuan 终端（无凭证用户的本地终端）、托盘 Agent（后台执行体）。
 
 ## 1. 入口与定位
 
 | 入口 | 定位 | 适用 |
 |------|------|------|
 | **CC 终端（claude + 小元AI MCP）** | 本机主力：对话/代码/终端/Git 原生能力 + 发现与调用本地智能体、跨系统执行 | 装了 Claude Code 的用户 |
-| **yuan 终端** | 网站桌面客户端：与网站完全同步（CC 窗口/小元窗口），零依赖 | 所有用户 |
+| **yuan 终端** | 无凭证用户的本地终端（平台云端为模型层），可访问云端会话 | 无模型 key 的用户 |
 | **托盘 Agent** | 后台执行体：接收网站任务、跑计划队列 | 开机常驻 |
 
-> 大方向：网站/移动端是主对话入口（发指令 + 看进度）；电脑上的终端是执行现场。
+> 大方向：网站/移动端是**唯一的主对话入口**（发指令 + 看进度）；本地=终端形态——**CC 终端是主形态**（有模型凭证的用户），yuan 是无凭证用户的本地终端（平台云端为模型层），不是网站的桌面客户端。
 
 ## 2. CC 终端（主力）
 
-### 2.1 一键接入小元AI MCP
+### 2.1 安装 Claude Code 与接入小元AI MCP
+
+**第一步（安装 Claude Code）**：按 DeepSeek 官方集成指南安装并配置：
+https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code
+
+（用户自持 DeepSeek API key，费用直接与 DeepSeek 结算——按 Anthropic 2026-09
+条款，平台不代付、不中介模型流量；普通用户无模型 key 时请用 yuan 终端。）
+
+**第二步（接入小元AI MCP，一行命令）**：
 
 ```bash
 claude mcp add xiaoyuan -- venv\Scripts\python.exe -m agent.mcp_server
 ```
 
-（venv 路径换成你的项目 venv；`claude mcp list` 看到 xiaoyuan ✔ Connected 即成功）
+（`claude mcp list` 看到 xiaoyuan ✔ Connected 即成功）
 
 ### 2.2 能干什么
 
@@ -34,7 +42,7 @@ claude mcp add xiaoyuan -- venv\Scripts\python.exe -m agent.mcp_server
 - 脚本产出的图表/看板会给出文件路径或看板 key（网站对话里可打开面板查看）
 - 尚未接入（A2 规划中）：自动化浏览器、计划队列、记忆、知识星球检索、云端对话桥
 
-## 3. yuan 终端（网站桌面客户端）
+## 3. yuan 终端（无凭证用户的本地终端）
 
 ### 3.1 启动
 

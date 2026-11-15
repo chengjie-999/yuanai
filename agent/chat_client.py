@@ -87,8 +87,8 @@ class CloudChatClient:
         return str(resp.json().get("session_id", ""))
 
     def list_sessions(self, agent_kind: str = "chat") -> list:
-        """会话列表（2026-11-13 多窗口 v2 默认对话窗口；2026-11-15 终端=网站
-        桌面客户端：kind=claude 列 CC 窗口会话——「cc 是续接会话的终端指令」）"""
+        """会话列表（2026-11-13 多窗口 v2 默认对话窗口；2026-11-15 本地终端
+        访问云端会话：kind=claude 列 CC 窗口会话——「cc 是续接会话的终端指令」）"""
         resp = self._httpx.get(f"{self._base}/api/v1/chat/sessions",
                                params={"own": 1, "agent_kind": agent_kind}, headers=self._auth(),
                                timeout=self._timeout)
@@ -127,7 +127,7 @@ class CloudChatClient:
                      backend: str = "auto", kind: str = "chat"):
         """SSE 流 → 逐事件 yield dict。kind=chat → POST /chat/stream（小元窗口）；
         kind=claude → POST /chat/claude-stream（CC 窗口，云端桥接本机 CC——
-        与网站 CC 窗口同链路，终端=网站桌面客户端）。401 时清令牌重试一次；
+        与网站 CC 窗口同链路，本地终端第三端）。401 时清令牌重试一次；
         非 200 抛 RuntimeError（人话）。事件类型与网页同口径：token /
         tool_start / tool_end / done / error / agent / mode_event / backend_event /
         usage_event / compliance_warning / approval / suggestions。"""

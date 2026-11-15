@@ -168,6 +168,16 @@ function AgentDownloadCard() {
             本地终端使用说明书
           </a>（终端、托盘、CC 三种入口，三步上手）
         </div>
+        {/* 进阶终端入口（2026-11-15）：CC 终端与 dsh（DeepSeek Harness）
+            都能通过 MCP 调用本机的小元AI 智能体 */}
+        <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          进阶玩法：装了 <b>Claude Code</b> 或 <b>dsh（DeepSeek Harness）</b> 终端的用户，
+          可以把小元AI 本地智能体接进自己的终端——发现与调用分析/采集脚本、跨系统执行。
+          接入指引见{' '}
+          <a href="/api-docs?d=doc-terminal-guide" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
+            说明书「CC 终端 / dsh」两节
+          </a>。
+        </div>
         {/* 使用指南（2026-10-30 用户拍板：图形 + yuan/yuancc 终端两套入口） */}
         <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.9 }}>
           <b style={{ color: 'var(--text-primary)' }}>使用指南</b>

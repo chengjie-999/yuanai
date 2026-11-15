@@ -78,4 +78,5 @@
 - **降级链**：main() 构造 try（textual 未装→FullscreenRenderer）+ run_repl 运行期 try（驱动失败→回退 v3 ptk）；requirements +textual、spec +collect_data_files/hiddenimports
 - **测试**：test_textual_ui.py 25 项（状态层 detached + App 层 run_test+pilot + 回退链 2 项）；全量 906 过+9 既有环境项
 - **实现期踩坑（已入库 CLAUDE.md）**：Textual 8 call_from_thread 拒绝同线程（_post 分路）；Widget.remove() 延迟生效（bid 对账）；on_resize 先于 on_mount；DockInput __init__ 需透传 id
-- **挂账**：P1 鼠标打磨（滚轮/拖拽滚动条/点击折叠块/流畅度节流参数）、P2 品牌批（主题色板对齐网站/#39 帮助浮层/Ctrl+R 历史搜索迁移）、#41 WT 内嵌、打包批次真机验证（WT 全屏冒烟）
+- **审查批次（2026-11-15 同会话，fa8fcdc + 8d65eb6）**：五角度审查 14 项 + 补漏扫描 5 项全部修复——核心=回合独立 asyncio 任务（消息泵不被阻塞）、审批 modal fail-closed（默认焦点拒绝/卸载即决议/停止收起）、流式快速路径 + 签名比对、跟随滚动状态机、历史文件 ptk 同格式、mode_ref 共享、Ctrl+Q 覆盖、Esc 武装解除、Tab 光标归位等；测试 43 项，全量 924 过
+- **挂账**：P1 鼠标打磨剩余（滚轮节流参数调优）、P2 品牌批（主题色板对齐网站/#39 帮助浮层/Ctrl+R 增量搜索增强）、块状态机 mixin 与计划行模型全量提取（审查 altitude 建议）、#41 WT 内嵌、打包批次真机验证（WT 全屏冒烟 + textual collect_data_files）

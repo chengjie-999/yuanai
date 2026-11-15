@@ -22,13 +22,18 @@ https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code
 （用户自持 DeepSeek API key，费用直接与 DeepSeek 结算——按 Anthropic 2026-09
 条款，平台不代付、不中介模型流量；普通用户无模型 key 时请用 yuan 终端。）
 
-**第二步（接入小元AI MCP，一行命令）**：
+**第二步（接入小元AI MCP，一行命令）**——按你的安装形态二选一：
 
+安装包用户（普通用户，零源码）：
+```bash
+claude mcp add xiaoyuan -- "C:\Users\<你的用户名>\AppData\Local\XiaoYuanAI\bin\小元AI Agent.exe" --run-mcp
+```
+（引号内换成你电脑上的安装路径；`claude mcp list` 看到 xiaoyuan ✔ Connected 即成功）
+
+开发者（有项目源码）：
 ```bash
 claude mcp add xiaoyuan -- venv\Scripts\python.exe -m agent.mcp_server
 ```
-
-（`claude mcp list` 看到 xiaoyuan ✔ Connected 即成功）
 
 ### 2.2 能干什么
 

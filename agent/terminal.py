@@ -80,8 +80,14 @@ PLAN_ST_STYLE = {"queued": "bold cyan", "running": "bold yellow",
 
 # 斜杠命令清单（v3 ptk WordCompleter 与 v4 Textual Tab 补全共用——单一事实源，
 # 新增命令只改这里 + dispatch_command；2026-11-15 审查后收敛）
-SLASH_COMMANDS = ["/claude", "/chat", "/web", "/sessions", "/history", "/clear",
-                  "/quit", "/help", "/plan", "/status", "/panel", "/pet"]
+SLASH_COMMANDS = ["/claude", "/chat", "/local", "/web", "/sessions", "/history",
+                  "/clear", "/quit", "/help", "/plan", "/status", "/panel", "/pet"]
+
+
+def _normalize_mode(mode: str) -> str:
+    """终端=网站桌面客户端（2026-11-15 语义归一）：cloud（旧值）=云端主对话
+    → chat；chat/claude = 云端窗口（主对话 / CC 窗口）；local = 本机直连"""
+    return "chat" if mode == "cloud" else mode
 
 
 def _truncate_tool_output(output: str) -> str:
@@ -1084,16 +1090,20 @@ def _make_cloud_client():
 
 
 async def run_cloud_query(client, session_id: str, messages: list, render=None,
-                          rich_mode: bool = False) -> str:
-    """云端对话（v3.1）：/chat/stream SSE 与网站同链路——终端发的消息网站立即可见
-    （多端第三端）。事件渲染复用 renderer 接口；approval 事件 → 终端内 Y/N
-    （rich=ptk / plain=input），决议经 body.decision 回传云端（fail-closed）。"""
+                          rich_mode: bool = False, kind: str = "chat") -> str:
+    """云端窗口对话（终端=网站桌面客户端）：kind=chat → /chat/stream（小元
+    窗口）；kind=claude → /chat/claude-stream（CC 窗口，云端桥接本机 CC）。
+    与网站同链路——终端发的消息网站立即可见（多端同步）。事件渲染复用
+    renderer 接口；approval 事件 → 终端内 Y/N（rich=ptk / plain=input），
+    决议经 body.decision 回传云端（fail-closed）。"""
     render = render or PlainRenderer()
+    if hasattr(render, "set_sender"):
+        render.set_sender("claude" if kind == "claude" else "orchestrator")
     loop = asyncio.get_running_loop()
     final = ""
     _emit_pet("thinking")
     try:
-        async for ev in client.stream(session_id, messages[-1]["content"], messages[:-1]):
+        async for ev in client.stream(session_id, messages[-1]["content"], messages[:-1], kind=kind):
             t = ev.get("type", "")
             data = ev.get("data", {})
             if not isinstance(data, dict):
@@ -1118,7 +1128,10 @@ async def run_cloud_query(client, session_id: str, messages: list, render=None,
                 did = data.get("decision_id", "")
                 tool_name = str(data.get("tool_name", "工具"))
                 command = str(data.get("command", ""))[:200]
-                render.info(f"⚠ 审批 [{tool_name}] {command}（120 秒超时默认拒绝）")
+                if not hasattr(render, "approve_async"):
+                    # v4：审批 modal 即呈现，不再往对话流塞 info 块（用户实测
+                    # 「审批搞那么大」——流内重复提示一并去掉）
+                    render.info(f"⚠ 审批 [{tool_name}] {command}（120 秒超时默认拒绝）")
                 _emit_pet("attention")
                 if hasattr(render, "approve_async"):
                     # v4 Textual：App 内审批 modal（Y/N，120s 超时 deny）
@@ -1129,7 +1142,7 @@ async def run_cloud_query(client, session_id: str, messages: list, render=None,
                     ans = await loop.run_in_executor(
                         None, _approve_yn, did, tool_name, command)
                 await loop.run_in_executor(
-                    None, client.send_decision, did, ans == "approve")
+                    None, client.send_decision, did, ans == "approve", kind)
                 render.info("已同意执行" if ans == "approve" else "已拒绝")
                 _emit_pet("working" if ans == "approve" else "thinking")
             elif t == "usage_event":
@@ -1396,12 +1409,14 @@ def _print_plan_detail(render, detail: dict) -> None:
 
 def _print_help(render) -> None:
     render.info("小元AI · 云边协同 · 对话即执行（品牌对齐 #39）\n"
-                "命令: /claude 本机Claude(默认)  /chat 云端对话(与网站同会话)  "
-                "/sessions 网站会话  /web 网站对话  /plan 计划队列  /status 本机状态  "
-                "/panel 设置面板  /pet on|off 桌宠  /history /clear /quit\n"
+                "命令: /claude CC窗口(与网站同会话)  /chat 小元窗口(网站主对话)  "
+                "/local 本机直连(草稿)  /sessions 会话切换  /web 网站对话  "
+                "/plan 计划队列  /status 本机状态  /panel 设置面板  /pet on|off 桌宠  "
+                "/history /clear /quit\n"
                 "按键: F2 网站对话  Ctrl+R 搜索历史  ↑↓ 选择块  Enter 展开/折叠  "
                 "PgUp/PgDn 滚动  Esc 取消  Esc+Enter 换行  Ctrl+C 停止生成\n"
-                "右栏: 执行观测（15s 轮询最近活动）· /plan <序号> 看步骤进度")
+                "右栏: 执行观测（15s 轮询最近活动）· /plan <序号> 看步骤进度\n"
+                "同步: 终端=网站桌面客户端——/chat 与 /claude 的消息网站立即可见")
 
 
 async def _list_history(store: TerminalSessionStore, render) -> None:
@@ -1458,8 +1473,8 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
         ctx.store.clear(ctx.session["id"])
         if blocks:
             render.clear_blocks()  # 会话消息清空 → 渲染块同步清空
-        if mode == "cloud":
-            render.info("云端会话以网站为准——/clear 仅清空终端显示，网站历史保留")
+        if mode in ("chat", "claude", "cloud"):
+            render.info("云端窗口以网站为准——/clear 仅清空终端显示，网站历史保留")
         else:
             render.info(f"当前会话已清空（{ctx.session['id']}）")
     elif cmd == "/history":
@@ -1470,18 +1485,49 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
         else:
             _print_help(render)
     elif cmd == "/claude":
-        # cc = 续接会话的终端指令（用户拍板）：切回本机模式即加载本机会话
-        # 历史上屏（此前只切模式，界面仍显示云端历史/空白）
+        # cc = 续接会话的终端指令（用户拍板 2026-11-15 修正）：接续网站的
+        # CC 窗口会话（agent_kind=claude）——云端桥接本机 CC 执行，与网页
+        # CC 窗口完全同步（终端=网站桌面客户端）；本机直连专业模式见 /local
+        if ctx.cloud_client is None:
+            ctx.cloud_client = _make_cloud_client()
+        if ctx.cloud_client is None:
+            render.error("未找到本机 Agent 身份——请先在网页绑定设备")
+            return None
+        try:
+            loop = asyncio.get_running_loop()
+            sessions = await loop.run_in_executor(
+                None, ctx.cloud_client.list_sessions, "claude")
+            if sessions:
+                ctx.cloud_sid = str(sessions[0].get("session_id", ""))
+            else:
+                ctx.cloud_sid = await loop.run_in_executor(
+                    None, ctx.cloud_client.create_session, "claude")
+            ctx.cloud_messages = await loop.run_in_executor(
+                None, ctx.cloud_client.load_messages, ctx.cloud_sid)
+        except Exception as e:
+            render.error(f"连接 CC 窗口失败：{str(e)[:160]}")
+            return None
         ctx.mode_ref[0] = "claude"
         if blocks:
             render.set_mode("claude")
+            render.set_session(ctx.cloud_sid)
+            render.load_history(ctx.cloud_messages, "claude")
+            render.redraw()
+        else:
+            render.info(f"已接续 CC 窗口会话 {ctx.cloud_sid[:8]}"
+                        f"（{len(ctx.cloud_messages)} 条历史，与网站 CC 窗口同步）")
+    elif cmd == "/local":
+        # 本机直连专业模式（原 /claude 语义）：SDK 直连本机网关，草稿会话
+        # terminal_sessions.json——不接网站（终端=网站桌面客户端后的可选模式）
+        ctx.mode_ref[0] = "local"
+        if blocks:
+            render.set_mode("local")
             render.set_session(ctx.session.get("id", ""))
             render.load_history(ctx.session.get("messages") or [], "claude")
             render.redraw()
-        render.info("已切换本机 Claude Code 模式（本地专业模式）")
+        render.info("已切换本机直连模式（Claude SDK 草稿会话，不与网站同步）")
     elif cmd == "/chat":
-        # v3.1：云端对话通道（终端=第三端，与网站同一会话体系；
-        # 云端是小元AI 正身——本机统筹在线时云端自动与其协同）
+        # 云端小元窗口（主对话）：与网站同一会话体系（终端=网站桌面客户端）
         if ctx.cloud_client is None:
             ctx.cloud_client = _make_cloud_client()
         if ctx.cloud_client is None:
@@ -1497,9 +1543,9 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
         except Exception as e:
             render.error(f"连接云端对话失败：{str(e)[:160]}")
             return None
-        ctx.mode_ref[0] = "cloud"
+        ctx.mode_ref[0] = "chat"
         if blocks:
-            render.set_mode("cloud")
+            render.set_mode("chat")
             render.set_session(ctx.cloud_sid)
             render.load_history(ctx.cloud_messages)
             render.redraw()
@@ -1507,7 +1553,8 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
             render.info(f"已连接云端对话（主对话 {ctx.cloud_sid[:8]}，"
                         f"{len(ctx.cloud_messages)} 条历史）")
     elif cmd == "/sessions":
-        # 网站会话列表/切换（多端同一批会话）
+        # 网站会话列表/切换（当前窗口的会话：CC 窗口列 claude 会话、对话
+        # 窗口列 chat 会话——多端同一批）
         if ctx.cloud_client is None:
             ctx.cloud_client = _make_cloud_client()
         if ctx.cloud_client is None:
@@ -1515,9 +1562,10 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
             return None
         try:
             loop = asyncio.get_running_loop()
+            kind = "claude" if ctx.mode_ref[0] == "claude" else "chat"
             if arg and arg.isdigit():
                 sessions = await loop.run_in_executor(
-                    None, ctx.cloud_client.list_sessions)
+                    None, ctx.cloud_client.list_sessions, kind)
                 idx = int(arg) - 1
                 if not (0 <= idx < len(sessions)):
                     render.info(f"序号无效（1-{len(sessions)}）")
@@ -1525,18 +1573,18 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
                 ctx.cloud_sid = str(sessions[idx].get("session_id", ""))
                 ctx.cloud_messages = await loop.run_in_executor(
                     None, ctx.cloud_client.load_messages, ctx.cloud_sid)
-                ctx.mode_ref[0] = "cloud"
+                ctx.mode_ref[0] = kind
                 if blocks:
-                    render.set_mode("cloud")
+                    render.set_mode(kind)
                     render.set_session(ctx.cloud_sid)
-                    render.load_history(ctx.cloud_messages)
+                    render.load_history(ctx.cloud_messages, kind)
                     render.redraw()
                 else:
                     render.info(f"已切换到会话 {ctx.cloud_sid[:8]}"
                                 f"（{len(ctx.cloud_messages)} 条历史）")
             else:
                 sessions = await loop.run_in_executor(
-                    None, ctx.cloud_client.list_sessions)
+                    None, ctx.cloud_client.list_sessions, kind)
                 for i, s in enumerate(sessions):
                     title = str(s.get("title") or "(无标题)")[:36]
                     mark = "★" if s.get("is_main") else " "
@@ -1650,13 +1698,21 @@ async def run_turn(line: str, ctx: ReplContext, rich_mode: bool) -> None:
     # 云端，渲染器无用户块，历史可见是因 load_history 重建；网页同款即时反馈）
     if hasattr(render, "add_user_message"):
         render.add_user_message(line)
-    if ctx.mode_ref[0] == "cloud":
-        # 云端对话发送：消息落网站会话（/chat/save 同链路，多端互通）
+    if ctx.mode_ref[0] in ("chat", "claude", "cloud"):
+        # 云端窗口发送（终端=网站桌面客户端）：chat=小元主对话 / claude=CC
+        # 窗口（cloud 旧值兼容=主对话）——消息落网站会话（/chat/save 同链路，
+        # 网站立即可见=多端同步）
+        kind = "claude" if ctx.mode_ref[0] == "claude" else "chat"
+        if ctx.cloud_client is None:
+            ctx.cloud_client = _make_cloud_client()
+        if ctx.cloud_client is None:
+            render.error("未找到本机 Agent 身份——请先在网页绑定设备（/local 本机直连无需身份）")
+            return
         loop = asyncio.get_running_loop()
         ctx.cloud_messages.append({"role": "user", "content": line})
         task = asyncio.create_task(run_cloud_query(
             ctx.cloud_client, ctx.cloud_sid, ctx.cloud_messages, render=render,
-            rich_mode=rich_mode))
+            rich_mode=rich_mode, kind=kind))
         try:
             result = await task
         except (KeyboardInterrupt, asyncio.CancelledError):
@@ -1678,6 +1734,7 @@ async def run_turn(line: str, ctx: ReplContext, rich_mode: bool) -> None:
         except Exception as e:
             render.info(f"同步到网站失败：{str(e)[:120]}")
         return
+    # 本机直连（/local 草稿模式）：SDK 直连 + terminal_sessions.json
     ctx.store.append(ctx.session["id"], "user", line, ctx.mode_ref[0])
 
     # 审批回调：Textual 走 modal（阻塞等待/超时 deny）；rich 模式走 ptk
@@ -1698,7 +1755,7 @@ async def run_turn(line: str, ctx: ReplContext, rich_mode: bool) -> None:
         on_approval = _approve_yn
 
     task = asyncio.create_task(
-        run_query(ctx.mode_ref[0], ctx.session["messages"],
+        run_query("claude", ctx.session["messages"],
                   on_approval=on_approval, render=render))
     try:
         result = await task
@@ -1736,11 +1793,39 @@ async def run_repl(session: dict, store: TerminalSessionStore,
                 cwd=getattr(render, "_cwd", ""), session_id=session.get("id", ""))
             fallback_notice = True
 
-    mode = session.get("mode", "claude")
+    mode = _normalize_mode(session.get("mode", "claude"))
     mode_ref = [mode]
     rich_mode = render is not None and isinstance(render, (RichRenderer, FullscreenRenderer))
     render = render or PlainRenderer()
     custom_prompt = prompt_fn is not None  # 测试注入标记（决定是否起观测轮询线程）
+
+    # 终端=网站桌面客户端（用户拍板 2026-11-15）：启动即接续云端窗口会话
+    # （claude=网站 CC 窗口 / chat=小元主对话）——与网站完全同步。测试注入
+    # prompt_fn（custom_prompt）跳过，防真实网络；云端不可达静默回退本地历史
+    cloud_resume_mode = None
+    cloud_resume_sid = ""
+    cloud_resume_messages: list = []
+    if not custom_prompt and mode in ("chat", "claude"):
+        _client = _make_cloud_client()
+        if _client is not None:
+            try:
+                _loop = asyncio.get_running_loop()
+                if mode == "claude":
+                    _sessions = await _loop.run_in_executor(
+                        None, _client.list_sessions, "claude")
+                    if _sessions:
+                        cloud_resume_sid = str(_sessions[0].get("session_id", ""))
+                    else:
+                        cloud_resume_sid = await _loop.run_in_executor(
+                            None, _client.create_session, "claude")
+                else:
+                    cloud_resume_sid = await _loop.run_in_executor(
+                        None, _client.main_session_id)
+                cloud_resume_messages = await _loop.run_in_executor(
+                    None, _client.load_messages, cloud_resume_sid)
+                cloud_resume_mode = mode
+            except Exception:
+                cloud_resume_mode = None  # 云端不可达：静默回退本地历史显示
     # #13（2026-11-12）：VT 自愈先于 ptk 初始化——自建控制台补开 VT 后
     # prompt_toolkit 可能直接就绪；失败时再按 ANSI 能力降级渲染层
     ansi_ok = _try_enable_vt()
@@ -1771,11 +1856,15 @@ async def run_repl(session: dict, store: TerminalSessionStore,
 
     if isinstance(render, FullscreenRenderer):
         render.set_mode(mode)
-        render.set_session(session.get("id", ""))
-        # 续接会话：本机历史立即上屏（用户实测「不能续接会话」——此前只
-        # 数据层续接（历史照发模型），界面空白；与 v4 同口径）
-        render.load_history(session.get("messages") or [],
-                            "claude" if mode == "claude" else "orchestrator")
+        if cloud_resume_mode:
+            # 终端=网站桌面客户端：启动即接续云端窗口（与网站同步）
+            render.set_session(cloud_resume_sid)
+            render.load_history(cloud_resume_messages,
+                                "claude" if mode == "claude" else "orchestrator")
+        else:
+            render.set_session(session.get("id", ""))
+            render.load_history(session.get("messages") or [],
+                                "claude" if mode == "claude" else "orchestrator")
         if fallback_notice:
             # 提示放在 load_history 之后（load_history 会整体替换块列表）
             render.info("Textual 渲染层不可用，已回退经典模式")
@@ -1783,12 +1872,12 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     else:
         render.info(f"小元AI 终端对话 — 模式: {mode} | 会话: {session.get('id', '')} | /help 查看命令")
 
-    # v3.1 云端通道状态（/chat 进入后生效；/claude 保持本地草稿互不干扰）。
-    # v3.2 #38：client 提前构造——观测右栏 /claude 模式也可用（CC 活动流），
-    # 构造零网络（令牌懒取），无身份 → None（右栏不渲染，/chat 时提示绑定）
+    # v3.1 云端通道（终端=网站桌面客户端）；v3.2 #38：client 提前构造——
+    # 观测右栏 /claude 模式也可用（CC 活动流），构造零网络（令牌懒取），
+    # 无身份 → None（右栏不渲染，/chat 时提示绑定）
     cloud_client = _make_cloud_client()
-    cloud_sid = ""
-    cloud_messages: list = []
+    cloud_sid = cloud_resume_sid
+    cloud_messages: list = cloud_resume_messages
     if isinstance(render, FullscreenRenderer):
         _wire_observe(render, cloud_client, custom_prompt)
         render.redraw()  # 启动即画状态栏+右栏（v3.0 遗留：此前要等首次按键才重绘）

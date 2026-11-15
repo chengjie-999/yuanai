@@ -203,13 +203,14 @@ class HistoryModal(ModalScreen):
 
 
 _HELP_TEXT = """[bold blue]命令[/bold blue]
-  /claude   本机 Claude Code（默认，续接上次会话）
-  /chat     云端对话（与网站同会话，多端同步）
-  /sessions 网站会话列表 / 切换（/sessions <序号>）
+  /claude   CC 窗口（与网站 CC 窗口同一会话，本机执行）
+  /chat     小元窗口（网站主对话，多端同步）
+  /local    本机直连（Claude SDK 草稿，不与网站同步）
+  /sessions 当前窗口会话列表 / 切换（/sessions <序号>）
   /plan     计划队列（/plan <序号> 看步骤）
   /web      打开网站对话    /status 本机状态
   /panel    打开设置面板    /pet on|off 桌宠
-  /history  本机历史会话    /clear 清空显示
+  /history  本机直连会话    /clear 清空显示
   /quit     退出
 
 [bold blue]按键[/bold blue]
@@ -218,9 +219,10 @@ _HELP_TEXT = """[bold blue]命令[/bold blue]
   Ctrl+R 搜索历史 · F2 网站对话 · Ctrl+C/Ctrl+Q 停止/退出
 
 [bold blue]说明[/bold blue]
-  终端=网站对话第三端：/chat 发的消息网站立即可见。
+  终端=网站桌面客户端：/chat 与 /claude 的消息网站立即可见，
+  网站发的消息终端同样同步。
   审批弹窗 Y 执行 / N 拒绝（回车=拒绝，120 秒超时默认拒绝）。
-  本地 Agent 状态见状态栏色点与 /status；执行观测见右栏。"""
+  执行过程见对话中的工具行；本机活动见右栏与 /status。"""
 
 
 class HelpModal(ModalScreen):
@@ -435,10 +437,10 @@ class _NoFocusButton(Button):
 
 
 class ApprovalModal(ModalScreen):
-    """审批卡（v4 形态：v3 的 ptk Y/N prompt → App 内 modal）。120s 超时默认
-    deny 由调用方（approve_async/approve_blocking 的 wait_for/result timeout）
-    执行，模态只负责收一次决议；resolver = asyncio/concurrent Future 同形
-    set_result(bool)。默认焦点=「拒绝 (N)」（v3 [y/N] fail-closed）。"""
+    """审批卡（用户实测「审批搞那么大」→ 2026-11-15 紧凑化，网页 ApprovalCard
+    同款：maxWidth 卡片 + 小按钮）。120s 超时默认 deny 由调用方执行，模态只
+    收一次决议；resolver = asyncio/concurrent Future 同形 set_result(bool)。
+    回车=拒绝（v3 [y/N] fail-closed，显式绑定不依赖焦点落点）。"""
 
     BINDINGS = [
         Binding("y", "approve", "执行", priority=True),
@@ -453,28 +455,20 @@ class ApprovalModal(ModalScreen):
     def __init__(self, tool_name: str, command: str, resolver):
         super().__init__()
         self._tool = tool_name
-        self._command = str(command)[:200]
+        self._command = str(command)[:80]
         self._resolver = resolver
         self._done = False
 
     def compose(self):
         with Vertical(id="approval-box"):
             yield Static(Text.assemble(("⚠ 审批 ", "bold yellow"),
-                                       (f"[{self._tool}]", "bold")),
-                         classes="atitle")
-            yield Static(Text(f"`{self._command}`"), classes="acmd")
-            yield Static("120 秒超时默认拒绝", classes="ahint")
+                                       (f"[{self._tool}]", "bold"),
+                                       ("  ", ""),
+                                       (f"`{self._command}`", "dim")),
+                         classes="acmd")
             with Horizontal(id="abuttons"):
                 yield _NoFocusButton("执行 (Y)", variant="success", id="approve-yes")
                 yield Button("拒绝 (N)", variant="error", id="approve-no")
-
-    def on_mount(self) -> None:
-        # 与 _NoFocusButton 双保险：屏幕激活后显式聚焦「拒绝」（自动聚焦时机
-        # 不定，run_test 下偶发 focused=None——测试抓出）
-        self.call_after_refresh(self._focus_deny)
-
-    def _focus_deny(self) -> None:
-        self.set_focus(self.query_one("#approve-no", Button))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self._decide(event.button.id == "approve-yes")
@@ -620,21 +614,27 @@ class YuanTerminalApp(App):
     BlockWidget.answer-block .abubble {{
         background: $panel; border-left: heavy $primary; padding: 0 1;
     }}
+    /* 思考/工具行并入回答气泡视觉（同面板底 + 同左边条——与回答连续成
+       一体，网页端「气泡内折叠区/工具卡」同款；用户实测「这终端好乱」） */
+    BlockWidget.thinking-block, BlockWidget.tool-block {{
+        background: $panel; border-left: heavy $primary; padding: 0 1;
+    }}
     .bcontent {{ color: $text-muted; }}
     #stream-answer-label {{ height: 1; }}
     #stream-answer {{
         border-left: heavy $primary; background: $panel;
     }}
     #approval-box {{
-        width: 72%;
+        width: 64%;
+        max-width: 80;
         height: auto;
-        border: thick $warning;
+        border: round $warning;
         background: $surface;
-        padding: 0 2;
+        padding: 0 1;
     }}
-    #abuttons {{ height: auto; align-horizontal: center; }}
-    .atitle {{ margin-top: 1; }}
-    .acmd {{ margin: 0 1; }}
+    #abuttons {{ height: auto; align-horizontal: left; margin-left: 1; }}
+    .acmd {{ margin-top: 1; }}
+    #abuttons Button {{ min-width: 12; padding: 0 1; }}
     .ahint {{ color: $text-muted; margin-bottom: 1; }}
     #history-box {{
         width: 70%;
@@ -671,6 +671,8 @@ class YuanTerminalApp(App):
         self.store = store
         self.renderer = renderer
         self.ctx = ReplContext(session, store, renderer, [session.get("mode", "claude")])
+        self.resume = None  # run_textual_repl 注入：{"mode","sid","messages"}
+        # 云端窗口启动接续（终端=网站桌面客户端）；None = 回退本机历史
         self._busy_task = None  # 回合任务（独立于消息泵；busy 属性由它派生）
         self._header_widget = None
         self._hintbar = None
@@ -746,12 +748,23 @@ class YuanTerminalApp(App):
         self.set_focus(self._input)
         self.renderer.attach(self)
         self.renderer.set_mode(self.ctx.mode_ref[0])
-        self.renderer.set_session(self.session.get("id", ""))
-        # 续接会话：本机历史立即上屏（用户实测「不能续接会话」——此前只
-        # 数据层续接（历史照发模型），界面空白；cc 续接历史标 Claude 标签）
-        self.renderer.load_history(
-            self.session.get("messages") or [],
-            "claude" if self.session.get("mode") == "claude" else "orchestrator")
+        if self.resume is not None:
+            # 启动即接续云端窗口（终端=网站桌面客户端，用户拍板 2026-11-15）：
+            # claude=网站 CC 窗口 / chat=小元主对话——与网站完全同步
+            self.ctx.mode_ref[0] = self.resume["mode"]
+            self.ctx.cloud_sid = self.resume["sid"]
+            self.ctx.cloud_messages = list(self.resume["messages"])
+            self.renderer.set_mode(self.resume["mode"])
+            self.renderer.set_session(self.resume["sid"])
+            self.renderer.load_history(
+                self.resume["messages"],
+                "claude" if self.resume["mode"] == "claude" else "orchestrator")
+        else:
+            # 云端不可达/无身份：回退本机历史显示（/local 草稿会话）
+            self.renderer.set_session(self.session.get("id", ""))
+            self.renderer.load_history(
+                self.session.get("messages") or [],
+                "claude" if self.session.get("mode") == "claude" else "orchestrator")
         self.renderer_sync()
         self.sync_hint()
 
@@ -1085,7 +1098,12 @@ class YuanTerminalApp(App):
                 ("已选中: " + b.get("title", ""), "bold"),
                 (f" — Enter 展开/折叠 · Esc 取消 | {_HINT_BASE}", ""))
         else:
-            text = Text(_HINT_BASE, style="dim")
+            # 用户实测「这终端好乱」：空闲态默认不显示按键提示（CC 同款零
+            # 噪音）——按键速查进 ? 帮助浮层；有上下文时才显示
+            self._hintbar.update("")
+            self._hintbar.add_class("hidden")
+            return
+        self._hintbar.remove_class("hidden")
         self._hintbar.update(text)
 
     def flash_hint(self, text: str, seconds: float = 3.0) -> None:
@@ -1386,16 +1404,34 @@ class TextualRenderer:
 
 async def run_textual_repl(session: dict, store, render: TextualRenderer) -> None:
     """v4 Textual 交互循环（terminal.run_repl 委托；运行失败上抛由调用方
-    回退 v3 ptk 路径——降级链保留）。观测轮询与 v3 同源（15s /chat/cc-activity，
-    /claude 模式也可用）；客户端注入 ctx（审查修复：此前只接线轮询，/status
-    误报未连接、云端命令各自再建 client）。App 自带 alt-screen（driver 写
-    ?1049h），scrollback 天然干净。"""
-    from agent.terminal import _make_cloud_client
+    回退 v3 ptk 路径——降级链保留）。终端=网站桌面客户端（用户拍板
+    2026-11-15）：启动即接续云端窗口（claude=网站 CC 窗口 / chat=小元主
+    对话，与网站完全同步）；云端不可达静默回退本地历史。观测轮询与 v3 同源
+    （15s /chat/cc-activity）；客户端注入 ctx。App 自带 alt-screen。"""
+    from agent.terminal import _make_cloud_client, _normalize_mode
+    mode = _normalize_mode(session.get("mode", "claude"))
     app = YuanTerminalApp(session, store, render)
     client = _make_cloud_client()
     if client is not None:
         app.ctx.cloud_client = client  # 与 v3 run_repl 同口径（/status 可见已连接）
         _wire_observe(render, client)
+        if mode in ("chat", "claude"):
+            try:
+                loop = asyncio.get_running_loop()
+                if mode == "claude":
+                    sessions = await loop.run_in_executor(
+                        None, client.list_sessions, "claude")
+                    sid = (str(sessions[0].get("session_id", "")) if sessions
+                           else await loop.run_in_executor(
+                               None, client.create_session, "claude"))
+                else:
+                    sid = await loop.run_in_executor(
+                        None, client.main_session_id)
+                msgs = await loop.run_in_executor(
+                    None, client.load_messages, sid)
+                app.resume = {"mode": mode, "sid": sid, "messages": msgs}
+            except Exception:
+                app.resume = None  # 云端不可达：on_mount 回退本地历史
     try:
         await app.run_async()
     finally:

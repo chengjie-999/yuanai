@@ -403,8 +403,8 @@ def test_app_clear_command_clears_blocks(tmp_path, monkeypatch):
         app.query_one("#input").text = "/clear"
         await pilot.press("enter")
         await pilot.pause()
-        assert len(app.query("BlockWidget")) == 1  # 「当前会话已清空」info
-        assert app.query("BlockWidget").first().block_content.startswith("当前会话已清空")
+        assert len(app.query("BlockWidget")) == 1  # 清空提示 info（claude=云端窗口口径）
+        assert app.query("BlockWidget").first().block_content.startswith("云端窗口以网站为准")
         assert render._blocks[-1]["kind"] == "info"
     _run_app_test(body, tmp_path, monkeypatch)
 
@@ -676,7 +676,7 @@ def test_app_stream_answer_shows_label_and_bubble(tmp_path, monkeypatch):
 
 def test_run_turn_appends_user_message(tmp_path, monkeypatch):
     """用户实测「看不到我发的消息」根因：run_turn 只落库/发云端，渲染器无
-    用户块——add_user_message 补齐（网页同款即时反馈）"""
+    用户块——add_user_message 补齐（网页同款即时反馈）。local 模式路径"""
     import agent.terminal as terminal
     captured = []
 
@@ -686,7 +686,7 @@ def test_run_turn_appends_user_message(tmp_path, monkeypatch):
 
     store = TerminalSessionStore(path=str(tmp_path / "s.json"))
     s = store.new_session("claude")
-    ctx = terminal.ReplContext(s, store, FakeRender(), ["claude"])
+    ctx = terminal.ReplContext(s, store, FakeRender(), ["local"])
 
     async def fake_query(mode, messages, on_approval=None, render=None):
         return "回答"
@@ -785,14 +785,29 @@ def test_app_mount_resumes_local_session_history(tmp_path, monkeypatch):
     _run(_wrap())
 
 
-def test_claude_command_loads_local_history(tmp_path):
-    """「cc 是续接会话的终端指令」（用户拍板）：/claude 切回时加载本机会话
-    历史上屏（此前只切模式，界面仍显示云端历史/空白）"""
+def test_claude_command_resumes_cloud_cc_window(tmp_path):
+    """「cc 是续接会话的终端指令」（用户拍板 2026-11-15 修正）：/claude 接续
+    网站的 CC 窗口会话（agent_kind=claude）——与网页 CC 窗口完全同步"""
     import agent.terminal as terminal
     store = TerminalSessionStore(path=str(tmp_path / "s.json"))
     s = store.new_session("claude")
-    s["messages"] = [{"role": "user", "content": "旧问题"},
-                     {"role": "assistant", "content": "旧回答"}]
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        def list_sessions(self, agent_kind):
+            self.calls.append(("list", agent_kind))
+            return [{"session_id": "ccsess123"}]
+
+        def create_session(self, agent_kind):
+            self.calls.append(("create", agent_kind))
+            return "ccsess123"
+
+        def load_messages(self, sid):
+            self.calls.append(("load", sid))
+            return [{"role": "user", "content": "旧问题"},
+                    {"role": "assistant", "content": "旧回答", "sender": "claude"}]
 
     class FakeRender:
         blocks_mode = True
@@ -815,12 +830,70 @@ def test_claude_command_loads_local_history(tmp_path):
         def info(self, t):
             self.calls.append(("info", t))
 
+        def error(self, t):
+            self.calls.append(("error", t))
+
     r = FakeRender()
-    ctx = terminal.ReplContext(s, store, r, ["cloud"])
+    ctx = terminal.ReplContext(s, store, r, ["chat"])
+    ctx.cloud_client = FakeClient()
     asyncio.run(terminal.dispatch_command("/claude", ctx))
     assert ctx.mode_ref[0] == "claude"
+    assert ctx.cloud_sid == "ccsess123"
     assert any(c[0] == "history" and c[1] == 2 and c[2] == "claude"
                for c in r.calls)
+
+
+def test_claude_command_creates_cc_window_when_empty(tmp_path):
+    """无 CC 会话时 /claude 自动新建 CC 窗口会话（与网页窗口同口径）"""
+    import agent.terminal as terminal
+    store = TerminalSessionStore(path=str(tmp_path / "s.json"))
+    s = store.new_session("claude")
+
+    class FakeClient:
+        def __init__(self):
+            self.created = []
+
+        def list_sessions(self, agent_kind):
+            return []
+
+        def create_session(self, agent_kind):
+            self.created.append(agent_kind)
+            return "newsess"
+
+        def load_messages(self, sid):
+            return []
+
+    class FakeRender:
+        blocks_mode = True
+
+        def __init__(self):
+            self.calls = []
+
+        def set_mode(self, m):
+            self.calls.append(("mode", m))
+
+        def set_session(self, sid):
+            self.calls.append(("session", sid))
+
+        def load_history(self, msgs, default_sender="orchestrator"):
+            self.calls.append(("history", len(msgs), default_sender))
+
+        def redraw(self):
+            pass
+
+        def info(self, t):
+            pass
+
+        def error(self, t):
+            pass
+
+    r = FakeRender()
+    ctx = terminal.ReplContext(s, store, r, ["chat"])
+    client = FakeClient()
+    ctx.cloud_client = client
+    asyncio.run(terminal.dispatch_command("/claude", ctx))
+    assert client.created == ["claude"]
+    assert ctx.cloud_sid == "newsess"
 
 
 def test_run_repl_v3_resumes_local_history(monkeypatch, tmp_path):

@@ -86,15 +86,24 @@ class CloudChatClient:
             raise RuntimeError(f"获取主对话失败（HTTP {resp.status_code}）：{_detail(resp)}")
         return str(resp.json().get("session_id", ""))
 
-    def list_sessions(self) -> list:
-        # 2026-11-13 多窗口 v2：终端只列对话窗口会话（agent_kind=chat）——
-        # CC/自动化 执行窗口会话是网页专属执行面，终端混列会以统筹身份污染执行日志
+    def list_sessions(self, agent_kind: str = "chat") -> list:
+        """会话列表（2026-11-13 多窗口 v2 默认对话窗口；2026-11-15 终端=网站
+        桌面客户端：kind=claude 列 CC 窗口会话——「cc 是续接会话的终端指令」）"""
         resp = self._httpx.get(f"{self._base}/api/v1/chat/sessions",
-                               params={"own": 1, "agent_kind": "chat"}, headers=self._auth(),
+                               params={"own": 1, "agent_kind": agent_kind}, headers=self._auth(),
                                timeout=self._timeout)
         if resp.status_code != 200:
             raise RuntimeError(f"获取会话列表失败（HTTP {resp.status_code}）：{_detail(resp)}")
         return resp.json()
+
+    def create_session(self, agent_kind: str) -> str:
+        """新建窗口会话（迁移 0031 agent_kind：chat/claude/automation）"""
+        resp = self._httpx.post(f"{self._base}/api/v1/chat/session/new",
+                                json={"agent_kind": agent_kind},
+                                headers=self._auth(), timeout=self._timeout)
+        if resp.status_code != 200:
+            raise RuntimeError(f"新建会话失败（HTTP {resp.status_code}）：{_detail(resp)}")
+        return str(resp.json().get("session_id", ""))
 
     def load_messages(self, session_id: str) -> list:
         resp = self._httpx.post(f"{self._base}/api/v1/chat/messages",
@@ -115,11 +124,15 @@ class CloudChatClient:
     # ———— SSE 流（async 生成器：逐事件吐出，调用方按需 await 审批等交互） ————
 
     async def stream(self, session_id: str, prompt: str, history: list,
-                     backend: str = "auto"):
-        """POST /chat/stream → 逐事件 yield dict。401 时清令牌重试一次（令牌过期
-        场景）；非 200 抛 RuntimeError（人话）。事件类型与网页同口径：token /
+                     backend: str = "auto", kind: str = "chat"):
+        """SSE 流 → 逐事件 yield dict。kind=chat → POST /chat/stream（小元窗口）；
+        kind=claude → POST /chat/claude-stream（CC 窗口，云端桥接本机 CC——
+        与网站 CC 窗口同链路，终端=网站桌面客户端）。401 时清令牌重试一次；
+        非 200 抛 RuntimeError（人话）。事件类型与网页同口径：token /
         tool_start / tool_end / done / error / agent / mode_event / backend_event /
         usage_event / compliance_warning / approval / suggestions。"""
+        endpoint = ("/api/v1/chat/claude-stream" if kind == "claude"
+                    else "/api/v1/chat/stream")
         body = {"model": DEFAULT_MODEL, "prompt": prompt, "history": history,
                 "session_id": session_id, "chat_backend": backend,
                 "reasoning_effort": "low"}
@@ -129,7 +142,7 @@ class CloudChatClient:
             for attempt in (1, 2):
                 try:
                     async with client.stream(
-                            "POST", f"{self._base}/api/v1/chat/stream",
+                            "POST", f"{self._base}{endpoint}",
                             json=body, headers=headers) as resp:
                         if resp.status_code == 401 and attempt == 1:
                             self.invalidate_token()
@@ -154,10 +167,13 @@ class CloudChatClient:
                 except self._httpx.HTTPError as e:
                     raise RuntimeError(f"云端连接中断：{str(e)[:120]}")
 
-    def send_decision(self, decision_id: str, approve: bool) -> None:
-        """V1-2 审批决议：POST /stream body.decision 早分支配对（不烧配额不审核）"""
+    def send_decision(self, decision_id: str, approve: bool, kind: str = "chat") -> None:
+        """V1-2 审批决议：POST body.decision 早分支配对（不烧配额不审核；
+        kind=claude 走 claude-stream 端点——CC 窗口同款决议通道）"""
+        endpoint = ("/api/v1/chat/claude-stream" if kind == "claude"
+                    else "/api/v1/chat/stream")
         resp = self._httpx.post(
-            f"{self._base}/api/v1/chat/stream",
+            f"{self._base}{endpoint}",
             json={"decision": {"decision_id": decision_id, "approve": approve}},
             headers=self._auth(), timeout=self._timeout)
         if resp.status_code != 200:

@@ -383,6 +383,10 @@ class ApprovalModal(ModalScreen):
     BINDINGS = [
         Binding("y", "approve", "执行", priority=True),
         Binding("n", "deny", "拒绝", priority=True),
+        # v3 [y/N] fail-closed：回车=拒绝——显式绑定，不依赖焦点落点
+        #（焦点时序有竞态：auto-focus 与 call_after_refresh 谁先到不确定，
+        # 测试偶发抓出）
+        Binding("enter", "deny", "拒绝", priority=True),
         Binding("escape", "deny", "拒绝", priority=True),
     ]
 
@@ -673,6 +677,11 @@ class YuanTerminalApp(App):
         self.renderer.attach(self)
         self.renderer.set_mode(self.ctx.mode_ref[0])
         self.renderer.set_session(self.session.get("id", ""))
+        # 续接会话：本机历史立即上屏（用户实测「不能续接会话」——此前只
+        # 数据层续接（历史照发模型），界面空白；cc 续接历史标 Claude 标签）
+        self.renderer.load_history(
+            self.session.get("messages") or [],
+            "claude" if self.session.get("mode") == "claude" else "orchestrator")
         self.renderer_sync()
         self.sync_hint()
 
@@ -1121,10 +1130,11 @@ class TextualRenderer:
         self._sender = sender or "orchestrator"
         self._notify()
 
-    def load_history(self, messages: list) -> None:
-        """云端会话历史 → 块（v3.1 /sessions 切换与 /chat 进入时用）；
-        映射逻辑与 FullscreenRenderer 共用 history_to_blocks"""
-        self._blocks = history_to_blocks(messages)
+    def load_history(self, messages: list, default_sender: str = "orchestrator") -> None:
+        """会话历史 → 块（/sessions 切换、/chat 进入与本机续接时用）；
+        映射逻辑与 FullscreenRenderer 共用 history_to_blocks。
+        default_sender：本机 /claude 会话续接传 claude（历史标 Claude 标签）"""
+        self._blocks = history_to_blocks(messages, default_sender)
         self.sel = None
         self._notify()
 

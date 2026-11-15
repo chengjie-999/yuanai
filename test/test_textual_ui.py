@@ -437,16 +437,15 @@ def test_app_tab_completion_cursor_stays_at_end(tmp_path, monkeypatch):
     _run_app_test(body, tmp_path, monkeypatch)
 
 
-def test_app_approval_default_focus_is_deny(tmp_path, monkeypatch):
-    """审查修复：modal 曾自动聚焦「执行」按钮——回车即批准，与 v3 [y/N]
-    fail-closed 语义相反"""
+def test_app_approval_enter_is_deny(tmp_path, monkeypatch):
+    """v3 [y/N] fail-closed：回车=拒绝——显式绑定不依赖焦点落点（焦点时序
+    有竞态：auto-focus 与 call_after_refresh 谁先到不确定，偶发抓出）"""
     async def body(pilot, app, render, s, store):
         async def ask():
             return await render.approve_async("bash", "git push")
         task = asyncio.create_task(ask())
         await pilot.pause()
         assert isinstance(app.screen, ApprovalModal)
-        assert app.focused is app.screen.query_one("#approve-no")
         await pilot.press("enter")
         assert await task == "deny"
     _run_app_test(body, tmp_path, monkeypatch)
@@ -702,6 +701,105 @@ def test_app_busy_enter_flashes_feedback(tmp_path, monkeypatch):
         assert app.query_one("#input").text == "测试"  # 输入保留
         app._busy_task = None
     _run_app_test(body, tmp_path, monkeypatch)
+
+
+# ==================== 会话续接回归（2026-11-15 用户实测第三批） ====================
+
+
+def test_app_mount_resumes_local_session_history(tmp_path, monkeypatch):
+    """用户实测「不能续接会话」：启动即上屏本机会话历史（此前只数据层续接
+    ——历史照发模型，界面空白）；cc 会话续接历史标 Claude 标签"""
+    monkeypatch.setattr("agent.textual_ui.HISTORY_FILE",
+                        str(tmp_path / "history.txt"))
+    monkeypatch.setattr("agent.terminal.HISTORY_FILE",
+                        str(tmp_path / "history.txt"))
+
+    async def _wrap():
+        store = TerminalSessionStore(path=str(tmp_path / "s.json"))
+        s = store.new_session("claude")
+        s["messages"] = [
+            {"role": "user", "content": "上次的问题"},
+            {"role": "assistant", "content": "上次的回答"},
+        ]
+        render = TextualRenderer(cwd="C:/test", session_id=s["id"])
+        app = YuanTerminalApp(s, store, render)
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            blocks = list(app.query("BlockWidget"))
+            assert [b.block_kind for b in blocks] == ["user", "answer"]
+            assert blocks[1].block_sender == "claude"
+            assert "上次的问题" in blocks[0].block_content
+    _run(_wrap())
+
+
+def test_claude_command_loads_local_history(tmp_path):
+    """「cc 是续接会话的终端指令」（用户拍板）：/claude 切回时加载本机会话
+    历史上屏（此前只切模式，界面仍显示云端历史/空白）"""
+    import agent.terminal as terminal
+    store = TerminalSessionStore(path=str(tmp_path / "s.json"))
+    s = store.new_session("claude")
+    s["messages"] = [{"role": "user", "content": "旧问题"},
+                     {"role": "assistant", "content": "旧回答"}]
+
+    class FakeRender:
+        blocks_mode = True
+
+        def __init__(self):
+            self.calls = []
+
+        def set_mode(self, m):
+            self.calls.append(("mode", m))
+
+        def set_session(self, sid):
+            self.calls.append(("session", sid))
+
+        def load_history(self, msgs, default_sender="orchestrator"):
+            self.calls.append(("history", len(msgs), default_sender))
+
+        def redraw(self):
+            self.calls.append(("redraw",))
+
+        def info(self, t):
+            self.calls.append(("info", t))
+
+    r = FakeRender()
+    ctx = terminal.ReplContext(s, store, r, ["cloud"])
+    asyncio.run(terminal.dispatch_command("/claude", ctx))
+    assert ctx.mode_ref[0] == "claude"
+    assert any(c[0] == "history" and c[1] == 2 and c[2] == "claude"
+               for c in r.calls)
+
+
+def test_run_repl_v3_resumes_local_history(monkeypatch, tmp_path):
+    """v3 全屏路径同口径：启动即上屏本机会话历史"""
+    import agent.terminal as terminal
+    created = []
+
+    class RecFSR(terminal.FullscreenRenderer):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            created.append(self)
+
+        def redraw(self):
+            pass
+
+        def enter_alt_screen(self):
+            pass
+
+        def exit_alt_screen(self):
+            pass
+
+    monkeypatch.setattr(terminal, "FullscreenRenderer", RecFSR)
+    store = TerminalSessionStore(path=str(tmp_path / "s.json"))
+    s = store.new_session("claude")
+    s["messages"] = [{"role": "user", "content": "旧问题"},
+                     {"role": "assistant", "content": "旧回答"}]
+
+    async def prompt():
+        return None
+
+    asyncio.run(terminal.run_repl(s, store, prompt_fn=prompt, render=RecFSR()))
+    assert [b["kind"] for b in created[0]._blocks] == ["user", "answer"]
 
 
 def test_repl_context_shares_mode_ref_list(tmp_path):

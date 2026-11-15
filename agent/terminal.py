@@ -92,10 +92,12 @@ def _truncate_tool_output(output: str) -> str:
     return output[:MAX_TOOL_OUTPUT] + "\n...(输出过长已截断)"
 
 
-def history_to_blocks(messages: list) -> list:
-    """云端会话历史 → 块（v3 FullscreenRenderer 与 v4 TextualRenderer 共用）：
+def history_to_blocks(messages: list, default_sender: str = "orchestrator") -> list:
+    """会话历史 → 块（v3 FullscreenRenderer 与 v4 TextualRenderer 共用）：
     user → 「你 ▸」块、assistant → answer 块；其余（META/system/tool）跳过。
-    带 sender（v4 气泡身份标签用；v3 忽略该键）"""
+    带 sender（v4 气泡身份标签用；v3 忽略该键）——本机 /claude 会话续接时
+    默认 sender=claude（续接历史标 Claude 标签，用户拍板「cc 是续接会话的
+    终端指令」）"""
     blocks = []
     for m in messages or []:
         if not isinstance(m, dict):
@@ -106,10 +108,10 @@ def history_to_blocks(messages: list) -> list:
             continue
         if role == "user":
             blocks.append({"kind": "user", "title": "", "content": content,
-                           "folded": False, "sender": m.get("sender") or "orchestrator"})
+                           "folded": False, "sender": m.get("sender") or default_sender})
         elif role == "assistant":
             blocks.append({"kind": "answer", "title": "", "content": content,
-                           "folded": False, "sender": m.get("sender") or "orchestrator"})
+                           "folded": False, "sender": m.get("sender") or default_sender})
     return blocks
 
 
@@ -530,10 +532,10 @@ class FullscreenRenderer:
         cloud=云端执行；状态栏可见（云边协同透明化）"""
         self._backend = "local" if backend == "local" else "cloud" if backend == "cloud" else ""
 
-    def load_history(self, messages: list) -> None:
-        """云端会话历史 → 块（v3.1 /sessions 切换与 /chat 进入时用）；
+    def load_history(self, messages: list, default_sender: str = "orchestrator") -> None:
+        """会话历史 → 块（/sessions 切换、/chat 进入与本机续接时用）；
         映射逻辑与 TextualRenderer 共用 history_to_blocks"""
-        self._blocks = history_to_blocks(messages)
+        self._blocks = history_to_blocks(messages, default_sender)
         self.scroll_blocks = 0
         self.sel = None
 
@@ -1465,10 +1467,14 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
     elif cmd == "/help":
         _print_help(render)
     elif cmd == "/claude":
+        # cc = 续接会话的终端指令（用户拍板）：切回本机模式即加载本机会话
+        # 历史上屏（此前只切模式，界面仍显示云端历史/空白）
         ctx.mode_ref[0] = "claude"
         if blocks:
             render.set_mode("claude")
             render.set_session(ctx.session.get("id", ""))
+            render.load_history(ctx.session.get("messages") or [], "claude")
+            render.redraw()
         render.info("已切换本机 Claude Code 模式（本地专业模式）")
     elif cmd == "/chat":
         # v3.1：云端对话通道（终端=第三端，与网站同一会话体系；
@@ -1715,6 +1721,7 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     运行期失败回退本函数 v3 ptk 路径（降级链保留）。"""
     # v4 Textual 渲染层（2026-11-15 拍板）：widget diff 渲染 + 原生鼠标滚轮——
     # 与 v3 ptk 共用同一 dispatch_command/run_turn（单一行为事实源）
+    fallback_notice = False
     if _is_textual(render):
         try:
             from agent.textual_ui import run_textual_repl
@@ -1724,7 +1731,7 @@ async def run_repl(session: dict, store: TerminalSessionStore,
             # Textual 运行期失败（无 VT 老控制台/驱动异常）→ v3 全屏 ptk 回退
             render = FullscreenRenderer(
                 cwd=getattr(render, "_cwd", ""), session_id=session.get("id", ""))
-            render.info("Textual 渲染层不可用，已回退经典模式")
+            fallback_notice = True
 
     mode = session.get("mode", "claude")
     mode_ref = [mode]
@@ -1762,6 +1769,13 @@ async def run_repl(session: dict, store: TerminalSessionStore,
     if isinstance(render, FullscreenRenderer):
         render.set_mode(mode)
         render.set_session(session.get("id", ""))
+        # 续接会话：本机历史立即上屏（用户实测「不能续接会话」——此前只
+        # 数据层续接（历史照发模型），界面空白；与 v4 同口径）
+        render.load_history(session.get("messages") or [],
+                            "claude" if mode == "claude" else "orchestrator")
+        if fallback_notice:
+            # 提示放在 load_history 之后（load_history 会整体替换块列表）
+            render.info("Textual 渲染层不可用，已回退经典模式")
         render.enter_alt_screen()  # 固定顶栏/输入层（scrollback 不残留重复帧）
     else:
         render.info(f"小元AI 终端对话 — 模式: {mode} | 会话: {session.get('id', '')} | /help 查看命令")

@@ -247,6 +247,7 @@ data/                   数据目录
 
 - **注册开放**：register_open 默认 True；注册端点强化（协议后端强制+agreed_at、admin 词/违规词拦截、每 IP 3 账号/日、IntegrityError 兜底）；前端登录页注册模式+自动登录
 - **邮箱验证码登录 R1'（2026-11-05，零资质先行）**：`api/v1/auth/email_code.py` 注册登录合一（`POST /auth/email-code` 发码 + `/auth/email-login` 登录；公开端点入 middleware PUBLIC_PATHS）——输邮箱发码（SMTP 未配置 503）→ 输码 → 存在=登录 / 不存在=自动注册（协议勾选强制留痕 agreed_at、用户名 `u_{md5前10}` 确定性分配、昵称「小元用户_xxxx」、**password_hash 空串=无密码**，2026-11-06 起）→ 自动登录（5 台设备限制同口径）；防刷护栏同日上线（60s 冷却 / 每日 10 条每邮箱 / 错 5 次作废 / 一次性消费防重放 / Redis TTL 5 分钟）；登录页双 tab（密码/验证码）；users.email 列（迁移 0027，唯一可空）；隐私政策第一清单已加邮箱。**SMTP 后台热配置（用户拍板「不用手动配服务器」，2026-11-06）**：选择链 env 优先 → 后台「设置 → 邮箱验证码」卡（`GET/PUT /admin/smtp-config` + `/admin/smtp-config/test` 测试发送 60s 冷却）写 models.json `_smtp` 热生效零重启——models_file 透明加密扩展至 `_smtp.password`（与 _apikeys 同套 ENCRYPTION_PASSWORD，GET 永不回传密码只回脱敏态，未配加密时 UI 黄条明示明文风险）。**密码两态 + 头像（2026-11-06）**：邮箱注册用户个人页显示「设置密码」（old_password 空，change_password 两态：空 hash=首次设置忽略原密码 / 有 hash=必须校验），设置后可密码登录；`POST /auth/avatar` 头像上传（PIL 校验 + 256x256 压缩 + 2MB 上限，`data/user_avatars/{uid}.png`）→ 公开 `GET /api/v1/auth/user-avatar/{uid}`（迁移 0028 users.avatar）；右上角/个人页显示昵称+头像；**坑：新版 FastAPI 的 `fastapi.UploadFile` 与 `request.form()` 返回的 `starlette.datastructures.UploadFile` 不同类，isinstance 必失败——用 hasattr(file, "read") 鸭子判断**。短信通道资质到位后并轨（火山 SMS，验证码逻辑同构）。**原则（用户拍板 2026-11-06）：需服务器配置的项先做成本地代码（后台热配置），服务器命令越少越好**
+- **R2 默认头像 + T4 三步文案（2026-11-15 收尾）**：顶栏无头像用户显示默认首字圆（accent 底白字，与个人页同口径）；下载卡①步改三步傻瓜口径（「右下角出现小元AI图标即成功」，去托盘/Agent 黑话）；scripts/agent_usage_guide.txt 三步使用说明模板（打包时生成发布包说明）
 - **Agent 多版本管理**：上传不再覆盖——downloads/versions/ 多版本共存 + versions.json 清单（default_version）；后台版本卡（上传版本号+备注/设默认/删除）；version.json 兼容同步指向默认（客户端自动更新零改动）
 - **用户下载入口**：设置页「本地 Agent 下载」卡（版本列表+自服务安装码——生成即预绑定 user_id，注册即绑定）；小元身份卡含下载指引段
 - **yuan --update**：终端下载默认版本（sha256 fail-closed、明文远程拒绝）
@@ -455,6 +456,10 @@ python -m agent.claude_bridge --server-url wss://cjyuanai.cn --agent-id <用户i
 - **计划面板独立窗口化（2026-10-15，用户拍板：AI 不自动开关）**：气泡「打开面板」以命名弹窗打开 /chat/plan（`chat/planWindow.ts` 协议 + `chat/usePlanWindow.ts` 模块级单例——同名复用不堆叠、手机端同标签回退、弹窗拦截 navigate 兜底、1s 握手超时强制重载）；**开关完全由用户手动**（窗口内「关闭」按钮）；聊天页顶部「后台执行中」指示条（15s 轮询 queued/running 计划，显示标题与步骤进度，点击同样手动开面板）；弹窗模式 AppLayout 整条顶栏隐藏（完全独立形态）；Landing 入口卡已移除，路由保留作弹窗宿主。分析/自动化面板后续照此推广
 - **执行器安全**：skill 白名单 + 托盘开关 callable 实时读 toggles + ScriptRegistry 参数校验；结果三层截断（文本 20K/blocks 200KB/事件 5KB）
 - **验证**：`python -m agent.verify_plan [--online]`；pytest test_plan_*.py 五件套；P0 教训：`ScriptRegistry.run` 曾不接受 progress_cb 致委派路径 TypeError（061381a 修复 + test_plan_pure 回归断言锁死）
+
+## 知识星球大融合愿景（2026-11-15 立项探索，方案 docs/knowledge-planet-vision-2026-11.md）
+
+用户拍板（2026-11-15）：vault 与记忆、文件管理、知识库有相似处——方向=合并成「AI 与人类共同打造的知识星球」作为未来愿景；先根据成熟产品探索（三组并行调研完成：Notion/Coda 协作形态、Obsidian 生态本地优先与安全边界、AI 原生记忆产品沉淀与提案制）。**三条核心原则**：① 分层不合表（记忆=可变事实/笔记=人工长文/文件=原始素材/对话=来源，统一 id+backlink 串联）② AI 写回提案制（AI 永不直写人的正文——产出落候选区，人一键采纳/拒绝/回滚；用户原话等观察自动入档防审批疲劳；复用「只归档不删除」纪律）③ 文件为王+云边协同（md 唯一事实源，Milvus/文章化/记忆均为可重建派生层；本地 Agent 执行产物可回流——Notion/Obsidian 都没有）。借鉴落地映射 8 条（引用式问答/AI 字段自动填充/对话晋升知识/记忆可见可改/知识卫生/收件箱撤销/反链建议/只审推断）；路线 P0 记忆可见化 → P1 对话沉淀候选区 → P2 笔记 AI 字段 → P3 vault 回归（未排期）。vault 三件套代码现状保留不动。
 
 ## 桌宠联动（dsh-pet-indesktop，2026-10-22）
 

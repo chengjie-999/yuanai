@@ -543,6 +543,14 @@ class FullscreenRenderer:
         self.sel = None
         self.scroll_blocks = 0
 
+    def add_user_message(self, content: str) -> None:
+        """自己发的消息立即上屏（用户实测「看不到我发的消息」——网页同款
+        即时反馈；v4 气泡形态与 v3「你 ▸」块共用本入口）"""
+        self._blocks.append({"kind": "user", "title": "", "content": content,
+                             "folded": False, "sender": "orchestrator"})
+        self.scroll_blocks = 0
+        self.redraw()
+
     def _agent_dot(self):
         return _agent_dot_tuple(self)
 
@@ -1629,6 +1637,10 @@ async def run_turn(line: str, ctx: ReplContext, rich_mode: bool) -> None:
     ptk=_ptk_approve（主循环线程）、纯文本=input()。Ctrl+C 停止语义由调用方
     处理（ptk=KeyboardInterrupt / Textual=任务 CancelledError）。"""
     render = ctx.render
+    # 自己发的消息立即上屏（用户实测「看不到我发的消息」——此前只落库/发
+    # 云端，渲染器无用户块，历史可见是因 load_history 重建；网页同款即时反馈）
+    if hasattr(render, "add_user_message"):
+        render.add_user_message(line)
     if ctx.mode_ref[0] == "cloud":
         # 云端对话发送：消息落网站会话（/chat/save 同链路，多端互通）
         loop = asyncio.get_running_loop()

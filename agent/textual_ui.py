@@ -71,6 +71,10 @@ from agent.terminal import (  # terminal 懒加载本模块，反向引用安全
 # 解析 + 50ms ≈ 20fps——用户「不丝滑」反馈后收紧）
 STREAM_FLUSH_INTERVAL = 0.05
 
+# Esc+Enter 换行和弦窗口（秒）：Esc 后此窗口内按 Enter = 换行；超时自动解除
+# ——单按 Esc 不劫持后续 Enter（用户实测「回车发送交互不好」根因之一）
+ESC_ARM_WINDOW = 1.2
+
 _HINT_BASE = "↑↓ 选择 · Enter 展开/折叠 · PgUp/PgDn 滚动 · Esc+Enter 换行 · Ctrl+C 停止 · ? 帮助"
 
 # 说话人身份标签（网页端 MessageBubble 同款：色点 + 名称 + AI 徽标；
@@ -203,7 +207,9 @@ class DockInput(TextArea):
 
     def __init__(self, *args, **kwargs):
         super().__init__(show_line_numbers=False, *args, **kwargs)
-        self._esc_armed = False  # Esc 后下一次 Enter = 换行（ptk escape+enter 同款）
+        self._esc_armed = False  # Esc 后限时内 Enter = 换行（ptk escape+enter 和弦同款）
+        self._esc_timer = None   # 武装窗口定时器（用户实测：粘性武装曾让
+        # 之后任何一次 Enter 都插换行不发送——单按 Esc 不该劫持后续 Enter）
 
     def on_mount(self) -> None:
         # 输入历史：与 v3 prompt_toolkit FileHistory 同文件同格式（'+' 行 +
@@ -223,6 +229,9 @@ class DockInput(TextArea):
 
     def _disarm_esc(self) -> None:
         self._esc_armed = False
+        if self._esc_timer is not None:
+            self._esc_timer.stop()
+            self._esc_timer = None
 
     def _remember(self, line: str) -> None:
         if not line.strip():
@@ -248,7 +257,9 @@ class DockInput(TextArea):
         app = self.app
         render = app.renderer
         if app.busy:
-            return  # 生成中忽略提交（v3：流式期间 prompt 未恢复）
+            # 生成中忽略提交但给反馈（用户实测「回车交互不好」——此前静默无感）
+            app.flash_hint("生成中——等待完成或 Ctrl+C 停止后再发送")
+            return
         if self._esc_armed:
             self._esc_armed = False
             self.insert("\n")
@@ -277,6 +288,10 @@ class DockInput(TextArea):
             render._notify()
         else:
             self._esc_armed = True
+            # 和弦窗口（用户实测：粘性武装曾劫持之后每次 Enter 误插换行）
+            if self._esc_timer is not None:
+                self._esc_timer.stop()
+            self._esc_timer = self.set_timer(ESC_ARM_WINDOW, self._disarm_esc)
         app.sync_hint()
 
     def action_dock_up(self) -> None:
@@ -972,10 +987,11 @@ class YuanTerminalApp(App):
         if sig == self._hint_sig:
             return
         self._hint_sig = sig
-        if self.busy:
-            text = Text("生成中…（Ctrl+C 停止）", style="bold yellow")
-        elif flash_active:
+        # flash 优先于 busy（生成中 Enter 的提示必须可见——用户实测反馈）
+        if flash_active:
             text = Text(self._flash_text, style="cyan")
+        elif self.busy:
+            text = Text("生成中…（Ctrl+C 停止）", style="bold yellow")
         elif render._plan_view is not None:
             text = Text("计划视图 — Esc/Enter 返回对话流 | " + _HINT_BASE)
         elif render.sel is not None:
@@ -1116,6 +1132,13 @@ class TextualRenderer:
         """清空全部对话块（/clear 命令；与 FullscreenRenderer 同接口）"""
         self._blocks.clear()
         self.sel = None
+        self._notify()
+
+    def add_user_message(self, content: str) -> None:
+        """自己发的消息立即上屏（用户实测「看不到我发的消息」——网页同款
+        即时反馈：发送即见右对齐蓝底气泡）"""
+        self._blocks.append({"kind": "user", "title": "", "content": content,
+                             "folded": False, "sender": "orchestrator"})
         self._notify()
 
     def redraw(self) -> None:

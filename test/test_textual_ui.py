@@ -620,6 +620,90 @@ def test_app_stream_answer_shows_label_and_bubble(tmp_path, monkeypatch):
     _run_app_test(body, tmp_path, monkeypatch)
 
 
+# ==================== 发送体验修复回归（2026-11-15 用户实测第二批） ====================
+
+
+def test_run_turn_appends_user_message(tmp_path, monkeypatch):
+    """用户实测「看不到我发的消息」根因：run_turn 只落库/发云端，渲染器无
+    用户块——add_user_message 补齐（网页同款即时反馈）"""
+    import agent.terminal as terminal
+    captured = []
+
+    class FakeRender:
+        def add_user_message(self, content):
+            captured.append(content)
+
+    store = TerminalSessionStore(path=str(tmp_path / "s.json"))
+    s = store.new_session("claude")
+    ctx = terminal.ReplContext(s, store, FakeRender(), ["claude"])
+
+    async def fake_query(mode, messages, on_approval=None, render=None):
+        return "回答"
+    monkeypatch.setattr(terminal, "run_query", fake_query)
+
+    asyncio.run(terminal.run_turn("我的问题", ctx, rich_mode=False))
+    assert captured == ["我的问题"]
+    assert s["messages"][0]["role"] == "user"
+
+
+def test_app_submit_shows_user_bubble_immediately(tmp_path, monkeypatch):
+    """发送即见自己的右对齐气泡（真实提交链路 + 打桩回合）"""
+    async def body(pilot, app, render, s, store):
+        async def fake_turn(line, ctx, rich_mode=True):
+            ctx.render.add_user_message(line)  # 与真实 run_turn 同行为
+            return ""
+        monkeypatch.setattr("agent.textual_ui.run_turn", fake_turn)
+        app.query_one("#input").text = "帮我分析数据"
+        await pilot.press("enter")
+        await pilot.pause()
+        blocks = list(app.query("BlockWidget"))
+        assert any(b.block_kind == "user" and "帮我分析数据" in b.block_content
+                   for b in blocks)
+        assert app.query("BlockWidget.user-block").first() is not None
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_esc_enter_chord_inserts_newline(tmp_path, monkeypatch):
+    """Esc+Enter 和弦（限时内）= 换行不提交"""
+    async def body(pilot, app, render, s, store):
+        inp = app.query_one("#input")
+        inp.text = "第一行"
+        await pilot.press("escape", "enter")
+        await pilot.pause()
+        assert "\n" in inp.text  # 插了换行
+        assert len(list(app.query("BlockWidget"))) == 0  # 未提交
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_esc_arm_expires_enter_submits(tmp_path, monkeypatch):
+    """用户实测「回车交互不好」根因：Esc 武装曾粘性劫持之后每次 Enter 误插
+    换行——和弦窗口超时自动解除，单按 Esc 不影响后续发送"""
+    async def body(pilot, app, render, s, store):
+        inp = app.query_one("#input")
+        await pilot.press("escape")
+        assert inp._esc_armed is True
+        await asyncio.sleep(1.4)  # 超过 1.2s 和弦窗口
+        assert inp._esc_armed is False  # 定时解除
+        inp.text = "/help"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert len(list(app.query("BlockWidget"))) == 1  # 正常提交
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_busy_enter_flashes_feedback(tmp_path, monkeypatch):
+    """生成中 Enter 不再静默——提示条给反馈"""
+    async def body(pilot, app, render, s, store):
+        app._busy_task = object()
+        app.query_one("#input").text = "测试"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert "生成中" in app.query_one("#hintbar").render().plain
+        assert app.query_one("#input").text == "测试"  # 输入保留
+        app._busy_task = None
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
 def test_repl_context_shares_mode_ref_list(tmp_path):
     """审查修复：ReplContext 曾自建 mode_ref 列表——ptk 提示符闭包读旧列表，
     /chat /claude 后提示符冻结旧模式"""

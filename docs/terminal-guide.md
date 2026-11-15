@@ -97,6 +97,18 @@ Ctrl+C / Ctrl+Q 生成中停止、空闲退出 · ? 帮助浮层
 - **审批**：弹出小卡片——Y 执行 / N 拒绝（回车=拒绝，120 秒超时默认拒绝）
 - **窗口徽标**：状态栏显示「CC 窗口 / 小元 / 本机直连」中文徽标
 
+## 3.6 dsh（DeepSeek Harness）接入（进阶用户，可选）
+
+dsh 是 DeepSeek 官方的个人 Agent 终端——与 CC 一样可以通过 MCP 调用小元AI
+本地智能体（发现 + 分析/采集脚本）。接入用官方 mcp-client 插件，复制一段
+配置即可（片段见仓库 `scripts/dsh-xiaoyuan.yml`，已内置安装包/开发者两种形态）：
+
+1. 复制片段到 dsh user preset 的 `agent.cordis.yml`，command 换成你的安装路径
+2. 新建 Session 并选择该 preset
+3. 工具以 `mcp__xiaoyuan__list_local_agents` 等形态出现（首轮可能不显示，第二轮出现）
+
+正式进 dsh 插件市场挂账（dsh 仍开发者预览版，发布流程待稳定）。
+
 ## 4. 托盘 Agent
 
 - 双击安装后右下角出现小元AI 圆球图标 = 后台就绪（接收网站任务、跑计划队列）

@@ -1,0 +1,33 @@
+# 小元AI 本地智能体接入 dsh（DeepSeek Harness）配置片段（2026-11-15）
+#
+# 使用方法（dsh rc.7，官方 mcp-client 插件）：
+#   1. 复制本片段到 user preset 的 agent.cordis.yml 插件列表
+#      （user preset 派生到 <DSH_HOME>/.agent-presets；shipped preset 只读，
+#       先建 user preset copy 再编辑）
+#   2. 把 command 换成你电脑上的实际安装路径
+#   3. 新建 Session 并选择该 preset（已运行的 Session 不会中途加载新工具）
+#   4. 新会话第一轮可能看不到工具（dsh MCP 异步注册），第二轮出现
+#      ——工具名形如 mcp__xiaoyuan__list_local_agents
+#
+# 前提：已安装小元AI Agent（网页「本地 Agent」页下载安装，exe 自带 MCP 入口）
+
+# —— 安装包用户（普通用户，零源码）——
+- id: mcp-xiaoyuan
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: xiaoyuan
+    transport: stdio
+    command: "C:\\Users\\<你的用户名>\\AppData\\Local\\XiaoYuanAI\\bin\\小元AI Agent.exe"
+    args: ["--run-mcp"]
+    failOnStartupError: true
+
+# —— 开发者（有项目源码）可改用 venv 形态 ——
+# - id: mcp-xiaoyuan
+#   name: '@deepseek-ai/dsh-mcp-client'
+#   config:
+#     serverName: xiaoyuan
+#     transport: stdio
+#     command: "<项目目录>\\venv\\Scripts\\python.exe"
+#     args: ["-m", "agent.mcp_server"]
+#     cwd: "<项目目录>"
+#     failOnStartupError: true

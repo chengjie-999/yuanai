@@ -6,7 +6,7 @@ import { API_BASE } from '../api'
 import { usePageMeta } from '../hooks/usePageMeta'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { MenuIcon } from '../components/icons'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 /* ============================================================
    API 文档 — 公开页面 /api-docs
@@ -218,8 +218,45 @@ export default function ApiDocsPage() {
       .catch(() => {})
   }, [])
 
-  // 当前页（点树换页 + 上一节/下一节）
-  const [activeKey, setActiveKey] = useState<string>('readme:概览')
+  // URL 状态（2026-11-15 用户反馈「文档选项没有自己的链接，刷新直接回
+  // 概览」）：每个节点独立链接 /api-docs?d=<slug>——刷新保持、可分享
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const keyToSlug = (key: string): string => {
+    if (key.startsWith('readme:')) return `readme-${slug(key.slice(7))}`
+    if (key.startsWith('doc:')) return `doc-${key.slice(4).replace(/\.md$/, '')}`
+    if (key.startsWith('api:')) return `api-${slug(key.slice(4))}`
+    return slug(key)
+  }
+
+  const slugToKey = (s: string): string | null => {
+    if (s.startsWith('readme-')) {
+      const title = readmeSections.find((sec) => slug(sec.title) === s.slice(7))?.title
+      return title ? `readme:${title}` : null
+    }
+    if (s.startsWith('doc-')) return `doc:${s.slice(4)}.md`
+    if (s.startsWith('api-')) {
+      const group = SECTIONS.find((sec) => slug(sec.group) === s.slice(4))?.group
+      return group ? `api:${group}` : null
+    }
+    return null
+  }
+
+  // 当前页（URL 驱动：刷新/分享保持；URL 无效回默认概览）
+  const [activeKey, setActiveKeyState] = useState<string>('readme:概览')
+  const setActiveKey = (key: string) => {
+    setActiveKeyState(key)
+    setSearchParams(key === 'readme:概览' ? {} : { d: keyToSlug(key) }, { replace: false })
+  }
+  useEffect(() => {
+    // 挂载/readme 加载完成后按 URL 恢复当前文档
+    if (!readme) return
+    const d = searchParams.get('d')
+    if (d) {
+      const key = slugToKey(d)
+      if (key) setActiveKeyState(key)
+    }
+  }, [readme])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const tree: DocNode[] = useMemo(() => {
     const readmeNode: DocNode = {

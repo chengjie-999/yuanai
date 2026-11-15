@@ -161,6 +161,13 @@ function AgentDownloadCard() {
           <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>安装码加载中...</div>
         )}
         {msg && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 6 }}>{msg}</div>}
+        {/* 终端使用说明书入口（2026-11-15 用户拍板：普通用户在此直达文档） */}
+        <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+          装好之后怎么用？看{' '}
+          <a href="/api-docs?d=doc-terminal-guide" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
+            本地终端使用说明书
+          </a>（终端、托盘、CC 三种入口，三步上手）
+        </div>
         {/* 使用指南（2026-10-30 用户拍板：图形 + yuan/yuancc 终端两套入口） */}
         <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.9 }}>
           <b style={{ color: 'var(--text-primary)' }}>使用指南</b>

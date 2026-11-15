@@ -1465,7 +1465,10 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
     elif cmd == "/history":
         await _list_history(ctx.store, render)
     elif cmd == "/help":
-        _print_help(render)
+        if hasattr(render, "show_help"):
+            render.show_help()  # v4：帮助浮层（CC 同款）；v3/ptk 走 info 块
+        else:
+            _print_help(render)
     elif cmd == "/claude":
         # cc = 续接会话的终端指令（用户拍板）：切回本机模式即加载本机会话
         # 历史上屏（此前只切模式，界面仍显示云端历史/空白）

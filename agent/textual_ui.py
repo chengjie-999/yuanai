@@ -47,7 +47,7 @@ from textual.app import App
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Markdown, OptionList, ProgressBar, Static, TextArea
+from textual.widgets import Button, Input, Markdown, OptionList, ProgressBar, Static, TextArea
 from textual.widgets._option_list import Option
 
 from agent.terminal import (  # terminal 懒加载本模块，反向引用安全
@@ -161,28 +161,83 @@ class BlockWidget(Vertical):
 
 
 class HistoryModal(ModalScreen):
-    """Ctrl+R 命令历史（v4 形态）：最近提交列表，Enter/点击回填输入框。
-    v3 的 ptk 增量搜索增强挂账 P2——键位与 /help 文案先对齐。"""
+    """Ctrl+R 命令历史（v4 形态；2026-11-15 升级 CC 同款增量搜索）：
+    顶部过滤输入 + 结果列表——键入即过滤，↓ 进列表 ↑↓ 选择，Enter/点击回填。"""
 
-    BINDINGS = [Binding("escape", "cancel", "取消", priority=True)]
+    BINDINGS = [
+        Binding("escape", "cancel", "取消", priority=True),
+        Binding("down", "focus_list", "选结果", priority=True),
+    ]
 
     def __init__(self, items: list):
         super().__init__()
-        self._items = list(items)[-50:][::-1]  # 最近在前
+        self._all = list(items)[-100:][::-1]  # 最近在前
 
     def compose(self):
         with Vertical(id="history-box"):
-            yield Static("命令历史（↑↓ 选择 · Enter 回填 · Esc 取消）",
+            yield Static("命令历史（输入过滤 · ↓ 进列表选择 · Enter 回填 · Esc 取消）",
                          classes="hstitle")
-            if self._items:
-                yield OptionList(
-                    *[Option(item, id=f"h{i}") for i, item in enumerate(self._items)],
-                    id="hlist")
-            else:
-                yield Static("(暂无历史)", classes="ahint")
+            yield Input(placeholder="搜索历史命令…", id="hfilter")
+            yield OptionList(*self._build_options(self._all), id="hlist")
+
+    @staticmethod
+    def _build_options(items):
+        return [Option(item, id=f"h{i}") for i, item in enumerate(items)]
+
+    def on_input_changed(self, event) -> None:
+        """增量过滤：键入即筛（CC Ctrl+R 同款）"""
+        q = event.value.strip().lower()
+        opts = [o for o in self._all if q in o.lower()]
+        lst = self.query_one("#hlist", OptionList)
+        lst.clear_options()
+        lst.add_options(self._build_options(opts))
+
+    def action_focus_list(self) -> None:
+        self.set_focus(self.query_one("#hlist", OptionList))
 
     def on_option_list_option_selected(self, event) -> None:
         self.dismiss(event.option.prompt)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+_HELP_TEXT = """[bold blue]命令[/bold blue]
+  /claude   本机 Claude Code（默认，续接上次会话）
+  /chat     云端对话（与网站同会话，多端同步）
+  /sessions 网站会话列表 / 切换（/sessions <序号>）
+  /plan     计划队列（/plan <序号> 看步骤）
+  /web      打开网站对话    /status 本机状态
+  /panel    打开设置面板    /pet on|off 桌宠
+  /history  本机历史会话    /clear 清空显示
+  /quit     退出
+
+[bold blue]按键[/bold blue]
+  Enter 发送 · Esc+Enter 换行 · ↑↓ 选块 · Enter 展开/折叠
+  PgUp/PgDn 滚动 · End 回到底部 · Tab 补全命令
+  Ctrl+R 搜索历史 · F2 网站对话 · Ctrl+C/Ctrl+Q 停止/退出
+
+[bold blue]说明[/bold blue]
+  终端=网站对话第三端：/chat 发的消息网站立即可见。
+  审批弹窗 Y 执行 / N 拒绝（回车=拒绝，120 秒超时默认拒绝）。
+  本地 Agent 状态见状态栏色点与 /status；执行观测见右栏。"""
+
+
+class HelpModal(ModalScreen):
+    """? 帮助浮层（#39 品牌批 v4 化，CC 帮助面板同款形态）：命令/按键/说明
+    一屏速查。? 键与 /help 同入口。"""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "关闭", priority=True),
+        Binding("q", "cancel", "关闭", priority=True),
+    ]
+
+    def compose(self):
+        with Vertical(id="help-box"):
+            yield Static(Text.assemble(("小元AI", "bold blue"),
+                                       (" · 云边协同 · 对话即执行", "dim")),
+                         classes="htitle")
+            yield Static(Text.from_markup(_HELP_TEXT), classes="hbody", id="hbody")
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -203,6 +258,7 @@ class DockInput(TextArea):
         Binding("end", "dock_end", "回到底部", priority=True),
         Binding("tab", "dock_complete", "补全", priority=True),
         Binding("ctrl+r", "dock_history", "历史", priority=True),
+        Binding("question_mark", "dock_help", "帮助", priority=True),
     ]
 
     def __init__(self, *args, **kwargs):
@@ -364,6 +420,10 @@ class DockInput(TextArea):
     def action_dock_history(self) -> None:
         self._disarm_esc()
         self.app.open_history_modal()
+
+    def action_dock_help(self) -> None:
+        self._disarm_esc()
+        self.app.open_help_modal()
 
 
 class _NoFocusButton(Button):
@@ -584,7 +644,17 @@ class YuanTerminalApp(App):
         padding: 1 2;
     }}
     .hstitle {{ margin-bottom: 1; }}
+    #hfilter {{ margin-bottom: 1; }}
     #hlist {{ height: 1fr; }}
+    #help-box {{
+        width: 80%;
+        height: 85%;
+        border: round $primary;
+        background: $surface;
+        padding: 1 2;
+    }}
+    .htitle {{ text-style: bold; margin-bottom: 1; }}
+    #hbody {{ height: 1fr; }}
     """
 
     BINDINGS = [
@@ -746,11 +816,17 @@ class YuanTerminalApp(App):
         _open_web_chat()
 
     def open_history_modal(self) -> None:
-        """Ctrl+R 历史（v4 形态：列表回填）"""
+        """Ctrl+R 历史（CC 同款增量搜索：键入过滤 + ↓ 进列表选择 + Enter 回填）"""
         if self.busy:
             return
         self.push_screen(HistoryModal(self._input._history),
                          callback=self._history_picked)
+
+    def open_help_modal(self) -> None:
+        """? / /help 帮助浮层（#39 品牌批 v4 化）"""
+        if isinstance(self.screen, (HelpModal, HistoryModal, ApprovalModal)):
+            return  # 已有浮层时不叠加
+        self.push_screen(HelpModal())
 
     def _history_picked(self, text) -> None:
         if text:
@@ -1154,6 +1230,11 @@ class TextualRenderer:
     def redraw(self) -> None:
         """全量同步（Textual 增量渲染——等价重绘，实际只动变化 widget）"""
         self._notify()
+
+    def show_help(self) -> None:
+        """? 帮助浮层（/help 命令在 v4 走 modal 而非 info 块——CC 同款）"""
+        if self._app is not None:
+            self._post(self._app.open_help_modal)
 
     def set_usage(self, total: int, cached: int = 0) -> None:
         """上轮 token 消耗（usage_event，run_cloud_query 消费）"""

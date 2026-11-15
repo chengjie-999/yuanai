@@ -83,7 +83,10 @@ class _FakeStream:
 
 
 def test_stdio_attached_detects_valid_host(monkeypatch):
-    """stdio 有效（WT/集成终端管道）→ True；无效/None → False"""
+    """stdio 有效（WT/集成终端管道）→ True；无效/None → False
+    （2026-11-15 加固：宿主句柄检测经 _get_std_handle——本测试固定为无句柄，
+    验证 Python 层兜底逻辑）"""
+    monkeypatch.setattr(tray, "_get_std_handle", lambda kind: 0)
     monkeypatch.setattr(tray.sys, "stdout", _FakeStream(1))
     monkeypatch.setattr(tray.sys, "stderr", _FakeStream(2))
     assert tray._stdio_attached() is True
@@ -97,6 +100,64 @@ def test_stdio_attached_detects_valid_host(monkeypatch):
     assert tray._stdio_attached() is False
 
 
+def test_stdio_attached_detects_host_handle_with_none_python(monkeypatch):
+    """#41 加固核心：windowed 引导器置空 sys.stdout 但 WT/IDE 继承的 STD
+    句柄有效 → True（内嵌标签页而非误判无宿主去 AllocConsole）"""
+    monkeypatch.setattr(tray.sys, "stdout", None)
+    monkeypatch.setattr(tray.sys, "stderr", None)
+    monkeypatch.setattr(tray, "_get_std_handle", lambda kind: 42 if kind == -11 else 7)
+    assert tray._stdio_attached() is True
+
+
+def test_attach_host_stdio_rebinds_when_python_none(monkeypatch):
+    """#41 加固：宿主管道挂回 Python 层（含 sys.__stdout__——Textual
+    WindowsDriver 依赖）；stdio 已可用则幂等跳过"""
+    monkeypatch.setattr(tray, "_get_std_handle", lambda kind: 42 if kind != -10 else 7)
+    opened = []
+
+    class _FakeMsvcrt:
+        @staticmethod
+        def open_osfhandle(h, flags):
+            opened.append((h, flags))
+            return 100 + len(opened)
+    monkeypatch.setattr(tray.sys, "stdout", None)
+    monkeypatch.setattr(tray.sys, "stderr", None)
+    monkeypatch.setattr(tray.sys, "stdin", None)
+    monkeypatch.setattr(tray.sys, "__stdout__", None)
+
+    fake_fd = []
+    class _FakeFile:
+        def __init__(self, fd, mode, **kw):
+            self.fd = fd
+            fake_fd.append(self)
+        def fileno(self):
+            return self.fd
+    monkeypatch.setattr(tray.os, "fdopen", _FakeFile)
+    import msvcrt as real_msvcrt
+    monkeypatch.setattr(real_msvcrt, "open_osfhandle", _FakeMsvcrt.open_osfhandle)
+
+    tray._attach_host_stdio()
+    assert tray.sys.stdout is not None
+    assert tray.sys.stdout.fileno() > 0
+    assert tray.sys.__stdout__ is tray.sys.stdout  # Textual 依赖
+    assert tray.sys.stdin is not None
+
+    # 幂等：已可用时不再重挂
+    before = tray.sys.stdout
+    tray._attach_host_stdio()
+    assert tray.sys.stdout is before
+
+
+def test_attach_host_stdio_skips_when_ok(monkeypatch):
+    """stdio 已可用 → 不重挂（幂等）"""
+    monkeypatch.setattr(tray.sys, "stdout", _FakeStream(1))
+    monkeypatch.setattr(tray.sys, "stderr", _FakeStream(2))
+    calls = []
+    monkeypatch.setattr(tray, "_get_std_handle", lambda kind: calls.append(kind) or 42)
+    tray._attach_host_stdio()
+    assert calls == []  # 未触碰句柄
+
+
 def test_run_terminal_skips_alloc_console_when_attached(monkeypatch):
     """stdio 已有宿主 → 不弹自建控制台；无宿主 → 兜底自建"""
     import agent.terminal as terminal_mod
@@ -108,9 +169,11 @@ def test_run_terminal_skips_alloc_console_when_attached(monkeypatch):
     called = []
     monkeypatch.setattr(tray, "_alloc_console", lambda: called.append(1))
     monkeypatch.setattr(tray, "_stdio_attached", lambda: True)
+    monkeypatch.setattr(tray, "_attach_host_stdio", lambda: called.append(2))
     tray._run_terminal_mode()
-    assert called == []
+    assert called == [2]  # 有宿主：挂回（幂等）不弹窗
 
+    called.clear()
     monkeypatch.setattr(tray, "_stdio_attached", lambda: False)
     tray._run_terminal_mode()
-    assert called == [1]
+    assert called == [1]  # 无宿主：自建控制台

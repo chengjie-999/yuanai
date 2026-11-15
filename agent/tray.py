@@ -261,10 +261,28 @@ def _open_in_windows_terminal(cmd: list, cwd: str, title: str = "小元AI") -> b
         return False
 
 
+def _get_std_handle(kind: int) -> int:
+    """Win32 GetStdHandle（kind: -10 输入 / -11 输出 / -12 错误；测试可注入）。
+    有效返回句柄值，无句柄/异常返回 0。"""
+    try:
+        import ctypes
+        return ctypes.windll.kernel32.GetStdHandle(kind) or 0
+    except Exception:
+        return 0
+
+
 def _stdio_attached() -> bool:
-    """stdio 是否有有效宿主（#41 2026-11-14 管道感知）：从 WT 标签页/IDE 集成
-    终端启动的进程继承管道/控制台句柄——复用宿主窗口即可；双击启动的 GUI
-    进程 sys.stdout 为 None/无效——需自建控制台。"""
+    """stdio 是否有有效宿主（#41 2026-11-14 管道感知；2026-11-15 加固）：
+    ① Win32 GetStdHandle 检测宿主句柄——PyInstaller windowed 引导器把
+    sys.stdout 置 None，但从 WT 标签页/IDE 集成终端启动时 STD 句柄仍是
+    继承的有效管道（复用宿主窗口才是「内嵌标签页」理想态，此前会误判
+    无宿主去 AllocConsole 开新窗口）；② Python 层 stdio 有效兜底。
+    双击启动的 GUI 进程两者皆无 → False（自建控制台）。"""
+    if os.name == "nt":
+        for kind in (-11, -10):  # STD_OUTPUT_HANDLE / STD_INPUT_HANDLE
+            h = _get_std_handle(kind)
+            if h and h not in (0, -1):
+                return True
     try:
         for s in (sys.stdout, sys.stderr):
             if s is None:
@@ -279,13 +297,51 @@ def _stdio_attached() -> bool:
         return False
 
 
+def _python_stdio_ok() -> bool:
+    """Python 层 stdio 是否可用（windowed 引导器置 None 时为 False）"""
+    try:
+        return (sys.stdout is not None and sys.stderr is not None
+                and sys.stdout.fileno() >= 0 and sys.stderr.fileno() >= 0)
+    except Exception:
+        return False
+
+
+def _attach_host_stdio() -> None:
+    """windowed exe 从 WT/IDE 终端启动：Python 层 stdio 为 None（引导器置空）
+    但宿主 STD 句柄有效——挂回宿主管道（#41 内嵌标签页关键适配；Textual
+    WindowsDriver 依赖 sys.__stdout__，一并恢复）。幂等：stdio 已可用则跳过。"""
+    if os.name != "nt" or _python_stdio_ok():
+        return
+    try:
+        import msvcrt
+        h_out = _get_std_handle(-11)
+        if h_out and h_out not in (0, -1):
+            fd = msvcrt.open_osfhandle(h_out, os.O_WRONLY)
+            stream = os.fdopen(fd, "w", encoding="utf-8", errors="replace",
+                               buffering=1)
+            sys.stdout = stream
+            sys.stderr = stream
+        h_in = _get_std_handle(-10)
+        if h_in and h_in not in (0, -1):
+            fd = msvcrt.open_osfhandle(h_in, os.O_RDONLY)
+            sys.stdin = os.fdopen(fd, "r", encoding="utf-8", errors="replace")
+        sys.__stdout__ = sys.stdout
+        sys.__stderr__ = sys.stderr
+        sys.__stdin__ = sys.stdin
+    except Exception:
+        pass
+
+
 def _run_terminal_mode() -> int:
     """发布版内置终端入口：跑 agent.terminal REPL。
-    #41 管道感知：stdio 已挂真实终端（WT 标签/IDE 集成终端）→ 复用继承
-    控制台不新建窗口；无宿主（双击/托盘无 WT 兜底）→ 自建控制台。
+    #41 管道感知（2026-11-15 加固）：① GetStdHandle 检测宿主（windowed 引导
+    器置空 sys.stdout 但句柄仍在——WT/IDE 内嵌标签页）→ 挂回宿主管道复用
+    宿主窗口；② 无宿主（双击启动）→ 自建控制台兜底。
     spawn 侧传 --no-agent（托盘进程已持有云端连接，避免双连互踢）"""
     if not _stdio_attached():
         _alloc_console()
+    else:
+        _attach_host_stdio()  # 幂等：Python 层 stdio 已可用则跳过
     import asyncio
     from agent.terminal import main as terminal_main
     try:

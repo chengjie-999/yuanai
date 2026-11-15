@@ -158,16 +158,33 @@ def test_app_mount_header_focus_and_brand(tmp_path, monkeypatch):
     _run_app_test(body, tmp_path, monkeypatch)
 
 
-def test_app_submit_help_shows_info_block(tmp_path, monkeypatch):
+def test_app_submit_help_opens_modal(tmp_path, monkeypatch):
+    """/help 与 ? 键走帮助浮层（#39 品牌批 v4 化，CC 同款）而非 info 块"""
     async def body(pilot, app, render, s, store):
+        from agent.textual_ui import HelpModal
         app.query_one("#input").text = "/help"
         await pilot.press("enter")
         await pilot.pause()
-        blocks = list(app.query("BlockWidget"))
-        assert len(blocks) == 1
-        assert blocks[0].block_kind == "info"
-        assert "命令" in blocks[0].block_content
+        assert isinstance(app.screen, HelpModal)
+        assert "小元AI" in app.screen.query_one(".htitle").render().plain
+        assert "Esc+Enter" in app.screen.query_one("#hbody").render().plain
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, HelpModal)
         assert app.query_one("#input").text == ""  # 提交即清空
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_question_mark_key_opens_help(tmp_path, monkeypatch):
+    """? 键直达帮助浮层（header「? 帮助」文案对应键位）"""
+    async def body(pilot, app, render, s, store):
+        from agent.textual_ui import HelpModal
+        await pilot.press("question_mark")
+        await pilot.pause()
+        assert isinstance(app.screen, HelpModal)
+        await pilot.press("q")  # q 关闭（CC 同款）
+        await pilot.pause()
+        assert not isinstance(app.screen, HelpModal)
     _run_app_test(body, tmp_path, monkeypatch)
 
 
@@ -398,10 +415,10 @@ def test_app_clear_command_clears_blocks(tmp_path, monkeypatch):
 def test_app_esc_armed_disarmed_by_typing(tmp_path, monkeypatch):
     """审查修复：Esc 武装不解除曾致 Esc 后首次 Enter 误插换行不提交"""
     async def body(pilot, app, render, s, store):
+        from agent.textual_ui import HelpModal
         await pilot.press("escape", "slash", "h", "e", "l", "p", "enter")
         await pilot.pause()
-        blocks = list(app.query("BlockWidget"))
-        assert len(blocks) == 1 and blocks[0].block_kind == "info"  # 正常提交了
+        assert isinstance(app.screen, HelpModal)  # 正常提交了（而非插换行）
         assert app.query_one("#input").text == ""
     _run_app_test(body, tmp_path, monkeypatch)
 
@@ -500,19 +517,54 @@ def test_app_history_file_ptk_compatible(tmp_path, monkeypatch):
 
 
 def test_app_ctrl_r_history_modal_backfills_input(tmp_path, monkeypatch):
-    """Ctrl+R 历史（v4 形态：列表回填——/help 文案键位对齐）"""
+    """Ctrl+R 历史（CC 同款增量搜索：↓ 进列表 → Enter 回填）"""
     async def body(pilot, app, render, s, store):
         inp = app.query_one("#input")
         inp.text = "/help"
         await pilot.press("enter")
         await pilot.pause()
+        await pilot.press("escape")  # 关闭帮助浮层（浮层期间 ctrl+r 不达输入框）
+        await pilot.pause()
         await pilot.press("ctrl+r")
         await pilot.pause()
         from agent.textual_ui import HistoryModal
         assert isinstance(app.screen, HistoryModal)
+        await pilot.press("down")  # 进列表
         await pilot.press("enter")  # 选中第一项（最近）
         await pilot.pause()
         assert inp.text == "/help"
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_history_modal_incremental_filter(tmp_path, monkeypatch):
+    """Ctrl+R 增量搜索：键入即过滤候选（CC 同款）。普通消息走打桩回合——
+    避免 /命令 触及真实身份/网络（本机身份文件会触发真实 HTTP）"""
+    async def body(pilot, app, render, s, store):
+        async def fake_turn(line, ctx, rich_mode=True):
+            ctx.render.add_user_message(line)
+            return ""
+        monkeypatch.setattr("agent.textual_ui.run_turn", fake_turn)
+        inp = app.query_one("#input")
+        for msg in ("帮我分析数据", "帮我写周报"):
+            inp.text = msg
+            await pilot.press("enter")
+            await pilot.pause()
+        await pilot.press("ctrl+r")
+        await pilot.pause()
+        from agent.textual_ui import HistoryModal
+        from textual.widgets import Input, OptionList
+        assert isinstance(app.screen, HistoryModal)
+        filt = app.screen.query_one("#hfilter", Input)
+        lst = app.screen.query_one("#hlist", OptionList)
+        assert lst.option_count == 2  # 全部两条
+        filt.value = "帮我"
+        await pilot.pause()
+        assert lst.option_count == 2  # 两条都含「帮我」
+        filt.value = "分析"
+        await pilot.pause()
+        assert lst.option_count == 1  # 只剩「帮我分析数据」
+        opts = [o.prompt for o in lst._options]
+        assert opts == ["帮我分析数据"]
     _run_app_test(body, tmp_path, monkeypatch)
 
 
@@ -686,7 +738,8 @@ def test_app_esc_arm_expires_enter_submits(tmp_path, monkeypatch):
         inp.text = "/help"
         await pilot.press("enter")
         await pilot.pause()
-        assert len(list(app.query("BlockWidget"))) == 1  # 正常提交
+        from agent.textual_ui import HelpModal
+        assert isinstance(app.screen, HelpModal)  # 正常提交（而非误插换行）
     _run_app_test(body, tmp_path, monkeypatch)
 
 

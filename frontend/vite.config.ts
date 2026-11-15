@@ -8,7 +8,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': {
+      // 只代理 API 前缀——'/api' 会吞掉 SPA 路由 /api-docs（刷新时导航请求
+      // 被转发到后端 → 401 {"detail":"未提供 token"}，2026-11-15 修复）
+      '/api/v1': {
         target: process.env.VITE_API_TARGET || 'http://localhost:8000',
         changeOrigin: true,
         ws: true,

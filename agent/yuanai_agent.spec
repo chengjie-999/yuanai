@@ -52,9 +52,9 @@ a = Analysis(
         'agent.terminal', 'rich', 'prompt_toolkit',
         # 终端 TUI v4（2026-11-15）：Textual 渲染层——terminal 内 try 懒加载，
         # 失败回退 v3 ptk；显式登记防 bytecode 分析漏收子模块
-        'agent.textual_ui', 'textual', 'textual.drivers', 'textual.widgets',
+        'agent.textual_ui', 'agent.mcp_server', 'textual', 'textual.drivers', 'textual.widgets',
         'textual.containers', 'textual.screen', 'textual.css', 'textual.binding',
-        'textual.message', 'textual.reactive',
+        'textual.message', 'textual.reactive', 'mcp', 'mcp.server.mcpserver', 'mcp.types',
         'agent.scripts', 'agent.scripts.registry', 'agent.scripts.tools',
         'agent.agents', 'agent.agents.base', 'agent.agents.automation',
         'agent.tools', 'agent.tools._registry', 'agent.tools.errors',

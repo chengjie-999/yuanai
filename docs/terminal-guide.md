@@ -69,6 +69,8 @@ claude mcp add xiaoyuan -- venv\Scripts\python.exe -m agent.mcp_server
 
 ### 3.3 命令
 
+**终端内随时按 `?` 键弹出帮助浮层**（命令/按键一屏速查，不用记）：
+
 ```
 /claude   CC 窗口         /chat     小元窗口
 /local    本机直连         /new      新建会话（按当前窗口）

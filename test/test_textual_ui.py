@@ -11,6 +11,7 @@ HISTORY_FILE/会话文件全部 monkeypatch 到 tmp_path；不触发真实网络
 """
 
 import asyncio
+from pathlib import Path
 import os
 import threading
 
@@ -554,6 +555,120 @@ def test_repl_context_shares_mode_ref_list(tmp_path):
     ctx = ReplContext(s, store, None, mode_ref)
     ctx.mode_ref[0] = "cloud"
     assert mode_ref[0] == "cloud"  # 同一列表（prompt_fn 闭包同步可见）
+
+
+# ==================== 补漏扫描修复回归（2026-11-15 Phase 3 sweep） ====================
+
+
+def test_app_follow_pauses_on_user_scroll_up(tmp_path, monkeypatch):
+    """补漏扫描：_at_end 几何判定滞后一帧曾致跟随永久丢失——改跟随态
+    维护（用户上滑暂停/滚回底部恢复）"""
+    async def body(pilot, app, render, s, store):
+        for i in range(40):
+            render.info(f"填充块 {i}")  # 造出可滚动内容
+        await pilot.pause()
+        blocks = app._blocks_container
+        # 前序 mount 的延迟 scroll_end（call_after_refresh）先沉降再断言
+        blocks.scroll_end(animate=False)
+        await pilot.pause()
+        assert blocks.max_scroll_y > 0
+        assert app._following is True  # 初始跟随
+        blocks.scroll_y = 1  # 用户上滑（watch_scroll_y 触发；5 会被钳到 max 无变化）
+        await pilot.pause()
+        assert app._following is False
+        blocks.scroll_end(animate=False)  # End 回底
+        await pilot.pause()
+        assert app._following is True
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_renderer_error_clears_answer():
+    """补漏扫描：error 曾不清 _answer——失败轮次半截回答会拼进下一轮回答块"""
+    r = TextualRenderer()
+    r.token("前半段")
+    r.error("连接失败")
+    assert r._answer == ""
+    r.token("新一轮")
+    r.done()
+    assert r._blocks[-1]["content"] == "新一轮"
+
+
+def test_app_dismiss_approval_resolves_blocking_thread(tmp_path, monkeypatch):
+    """补漏扫描：dismiss_approval 曾只弹屏不决议——executor 线程阻塞到
+    120s 超时，asyncio.run 关停等待致进程假死"""
+    async def body(pilot, app, render, s, store):
+        result = {}
+
+        def blocking():
+            result["r"] = render.approve_blocking("d1", "bash", "rm x")
+        t = threading.Thread(target=blocking)
+        t.start()
+        await pilot.pause()
+        assert isinstance(app.screen, ApprovalModal)
+        busy_task = asyncio.create_task(asyncio.sleep(30))  # 模拟生成中任务
+        app._busy_task = busy_task
+        await pilot.press("ctrl+c")  # 停止 → 收起审批卡 → on_unmount 决议 deny
+        await pilot.pause()
+        t.join(5)
+        assert not t.is_alive()
+        assert result["r"] == "deny"
+        busy_task.cancel()
+        app._busy_task = None
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_ctrl_q_stops_generation_not_exit(tmp_path, monkeypatch):
+    """补漏扫描：Textual 默认 Ctrl+Q 直接退出绕过停止语义——覆盖为与 Ctrl+C
+    同语义（生成中只停止）"""
+    async def body(pilot, app, render, s, store):
+        cancelled = {}
+        started = threading.Event()
+
+        async def slow_turn(line, ctx, rich_mode=True):
+            started.set()
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                cancelled["yes"] = True
+                raise
+            return ""
+        monkeypatch.setattr("agent.textual_ui.run_turn", slow_turn)
+        app.query_one("#input").text = "长任务"
+        await pilot.press("enter")
+        for _ in range(200):
+            if started.is_set():
+                break
+            await asyncio.sleep(0.01)
+        assert app.busy is True
+        await pilot.press("ctrl+q")
+        await pilot.pause()
+        assert cancelled.get("yes") is True
+        assert not app._exit
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_esc_arm_disarmed_by_app_keys(tmp_path, monkeypatch):
+    """补漏扫描：App 级按键（Ctrl+C 等）不经 DockInput.on_key——Esc 武装曾在
+    停止后残留，下次 Enter 误插换行"""
+    async def body(pilot, app, render, s, store):
+        inp = app.query_one("#input")
+        await pilot.press("escape")
+        assert inp._esc_armed is True
+        await pilot.press("ctrl+c")  # 空闲 → 停止语义分支（会 exit）
+        await pilot.pause()
+        assert inp._esc_armed is False  # App 级按键解除武装
+        assert app._exit  # 空闲 Ctrl+C 仍退出（语义未变）
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_empty_submit_not_in_history(tmp_path, monkeypatch):
+    """补漏扫描：回车空输入曾写入空历史条目（污染 v3 ↑ 历史与 v4 Ctrl+R 列表）"""
+    async def body(pilot, app, render, s, store):
+        await pilot.press("enter")
+        await pilot.pause()
+        p = Path(str(tmp_path / "history.txt"))
+        assert not p.exists() or p.read_text(encoding="utf-8").strip() == ""
+    _run_app_test(body, tmp_path, monkeypatch)
 
 
 # ==================== 回退链（run_repl 委托 v4，失败回退 v3） ====================

@@ -202,6 +202,8 @@ class DockInput(TextArea):
         self._esc_armed = False
 
     def _remember(self, line: str) -> None:
+        if not line.strip():
+            return  # 空行不进历史（补漏扫描：回车空输入曾写入空条目污染 ↑ 历史）
         self._history.append(line)
         if len(self._history) > 500:
             self._history = self._history[-500:]
@@ -355,6 +357,14 @@ class ApprovalModal(ModalScreen):
                 yield _NoFocusButton("执行 (Y)", variant="success", id="approve-yes")
                 yield Button("拒绝 (N)", variant="error", id="approve-no")
 
+    def on_mount(self) -> None:
+        # 与 _NoFocusButton 双保险：屏幕激活后显式聚焦「拒绝」（自动聚焦时机
+        # 不定，run_test 下偶发 focused=None——测试抓出）
+        self.call_after_refresh(self._focus_deny)
+
+    def _focus_deny(self) -> None:
+        self.set_focus(self.query_one("#approve-no", Button))
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self._decide(event.button.id == "approve-yes")
 
@@ -372,13 +382,41 @@ class ApprovalModal(ModalScreen):
             self._resolver.set_result(ok)
         except Exception:
             pass
-        self.dismiss(ok)
+        try:
+            if self.app.screen is self:
+                self.dismiss(ok)  # 已被外部弹屏（Ctrl+C 收起）时不再二次弹
+        except Exception:
+            pass
+
+    def on_unmount(self) -> None:
+        # 任何未经决议的关闭（Ctrl+C 收起/退出）都解析为拒绝——补漏扫描：
+        # dismiss_approval 只弹屏不决议，approve_blocking 的 executor 线程
+        # 会阻塞到 120s 超时，asyncio.run 关停等待该线程致进程假死
+        self._decide(False)
 
 
 class BlocksScroll(VerticalScroll):
-    """对话块流/计划视图滚动容器（鼠标滚轮原生；不抢焦点——输入 dock 保持聚焦）"""
+    """对话块流/计划视图滚动容器（鼠标滚轮原生；不抢焦点——输入 dock 保持聚焦）。
+
+    follow_tracking=True（仅 #blocks 实例）时经 watch_scroll_y 区分程序滚动
+    与用户滚动：用户上滑 = 暂停贴底跟随、滚回接近底部 = 恢复（补漏扫描修复：
+    此前 _at_end 几何判定滞后一帧——内容增长后 scroll_y 尚未跟上，误差超阈值
+    一次即永久丢失跟随）。"""
 
     can_focus = False
+    follow_tracking = False
+    _programmatic_scroll = False
+
+    def watch_scroll_y(self, old: int, new: int) -> None:
+        if not self.follow_tracking:
+            return
+        app = self.app
+        if self._programmatic_scroll:
+            return  # scroll_end 跟随自己的落位（不误判为用户操作）
+        if new < old:
+            app._following = False  # 用户上滑阅读历史
+        elif new >= self.max_scroll_y - 2:
+            app._following = True  # 滚回接近底部恢复跟随
 
 
 class YuanTerminalApp(App):
@@ -469,6 +507,9 @@ class YuanTerminalApp(App):
 
     BINDINGS = [
         Binding("ctrl+c", "interrupt", "停止/退出", priority=True),
+        # Ctrl+Q 覆盖 Textual 默认 quit 绑定（补漏扫描：默认绑定绕过停止语义——
+        # 生成中直接退出，在途回合不落库/审批线程被搁置）。与 Ctrl+C 同语义
+        Binding("ctrl+q", "interrupt", "停止/退出", priority=True),
         Binding("f2", "open_web", "网站对话", priority=True),
     ]
 
@@ -502,6 +543,7 @@ class YuanTerminalApp(App):
         self._flash_until = 0.0
         self._flash_text = ""
         self._flash_timer = None
+        self._following = True  # 贴底跟随态（BlocksScroll.watch_scroll_y 维护）
 
     @property
     def busy(self) -> bool:
@@ -510,7 +552,8 @@ class YuanTerminalApp(App):
     def compose(self):
         yield Static("", id="header")
         with Horizontal(id="body"):
-            with BlocksScroll(id="blocks"):
+            with BlocksScroll(id="blocks") as blocks_scroll:
+                blocks_scroll.follow_tracking = True
                 with Vertical(id="streams"):
                     yield Static("", id="stream-working", classes="hidden")
                     yield Static("", id="stream-thinking", classes="hidden")
@@ -593,7 +636,10 @@ class YuanTerminalApp(App):
             self.sync_hint()
 
     def action_interrupt(self) -> None:
-        """Ctrl+C：生成中=停止本轮（v2 语义第一下）；空闲=退出"""
+        """Ctrl+C/Ctrl+Q：生成中=停止本轮（v2 语义第一下）；空闲=退出"""
+        if self._input is not None:
+            self._input._disarm_esc()  # App 级按键不经 DockInput.on_key——
+            # 补漏扫描：Esc 武装曾在 Ctrl+C 后残留，下次 Enter 误插换行
         if self._busy_task is not None:
             self.dismiss_approval()  # 停止时收起审批卡（CancelledError 不过
                                      # except Exception，modal 会滞留）
@@ -602,6 +648,8 @@ class YuanTerminalApp(App):
             self.exit()
 
     def action_open_web(self) -> None:
+        if self._input is not None:
+            self._input._disarm_esc()
         from agent.terminal import _open_web_chat
         _open_web_chat()
 
@@ -701,9 +749,18 @@ class YuanTerminalApp(App):
         return c.max_scroll_y - c.scroll_y < 2
 
     def _follow_end(self) -> None:
-        """贴底跟随：内容版本变化（流式 flush/新块）且用户未上滑时才滚"""
-        if self._content_version != self._last_scroll_version and self._at_end():
-            self._blocks_container.scroll_end(animate=False)
+        """贴底跟随：内容版本变化（流式 flush/新块）且处于跟随态才滚。跟随态
+        由 BlocksScroll.watch_scroll_y 维护（用户上滑暂停/滚回底部恢复）——
+        补漏扫描修复：几何 _at_end 判定滞后一帧，一次误差即永久丢失跟随"""
+        if self._content_version == self._last_scroll_version:
+            return
+        c = self._blocks_container
+        if self._following or c.is_vertical_scroll_end:
+            c._programmatic_scroll = True
+            try:
+                c.scroll_end(animate=False)
+            finally:
+                c._programmatic_scroll = False
             self._last_scroll_version = self._content_version
 
     def _sync_streams(self, render) -> None:
@@ -1058,9 +1115,12 @@ class TextualRenderer:
     def error(self, text: str) -> None:
         # 审查修复：清流式残留——v3 的 redraw 只画块，Textual 的流式行是
         # 常驻 widget，不清会永久显示「⚙ X 执行中…/思考中…」
+        # 补漏扫描：_answer 也清——否则失败轮次的半截回答残留流式行且会
+        # 拼进下一轮 done() 的回答块
         self._working = None
         self._reasoning = ""
         self._think_start = None
+        self._answer = ""
         self._blocks.append({"kind": "error", "title": "", "content": text,
                              "folded": False})
         self._notify()

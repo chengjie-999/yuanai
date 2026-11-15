@@ -273,3 +273,19 @@ def test_terminal_guide_endpoint_public(client):
     assert "本地终端使用说明书" in resp.text
     assert "claude mcp add" in resp.text
     assert client.get("/api/v1/docs/guide/不存在的").status_code == 404
+
+
+def test_docs_list_and_generic_guide_public(client):
+    """docs 文档服务（2026-11-15「直接源码可读性太差」修复）：清单 + 任意
+    docs/*.md 渲染原文 + 越界拒绝"""
+    resp = client.get("/api/v1/docs/list")
+    assert resp.status_code == 200
+    names = [d.get("name") for d in resp.json()]
+    assert "terminal-guide.md" in names
+    # 任意 docs/ 下 md（泛化端点）
+    resp = client.get("/api/v1/docs/guide/compliance-audit-2026-10.md")
+    assert resp.status_code == 200
+    assert "合规" in resp.text
+    # 越界/非法名拒绝
+    assert client.get("/api/v1/docs/guide/..%2F..%2FREADME.md").status_code in (400, 403, 404)
+    assert client.get("/api/v1/docs/guide/不存在.md").status_code == 404

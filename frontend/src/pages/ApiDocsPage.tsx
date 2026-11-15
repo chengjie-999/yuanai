@@ -209,6 +209,15 @@ export default function ApiDocsPage() {
       .catch(() => setGuideErr(true))
   }, [])
 
+  // docs/ 目录文档清单（「用户文档」组——README 里相对链接跳转渲染形态）
+  const [docsList, setDocsList] = useState<{ name: string; title: string }[]>([])
+  useEffect(() => {
+    fetch(`${API_BASE}/docs/list`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setDocsList(Array.isArray(d) ? d : []))
+      .catch(() => {})
+  }, [])
+
   // 当前页（点树换页 + 上一节/下一节）
   const [activeKey, setActiveKey] = useState<string>('readme:概览')
 
@@ -217,22 +226,25 @@ export default function ApiDocsPage() {
       key: 'readme-root', title: '项目文档', depth: 0,
       children: readmeSections.map((s) => ({ key: `readme:${s.title}`, title: s.title, depth: 1 })),
     }
-    const guideNode: DocNode = { key: 'guide', title: '本地终端使用说明书', depth: 0 }
+    const docsNode: DocNode = {
+      key: 'docs-root', title: '用户文档', depth: 0,
+      children: docsList.map((d) => ({ key: `doc:${d.name}`, title: d.title, depth: 1 })),
+    }
     const apiNode: DocNode = {
       key: 'api-root', title: 'API 参考', depth: 0,
       children: SECTIONS.map((s) => ({ key: `api:${s.group}`, title: s.group, depth: 1 })),
     }
-    return [readmeNode, guideNode, apiNode]
-  }, [readmeSections])
+    return [readmeNode, docsNode, apiNode]
+  }, [readmeSections, docsList])
 
   // 平铺顺序（上一节/下一节导航用）
   const flatKeys = useMemo(() => {
     const keys: string[] = []
     readmeSections.forEach((s) => keys.push(`readme:${s.title}`))
-    keys.push('guide')
+    docsList.forEach((d) => keys.push(`doc:${d.name}`))
     SECTIONS.forEach((s) => keys.push(`api:${s.group}`))
     return keys
-  }, [readmeSections])
+  }, [readmeSections, docsList])
 
   const activeIndex = flatKeys.indexOf(activeKey)
   const goPrev = () => { if (activeIndex > 0) setActiveKey(flatKeys[activeIndex - 1]) }
@@ -247,11 +259,18 @@ export default function ApiDocsPage() {
   // ———— 当前页内容 ————
   let content: ReactNode = null
   let pageTitle = ''
-  if (activeKey === 'guide') {
+  if (activeKey === 'guide' || activeKey === 'doc:terminal-guide.md') {
     pageTitle = '本地终端使用说明书'
     content = guide ? (
       <MarkdownContent content={guide} onImageExpand={setZoomSrc} />
     ) : <Loading guideErr={guideErr} />
+  } else if (activeKey.startsWith('doc:')) {
+    const name = activeKey.slice(4)
+    const item = docsList.find((d) => d.name === name)
+    pageTitle = item?.title || name
+    content = (
+      <DocViewer name={name} />
+    )
   } else if (activeKey.startsWith('api:')) {
     const group = activeKey.slice(4)
     const sec = SECTIONS.find((s) => s.group === group)
@@ -340,17 +359,7 @@ export default function ApiDocsPage() {
 
   const treeEl = (
     <nav style={{ padding: '10px 8px 24px', overflowY: 'auto', height: '100%' }}>
-      {tree.map((n) => (n.key === 'guide' ? (
-        <button key="guide" onClick={() => { setActiveKey('guide'); if (isMobile) setTreeOpen(false) }}
-          style={{
-            display: 'block', width: '100%', textAlign: 'left', padding: '7px 8px',
-            border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13.5, fontWeight: 700,
-            background: activeKey === 'guide' ? 'var(--accent-soft)' : 'none',
-            color: activeKey === 'guide' ? 'var(--accent)' : 'var(--text-secondary)',
-          }}>
-          本地终端使用说明书
-        </button>
-      ) : renderNode(n)))}
+      {tree.map((n) => renderNode(n))}
     </nav>
   )
 
@@ -418,6 +427,17 @@ export default function ApiDocsPage() {
             background: 'var(--bg-input)', border: '1px solid var(--border)',
             borderRadius: 10, padding: '20px 22px', fontSize: 14, lineHeight: 1.7,
             minHeight: 300,
+          }}
+          onClick={(e) => {
+            // 文档内相对链接（后端改写为 /api/v1/docs/asset/xxx.md）→ 站内
+            // 渲染视图切换（用户反馈「直接源码可读性太差」）
+            const a = (e.target as HTMLElement).closest('a')
+            if (!a) return
+            const m = a.getAttribute('href')?.match(/\/api\/v1\/docs\/asset\/([\w\-.]+)\.md$/)
+            if (m) {
+              e.preventDefault()
+              setActiveKey(`doc:${m[1]}.md`)
+            }
           }}>
             {content}
           </div>
@@ -448,5 +468,27 @@ function Loading({ guideErr }: { guideErr: boolean }) {
     <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '14px 2px' }}>
       {guideErr ? '文档加载失败（后端未运行或文件缺失）' : '加载中…'}
     </div>
+  )
+}
+
+function DocViewer({ name }: { name: string }) {
+  const [doc, setDoc] = useState('')
+  const [err, setErr] = useState(false)
+  useEffect(() => {
+    setDoc('')
+    setErr(false)
+    fetch(`${API_BASE}/docs/guide/${encodeURIComponent(name)}`)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+      .then((t) => setDoc(t))
+      .catch(() => setErr(true))
+  }, [name])
+  const [zoomSrc, setZoomSrc] = useState('')
+  if (!doc && !err) return <Loading guideErr={false} />
+  if (err) return <Loading guideErr={true} />
+  return (
+    <>
+      <MarkdownContent content={doc} onImageExpand={setZoomSrc} />
+      {zoomSrc && <ZoomableImage src={zoomSrc} onClose={() => setZoomSrc('')} />}
+    </>
   )
 }

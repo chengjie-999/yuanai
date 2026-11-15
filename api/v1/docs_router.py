@@ -44,22 +44,45 @@ async def serve_docs_asset(asset_path: str):
     return _serve_asset(asset_path)
 
 
-# 用户侧说明书（2026-11-15）：白名单映射，改文档即改页面（生产 git pull 同步）
-_GUIDES = {"terminal-guide": "terminal-guide.md"}
+# 用户侧文档渲染服务（2026-11-15）：docs/ 下任意 .md 经白名单正则 + realpath
+# 防越界后返回原文（前端渲染为网页形态——「直接源码可读性太差」修复）；
+# terminal-guide 别名向后兼容。改文档即改页面（生产 git pull 同步）
+_DOC_NAME_RE = re.compile(r"^[\w\-.]+\.md$")
 
 
 @router.get("/api/v1/docs/guide/{name}")
 async def serve_guide(name: str):
-    """docs/ 下用户说明书原文（markdown）——普通用户在网站「本地 Agent」页
-    直接阅读终端使用说明，无需打开仓库"""
-    if name not in _GUIDES:
+    """docs/ 下 markdown 文档原文（前端 ApiDocsPage 渲染）。"""
+    fname = "terminal-guide.md" if name == "terminal-guide" else name
+    if not _DOC_NAME_RE.match(fname):
         raise HTTPException(status_code=404, detail="文档不存在")
-    path = os.path.join(root_path(), "docs", _GUIDES[name])
-    if not os.path.isfile(path):
+    full = os.path.realpath(os.path.join(_ASSET_DIR, fname))
+    if not (full == _ASSET_DIR or full.startswith(_ASSET_DIR + os.sep)):
+        raise HTTPException(status_code=403, detail="越界路径")
+    if not os.path.isfile(full) or not full.endswith(".md"):
         raise HTTPException(status_code=404, detail="文档缺失")
-    with open(path, "r", encoding="utf-8") as f:
+    with open(full, "r", encoding="utf-8") as f:
         return Response(content=f.read(), media_type="text/markdown; charset=utf-8",
                         headers={"Cache-Control": "no-store"})
+
+
+@router.get("/api/v1/docs/list")
+async def list_docs():
+    """docs/ 下 markdown 文档清单（文件名 + 首行标题）——前端文档树「用户文档」组"""
+    items = []
+    for fname in sorted(os.listdir(_ASSET_DIR)):
+        if not fname.endswith(".md"):
+            continue
+        title = fname
+        try:
+            with open(os.path.join(_ASSET_DIR, fname), "r", encoding="utf-8") as f:
+                first = f.readline().strip()
+                if first.startswith("# "):
+                    title = first[2:].strip()
+        except Exception:
+            pass
+        items.append({"name": fname, "title": title})
+    return items
 
 
 # C11（2026-10-29）：协议公开端点（登录前可读）——/terms /privacy /rules 页面消费。

@@ -196,6 +196,10 @@ class User(Base):
     # 自动朗读/小窗定向/@粘性定向）；白名单校验在 /auth/prefs 端点。
     # MySQL TEXT 不能带 server_default（1101）——Python 侧 default=''，读取兜底空串
     prefs = Column(Text, default='')
+    # 用户自持自定义模型（2026-11-15，迁移 0034）：JSON 列表
+    # [{name, base_url, key_encrypted, overseas}]——key 经 ENCRYPTION_PASSWORD
+    # 加密（models.json _apikeys 同款）；overseas=用户显式确认数据出境
+    custom_models = Column(Text, default='')
     create_time = Column(TIMESTAMP, server_default=func.now())
 
 

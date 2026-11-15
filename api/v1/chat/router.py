@@ -675,6 +675,8 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         # 设置当前用户上下文，知识库检索时自动过滤私有/共享
         current_user_id.set(user_id if user_id else 0)
+        from yuanai_core.core.lc import current_llm_user_id
+        current_llm_user_id.set(user_id if user_id else 0)
         current_session_id.set(getattr(req, "session_id", "") or "")
 
         # --- 尝试走本地 Agent WebSocket 桥接（N3：cloud 强制跳过；local 必须桥接） ---
@@ -915,6 +917,8 @@ async def claude_stream(req: ChatRequest, request: Request):
                         _part["text"] = _expand_share_links(_part.get("text", ""))
                         break
         current_user_id.set(user_id if user_id else 0)
+        from yuanai_core.core.lc import current_llm_user_id
+        current_llm_user_id.set(user_id if user_id else 0)
         current_session_id.set(getattr(req, "session_id", "") or "")
 
         # 目标 agent（2026-11-08 修复「Claude 说自己在云端」）：优先当前用户

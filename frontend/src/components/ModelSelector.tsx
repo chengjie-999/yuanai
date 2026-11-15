@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { API_BASE, headers } from '../api'
+import { API_BASE, headers, fetchCustomModels } from '../api'
 
 type ModelInfo = { value: string; label: string; provider: string }
 
@@ -26,6 +26,15 @@ function useModels(): ModelInfo[] {
         }
       })
       .catch(() => {}) // 回退到硬编码列表
+    // 用户自持自定义模型（2026-11-15）：并入选择列表（label 带「自备」标识）
+    fetchCustomModels().then((custom) => {
+      if (custom.length > 0) {
+        setModels((prev) => [
+          ...prev,
+          ...custom.map((c) => ({ value: c.name, label: `${c.name}（自备）`, provider: 'Custom' })),
+        ])
+      }
+    }).catch(() => {})
   }, [])
   return models
 }

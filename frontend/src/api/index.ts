@@ -1076,3 +1076,37 @@ export async function deleteAccount(password: string): Promise<boolean> {
     return res.ok
   } catch { return false }
 }
+
+// ———— 用户自持自定义模型（2026-11-15，迁移 0034：最稳定最合规通道） ————
+
+export interface CustomModelInfo {
+  name: string
+  base_url: string
+  overseas: boolean
+  has_key: boolean
+}
+
+export async function fetchCustomModels(): Promise<CustomModelInfo[]> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/custom-models`, { headers: authHeaders() })
+    if (!res.ok) return []
+    const data = await safeJson(res)
+    return Array.isArray(data.models) ? data.models : []
+  } catch { return [] }
+}
+
+export async function saveCustomModels(
+  models: { name: string; base_url: string; overseas: boolean }[],
+  newKeys: Record<string, string>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/custom-models`, {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ models, new_keys: newKeys }),
+    })
+    const data = await safeJson(res)
+    if (!res.ok) return { ok: false, error: data?.detail || '保存失败' }
+    return { ok: true }
+  } catch { return { ok: false, error: '网络错误' } }
+}

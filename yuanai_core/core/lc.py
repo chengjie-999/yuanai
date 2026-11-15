@@ -1,5 +1,6 @@
 from typing import Optional, List, Union
 
+import os
 from contextvars import ContextVar
 
 from langchain_core.language_models import BaseLanguageModel
@@ -12,6 +13,8 @@ from config.settings import MODEL_NAMES, REASONING_EFFORT
 # 当前请求的推理强度（聊天框「快答/深思」开关；ws_client 按请求设置，
 # 优先级：get_llm 显式参数 > 本 contextvar > settings.REASONING_EFFORT）
 current_reasoning_effort: ContextVar[str] = ContextVar("lc_reasoning_effort", default="")
+# 用户自持自定义模型（2026-11-15，迁移 0034）：chat 入口 set 后 get_llm 读取
+current_llm_user_id: ContextVar[int] = ContextVar("lc_user_id", default=0)
 
 dsllm = [m for m in MODEL_NAMES if 'deepseek' in m]
 seed = [m for m in MODEL_NAMES if 'doubao' in m]
@@ -159,18 +162,24 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
             **kwargs,
         )
     else:
-        # 自定义模型：尝试从存储读取 Key，否则用模型 ID 推断
+        # 自定义模型：用户自持配置优先（2026-11-15 个人主体最合规通道），
+        # 否则全局存储（管理员配置）
         provider = "Custom"
         from config.settings import MODELS
         if model in MODELS:
             provider = MODELS[model].get("provider", "Custom")
         custom_key = _get_stored_key(provider)
+        user_custom = _get_user_custom_model(model)
+        if user_custom is not None:
+            custom_key, user_base_url, user_overseas = user_custom
         if custom_key:
             # C9（2026-10-29）出境开关：自定义模型 base_url 一律校验——
             # 默认白名单仅境内端点（DeepSeek/火山 Ark/本机联调），未知端点
             # fail-closed 拒绝路由（曾默认 api.openai.com/v1 直接出境）。
             from config.settings import LLM_BASE_URL_ALLOWLIST, OVERSEAS_BASE_URL_ALLOWED
             base_url = kwargs.pop("base_url", "https://api.deepseek.com/v1")
+            if user_custom is not None:
+                base_url = user_base_url
             if not OVERSEAS_BASE_URL_ALLOWED:
                 host = ""
                 try:
@@ -182,7 +191,9 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
                     host == p or host.endswith("." + p)
                     for p in LLM_BASE_URL_ALLOWLIST
                 )
-                if not allowed:
+                # 用户自持凭证 + 显式确认数据出境 = 放行（与 CC 终端自持
+                # 凭证同款合规口径：费用用户与官方直接结算，平台零代付）
+                if not allowed and not (user_custom is not None and user_overseas):
                     raise ValueError(
                         f"模型 {model} 的 base_url（{base_url}）不在境内端点白名单内，"
                         f"已拒绝路由（数据出境开关）。如该端点为合规境内网关，"
@@ -195,6 +206,40 @@ def get_llm(model='deepseek-flash', reasoning=True, reasoning_effort: Optional[s
                 **kwargs,
             )
         raise ValueError(f"未找到模型 {model} 的 API Key，请在 Agent 页面配置")
+
+
+def _get_user_custom_model(model: str):
+    """用户自持自定义模型配置（迁移 0034）：按当前用户 + 模型名查询。
+    返回 (key, base_url, overseas) 或 None。惰性 import 防循环；异常静默
+    回落全局配置。"""
+    uid = current_llm_user_id.get()
+    if not uid:
+        return None
+    try:
+        from db.session import get_db, User
+        db = get_db()
+        with db.session() as sess:
+            row = sess.query(User).filter_by(id=uid).first()
+            raw = (row.custom_models or "") if row else ""
+        if not raw:
+            return None
+        import json as _j
+        items = _j.loads(raw)
+    except Exception:
+        return None
+    for it in items or []:
+        if not isinstance(it, dict) or it.get("name") != model:
+            continue
+        enc = it.get("key_encrypted")
+        if not isinstance(enc, dict) or not enc.get("encrypted_data"):
+            return None
+        try:
+            from utils.sensitive_data import decrypt_sensitive_data
+            key = decrypt_sensitive_data(enc, os.getenv("ENCRYPTION_PASSWORD", ""))
+        except Exception:
+            return None
+        return (key, str(it.get("base_url") or ""), bool(it.get("overseas")))
+    return None
 
 
 def _usage_cb(model: str, purpose: str = "chat"):

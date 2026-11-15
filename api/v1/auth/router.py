@@ -10,6 +10,7 @@ from db.session import get_db
 from api.v1.auth.utils import create_token, verify_token, create_sse_token
 from api.v1.ratelimit import auth_limiter, get_client_ip
 from utils.data_path import root_path as _root_path
+from utils.sensitive_data import encrypt_sensitive_data
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -415,6 +416,102 @@ def update_prefs(req: PrefsUpdate, request: Request):
         row.prefs = _json.dumps(cur, ensure_ascii=False)
         sess.commit()
     return {"ok": True, "prefs": cur}
+
+
+# ———— 用户自持自定义模型（2026-11-15，迁移 0034） ————
+# 个人主体最稳定最合规通道：用户自己的 API key 自己与官方结算（Anthropic
+# 2026-09 条款禁平台代付），key 经 ENCRYPTION_PASSWORD 加密（同 _apikeys）；
+# overseas=用户显式确认数据出境（C9 放行依据，与 CC 终端自持凭证同口径）
+
+_CUSTOM_MODEL_NAME_RE = re.compile(r"^[\w.\-]{1,64}$")
+_CUSTOM_MODEL_URL_RE = re.compile(r"^https?://[\w.\-:]+(:\d+)?(/[\w.\-/_]*)?$")
+
+
+def _sanitize_custom_models(items) -> list:
+    """白名单结构校验：name/base_url 格式 + overseas 布尔；key 另传不落列表"""
+    out = []
+    seen = set()
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        name = str(it.get("name") or "").strip()
+        base = str(it.get("base_url") or "").strip()
+        if not _CUSTOM_MODEL_NAME_RE.match(name) or name in seen:
+            continue
+        if base and not _CUSTOM_MODEL_URL_RE.match(base):
+            continue
+        seen.add(name)
+        out.append({"name": name, "base_url": base.rstrip("/"),
+                    "overseas": bool(it.get("overseas"))})
+    return out[:5]  # 每用户最多 5 个自定义模型
+
+
+class CustomModelsUpdate(BaseModel):
+    models: list = []
+    new_keys: dict = {}  # name → 明文 key（新填/修改；不传=保留原密文）
+
+
+@router.get("/custom-models")
+def get_custom_models(request: Request):
+    """自定义模型列表（key 永不下发——返回脱敏态）"""
+    from db.session import User
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    db = get_db()
+    with db.session() as sess:
+        row = sess.query(User).filter_by(id=uid).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        raw = row.custom_models or ""
+    try:
+        items = _json.loads(raw)
+    except Exception:
+        items = []
+    out = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        out.append({"name": it.get("name", ""), "base_url": it.get("base_url", ""),
+                    "overseas": bool(it.get("overseas")),
+                    "has_key": bool(it.get("key_encrypted"))})
+    return {"models": out}
+
+
+@router.put("/custom-models")
+def update_custom_models(req: CustomModelsUpdate, request: Request):
+    """全量替换自定义模型列表。new_keys 中传明文 key 的才重加密；未传的保留
+    原密文；删除模型=列表不再包含。"""
+    from db.session import User
+    uid = getattr(request.state, 'user_id', None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="未登录")
+    db = get_db()
+    with db.session() as sess:
+        row = sess.query(User).filter_by(id=uid).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        try:
+            cur = _json.loads(row.custom_models or "")
+        except Exception:
+            cur = []
+        old_keys = {it.get("name"): it.get("key_encrypted") for it in cur
+                    if isinstance(it, dict)}
+        pwd = _os.getenv("ENCRYPTION_PASSWORD", "")
+        sanitized = _sanitize_custom_models(req.models or [])
+        for it in sanitized:
+            plain = (req.new_keys or {}).get(it["name"])
+            if isinstance(plain, str) and plain.strip():
+                if not pwd:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="服务器未配置加密口令（ENCRYPTION_PASSWORD），无法安全存储 API Key")
+                it["key_encrypted"] = encrypt_sensitive_data(plain.strip(), pwd)
+            else:
+                it["key_encrypted"] = old_keys.get(it["name"]) or {}
+        row.custom_models = _json.dumps(sanitized, ensure_ascii=False)
+        sess.commit()
+    return {"ok": True, "models": sanitized}
 
 
 class ThemeUpdate(BaseModel):

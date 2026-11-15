@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getStoredModel, setStoredModel, fetchModels, getStoredEffort, setStoredEffort } from '../api'
 import { fetchAgentModels, updateAgentModel } from '../api'
-import { fetchAgentVoices, updateAgentVoice } from '../api'
+import { fetchAgentVoices, updateAgentVoice, fetchCustomModels, saveCustomModels, type CustomModelInfo } from '../api'
 import MemoryCard from './MemoryCard'
 import { useAutoRead, toggleAutoRead } from '../hooks/useAutoRead'
 import { useAnswerTone, toggleAnswerTone } from '../hooks/useAnswerTone'
@@ -82,6 +82,46 @@ export default function SettingsPage() {
     fetchAgentModels().then(setAgentModels)
     fetchAgentVoices().then(setAgentVoices)
   }, [])
+  // 自定义模型（用户自持 API Key，2026-11-15）
+  const [customModels, setCustomModels] = useState<CustomModelInfo[]>([])
+  const [cmName, setCmName] = useState('')
+  const [cmBase, setCmBase] = useState('')
+  const [cmKey, setCmKey] = useState('')
+  const [cmOverseas, setCmOverseas] = useState(false)
+  const [cmBusy, setCmBusy] = useState(false)
+  const [cmMsg, setCmMsg] = useState('')
+  useEffect(() => { fetchCustomModels().then(setCustomModels) }, [])
+
+  const cmSave = async (next: CustomModelInfo[], newKeys: Record<string, string>) => {
+    setCmBusy(true)
+    setCmMsg('')
+    const res = await saveCustomModels(
+      next.map((m) => ({ name: m.name, base_url: m.base_url, overseas: m.overseas })),
+      newKeys)
+    setCmBusy(false)
+    if (res.ok) {
+      setCustomModels(await fetchCustomModels())
+      setCmKey('')
+      setCmMsg('已保存')
+    } else {
+      setCmMsg(res.error || '保存失败')
+    }
+  }
+
+  const cmAdd = () => {
+    const name = cmName.trim()
+    if (!name || !/^[\w.\-]{1,64}$/.test(name)) { setCmMsg('模型名只能包含字母数字、点、横线（≤64 字符）'); return }
+    if (customModels.length >= 5) { setCmMsg('最多 5 个自定义模型'); return }
+    if (!cmBase.trim()) { setCmMsg('请填写 base_url（如 https://api.anthropic.com 或兼容网关地址）'); return }
+    if (!cmKey.trim()) { setCmMsg('请填写 API Key'); return }
+    const next = [...customModels.filter((m) => m.name !== name),
+      { name, base_url: cmBase.trim().replace(/\/$/, ''), overseas: cmOverseas, has_key: true }]
+    cmSave(next, { [name]: cmKey.trim() })
+  }
+
+  const cmRemove = (name: string) => {
+    cmSave(customModels.filter((m) => m.name !== name), {})
+  }
 
   const handleRoleModel = async (role: string, modelId: string) => {
     setSavingRole(role)
@@ -323,6 +363,54 @@ export default function SettingsPage() {
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
               同步状态见本页知识星球页右上角徽标；配置存于本机 data/agent_config.json
             </div>
+          </div>
+        </div>
+
+        {/* ---- 自定义模型（用户自持 API Key，2026-11-15 最稳定最合规通道） ---- */}
+        <div style={C.card}>
+          <div style={C.title}>自定义模型（自备 API Key）</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.7 }}>
+            接入 Claude / GPT 等海外模型：填你自己的 API Key，费用直接与模型官方结算（平台不代付）。
+            base_url 填官方端点或你信任的兼容网关；填<b>非境内端点（数据出境）</b>时请勾选确认——
+            自持凭证并主动配置，视为同意《用户协议》数据出境条款。
+          </div>
+          {customModels.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              {customModels.map((m) => (
+                <div key={m.name} style={{ ...C.row, padding: '8px 0' }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-primary)', fontFamily: 'monospace', fontWeight: 600 }}>{m.name}</div>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.base_url}</span>
+                    {m.overseas && <span style={{ fontSize: 11, color: 'var(--warning)', border: '1px solid var(--warning)', borderRadius: 4, padding: '1px 5px' }}>出境</span>}
+                    <button onClick={() => cmRemove(m.name)} disabled={cmBusy}
+                      style={{ fontSize: 12, padding: '3px 10px', borderRadius: 6, border: '1px solid var(--danger)', background: 'none', color: 'var(--danger)', cursor: 'pointer' }}>
+                      删除
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <input value={cmName} onChange={(e) => setCmName(e.target.value)} placeholder="模型名（如 claude-opus-4-8）"
+                style={{ flex: 1, minWidth: 150, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12.5 }} />
+              <input value={cmBase} onChange={(e) => setCmBase(e.target.value)} placeholder="base_url（https://api.anthropic.com 或兼容网关）"
+                style={{ flex: 2, minWidth: 220, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12.5 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input value={cmKey} onChange={(e) => setCmKey(e.target.value)} type="password" placeholder="API Key（加密存储，仅自己可用）"
+                style={{ flex: 1, minWidth: 200, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12.5 }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <input type="checkbox" checked={cmOverseas} onChange={(e) => setCmOverseas(e.target.checked)} />
+                端点非境内（确认数据出境）
+              </label>
+              <button onClick={cmAdd} disabled={cmBusy}
+                style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }}>
+                {cmBusy ? '保存中…' : '添加模型'}
+              </button>
+            </div>
+            {cmMsg && <div style={{ fontSize: 12, color: cmMsg === '已保存' ? 'var(--success)' : 'var(--danger)' }}>{cmMsg}</div>}
           </div>
         </div>
 

@@ -164,7 +164,7 @@ function AgentDownloadCard() {
         {/* 使用指南（2026-10-30 用户拍板：图形 + yuan/yuancc 终端两套入口） */}
         <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.9 }}>
           <b style={{ color: 'var(--text-primary)' }}>使用指南</b>
-          <div>① <b>图形安装（推荐）</b>：点上方「下载默认版本」→ 双击运行 → 安装向导一路「下一步」→ 自动注册完成（托盘常驻，可开关各 Agent；改过文件名才会要求输入码）</div>
+          <div>① <b>图形安装（推荐，3 步完成）</b>：点上方「下载默认版本」→ 双击运行 → 安装向导一路「下一步」→ 电脑右下角出现「小元AI」图标即成功（自动注册，无需输入任何码；下载后请不要修改安装包文件名）</div>
           <div style={{ color: 'var(--warning)' }}>如提示「Windows 已保护你的电脑」：点「更多信息」→「仍要运行」即可（软件未签名的正常提示）</div>
           <div>② <b>终端安装（开发者，本机需 Python 3.10+ 环境）</b>：</div>
           <div style={{ fontFamily: 'monospace', fontSize: 11.5, paddingLeft: 18, color: 'var(--text-primary)' }}>

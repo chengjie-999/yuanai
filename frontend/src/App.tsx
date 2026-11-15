@@ -187,11 +187,19 @@ function AppLayout() {
             whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6,
             borderBottom: location.pathname === '/chat/user' ? '1px solid var(--accent)' : '1px solid transparent',
           }}>
-            {user?.avatar && (
+            {user?.avatar ? (
               <img src={user.avatar} alt="" style={{
                 width: 22, height: 22, borderRadius: '50%', objectFit: 'cover',
                 border: '1px solid var(--border)',
               }} />
+            ) : (
+              /* R2 自动分配账号（2026-11-15 收尾）：无头像用户显示默认首字圆
+                 （accent 底白字，与个人页 72px 同口径）——移动端此前什么都不显示 */
+              <span style={{
+                width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0,
+              }}>{(user?.display_name || user?.username || 'U')[0].toUpperCase()}</span>
             )}
             {/* 移动端只留头像（2026-11-08 顶栏压缩） */}
             {!isMobile && (user?.display_name || user?.username)}

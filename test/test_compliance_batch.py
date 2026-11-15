@@ -264,3 +264,12 @@ class TestC11Agreements:
             assert u and u.agreed_at is not None
         finally:
             sess.close()
+
+
+def test_terminal_guide_endpoint_public(client):
+    """用户说明书端点（2026-11-15）：公开可读 + 白名单 404"""
+    resp = client.get("/api/v1/docs/guide/terminal-guide")
+    assert resp.status_code == 200
+    assert "本地终端使用说明书" in resp.text
+    assert "claude mcp add" in resp.text
+    assert client.get("/api/v1/docs/guide/不存在的").status_code == 404

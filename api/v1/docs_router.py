@@ -44,6 +44,24 @@ async def serve_docs_asset(asset_path: str):
     return _serve_asset(asset_path)
 
 
+# 用户侧说明书（2026-11-15）：白名单映射，改文档即改页面（生产 git pull 同步）
+_GUIDES = {"terminal-guide": "terminal-guide.md"}
+
+
+@router.get("/api/v1/docs/guide/{name}")
+async def serve_guide(name: str):
+    """docs/ 下用户说明书原文（markdown）——普通用户在网站「本地 Agent」页
+    直接阅读终端使用说明，无需打开仓库"""
+    if name not in _GUIDES:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    path = os.path.join(root_path(), "docs", _GUIDES[name])
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="文档缺失")
+    with open(path, "r", encoding="utf-8") as f:
+        return Response(content=f.read(), media_type="text/markdown; charset=utf-8",
+                        headers={"Cache-Control": "no-store"})
+
+
 # C11（2026-10-29）：协议公开端点（登录前可读）——/terms /privacy /rules 页面消费。
 # 文件名白名单三份，改文档即改页面（生产 git pull 同步，无需重建前端）
 _AGREEMENTS = {"terms": "用户协议.md", "privacy": "隐私政策.md", "rules": "服务规则.md"}

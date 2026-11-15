@@ -1,15 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, type ReactNode, type CSSProperties } from 'react'
 import LandingHeader from '../components/LandingHeader'
 import MarkdownContent from '../components/MarkdownContent'
 import ZoomableImage from '../components/chat/ZoomableImage'
 import { API_BASE } from '../api'
 import { usePageMeta } from '../hooks/usePageMeta'
+import { useIsMobile } from '../hooks/useIsMobile'
+import { MenuIcon } from '../components/icons'
 import { Link } from 'react-router-dom'
 
 /* ============================================================
-   API 文档（示例版）— 公开页面 /api-docs
-   后续将扩充为完整中文 API 文档；当前覆盖核心示例端点。
-   交互式调试走 FastAPI 自带 Swagger（/docs，新标签）。
+   API 文档 — 公开页面 /api-docs
+   形态（2026-11-15 用户拍板）：模仿 DeepSeek 官方文档——
+   左侧文档树（README 章节 + 用户说明书 + API 参考分组），
+   右侧按节渲染（点树换页 + 上一节/下一节），移动端树抽屉化。
+   项目文档与仓库 README.md 同一文件（改 README 即改本页）。
    ============================================================ */
 
 interface ApiExample {
@@ -140,16 +144,50 @@ const METHOD_COLORS: Record<string, string> = {
   GET: '#2e7d32', POST: '#1976d2', PUT: '#e65100', DELETE: '#c62828',
 }
 
+// ———— README 按 h2 切分（围栏状态机：代码块内的 ## 不算标题） ————
+interface ReadmeSection { key: string; title: string; content: string }
+
+function splitReadmeSections(md: string): ReadmeSection[] {
+  const sections: ReadmeSection[] = []
+  let cur: string[] = []
+  let curTitle = '概览'
+  let inFence = false
+  for (const line of md.split('\n')) {
+    if (line.trimStart().startsWith('```')) inFence = !inFence
+    if (!inFence && line.startsWith('## ')) {
+      sections.push({ key: slug(curTitle), title: curTitle, content: cur.join('\n').trim() })
+      curTitle = line.slice(3).trim()
+      cur = []
+      continue
+    }
+    cur.push(line)
+  }
+  sections.push({ key: slug(curTitle), title: curTitle, content: cur.join('\n').trim() })
+  return sections
+}
+
+function slug(title: string): string {
+  return title.replace(/[^\w一-龥-]+/g, '-').replace(/^-+|-+$/g, '') || 'section'
+}
+
+// ———— 文档树节点 ————
+interface DocNode {
+  key: string          // 'readme:<slug>' | 'guide' | 'api:<group>'
+  title: string
+  children?: DocNode[]
+  depth: number
+}
+
 export default function ApiDocsPage() {
-  // SEO（2026-10-26）：文档页专属 title / description / canonical（预渲染至 /docs）
   usePageMeta({
     title: '小元AI 使用文档 — 快速开始与 API 参考',
     description: '小元AI 使用文档：快速开始、智能体架构、对话界面、计划闭环、长期记忆、API 接口参考与安全说明。',
     ogUrl: 'https://cjyuanai.cn/docs',
     canonical: 'https://cjyuanai.cn/docs',
   })
-  // 项目文档：与仓库 README.md 同一文件（后端 /docs/readme 每次请求读文件，
-  // 改 README 即改本页；生产环境 git pull 后自动同步）
+  const isMobile = useIsMobile()
+
+  // 项目文档：与仓库 README.md 同一文件（改 README 即改本页）
   const [readme, setReadme] = useState('')
   const [readmeErr, setReadmeErr] = useState(false)
   useEffect(() => {
@@ -159,86 +197,256 @@ export default function ApiDocsPage() {
       .catch(() => setReadmeErr(true))
   }, [])
 
-  // 图片查看：与对话图片同款（ZoomableImage——滚轮缩放/拖拽平移/双击/触摸捏合）
+  const readmeSections = useMemo(() => (readme ? splitReadmeSections(readme) : []), [readme])
+
+  // 本地终端使用说明书（docs/terminal-guide.md，白名单端点——用户侧文档）
+  const [guide, setGuide] = useState('')
+  const [guideErr, setGuideErr] = useState(false)
+  useEffect(() => {
+    fetch(`${API_BASE}/docs/guide/terminal-guide`)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+      .then((t) => setGuide(t))
+      .catch(() => setGuideErr(true))
+  }, [])
+
+  // 当前页（点树换页 + 上一节/下一节）
+  const [activeKey, setActiveKey] = useState<string>('readme:概览')
+
+  const tree: DocNode[] = useMemo(() => {
+    const readmeNode: DocNode = {
+      key: 'readme-root', title: '项目文档', depth: 0,
+      children: readmeSections.map((s) => ({ key: `readme:${s.title}`, title: s.title, depth: 1 })),
+    }
+    const guideNode: DocNode = { key: 'guide', title: '本地终端使用说明书', depth: 0 }
+    const apiNode: DocNode = {
+      key: 'api-root', title: 'API 参考', depth: 0,
+      children: SECTIONS.map((s) => ({ key: `api:${s.group}`, title: s.group, depth: 1 })),
+    }
+    return [readmeNode, guideNode, apiNode]
+  }, [readmeSections])
+
+  // 平铺顺序（上一节/下一节导航用）
+  const flatKeys = useMemo(() => {
+    const keys: string[] = []
+    readmeSections.forEach((s) => keys.push(`readme:${s.title}`))
+    keys.push('guide')
+    SECTIONS.forEach((s) => keys.push(`api:${s.group}`))
+    return keys
+  }, [readmeSections])
+
+  const activeIndex = flatKeys.indexOf(activeKey)
+  const goPrev = () => { if (activeIndex > 0) setActiveKey(flatKeys[activeIndex - 1]) }
+  const goNext = () => { if (activeIndex >= 0 && activeIndex < flatKeys.length - 1) setActiveKey(flatKeys[activeIndex + 1]) }
+
+  // 移动端树抽屉
+  const [treeOpen, setTreeOpen] = useState(false)
+
+  // 图片查看：与对话图片同款
   const [zoomSrc, setZoomSrc] = useState('')
+
+  // ———— 当前页内容 ————
+  let content: ReactNode = null
+  let pageTitle = ''
+  if (activeKey === 'guide') {
+    pageTitle = '本地终端使用说明书'
+    content = guide ? (
+      <MarkdownContent content={guide} onImageExpand={setZoomSrc} />
+    ) : <Loading guideErr={guideErr} />
+  } else if (activeKey.startsWith('api:')) {
+    const group = activeKey.slice(4)
+    const sec = SECTIONS.find((s) => s.group === group)
+    pageTitle = `API 参考 · ${group}`
+    content = sec?.items.map((item) => (
+      <div key={item.method + item.path} style={{
+        background: 'var(--bg-input)', border: '1px solid var(--border)',
+        borderRadius: 10, padding: '14px 16px', marginBottom: 10,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, color: '#fff', background: METHOD_COLORS[item.method],
+            borderRadius: 4, padding: '2px 7px', letterSpacing: 0.5,
+          }}>{item.method}</span>
+          <code style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{item.path}</code>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{item.auth}</span>
+        </div>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', margin: '8px 0 4px' }}>
+          {item.title}
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          {item.desc}
+        </div>
+        <pre style={{
+          margin: '10px 0 0', padding: '10px 12px', borderRadius: 8,
+          background: 'var(--bg-primary)', border: '1px solid var(--border-light)',
+          fontSize: 11.5, lineHeight: 1.6, overflowX: 'auto',
+          color: 'var(--text-secondary)', fontFamily: 'Consolas, Monaco, monospace',
+        }}>{item.curl}</pre>
+      </div>
+    ))
+  } else {
+    const title = activeKey.slice('readme:'.length)
+    const sec = readmeSections.find((s) => s.title === title)
+    pageTitle = sec?.title || '项目文档'
+    content = readme ? (
+      <MarkdownContent content={sec?.content || ''} onImageExpand={setZoomSrc} />
+    ) : <Loading guideErr={readmeErr} />
+  }
+
+  const renderNode = (node: DocNode) => (
+    <div key={node.key}>
+      <button
+        onClick={() => {
+          if (node.children) {
+            // 父节点：展开/收起（子节点仍可点）
+          }
+        }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+          padding: node.depth === 0 ? '7px 8px' : '5px 8px 5px 22px',
+          border: 'none', background: 'none', cursor: 'pointer', borderRadius: 6,
+          fontSize: node.depth === 0 ? 13.5 : 13, fontWeight: node.depth === 0 ? 700 : 400,
+          color: 'var(--text-secondary)', transition: 'background 0.12s',
+        }}
+      >
+        {node.depth === 0 ? (node.children?.length ? '▾' : '·') : '·'}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {node.title}
+        </span>
+      </button>
+      {node.children && (
+        <div style={{ paddingLeft: 0 }}>
+          {node.children.map((c) => (
+            <button
+              key={c.key}
+              onClick={() => { setActiveKey(c.key); if (isMobile) setTreeOpen(false) }}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                padding: '5px 8px 5px 22px', border: 'none', borderRadius: 6,
+                background: activeKey === c.key ? 'var(--accent-soft)' : 'none',
+                color: activeKey === c.key ? 'var(--accent)' : 'var(--text-secondary)',
+                cursor: 'pointer', fontSize: 13, fontWeight: activeKey === c.key ? 600 : 400,
+                transition: 'background 0.12s',
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                {c.title}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
+  const treeEl = (
+    <nav style={{ padding: '10px 8px 24px', overflowY: 'auto', height: '100%' }}>
+      {tree.map((n) => (n.key === 'guide' ? (
+        <button key="guide" onClick={() => { setActiveKey('guide'); if (isMobile) setTreeOpen(false) }}
+          style={{
+            display: 'block', width: '100%', textAlign: 'left', padding: '7px 8px',
+            border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13.5, fontWeight: 700,
+            background: activeKey === 'guide' ? 'var(--accent-soft)' : 'none',
+            color: activeKey === 'guide' ? 'var(--accent)' : 'var(--text-secondary)',
+          }}>
+          本地终端使用说明书
+        </button>
+      ) : renderNode(n)))}
+    </nav>
+  )
 
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
       <LandingHeader />
 
-      <main style={{ flex: 1, width: '100%', maxWidth: 860, margin: '0 auto', padding: '40px 20px 64px' }}>
-        <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 6px', color: 'var(--text-primary)' }}>小元AI API 文档</h1>
-        <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: '0 0 28px', lineHeight: 1.7 }}>
-          {`BASE = https://你的域名 或 http://localhost:8000`}
-          <br />
-          认证：JWT（<code>Authorization: Bearer &lt;token&gt;</code>）或 Agent 凭据（<code>X-Agent-Id</code> / <code>X-Agent-Secret</code>，本地 Agent 专用端点）。
-          <br />
-          限流：登录 5 次/60s · 通用 API 60 次/60s · 上传 10 次/60s。以下为示例版，完整文档与交互式调试见{' '}
-          <a href="/docs" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Swagger（新标签打开）</a>。
-        </p>
-
-        {/* 项目文档：README.md 原文实时渲染（同一文件，改 README 即改本页） */}
-        <section style={{ marginBottom: 32 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 12px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
-            项目文档（与 README.md 实时同步）
-          </h2>
-          {readme ? (
-            <div className="markdown-body" style={{
-              background: 'var(--bg-input)', border: '1px solid var(--border)',
-              borderRadius: 10, padding: '20px 22px', fontSize: 14, lineHeight: 1.7,
-            }}>
-              <MarkdownContent content={readme} onImageExpand={setZoomSrc} />
-            </div>
-          ) : (
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '14px 2px' }}>
-              {readmeErr ? 'README 加载失败（后端未运行或文件缺失）' : '加载中…'}
-            </div>
-          )}
-        </section>
-
-        {SECTIONS.map((s) => (
-          <section key={s.group} style={{ marginBottom: 32 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 12px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
-              {s.group}
-            </h2>
-            {s.items.map((item) => (
-              <div key={item.method + item.path} style={{
-                background: 'var(--bg-input)', border: '1px solid var(--border)',
-                borderRadius: 10, padding: '14px 16px', marginBottom: 10,
+      <main style={{
+        flex: 1, width: '100%', maxWidth: 1080, margin: '0 auto', padding: '20px 20px 64px',
+        display: 'flex', gap: 20, alignItems: 'flex-start', position: 'relative',
+      }}>
+        {/* 左侧文档树（DeepSeek 官方文档同款；移动端抽屉化） */}
+        {!isMobile ? (
+          <aside style={{
+            width: 228, flexShrink: 0, position: 'sticky', top: 20,
+            background: 'var(--bg-input)', border: '1px solid var(--border)',
+            borderRadius: 10, height: 'calc(100dvh - 40px)', overflow: 'hidden',
+          }}>
+            {treeEl}
+          </aside>
+        ) : (
+          <>
+            <button onClick={() => setTreeOpen(true)} aria-label="打开文档目录"
+              style={{
+                position: 'fixed', left: 12, top: 74, zIndex: 30,
+                padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                background: 'var(--bg-input)', color: 'var(--text-primary)',
+                cursor: 'pointer', fontSize: 13,
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, color: '#fff', background: METHOD_COLORS[item.method],
-                    borderRadius: 4, padding: '2px 7px', letterSpacing: 0.5,
-                  }}>{item.method}</span>
-                  <code style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{item.path}</code>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{item.auth}</span>
-                </div>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', margin: '8px 0 4px' }}>
-                  {item.title}
-                </div>
-                <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                  {item.desc}
-                </div>
-                <pre style={{
-                  margin: '10px 0 0', padding: '10px 12px', borderRadius: 8,
-                  background: 'var(--bg-primary)', border: '1px solid var(--border-light)',
-                  fontSize: 11.5, lineHeight: 1.6, overflowX: 'auto',
-                  color: 'var(--text-secondary)', fontFamily: 'Consolas, Monaco, monospace',
-                }}>{item.curl}</pre>
-              </div>
-            ))}
-          </section>
-        ))}
+              <MenuIcon size={14} /> 目录
+            </button>
+            {treeOpen && (
+              <>
+                <div onClick={() => setTreeOpen(false)} style={{
+                  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 39,
+                }} />
+                <aside style={{
+                  position: 'fixed', left: 0, top: 0, bottom: 0, width: 250, zIndex: 40,
+                  background: 'var(--bg-input)', borderRight: '1px solid var(--border)',
+                  transform: treeOpen ? 'translateX(0)' : 'translateX(-100%)',
+                  transition: 'transform 0.2s', overflow: 'hidden',
+                }}>
+                  {treeEl}
+                </aside>
+              </>
+            )}
+          </>
+        )}
 
-        <div style={{ marginTop: 24, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.8 }}>
-          更多端点（数据集、知识库、后台管理、Agent 设备等）陆续补充；也可以{' '}
-          <Link to="/chat" style={{ color: 'var(--accent)' }}>进入对话</Link> 直接体验对话即执行。
+        {/* 右侧内容区（按节渲染 + 上一节/下一节） */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginBottom: 14, gap: 10, flexWrap: 'wrap',
+          }}>
+            <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>{pageTitle}</h1>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={goPrev} disabled={activeIndex <= 0}
+                style={navBtnStyle(activeIndex <= 0)}>← 上一节</button>
+              <button onClick={goNext} disabled={activeIndex < 0 || activeIndex >= flatKeys.length - 1}
+                style={navBtnStyle(activeIndex < 0 || activeIndex >= flatKeys.length - 1)}>下一节 →</button>
+            </div>
+          </div>
+          <div className="markdown-body" style={{
+            background: 'var(--bg-input)', border: '1px solid var(--border)',
+            borderRadius: 10, padding: '20px 22px', fontSize: 14, lineHeight: 1.7,
+            minHeight: 300,
+          }}>
+            {content}
+          </div>
+          <div style={{ marginTop: 18, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.8 }}>
+            BASE = https://你的域名 或 http://localhost:8000 · 认证 JWT（Bearer token）或 Agent 凭据（X-Agent-Id/X-Agent-Secret）
+            · 限流：登录 5 次/60s · 通用 API 60 次/60s · 上传 10 次/60s
+            · 交互式调试见 <a href="/docs" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Swagger</a>
+            · <Link to="/chat" style={{ color: 'var(--accent)' }}>进入对话</Link> 直接体验对话即执行。
+          </div>
         </div>
       </main>
 
-      {/* 图片查看浮层：对话同款（滚轮缩放/拖拽/双击/捏合/Esc 关闭） */}
       {zoomSrc && <ZoomableImage src={zoomSrc} onClose={() => setZoomSrc('')} />}
+    </div>
+  )
+}
+
+function navBtnStyle(disabled: boolean): CSSProperties {
+  return {
+    padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)',
+    background: 'var(--bg-input)', color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+    cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 13, opacity: disabled ? 0.55 : 1,
+  }
+}
+
+function Loading({ guideErr }: { guideErr: boolean }) {
+  return (
+    <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '14px 2px' }}>
+      {guideErr ? '文档加载失败（后端未运行或文件缺失）' : '加载中…'}
     </div>
   )
 }

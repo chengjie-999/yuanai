@@ -177,3 +177,33 @@ def test_run_terminal_skips_alloc_console_when_attached(monkeypatch):
     monkeypatch.setattr(tray, "_stdio_attached", lambda: False)
     tray._run_terminal_mode()
     assert called == [1]  # 无宿主：自建控制台
+
+
+def test_run_mcp_entry_before_mutex(monkeypatch):
+    """--run-mcp 分支（T13 分发形态）：force 挂回 stdio + build_server().run()
+    执行；不经单实例互斥体（CC 随时拉起的 MCP 子进程与托盘实例共存是常态）"""
+    import agent.tray as tray
+
+    ran = {}
+
+    class FakeServer:
+        def run(self):
+            ran["run"] = True
+
+    monkeypatch.setattr(tray, "_attach_host_stdio",
+                        lambda force=False: ran.setdefault("force", force))
+    import agent.mcp_server as mcp_mod
+    monkeypatch.setattr(mcp_mod, "build_server", lambda: FakeServer())
+    mutex_calls = []
+    monkeypatch.setattr(tray, "_acquire_single_instance",
+                        lambda *a, **k: mutex_calls.append(1) or (None, False))
+
+    import sys
+    monkeypatch.setattr(sys, "argv", ["tray.py", "--run-mcp"])
+    try:
+        tray.main()
+    except SystemExit as e:
+        assert e.code == 0
+    assert ran.get("run") is True
+    assert ran.get("force") is True  # 协议入口强制挂回宿主管道（devnull 顶替防）
+    assert mutex_calls == []

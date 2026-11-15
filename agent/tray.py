@@ -306,11 +306,13 @@ def _python_stdio_ok() -> bool:
         return False
 
 
-def _attach_host_stdio() -> None:
+def _attach_host_stdio(force: bool = False) -> None:
     """windowed exe 从 WT/IDE 终端启动：Python 层 stdio 为 None（引导器置空）
     但宿主 STD 句柄有效——挂回宿主管道（#41 内嵌标签页关键适配；Textual
-    WindowsDriver 依赖 sys.__stdout__，一并恢复）。幂等：stdio 已可用则跳过。"""
-    if os.name != "nt" or _python_stdio_ok():
+    WindowsDriver 依赖 sys.__stdout__，一并恢复）。幂等：stdio 已可用则跳过；
+    force=True（--run-mcp 等协议入口）：即使已指向 devnull 也强制挂回宿主
+    管道——协议走 stdout 绝不能被 devnull 顶掉。"""
+    if os.name != "nt" or (_python_stdio_ok() and not force):
         return
     try:
         import msvcrt
@@ -1253,6 +1255,19 @@ def main():
     if "--run-terminal" in sys.argv:
         sys.argv = [a for a in sys.argv if a != "--run-terminal"]
         sys.exit(_run_terminal_mode())
+
+    # 小元AI 本地 MCP 服务器（T13 分发形态，2026-11-15）：CC 终端以
+    # claude mcp add 拉起本 exe --run-mcp 子进程（stdio JSON-RPC）——安装包
+    # 用户零源码即可接入。位置同 --run-terminal：单实例保护之前（MCP 子进程
+    # 与托盘实例共存是常态）。stdio 强制挂回宿主管道：main 开头把 stdout 指
+    # 向 devnull（windowed 引导器置空），但 CC 传入的 STD 句柄有效——
+    # 幂等检查会误跳过，必须 force
+    if "--run-mcp" in sys.argv:
+        sys.argv = [a for a in sys.argv if a != "--run-mcp"]
+        _attach_host_stdio(force=True)
+        from agent.mcp_server import build_server
+        build_server().run()  # stdio 阻塞循环（管道关闭/进程退出才返回）
+        sys.exit(0)
 
     # 首启安装引导（安装包化 2026-10-16）：exe 非安装位置双击 → 引导安装
     # （选目录 + 桌面快捷方式 + 旧数据迁移），装完启动新副本；已安装则跳过

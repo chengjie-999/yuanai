@@ -693,3 +693,7 @@ GitHub Actions（`.github/workflows/ci.yml`）：
 **内置工具（Agent 可直接调用）：**
 - `list_datasets` / `preview_dataset` / `analyze_dataset` — 数据集管理
 - `transform_dataset` / `describe_column` / `correlate_columns` — 数据转换与分析
+
+## 开发待办看板（2026-11-15 用户建立）
+
+`plans/todo-2026-11.md` = 全局待办/挂账/已完成的一张表索引（T1-T12 + 建议执行序）——细节以各方案文件为事实源；**维护约定**：批次落地时同步改两处（看板状态列 + 对应方案文件状态段），新增立项先登记方案文件再挂行。基线 `develop` @ aa9d5c9（2026-11-15）。

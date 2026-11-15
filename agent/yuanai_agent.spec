@@ -4,6 +4,8 @@
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files
+
 ROOT = Path(SPECPATH).resolve().parent  # agent/ → 项目根
 
 a = Analysis(
@@ -23,6 +25,9 @@ a = Analysis(
         # CC 委派安全钩子模板（2026-11-08）：内建 workspace 惰性初始化时复制落地
         # （exe 下 CC_PROJECT_DIR 未设时 guard_ready 曾永远 fail-closed）
         (str(ROOT / 'scripts' / 'hooks' / 'claude_guard.py'), 'scripts/hooks'),
+        # 终端 TUI v4 Textual 渲染层（2026-11-15）：CSS 资源文件随包分发
+        # （打包批次验证：启动失败仍回退 v3 ptk 路径，非致命）
+        *collect_data_files('textual'),
     ],
     hiddenimports=[
         'yuanai_core', 'yuanai_core.core', 'yuanai_core.core.lc', 'yuanai_core.core.chat', 'yuanai_core.core.schemas',
@@ -45,6 +50,11 @@ a = Analysis(
         # 发布版内置终端（2026-11-11）：托盘「终端对话」exe 自建控制台跑
         # agent.terminal REPL——rich/prompt_toolkit 惰性导入也随 bytecode 分析
         'agent.terminal', 'rich', 'prompt_toolkit',
+        # 终端 TUI v4（2026-11-15）：Textual 渲染层——terminal 内 try 懒加载，
+        # 失败回退 v3 ptk；显式登记防 bytecode 分析漏收子模块
+        'agent.textual_ui', 'textual', 'textual.drivers', 'textual.widgets',
+        'textual.containers', 'textual.screen', 'textual.css', 'textual.binding',
+        'textual.message', 'textual.reactive',
         'agent.scripts', 'agent.scripts.registry', 'agent.scripts.tools',
         'agent.agents', 'agent.agents.base', 'agent.agents.automation',
         'agent.tools', 'agent.tools._registry', 'agent.tools.errors',

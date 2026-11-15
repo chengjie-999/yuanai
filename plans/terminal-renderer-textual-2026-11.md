@@ -70,3 +70,12 @@
 - 测试基线：test_terminal_fullscreen.py 27 项（块语义断言将保留为 widget 状态断言）
 - 后续队列：#39 v3.3 品牌（与 P2 合并）→ #41 WT 内嵌 → #30 消息 id
 - 用户原则对齐：「借鉴 CC 产品形态，不换语言不推倒重来」——复用面最大化，重写面收敛在渲染层
+
+## 8. 落地状态（2026-11-15 决策点 A 拍板「引入 Textual」，P0 完成）
+
+- **P0 框架替换 ✅**：`agent/textual_ui.py`（TextualRenderer/YuanTerminalApp/ApprovalModal/DockInput/BlockWidget/run_textual_repl）——三区布局（Header 常驻 + BlocksScroll 对话块流 + DockInput 输入 dock）+ 块渲染迁移（bid 身份对账）+ token 流式 diff（流式 Markdown 80ms 节流）+ 键盘交互对齐 v3（Enter 提交/选中折叠、Esc+Enter 换行、↑↓ 选块、PgUp/PgDn、Esc）+ 审批 modal（120s 超时 deny）+ 观测右栏/计划视图迁移（_observe_lines/PLAN_ST_WORD 共享渲染逻辑提取）
+- **复用边界达成**：chat_client/claude_loop/审批决议/计划客户端/观测轮询/pet_events/会话存储零改动；命令分发与回合执行 = terminal.dispatch_command/run_turn（ReplContext 与 v3 ptk 共用单一行为事实源）；run_cloud_query/run_query 接口形状不变（set_backend/set_usage 改 hasattr 鸭子判定）
+- **降级链**：main() 构造 try（textual 未装→FullscreenRenderer）+ run_repl 运行期 try（驱动失败→回退 v3 ptk）；requirements +textual、spec +collect_data_files/hiddenimports
+- **测试**：test_textual_ui.py 25 项（状态层 detached + App 层 run_test+pilot + 回退链 2 项）；全量 906 过+9 既有环境项
+- **实现期踩坑（已入库 CLAUDE.md）**：Textual 8 call_from_thread 拒绝同线程（_post 分路）；Widget.remove() 延迟生效（bid 对账）；on_resize 先于 on_mount；DockInput __init__ 需透传 id
+- **挂账**：P1 鼠标打磨（滚轮/拖拽滚动条/点击折叠块/流畅度节流参数）、P2 品牌批（主题色板对齐网站/#39 帮助浮层/Ctrl+R 历史搜索迁移）、#41 WT 内嵌、打包批次真机验证（WT 全屏冒烟）

@@ -208,3 +208,5 @@ structlog==25.3.0
 anthropic>=1.15
 rich>=13.0
 prompt_toolkit>=3.0
+# 终端 TUI v4（2026-11-15 拍板）：Textual 渲染层（diff 渲染 + 原生鼠标滚轮）
+textual>=8.0

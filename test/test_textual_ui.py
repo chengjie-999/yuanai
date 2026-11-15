@@ -1,0 +1,454 @@
+"""终端 TUI v4 Textual 渲染层测试（2026-11-15 拍板，决策点 A）。
+
+分层：
+- 渲染器状态测试（detached 纯状态，不跑 App）：流式接口块语义与 v3 对齐
+- App 交互测试（Textual run_test 无头驱动 + pilot 按键）：挂载/提交/选择/
+  折叠/计划视图/观测右栏/审批 modal/停止语义/退出
+- 回退链测试：run_textual_repl 失败 → run_repl 回退 v3 ptk 路径
+
+隔离纪律（#38 教训）：App 测试经 run_test 无头驱动（不碰真实控制台）；
+HISTORY_FILE/会话文件全部 monkeypatch 到 tmp_path；不触发真实网络。
+"""
+
+import asyncio
+import os
+import threading
+
+from agent.terminal import MAX_TOOL_OUTPUT, TerminalSessionStore
+from agent.textual_ui import (ApprovalModal, TextualRenderer, YuanTerminalApp)
+
+os.environ["TERMINAL_DARK"] = "1"
+
+
+def _make_app(tmp_path, size=(100, 40)):
+    store = TerminalSessionStore(path=str(tmp_path / "sessions.json"))
+    s = store.new_session("claude")
+    render = TextualRenderer(cwd="C:/test", session_id=s["id"])
+    app = YuanTerminalApp(s, store, render)
+    return store, s, render, app, size
+
+
+def _run(coro):
+    asyncio.run(coro)
+
+
+# ==================== 渲染器状态（detached，无 App） ====================
+
+
+def test_stream_blocks_state_matches_v3():
+    """流式接口 → 块状态与 v3 FullscreenRenderer 同语义：
+    思考快照折叠挂工具上方、工具折叠、回答展开"""
+    r = TextualRenderer(cwd="C:/x", session_id="s1")
+    r.reasoning("先想一下")
+    r.tool_start("bash")
+    assert r._working == "bash"
+    assert r._blocks[0]["kind"] == "thinking"
+    assert r._blocks[0]["folded"] is True
+    assert "1 次工具调用" in r._blocks[0]["title"]
+    r.tool_end("bash", "git status 输出")
+    assert r._working is None
+    assert r._blocks[-1]["kind"] == "tool"
+    assert r._blocks[-1]["folded"] is True
+    assert r._blocks[-1]["title"] == "⚙ bash"
+    r.token("你好，**世界**")
+    r.done()
+    assert r._blocks[-1]["kind"] == "answer"
+    assert r._blocks[-1]["folded"] is False
+    assert r._blocks[-1]["content"] == "你好，**世界**"
+    assert r._answer == ""
+
+
+def test_final_thinking_snapshot_on_first_token():
+    """首个回答 token：剩余思考存「最终思考」折叠块（网页同款）"""
+    r = TextualRenderer()
+    r.reasoning("收尾思考")
+    r.token("回答开始")
+    kinds = [b["kind"] for b in r._blocks]
+    assert kinds == ["thinking"]
+    assert "最终思考" in r._blocks[0]["title"]
+    assert r._blocks[0]["folded"] is True
+    assert r._reasoning == ""
+
+
+def test_info_error_interrupted_blocks():
+    r = TextualRenderer()
+    r.info("提示")
+    r.error("失败")
+    r._answer = "半截答案"
+    r.interrupted()
+    kinds = [(b["kind"], b["content"]) for b in r._blocks]
+    assert kinds == [("info", "提示"), ("error", "失败"),
+                     ("info", "（已停止生成）")]
+    assert r._answer == ""
+
+
+def test_tool_output_truncation():
+    r = TextualRenderer()
+    r.tool_end("bash", "x" * (MAX_TOOL_OUTPUT + 100))
+    out = r._blocks[-1]["content"]
+    assert len(out) < len("x" * (MAX_TOOL_OUTPUT + 100))
+    assert "输出过长已截断" in out
+
+
+def test_load_history_mapping_and_clear():
+    r = TextualRenderer()
+    r.load_history([
+        {"role": "user", "content": "问题"},
+        {"role": "assistant", "content": "回答"},
+        {"role": "system", "content": "跳过"},
+        {"role": "assistant", "content": "   "},
+    ])
+    assert [(b["kind"], b["content"]) for b in r._blocks] == [
+        ("user", "问题"), ("answer", "回答")]
+    r.clear_blocks()
+    assert r._blocks == []
+    assert r.sel is None
+
+
+def test_plan_view_state_and_toggle_fold():
+    r = TextualRenderer()
+    r.show_plans([{"title": "计划A", "status": "running", "progress": 40}])
+    assert r._plan_view is not None
+    assert r._plan_view["plans"][0]["title"] == "计划A"
+    r.set_plan_view(None)
+    assert r._plan_view is None
+    r._blocks = [{"kind": "tool", "title": "⚙ bash", "content": "x",
+                  "folded": True}]
+    r.toggle_fold(0)
+    assert r._blocks[0]["folded"] is False
+    r._blocks = [{"kind": "answer", "title": "", "content": "x", "folded": False}]
+    r.toggle_fold(0)  # answer 不折叠
+    assert r._blocks[0]["folded"] is False
+
+
+def test_approve_detached_fail_closed():
+    r = TextualRenderer()
+    assert r.approve_blocking("d", "bash", "x") == "deny"
+    _run(_assert_detached_approve_async_deny(r))
+
+
+async def _assert_detached_approve_async_deny(r):
+    assert await r.approve_async("bash", "x") == "deny"
+
+
+# ==================== App 挂载与交互（run_test + pilot） ====================
+
+
+def _run_app_test(coro_fn, tmp_path, monkeypatch, size=(100, 40)):
+    monkeypatch.setattr("agent.textual_ui.HISTORY_FILE",
+                        str(tmp_path / "history.txt"))
+    monkeypatch.setattr("agent.terminal.HISTORY_FILE",
+                        str(tmp_path / "history.txt"))
+
+    async def _wrap():
+        store, s, render, app, sz = _make_app(tmp_path, size=size)
+        async with app.run_test(size=sz) as pilot:
+            await coro_fn(pilot, app, render, s, store)
+    _run(_wrap())
+
+
+def test_app_mount_header_focus_and_brand(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        await pilot.pause()
+        header = app.query_one("#header")
+        assert "小元AI" in header.render().plain  # 品牌对齐 #39
+        assert isinstance(app.focused, type(app.query_one("#input")))
+        assert len(app.query("BlockWidget")) == 0
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_submit_help_shows_info_block(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        app.query_one("#input").text = "/help"
+        await pilot.press("enter")
+        await pilot.pause()
+        blocks = list(app.query("BlockWidget"))
+        assert len(blocks) == 1
+        assert blocks[0].block_kind == "info"
+        assert "命令" in blocks[0].block_content
+        assert app.query_one("#input").text == ""  # 提交即清空
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_up_down_select_enter_fold_escape(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        render.tool_end("bash", "输出")
+        render.info("尾部块")
+        await pilot.pause()
+        await pilot.press("up")  # 从未选中 → 选中最后一块（info）
+        assert render.sel == len(render._blocks) - 1
+        await pilot.press("up")
+        assert render.sel == len(render._blocks) - 2  # 上一块（tool）
+        await pilot.press("enter")  # tool 折叠展开
+        assert render._blocks[render.sel]["folded"] is False
+        await pilot.press("enter")
+        assert render._blocks[render.sel]["folded"] is True
+        await pilot.press("escape")
+        assert render.sel is None
+        await pilot.press("down")  # sel None → 保持 None（v3 同语义）
+        assert render.sel is None
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_plan_view_toggle_and_enter_exit(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        render.show_plans([{"title": "数据分析", "status": "running",
+                            "progress": 40, "done_steps": 2, "total_steps": 5}])
+        await pilot.pause()
+        assert app.query_one("#plan").has_class("show")
+        assert app.query_one("#blocks").has_class("hidden")
+        inp = app.query_one("#input")
+        inp.text = "/status"
+        await pilot.press("enter")  # 计划视图 Enter = 退出视图（输入保留）
+        await pilot.pause()
+        assert render._plan_view is None
+        assert app.query_one("#plan").has_class("show") is False
+        assert inp.text == "/status"  # 未提交，缓冲保留（v3 pending_input 同款）
+        # 再 Enter 才真正提交命令
+        await pilot.press("enter")
+        await pilot.pause()
+        assert any(b.block_kind == "info" and "本机 Agent" in b.block_content
+                   for b in app.query("BlockWidget"))
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_observe_panel_width_gate(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        render._observe_ready = True
+        render.tick_observation({"online": True, "age_s": 5,
+                                 "latest": {"message": "跑分析", "ts": 0},
+                                 "activities": [{"message": "跑分析", "ts": 0}]})
+        await pilot.pause()
+        assert app.query_one("#observe").has_class("show")
+        assert "活跃" in app.query_one("#observe-content").render().plain
+    _run_app_test(body, tmp_path, monkeypatch, size=(100, 40))
+
+
+def test_app_observe_hidden_on_narrow_terminal(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        render._observe_ready = True
+        render.tick_observation({"online": True, "age_s": None,
+                                 "latest": None, "activities": []})
+        await pilot.pause()
+        assert not app.query_one("#observe").has_class("show")  # 宽 <72 降级
+    _run_app_test(body, tmp_path, monkeypatch, size=(60, 20))
+
+
+def test_app_observe_error_state(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        render._observe_ready = True
+        render.tick_observation({"error": True})
+        await pilot.pause()
+        assert "云端不可用" in app.query_one("#observe-content").render().plain
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_approval_modal_async_y_and_n(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        async def ask():
+            return await render.approve_async("bash", "git push")
+        task = asyncio.create_task(ask())
+        await pilot.pause()
+        assert isinstance(app.screen, ApprovalModal)
+        await pilot.press("y")
+        assert await task == "approve"
+        task2 = asyncio.create_task(ask())
+        await pilot.pause()
+        await pilot.press("n")
+        assert await task2 == "deny"
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_approval_blocking_from_executor_thread(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        result = {}
+
+        def blocking():
+            result["r"] = render.approve_blocking("d1", "bash", "rm x")
+        t = threading.Thread(target=blocking)
+        t.start()
+        await pilot.pause()
+        assert isinstance(app.screen, ApprovalModal)
+        await pilot.press("n")
+        t.join(10)
+        assert not t.is_alive()
+        assert result["r"] == "deny"
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_busy_guard_ignores_enter(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        app.busy = True
+        inp = app.query_one("#input")
+        inp.text = "/help"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert inp.text == "/help"  # 生成中不消费输入
+        assert len(app.query("BlockWidget")) == 0
+        app.busy = False
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_ctrl_c_cancels_busy_not_exit(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        cancelled = {}
+
+        async def slow():
+            app.busy = True
+            app._busy_task = asyncio.current_task()
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                cancelled["yes"] = True
+                raise
+        task = asyncio.create_task(slow())
+        await pilot.pause()
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        assert cancelled.get("yes") is True
+        assert not app._exit  # 生成中 Ctrl+C 只停止不退出
+        task.cancel()
+        app.busy = False
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_ctrl_c_idle_exits(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        assert app._exit
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_quit_command_exits(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        app.query_one("#input").text = "/quit"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app._exit
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_tab_completes_slash_command(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        inp = app.query_one("#input")
+        inp.text = "/pl"
+        await pilot.press("tab")
+        await pilot.pause()
+        assert inp.text == "/plan"  # 唯一前缀补全
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_submit_remembers_history(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        inp = app.query_one("#input")
+        inp.text = "/help"
+        await pilot.press("enter")
+        await pilot.pause()
+        with open(str(tmp_path / "history.txt"), encoding="utf-8") as f:
+            assert "/help" in f.read()
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_click_block_title_toggles_fold(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        render.tool_end("bash", "输出")
+        await pilot.pause()
+        assert render._blocks[0]["folded"] is True
+        title = app.query("BlockWidget").first().query(".btitle").first()
+        await pilot.click(title)
+        await pilot.pause()
+        assert render._blocks[0]["folded"] is False  # 点标题行展开
+        await pilot.click(title)
+        await pilot.pause()
+        assert render._blocks[0]["folded"] is True  # 再点折回
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+def test_app_clear_command_clears_blocks(tmp_path, monkeypatch):
+    async def body(pilot, app, render, s, store):
+        render.info("块一")
+        await pilot.pause()
+        assert len(app.query("BlockWidget")) == 1
+        app.query_one("#input").text = "/clear"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert len(app.query("BlockWidget")) == 1  # 「当前会话已清空」info
+        assert app.query("BlockWidget").first().block_content.startswith("当前会话已清空")
+        assert render._blocks[-1]["kind"] == "info"
+    _run_app_test(body, tmp_path, monkeypatch)
+
+
+# ==================== 回退链（run_repl 委托 v4，失败回退 v3） ====================
+
+
+def test_run_repl_textual_failure_falls_back_to_v3(monkeypatch, tmp_path):
+    """Textual 运行期失败（如无 VT 老控制台）→ run_repl 回退 v3 全屏 ptk 路径：
+    重建 FullscreenRenderer（cwd/session 保留）+ 提示 + prompt_fn 正常消费"""
+    import agent.terminal as terminal
+
+    created = []
+
+    class RecFSR(terminal.FullscreenRenderer):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            created.append(self)
+
+        def redraw(self):
+            pass  # 测试环境不真清屏
+
+        def enter_alt_screen(self):
+            pass
+
+        def exit_alt_screen(self):
+            pass
+
+    monkeypatch.setattr(terminal, "FullscreenRenderer", RecFSR)
+
+    async def boom(*a, **kw):
+        raise RuntimeError("Textual 驱动不可用")
+
+    monkeypatch.setattr("agent.textual_ui.run_textual_repl", boom)
+
+    store = TerminalSessionStore(path=str(tmp_path / "s.json"))
+    s = store.new_session("claude")
+    render = TextualRenderer(cwd="C:/work", session_id=s["id"])
+
+    calls = []
+
+    async def prompt():
+        calls.append(1)
+        return None
+
+    asyncio.run(terminal.run_repl(s, store, prompt_fn=prompt, render=render))
+    assert calls == [1]
+    assert len(created) == 1
+    assert created[0]._cwd == "C:/work"
+    assert created[0]._session_id == s["id"]
+    assert any(b["kind"] == "info" and "回退经典模式" in b["content"]
+               for b in created[0]._blocks)
+
+
+def test_run_repl_textual_happy_path(monkeypatch, tmp_path):
+    """run_repl 收到 TextualRenderer → 委托 run_textual_repl（正常路径不碰
+    ptk 代码）"""
+    import agent.terminal as terminal
+
+    captured = {}
+
+    async def fake_textual_repl(session, store, render):
+        captured["render"] = render
+        captured["session"] = session
+
+    monkeypatch.setattr("agent.textual_ui.run_textual_repl", fake_textual_repl)
+
+    store = TerminalSessionStore(path=str(tmp_path / "s.json"))
+    s = store.new_session("claude")
+    render = TextualRenderer(cwd="C:/work", session_id=s["id"])
+
+    async def prompt():
+        raise AssertionError("v4 路径不应消费 prompt_fn")
+
+    asyncio.run(terminal.run_repl(s, store, prompt_fn=prompt, render=render))
+    assert captured["render"] is render
+    assert captured["session"] is s

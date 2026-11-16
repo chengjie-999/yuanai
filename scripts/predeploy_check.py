@@ -76,8 +76,11 @@ def check_deps_resolvable() -> bool:
     tmp.parent.mkdir(exist_ok=True)
     tmp.write_text("\n".join(filtered), encoding="utf-8")
     print(f"  服务器依赖清单 {len(filtered)} 个包 dry-run 解析中（1-3 分钟）…")
+    # 完整依赖树解析（2026-11-16 教训：--no-deps 只验证包存在性，漏掉了
+    # httpx2 要求 idna>=3.18 与旧锁 idna==3.11 的依赖冲突——服务器 too deep
+    # 的根因；必须带依赖解析才算验证）
     r = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--dry-run", "--no-deps", "--quiet",
+        [sys.executable, "-m", "pip", "install", "--dry-run", "--quiet",
          "-r", str(tmp), "--index-url", "https://pypi.tuna.tsinghua.edu.cn/simple"],
         capture_output=True, text=True, timeout=600)
     err = r.stderr + r.stdout

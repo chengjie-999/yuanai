@@ -44,7 +44,7 @@ httpx==0.28.1
 
 httpx-sse==0.4.3
 
-idna==3.11
+idna==3.20
 
 Jinja2==3.1.6
 
@@ -205,10 +205,18 @@ websockets==16.0
 playwright==1.58.0
 pystray==0.19.5
 structlog==25.3.0
-anthropic>=1.15
-rich>=13.0
-prompt_toolkit>=3.0
+anthropic==1.15.0
+rich==14.3.3
+prompt_toolkit==3.0.53
 # 终端 TUI v4（2026-11-15 拍板）：Textual 渲染层（diff 渲染 + 原生鼠标滚轮）
-textual>=8.0
-# 本地 MCP 服务器（T13 大方向核心：CC 终端发现+调用本地智能体）
-mcp>=2.0
+# 终端 TUI v4 + 本地 MCP 依赖组（2026-11-16 锁定：宽约束曾在服务器
+# pip 26.3 resolver 深递归失败——本机验证成功的版本组合整体锁定，
+# 消除 resolver 选择空间）
+textual==8.2.8
+markdown-it-py==4.0.0
+mdit-py-plugins==0.7.0
+linkify-it-py==2.2.0
+mcp==2.3.0
+mcp-types==2.3.0
+httpx2==2.13.1
+sse-starlette==3.5.1

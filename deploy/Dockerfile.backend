@@ -48,7 +48,7 @@ RUN (sed -i 's#deb.debian.org#mirrors.aliyun.com#g' /etc/apt/sources.list.d/debi
 # 第一层——requirements 易变部分（新增小包）改动时本层缓存命中，只有大包
 # 版本变化才重装；剩余包排除大包后单层安装
 RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install -U pip && \
+    pip install -U "pip==26.1.1" && \
     pip install --no-cache-dir numpy==2.2.6 scipy==1.15.3 pandas==2.3.3 lxml==5.3.2 playwright==1.58.0 cryptography==46.0.6 aiohttp==3.13.3
 
 COPY requirements.txt .

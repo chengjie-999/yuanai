@@ -44,6 +44,10 @@ skills/
 build/
 dist/
 
+# 下载/发布产物（2026-11-16：exe 安装包 200MB/个，服务器 downloads/versions/
+# 经 nginx 挂载卷分发——曾把整目录 COPY 进镜像致服务器磁盘打满构建失败）
+downloads/
+
 # 虚拟环境
 venv/
 

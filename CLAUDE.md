@@ -675,6 +675,7 @@ GitHub Actions（`.github/workflows/ci.yml`）：
 3. **Dockerfile 分层纪律**：大依赖（numpy/scipy/pandas/playwright 等）冻结在 `COPY requirements.txt` **之前**的独立层（改动小依赖不重装大包）；新增依赖只落在小包层
 4. **下载源纪律**见上节（一律国内镜像、配置前 curl 验证）；torch 系检索依赖已移出服务器镜像（用户拍板「直接不用了」，本地开发保留）
 5. CI 的 docker-build job 只在 GitHub 触发（推 Gitee 不触发）——本地 predeploy_check 是主要防线
+6. **freeze 快照漂移**（本次 too deep 根因）：requirements 是快照——新增依赖后 freeze 版本与依赖树不一致（idna==3.11 vs httpx2 需 >=3.18）。新增 Python 依赖的标准流程：本地装 → 重新 freeze 并 diff 同步漂移 → 依赖组整体锁定本机成功版本 → predeploy_check 完整解析（禁止 --no-deps）
 
 **EIP 带宽教训（2026-10-23 移动端白屏排查）**：实例出口带宽 1Mbps 实测聚合仅 ~130KB/s——Agent exe 自动更新下载（200MB，同机 `/downloads/yuanai-agent.exe`）期间把带宽占满，全站请求排队超时，移动流量（路径差）首当其冲白屏转圈；修法：火山控制台 EIP 改**按流量计费**（带宽上限升到 100Mbps）或升固定带宽，静态资源/exe 长远走 CDN。代码侧已核实无责：路由懒加载+首屏 ~86KB gzip 本就达标。
 

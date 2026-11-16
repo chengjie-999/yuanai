@@ -40,10 +40,14 @@ RUN (sed -i 's#deb.debian.org#mirrors.aliyun.com#g' /etc/apt/sources.list.d/debi
 
 COPY requirements.txt .
 
+# pip 先升级（2026-11-16：python:3.10-slim 自带 pip 23.0.1 的旧 resolver
+# 解析 214 个锁定包 + mcp/textual 新依赖回溯卡死 7.5 小时 exit 2——
+# pip 26 新 resolver 秒级解析）
 # 知识库向量检索暂关闭（2026-11-16 用户拍板「直接不用了」）——
 # torch/sentence-transformers/transformers 不进服务器镜像（省 200MB+），
 # 检索功能本地开发保留；rag.py 惰性加载，服务器启动不受影响
 RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip install -U pip && \
     grep -vE '^(sentence-transformers|transformers)==' requirements.txt > /tmp/req.txt && \
     pip install --no-cache-dir -r /tmp/req.txt
 

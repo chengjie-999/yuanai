@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { voiceAsr } from '../../api'
 
 /* ============================================================
@@ -108,13 +109,20 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, onSend
     }
   }
 
-  return (
+  // Portal 挂 body（2026-11-16 用户实测「手机语音页面是偏的」）：安卓微信
+  // X5 内核/部分 WebView 的 fixed 定位相对滚动容器偏移——脱离组件树后
+  // inset:0 在任何内核下都全屏居中；卡片加安全区 padding + 小屏滚动
+  return createPortal(
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9500, display: 'flex',
       alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.4)',
+      paddingTop: 'env(safe-area-inset-top)',
+      paddingBottom: 'env(safe-area-inset-bottom)',
     }}>
       <div style={{
         width: 'min(360px, 92vw)', borderRadius: 16, padding: '20px 24px',
+        maxHeight: 'calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px)',
+        overflowY: 'auto',
         background: 'var(--bg-primary)', border: '1px solid var(--border)',
         boxShadow: '0 12px 40px var(--shadow-md)', display: 'flex',
         flexDirection: 'column', alignItems: 'center', gap: 12,
@@ -171,6 +179,7 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, onSend
           关闭
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

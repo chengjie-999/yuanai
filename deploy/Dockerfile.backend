@@ -38,17 +38,21 @@ RUN (sed -i 's#deb.debian.org#mirrors.aliyun.com#g' /etc/apt/sources.list.d/debi
     libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-
 # pip 先升级（2026-11-16：python:3.10-slim 自带 pip 23.0.1 的旧 resolver
 # 解析 214 个锁定包 + mcp/textual 新依赖回溯卡死 7.5 小时 exit 2——
 # pip 26 新 resolver 秒级解析）
 # 知识库向量检索暂关闭（2026-11-16 用户拍板「直接不用了」）——
 # torch/sentence-transformers/transformers 不进服务器镜像（省 200MB+），
 # 检索功能本地开发保留；rag.py 惰性加载，服务器启动不受影响
+# 分层防全量重装（2026-11-16，用户立规「部署不要再出问题」）：大依赖冻结
+# 第一层——requirements 易变部分（新增小包）改动时本层缓存命中，只有大包
+# 版本变化才重装；剩余包排除大包后单层安装
 RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
     pip install -U pip && \
-    grep -vE '^(sentence-transformers|transformers)==' requirements.txt > /tmp/req.txt && \
+    pip install --no-cache-dir numpy==2.2.6 scipy==1.15.3 pandas==2.3.3 lxml==5.3.2 playwright==1.58.0 cryptography==46.0.6 aiohttp==3.13.3
+
+COPY requirements.txt .
+RUN grep -vE '^(numpy|scipy|pandas|lxml|playwright|cryptography|aiohttp|sentence-transformers|transformers)==' requirements.txt > /tmp/req.txt && \
     pip install --no-cache-dir -r /tmp/req.txt
 
 COPY . .

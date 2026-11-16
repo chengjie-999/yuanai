@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { voiceAsr } from '../../api'
 
@@ -122,19 +122,30 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, onSend
     }
   }
 
+  // 打开时锁定背景滚动：移动端 WebView 背景滚动会带动视觉视口变化，是 fixed
+  // 弹层「偏移/跳动」的常见诱因之一
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
+
   // Portal 挂 body（2026-11-16 用户实测「手机语音页面是偏的」）：安卓微信
-  // X5 内核/部分 WebView 的 fixed 定位相对滚动容器偏移——脱离组件树后
-  // inset:0 在任何内核下都全屏居中；卡片加安全区 padding + 小屏滚动
+  // X5 内核/部分 WebView 的 fixed 定位相对滚动容器偏移——脱离组件树后全屏居中。
+  // 2026-11-16 二次加固（用户反馈仍偏移）：
+  // - 显式 top/left/right/bottom 替代 inset 简写（老内核不支持简写则整个定位失效）
+  // - 去掉 overlay 的 env() 安全区 padding（支持 env 的设备上上下不等值会把卡片
+  //   挤出真实中心——iPhone 上偏下的偏移源）；居中卡片本身不贴边，无需安全区
+  // - maxHeight 用 100vh 兜底（X5 不支持 dvh 时整条声明失效、小屏卡片不滚动）
   return createPortal(
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 9500, display: 'flex',
-      alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.4)',
-      paddingTop: 'env(safe-area-inset-top)',
-      paddingBottom: 'env(safe-area-inset-bottom)',
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9500,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(15,23,42,0.4)',
     }}>
       <div style={{
         width: 'min(360px, 92vw)', borderRadius: 16, padding: '20px 24px',
-        maxHeight: 'calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px)',
+        maxHeight: 'calc(100vh - 80px)',
         overflowY: 'auto',
         background: 'var(--bg-primary)', border: '1px solid var(--border)',
         boxShadow: '0 12px 40px var(--shadow-md)', display: 'flex',

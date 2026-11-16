@@ -69,9 +69,9 @@ utils/excel_env/
 ~$*.docx
 
 # Agent 安装包运行时产物（网页上传生成，不入库）
-downloads/version.json
-downloads/yuanai-agent.exe
-downloads/*.uploading
+# downloads/ 是服务器运行时目录（上传的 exe 版本存这里、versions.json 运行时
+# 改写）——整体移出 git（2026-11-16：曾被部分跟踪致 git pull 冲突风险）
+downloads/
 downloads/versions/
 
 # 安装器协议页纯文本（build_agent.py 每次由 用户协议.md 生成，不入库）

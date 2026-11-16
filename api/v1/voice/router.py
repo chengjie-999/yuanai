@@ -301,10 +301,13 @@ def append_voice_message(req: VoiceMessageRequest, request: Request):
         db = _get_db()
         user_id = _get_user_id(request)
         _verify_session_owner(db, req.session_id, user_id)
-        db.add_chat(req.session_id, req.role, req.content)
+        msg_id = uuid.uuid4().hex
+        db.add_chat(req.session_id, req.role, req.content, msg_id=msg_id)
         from db.cache import clear_chat_cache
         clear_chat_cache(req.session_id)
-        return {"ok": True}
+        # 返回 msg_id：前端本地追加带同 id——15s 轮询合入按 id 去重，
+        # 不再重复显示（用户实测「语音通话会发两遍消息」根因）
+        return {"ok": True, "msg_id": msg_id}
     except HTTPException:
         raise
     except Exception as e:

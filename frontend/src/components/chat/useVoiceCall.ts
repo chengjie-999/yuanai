@@ -39,15 +39,20 @@ export function useVoiceCall(ctx: {
 
   // 语音转录：持久化锚定通话会话；UI 仅追加到通话所属会话视图；loading 期间进队列
   // 信封协议：assistant 转录补 sender=orchestrator（模型回复身份），user 无 sender
-  const handleVoiceTranscript = (role: 'user' | 'assistant', content: string) => {
+  const handleVoiceTranscript = async (role: 'user' | 'assistant', content: string) => {
     const sid = voiceSessionRef.current
     if (ctx.loadingRef.current) {
       pendingVoiceTranscriptsRef.current.push({ role, content })
       return
     }
-    if (sid) voiceMessage(sid, role, content)
+    // 落库返回 msg_id——本地追加带同 id，15s 轮询合入按 id 去重
+    // （用户实测「语音通话会发两遍消息」根因：append 无 id 被轮询重复合入）
+    const msgId = sid ? await voiceMessage(sid, role, content) : ''
     if (sid && sid !== ctx.sidRef.current) return  // 用户切走了：只落库，展示等切回后 loadMessages 出现
-    ctx.setMessages((prev) => [...prev, { role, content, ...(role === 'assistant' ? { sender: 'orchestrator' as const } : {}) }])
+    ctx.setMessages((prev) => [...prev, {
+      role, content, ...(msgId ? { msg_id: msgId } : {}),
+      ...(role === 'assistant' ? { sender: 'orchestrator' as const } : {}),
+    }])
   }
 
   // 文字流结束：把暂存的语音转录并入保存快照（进入 /chat/save 全量替换，避免被抹掉）

@@ -354,6 +354,9 @@ function SvgBlock({ code }: { code: string }) {
   )
 }
 
+// 跨挂载的已朗读 tick（模块级单例）：MessageBubble 卸载重挂后不重读
+const _lastReadTick: { current: number } = { current: 0 }
+
 const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, onFollowup, autoRead, autoReadTick, onOpenPanel, onSwitchWindow, ccActivity, variant }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
@@ -410,7 +413,9 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   // 进入编辑态时预填原内容
   useEffect(() => { if (editing) setDraft(msg.content) }, [editing])
   // 自动朗读：AI 回复完成后（autoReadTick 递增）触发一次；仅在最后一条且开启时
-  const autoReadFired = useRef(0)
+  // 已朗读 tick 跨组件生命周期持久（模块级）——useRef 随组件卸载重置，
+  // 切页面切回时 autoReadTick 仍 >0 会重读整段（用户实测「切回还会读」）
+  const autoReadFired = _lastReadTick
   useEffect(() => {
     if (!autoRead || !autoReadTick || autoReadTick <= autoReadFired.current) return
     // 多窗口 P2：执行窗口无朗读（语音仅对话窗口）；委派任务卡不自动朗读

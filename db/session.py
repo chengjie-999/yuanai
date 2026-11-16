@@ -624,8 +624,11 @@ class AgentDatabase:
     # 聊天记录操作
     # --------------------------------------------------------------------------
     def add_chat(self, session_id: str, role: str, content: str, images: list = None,
-                 sender: str = None):
-        """添加一条聊天记录（信封：sender 缺省按 role 推导；turn 会话内 user 计数+1）"""
+                 sender: str = None, msg_id: str = None):
+        """添加一条聊天记录（信封：sender 缺省按 role 推导；turn 会话内 user 计数+1）。
+        msg_id（迁移 0032）：语音转录等 append 路径显式传 id——多端同步按 id
+        去重，无 id 的 append 会在轮询合入时重复显示（用户实测「语音发两遍」）"""
+        import uuid as _uuid
         session = self.Session()
         try:
             if not sender:
@@ -635,7 +638,8 @@ class AgentDatabase:
             if role == "user":
                 turn += 1
             chat = AIChat(session_id=session_id, role=role, content=content,
-                          sender=sender, turn=turn)
+                          sender=sender, turn=turn,
+                          msg_id=msg_id or _uuid.uuid4().hex)
             if images:
                 chat.images = json.dumps(images, ensure_ascii=False)
             session.add(chat)

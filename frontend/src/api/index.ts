@@ -732,15 +732,17 @@ export async function voiceEnd(roomId: string, taskId: string) {
   } catch { /* 挂断尽力而为，失败不阻塞 UI */ }
 }
 
-export async function voiceMessage(sessionId: string, role: 'user' | 'assistant', content: string) {
+export async function voiceMessage(sessionId: string, role: 'user' | 'assistant', content: string): Promise<string> {
   try {
     const res = await fetch(`${API_BASE}/voice/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ session_id: sessionId, role, content }),
     })
-    if (!res.ok) console.warn('语音转录落库失败:', res.status)
-  } catch { /* 转录持久化尽力而为 */ }
+    if (!res.ok) { console.warn('语音转录落库失败:', res.status); return '' }
+    const data = await safeJson(res)
+    return data?.msg_id || ''
+  } catch { /* 转录持久化尽力而为 */ return '' }
 }
 
 /** 流式 TTS：后端边到边转发豆包音频分片，前端边收边播（首声延迟 ≈ 首个分片合成时间） */

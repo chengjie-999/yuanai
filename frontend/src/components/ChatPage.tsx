@@ -1237,7 +1237,7 @@ ${full}
     streamRef.current = { sid, controller }
   }
 
-  const handleSend = (textOverride?: string) => {
+  const handleSend = (textOverride?: string, voiceMsgId?: string) => {
     const text = (textOverride ?? input).trim()
     if (!currentSid) { flashNotice('请先选择或创建一个会话'); return }
     // sweep 审查修复：历史加载失败时禁止发送——/chat/save 全量替换会清空既有历史
@@ -1245,7 +1245,12 @@ ${full}
     if (loading) { flashNotice('正在生成中，可点击「停止」或等待完成'); return }
     if (!text) return
     const sentImages = images.length > 0 ? [...images] : undefined
-    const prevMsgs = [...messages, { role: 'user' as const, content: text, images: sentImages }]
+    // voiceMsgId：语音发送复用转录落库的 msg_id（单一写路径——save upsert 幂等、
+    // 轮询去重生效；2026-11-16 修复「语音消息显示两遍」根因）
+    const prevMsgs = [...messages, {
+      role: 'user' as const, content: text, images: sentImages,
+      ...(voiceMsgId ? { msg_id: voiceMsgId } : {}),
+    }]
     setMessages(prevMsgs)
     setSendTick((t) => t + 1)
     setImages([]); setInput('')
@@ -1660,7 +1665,7 @@ ${full}
           onClose={() => setVoiceCallOpen(false)}
           ensureSession={ensureVoiceSession}
           onTranscript={handleVoiceTranscript}
-          onSendText={(text) => { setInput(''); handleSend(text) }}
+          onSendText={(text, msgId) => { setInput(''); handleSend(text, msgId) }}
         />
       )}
 

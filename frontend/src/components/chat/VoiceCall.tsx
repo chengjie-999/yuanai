@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { voiceAsr } from '../../api'
 
@@ -41,8 +41,8 @@ type RecState = 'idle' | 'recording' | 'recognizing'
 export default function VoiceCall({ onClose, ensureSession, onTranscript, onSendText }: {
   onClose: () => void
   ensureSession: () => Promise<string>
-  onTranscript: (role: 'user' | 'assistant', content: string) => void
-  onSendText: (text: string) => void
+  onTranscript: (role: 'user' | 'assistant', content: string) => Promise<string | null>
+  onSendText: (text: string, msgId: string) => void
 }) {
   const [state, setState] = useState<RecState>('idle')
   const [statusText, setStatusText] = useState('按住说话，松开发送')
@@ -52,9 +52,14 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, onSend
   const recordingRef = useRef(false)
 
   // 按住说话：pointerdown 开始录音（MediaRecorder opus）
-  const startRecording = async () => {
-    if (recordingRef.current) return
+  const startRecording = async (e: ReactPointerEvent<HTMLButtonElement>) => {
+    // 守卫：识别中/录音中不可重按——重按会重置 chunksRef，两段录音数据串扰/重复发送
+    // （state!=='idle' 同时挡住「松手到 onstop 之间」的快速重按窗口）
+    if (recordingRef.current || state !== 'idle') return
     try {
+      // 指针捕获：按住期间事件全部路由到按钮——手机上滑出按钮不丢 pointerup，
+      // 桌面按住拖出也不触发 pointerleave 提前停止
+      try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* 捕获失败不影响录音 */ }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const recorder = new MediaRecorder(stream)
       chunksRef.current = []
@@ -90,8 +95,12 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, onSend
       const blob = new Blob(chunks, { type: chunks[0].type || 'audio/webm' })
       const arrayBuf = await blob.arrayBuffer()
       const actx = new AudioContext()
-      const audioBuffer = await actx.decodeAudioData(arrayBuf)
-      actx.close()
+      let audioBuffer: AudioBuffer
+      try {
+        audioBuffer = await actx.decodeAudioData(arrayBuf)
+      } finally {
+        void actx.close().catch(() => {})  // 成功/失败都释放 AudioContext
+      }
       const wav = await encodeWav16k(audioBuffer)
       const text = await voiceAsr(wav)
       if (!text.trim()) {
@@ -99,8 +108,12 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, onSend
       }
       setLastTranscript(text)
       await ensureSession()
-      onTranscript('user', text)   // 转录落库 + 追加气泡
-      onSendText(text)             // 走正常发送链路 → AI 回答 → 自动朗读
+      // 转录落库拿 msg_id（不追加 UI——发送链路追加唯一一条用户气泡带同 id；
+      // 2026-11-16 修复「消息显示两遍 + AI 输出写进用户消息」根因）
+      const r = await onTranscript('user', text)
+      if (r === null) { setState('idle'); setStatusText('已保存到通话会话'); return }
+      if (r === 'queued') { setState('idle'); setStatusText('AI 正在回答，你说的话会在回答后显示'); return }
+      onSendText(text, r)             // 走正常发送链路 → AI 回答 → 自动朗读
       setState('idle')
       setStatusText('已发送，等待回答…（可按住继续说）')
     } catch (e: any) {
@@ -136,6 +149,7 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, onSend
         <button
           onPointerDown={startRecording}
           onPointerUp={stopRecording}
+          onPointerCancel={stopRecording}
           onPointerLeave={stopRecording}
           aria-label="按住说话"
           style={{

@@ -418,9 +418,12 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   const autoReadFired = _lastReadTick
   useEffect(() => {
     if (!autoRead || !autoReadTick || autoReadTick <= autoReadFired.current) return
+    if (!isLast) return
+    // tick 一律在最后一条处消费（含执行窗口/委派任务卡——不读但消费）：
+    // 残留 tick 不再泄漏到切回后的会话（用户实测「切窗口后乱读旧消息」根因）
+    autoReadFired.current = autoReadTick
     // 多窗口 P2：执行窗口无朗读（语音仅对话窗口）；委派任务卡不自动朗读
-    if (isLast && !isUser && !isExec && !isDelegation && msg.content.trim()) {
-      autoReadFired.current = autoReadTick
+    if (!isUser && !isExec && !isDelegation && msg.content.trim()) {
       toggleRead(true)  // 自动朗读：失败静默不弹窗
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

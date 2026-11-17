@@ -105,12 +105,13 @@
 - HTML iframe 注入脚本：微信内**不注入长按桥接**，只保留单击放大桥接
 - 非微信浏览器：块长按弹块级菜单（完整功能）
 
-### 三、放大后消息长按不生效——疑点与排查设计
+### 三、查看器打开时长按应禁用（用户澄清：不是「长按失效」，是让它不生效）
 
-- 疑点 1：查看器（ZoomViewer/HtmlViewer/SvgZoomViewer）关闭后，气泡的 suppressBackdropClickRef / longPressTimerRef 未复位
-- 疑点 2：HtmlViewer 的 srcDoc 携带注入脚本——查看器内点击发 `__yuanZoom` 消息，宿主被重复 setZoom(true) 或状态错乱
-- 疑点 3：查看器 fixed 遮罩关闭瞬间的 touch 事件链错乱
-- 排查顺序：本地 devtools 复现 → 检查菜单 ref 复位链 → 统一 reset（查看器 onClose 时复位所有长按状态；查看器 srcDoc 用**去桥接版**——缩放脚本与点击桥接分离）
+- **现状**：放大查看图片/HTML 时，长按查看器会弹出**与消息长按相同内容的菜单**——根因=HtmlViewer/SvgZoomViewer 渲染在气泡行 DOM 内，查看器上的 touch 事件冒泡到行级 onTouchStart 计时器，500ms 后触发通用菜单
+- **修法（在现有查看器基础上改，不重写）**：
+  1. `ZoomViewer`（ZoomableImage.tsx 导出，所有查看器共用底座）挂载/卸载时置模块级标记 `isZoomViewerOpen()`——消息行与块级（BlockLongPress）长按计时器检查该标记，置位时直接跳过（查看器内长按彻底不生效）
+  2. `HtmlViewer` 用**去桥接 srcDoc**：缩放脚本（wheel/双击）保留，点击放大/长按菜单桥接脚本**不注入**——查看器内不再发 `__yuanZoom`/`__yuanMenu` 消息
+  3. 图片查看器（ZoomableImage 在 ChatPage 顶层）如实测也复现，同一标记天然覆盖（共用 ZoomViewer）
 
 ### 四、生成中消息排队（wait-to-send）
 

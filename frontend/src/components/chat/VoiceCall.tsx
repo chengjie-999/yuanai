@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { voiceAsr } from '../../api'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 /* ============================================================
    语音聊天卡（2026-11-14 半双工重写，DeepSeek 替代火山 RTC）
@@ -129,6 +130,12 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, onSend
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = prev }
   }, [])
+  // 卸载兜底：录音中直接关卡片 → 停录音并释放麦克风（此前会一直录下去）
+  useEffect(() => () => {
+    if (recordingRef.current) stopRecording()
+  }, [])
+  // 底部 sheet 下滑关闭（仅移动端）：记录按下起点，上滑收起
+  const touchStartYRef = useRef<number | null>(null)
 
   // Portal 挂 body（2026-11-16 用户实测「手机语音页面是偏的」）：安卓微信
   // X5 内核/部分 WebView 的 fixed 定位相对滚动容器偏移——脱离组件树后全屏居中。
@@ -137,17 +144,34 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, onSend
   // - 去掉 overlay 的 env() 安全区 padding（支持 env 的设备上上下不等值会把卡片
   //   挤出真实中心——iPhone 上偏下的偏移源）；居中卡片本身不贴边，无需安全区
   // - maxHeight 用 100vh 兜底（X5 不支持 dvh 时整条声明失效、小屏卡片不滚动）
+  // T14 P0-5（D1 拍板）：移动端改底部 sheet（贴拇指、不遮挡聊天、点遮罩/下滑
+  // 关闭）；桌面端保持居中卡片
+  const isMobile = useIsMobile()
   return createPortal(
-    <div style={{
+    <div onClick={isMobile ? onClose : undefined} style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9500,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      display: 'flex', alignItems: isMobile ? 'flex-end' : 'center',
+      justifyContent: 'center',
       background: 'rgba(15,23,42,0.4)',
     }}>
-      <div style={{
-        width: 'min(360px, 92vw)', borderRadius: 16, padding: '20px 24px',
-        maxHeight: 'calc(100vh - 80px)',
+      <div onClick={(e) => e.stopPropagation()}
+        onTouchStart={isMobile ? (e) => { touchStartYRef.current = e.touches[0].clientY } : undefined}
+        onTouchEnd={isMobile ? (e) => {
+          const dy = (e.changedTouches[0].clientY - (touchStartYRef.current ?? e.changedTouches[0].clientY))
+          touchStartYRef.current = null
+          // 录音中不下滑关闭（按住说话的手指下移会误关卡片丢录音；松手后由
+          // 卸载兜底停录音）
+          if (dy > 80 && !recordingRef.current) onClose()
+        } : undefined}
+        className={isMobile ? 'voice-sheet' : undefined}
+        style={{
+        width: isMobile ? '100%' : 'min(360px, 92vw)',
+        borderRadius: isMobile ? '16px 16px 0 0' : 16,
+        padding: isMobile ? '20px 24px calc(20px + var(--safe-bottom, 0px))' : '20px 24px',
+        maxHeight: isMobile ? '72vh' : 'calc(100vh - 80px)',
         overflowY: 'auto',
         background: 'var(--bg-primary)', border: '1px solid var(--border)',
+        borderBottom: isMobile ? 'none' : '1px solid var(--border)',
         boxShadow: '0 12px 40px var(--shadow-md)', display: 'flex',
         flexDirection: 'column', alignItems: 'center', gap: 12,
       }}>

@@ -290,6 +290,18 @@ input, textarea, select {
   height: 100dvh;
 }
 
+/* T14 P0-5：语音卡移动端底部 sheet 上滑入场（微交互 0.25s，尊重 reduced-motion） */
+@keyframes voiceSheetIn {
+  from { transform: translateY(48px); opacity: 0.4; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.voice-sheet {
+  animation: voiceSheetIn 0.25s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-sheet { animation: none; }
+}
+
 @media (max-width: 640px) {
   .hide-mobile {
     display: none !important;

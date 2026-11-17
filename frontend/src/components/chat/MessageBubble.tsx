@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 import type { ChatMessage, ToolCall } from '../../types'
 import ToolCallCard from '../ToolCallCard'
 import TerminalView, { isTerminalCall } from './TerminalView'
 import MarkdownContent from '../MarkdownContent'
 import { AGENT_CONFIG } from '../../config/agents'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useIsMobile } from '../../hooks/useIsMobile'
 import { voiceTtsStream } from '../../api'
 import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks, fmtTokens, downloadBlob, downloadTs, svgToPngBlob, injectBrandFooter } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, DownloadIcon } from '../icons'
@@ -357,6 +359,51 @@ function SvgBlock({ code }: { code: string }) {
 // 跨挂载的已朗读 tick（模块级单例）：MessageBubble 卸载重挂后不重读
 const _lastReadTick: { current: number } = { current: 0 }
 
+/** 移动端长按气泡操作菜单（T14 P1-1，D2 拍板按建议）：底部 sheet 复用
+    voiceSheetIn 入场动画，操作项与桌面操作行一一对应 */
+function MobileBubbleMenu({ items, onClose }: {
+  items: { label: string; onClick: () => void; danger?: boolean; disabled?: boolean }[]
+  onClose: () => void
+}) {
+  return createPortal(
+    <div onClick={onClose} style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9600,
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      background: 'rgba(15,23,42,0.4)',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} className="voice-sheet" style={{
+        width: '100%', maxWidth: 560, borderRadius: '16px 16px 0 0',
+        background: 'var(--bg-primary)',
+        padding: '4px 12px calc(12px + var(--safe-bottom, 0px))',
+        boxShadow: '0 12px 40px var(--shadow-md)',
+      }}>
+        {items.map((it) => (
+          <button key={it.label} disabled={it.disabled}
+            onClick={() => { it.onClick(); onClose() }}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left', border: 'none',
+              background: 'none', cursor: it.disabled ? 'default' : 'pointer',
+              padding: '14px 8px', fontSize: 15, borderBottom: '1px solid var(--border-light)',
+              color: it.danger ? 'var(--danger)' : 'var(--text-primary)',
+              opacity: it.disabled ? 0.4 : 1,
+            }}>
+            {it.label}
+          </button>
+        ))}
+        <button onClick={onClose}
+          style={{
+            display: 'block', width: '100%', textAlign: 'center', border: 'none',
+            background: 'none', cursor: 'pointer', padding: '14px 8px', fontSize: 15,
+            color: 'var(--text-muted)', marginTop: 2,
+          }}>
+          取消
+        </button>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, onFollowup, autoRead, autoReadTick, onOpenPanel, onSwitchWindow, ccActivity, variant }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
   liked?: boolean; disliked?: boolean; editing?: boolean
@@ -405,6 +452,26 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   // 折叠区反被撑开锁死），故彻底移除。
   // 朗读状态（AI 气泡）：获取中/播放中
   const [speaking, setSpeaking] = useState(false)
+  // 移动端长按操作菜单（T14 P1-1）：桌面操作行隐藏，长按气泡弹底部 sheet
+  const isMobile = useIsMobile()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const longPressTimerRef = useRef<number | null>(null)
+  // 长按松手后浏览器会补发一次 click（落在菜单遮罩上）→ 吞掉这一次防「菜单即开即关」
+  const suppressBackdropClickRef = useRef(false)
+  const clearLongPress = () => {
+    if (longPressTimerRef.current != null) {
+      window.clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }
+  const closeMobileMenu = () => {
+    if (suppressBackdropClickRef.current) {
+      suppressBackdropClickRef.current = false
+      return
+    }
+    setMenuOpen(false)
+  }
+  useEffect(() => () => clearLongPress(), [])
   const audioRef = useRef<HTMLAudioElement | null>(null)
   // 下一段预加载的音频（播完当前立即接上，消除分片接缝）
   const preloadRef = useRef<{ el: HTMLAudioElement; url: string } | null>(null)
@@ -647,7 +714,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
 
   // 气泡内操作行（常显，按钮本体 0.65 → 1 hover 微反馈）；
   // 多窗口 P2：执行窗口裁剪——无朗读/点赞/点踩/举报/重新生成/继续生成，只留复制与修改
-  const bubbleActions = showActions ? (
+  const bubbleActions = showActions && !isMobile ? (
     <div className="msg-actions" style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', marginTop: 6, marginBottom: -4 }}>
       {!isUser && !isExec && !isDelegation && (
         <button onClick={() => toggleRead()} className="yuan-tip" data-tip={speaking ? '打断朗读' : '朗读'} aria-label={speaking ? '打断朗读' : '朗读'}
@@ -754,8 +821,41 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     </div>
   ) : null
 
+  // 移动端长按菜单项（与桌面操作行一一对应；执行窗口仅复制）
+  const mobileMenuItems: { label: string; onClick: () => void; disabled?: boolean }[] = []
+  if (showActions) {
+    if (!isUser && !isExec && !isDelegation) {
+      mobileMenuItems.push({ label: speaking ? '打断朗读' : '朗读', onClick: () => toggleRead() })
+    }
+    mobileMenuItems.push({ label: '复制', onClick: () => { void copyContent() } })
+    if (isUser) {
+      mobileMenuItems.push({ label: '修改', onClick: () => onEditStart(index), disabled: loading })
+    } else if (!isExec && !isDelegation) {
+      mobileMenuItems.push({ label: liked ? '取消点赞' : '点赞', onClick: () => onFeedback(msg.msg_id || index, index, 'like'), disabled: loading })
+      mobileMenuItems.push({ label: disliked ? '取消点踩' : '点踩', onClick: () => onFeedback(msg.msg_id || index, index, 'dislike'), disabled: loading })
+      if (onReport) mobileMenuItems.push({ label: '举报', onClick: () => onReport(index), disabled: loading })
+      if (onRegenerate) mobileMenuItems.push({ label: '重新生成', onClick: () => onRegenerate(index), disabled: loading })
+      if (msg.truncated && onContinue) mobileMenuItems.push({ label: '继续生成', onClick: onContinue, disabled: loading })
+    }
+  }
+
   return (
-    <div className="chat-msg-row" style={{
+    <div className="chat-msg-row"
+      onContextMenu={isMobile ? (e) => e.preventDefault() : undefined}
+      onTouchStart={isMobile && mobileMenuItems.length ? (e) => {
+        // 长按 500ms 弹菜单（滑动取消；松手即清除计时器）；松手补发的 click
+        // 由 suppressBackdropClickRef 吞掉防「即开即关」，700ms 后放行后续点按
+        clearLongPress()
+        longPressTimerRef.current = window.setTimeout(() => {
+          suppressBackdropClickRef.current = true
+          setMenuOpen(true)
+          window.setTimeout(() => { suppressBackdropClickRef.current = false }, 700)
+        }, 500)
+        void e
+      } : undefined}
+      onTouchMove={isMobile ? () => clearLongPress() : undefined}
+      onTouchEnd={isMobile ? () => clearLongPress() : undefined}
+      style={{
       marginBottom: isExec ? 10 : 14,
       display: 'flex',
       flexDirection: 'column',
@@ -763,6 +863,9 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
       maxWidth: '100%',
       minWidth: 0,  // 溢出修复：防止行内 flex 链把整页撑出横向滚动
     }}>
+      {menuOpen && mobileMenuItems.length > 0 && (
+        <MobileBubbleMenu items={mobileMenuItems} onClose={closeMobileMenu} />
+      )}
       {agent && !msg.windowKind && (
         <div style={{
           fontSize: 12, fontWeight: 600, marginBottom: 3, marginLeft: 2,

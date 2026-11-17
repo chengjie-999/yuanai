@@ -43,17 +43,12 @@ function HtmlFrame({ url, title }: { url: string; title: string }) {
   )
 }
 
-/* 模型输出 HTML 直渲（2026-10-26）：srcDoc + 沙箱 iframe——脚本允许（图表可交互）
-   但 opaque origin 无法触碰页面数据（不给 allow-same-origin，同 HtmlFrame 口径） */
-function InlineHtmlFrame({ html }: { html: string }) {
-  const [showSource, setShowSource] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [zoom, setZoom] = useState(false)
-  const { isDark } = useTheme()
+/* HTML 块 srcDoc 组装（主题适配，2026-10-26）：完整文档注入 color-scheme（尊重
+   文档自带配色）；片段外壳按站点明暗显式上色（iframe 不继承站点的 data-theme）。
+   2026-11-17 提为模块函数——气泡长按菜单「下载 HTML」复用同一口径 */
+function buildInlineHtmlSrcDoc(html: string, isDark: boolean): string {
   const isDoc = /^\s*<!DOCTYPE html/i.test(html) || /^\s*<html[\s>]/i.test(html)
-  // 主题适配（2026-10-26）：完整文档注入 color-scheme（尊重文档自带配色）；
-  // 片段外壳按站点明暗显式上色（iframe 不继承站点的 data-theme）
-  const srcDoc = isDoc
+  return isDoc
     ? html.replace(/(<head[^>]*>)/i, `$1<meta name="color-scheme" content="light dark">`)
     : (
       `<!DOCTYPE html><html><head><meta charset="utf-8">`
@@ -63,6 +58,48 @@ function InlineHtmlFrame({ html }: { html: string }) {
         : `color:#1f2937}table{border-collapse:collapse}td,th{border:1px solid #d1d5db;padding:6px 10px}`)
       + `a{color:#60a5fa}</style></head><body>${html}</body></html>`
     )
+}
+
+/* iframe 内点击/长按 → 宿主放大/长按菜单（2026-11-17 用户拍板「html 点击整体
+   单击放大不要小功能」「小功能也是长按弹出操作菜单」）：iframe 独立文档事件
+   不冒泡到宿主——注入脚本 postMessage 桥接；链接/按钮/表单控件除外（保留内容
+   自身交互）。长按 500ms 发 __yuanMenu（宿主弹长按菜单，并吞掉随后补发的
+   点击放大防菜单+放大叠加） */
+const _HTML_INTERACT_SCRIPT = (
+  `<script>(function(){`
+  + `document.addEventListener('click',function(e){if(e.target.closest('a,button,select,textarea,input,label'))return;`
+  + `try{parent.postMessage({__yuanZoom:1},'*')}catch(_){}});`
+  + `var t=null;document.addEventListener('touchstart',function(e){if(e.target.closest('a,button,select,textarea,input,label'))return;`
+  + `t=setTimeout(function(){try{parent.postMessage({__yuanMenu:1},'*')}catch(_){}},500)},{passive:true});`
+  + `document.addEventListener('touchend',function(){if(t){clearTimeout(t);t=null}});`
+  + `document.addEventListener('touchmove',function(){if(t){clearTimeout(t);t=null}});`
+  + `})()</script>`
+)
+// iframe 长按打开菜单的时间戳（模块级：InlineHtmlFrame 的点击放大据此吞掉
+// 长按松手补发的 click，防菜单与放大叠加）
+let _iframeMenuOpenedAt = 0
+
+/* 模型输出 HTML 直渲（2026-10-26）：srcDoc + 沙箱 iframe——脚本允许（图表可交互）
+   但 opaque origin 无法触碰页面数据（不给 allow-same-origin，同 HtmlFrame 口径） */
+function InlineHtmlFrame({ html }: { html: string }) {
+  const [showSource, setShowSource] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [zoom, setZoom] = useState(false)
+  const { isDark } = useTheme()
+  const isMobile = useIsMobile()
+  const srcDoc = buildInlineHtmlSrcDoc(html, isDark).replace('</body>', _HTML_INTERACT_SCRIPT + '</body>')
+  // iframe 内点击桥接：收到 __yuanZoom 消息 → 打开全屏查看（长按菜单刚打开
+  // 时松手补发的 click 吞掉，防「菜单 + 放大」叠加）
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.data && e.data.__yuanZoom === 1) {
+        if (Date.now() - _iframeMenuOpenedAt < 800) return
+        setZoom(true)
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
   const copy = () => {
     navigator.clipboard?.writeText(html).catch(() => {})
     setCopied(true)
@@ -79,39 +116,38 @@ function InlineHtmlFrame({ html }: { html: string }) {
       }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>HTML 渲染</span>
         <div style={{ flex: 1 }} />
-        <button onClick={() => setZoom(true)} className="yuan-tip" data-tip="全屏查看"
-          aria-label="全屏查看"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
-                   color: 'var(--accent)', padding: '2px 4px' }}>
-          放大
-        </button>
-        <button onClick={() => setShowSource((s) => !s)}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
-            color: 'var(--text-muted)', padding: '2px 4px',
-          }}>
-          {showSource ? '隐藏源码' : '查看源码'}
-        </button>
-        <button onClick={copy} className="yuan-tip" data-tip={copied ? '已复制' : '复制源码'}
-          aria-label="复制源码"
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-            color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex',
-          }}>
-          {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
-        </button>
-        {/* 下载（2026-11-04 用户要求）：自包含完整 HTML（含主题适配），打开即所见；
-            下载版注入品牌页脚（用户拍板「下载的 html 有入口」，模型已写的跳过） */}
-        <button onClick={() => downloadBlob(
-          `xiaoyuan-html-${downloadTs()}.html`,
-          `<!-- 内容由 AI 生成 -->\n${injectBrandFooter(srcDoc)}`, 'text/html')}
-          title="下载 HTML 文件（浏览器打开即所见）" aria-label="下载 HTML 文件"
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-            color: 'var(--text-muted)', display: 'flex',
-          }}>
-          <DownloadIcon size={13} />
-        </button>
+        {/* 手机端小功能移入长按菜单（2026-11-17 用户拍板）；桌面保留 */}
+        {!isMobile && (
+          <>
+          <button onClick={() => setShowSource((s) => !s)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+              color: 'var(--text-muted)', padding: '2px 4px',
+            }}>
+            {showSource ? '隐藏源码' : '查看源码'}
+          </button>
+          <button onClick={copy} className="yuan-tip" data-tip={copied ? '已复制' : '复制源码'}
+            aria-label="复制源码"
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+              color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex',
+            }}>
+            {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+          </button>
+          {/* 下载（2026-11-04 用户要求）：自包含完整 HTML（含主题适配），打开即所见；
+              下载版注入品牌页脚（用户拍板「下载的 html 有入口」，模型已写的跳过） */}
+          <button onClick={() => downloadBlob(
+            `xiaoyuan-html-${downloadTs()}.html`,
+            `<!-- 内容由 AI 生成 -->\n${injectBrandFooter(srcDoc)}`, 'text/html')}
+            title="下载 HTML 文件（浏览器打开即所见）" aria-label="下载 HTML 文件"
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+              color: 'var(--text-muted)', display: 'flex',
+            }}>
+            <DownloadIcon size={13} />
+          </button>
+          </>
+        )}
       </div>
       {showSource && (
         <pre style={{
@@ -121,7 +157,7 @@ function InlineHtmlFrame({ html }: { html: string }) {
         }}>{html}</pre>
       )}
       <iframe srcDoc={srcDoc} sandbox="allow-scripts allow-popups" title="HTML 渲染"
-        style={{ width: '100%', height: 420, border: 'none', display: 'block' }} />
+        style={{ width: '100%', height: 420, border: 'none', display: 'block', cursor: 'zoom-in' }} />
       {zoom && <HtmlViewer html={srcDoc} onClose={() => setZoom(false)} />}
     </div>
   )
@@ -185,6 +221,7 @@ function MermaidBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false)
   const [zoom, setZoom] = useState(false)
   const { isDark } = useTheme()
+  const isMobile = useIsMobile()
   useEffect(() => {
     let alive = true
     let disposed = false
@@ -215,47 +252,44 @@ function MermaidBlock({ code }: { code: string }) {
       }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>图表</span>
         <div style={{ flex: 1 }} />
-        {svg && (
-          <button onClick={() => setZoom(true)} className="yuan-tip" data-tip="放大查看"
-            aria-label="放大查看"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
-                     color: 'var(--accent)', padding: '2px 4px' }}>
-            放大
-          </button>
-        )}
-        <button onClick={() => setShowSource((s) => !s)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
-                   color: 'var(--text-muted)', padding: '2px 4px' }}>
-          {showSource ? '隐藏源码' : '查看源码'}
-        </button>
-        <button onClick={copy} className="yuan-tip" data-tip={copied ? '已复制' : '复制源码'}
-          aria-label="复制源码"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-                   color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex' }}>
-          {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
-        </button>
-        {/* 下载（2026-11-14 统一）：PNG 通用（微信可发/双击可开）为主，SVG 源文件为辅。
-            SVG 的 AI 标识注释放根元素之后（XML 声明前放注释部分查看器解析失败） */}
-        {svg && (
+        {/* 放大按钮移除（2026-11-17）：图表本身点击即放大；手机端小功能移入长按菜单 */}
+        {!isMobile && (
           <>
-            <button onClick={async () => {
-              const png = await svgToPngBlob(svg)
-              if (png) downloadBlob(`xiaoyuan-chart-${downloadTs()}.png`, png, 'image/png')
-              else window.alert('PNG 转换失败：该图表引用了外部资源，请改下 SVG 格式')
-            }}
-              title="下载 PNG 图片（微信可直接发送）" aria-label="下载 PNG"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
-                       color: 'var(--accent)', padding: '2px 4px' }}>
-              PNG
-            </button>
-            <button onClick={() => downloadBlob(
-              `xiaoyuan-chart-${downloadTs()}.svg`,
-              `${svg}\n<!-- 内容由 AI 生成 -->`, 'image/svg+xml;charset=utf-8')}
-              title="下载 SVG 源文件（浏览器可开；微信与部分软件不支持该格式）" aria-label="下载 SVG 图表"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
-                       color: 'var(--text-muted)', padding: '2px 4px' }}>
-              SVG
-            </button>
+          <button onClick={() => setShowSource((s) => !s)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                     color: 'var(--text-muted)', padding: '2px 4px' }}>
+            {showSource ? '隐藏源码' : '查看源码'}
+          </button>
+          <button onClick={copy} className="yuan-tip" data-tip={copied ? '已复制' : '复制源码'}
+            aria-label="复制源码"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                     color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex' }}>
+            {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+          </button>
+          {/* 下载（2026-11-14 统一）：PNG 通用（微信可发/双击可开）为主，SVG 源文件为辅。
+              SVG 的 AI 标识注释放根元素之后（XML 声明前放注释部分查看器解析失败） */}
+          {svg && (
+            <>
+              <button onClick={async () => {
+                const png = await svgToPngBlob(svg)
+                if (png) downloadBlob(`xiaoyuan-chart-${downloadTs()}.png`, png, 'image/png')
+                else window.alert('PNG 转换失败：该图表引用了外部资源，请改下 SVG 格式')
+              }}
+                title="下载 PNG 图片（微信可直接发送）" aria-label="下载 PNG"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                         color: 'var(--accent)', padding: '2px 4px' }}>
+                PNG
+              </button>
+              <button onClick={() => downloadBlob(
+                `xiaoyuan-chart-${downloadTs()}.svg`,
+                `${svg}\n<!-- 内容由 AI 生成 -->`, 'image/svg+xml;charset=utf-8')}
+                title="下载 SVG 源文件（浏览器可开；微信与部分软件不支持该格式）" aria-label="下载 SVG 图表"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                         color: 'var(--text-muted)', padding: '2px 4px' }}>
+                SVG
+              </button>
+            </>
+          )}
           </>
         )}
       </div>
@@ -286,6 +320,7 @@ function MermaidBlock({ code }: { code: string }) {
 /* SVG 直渲（2026-10-26）：img + data URI——img 上下文不执行脚本，天然安全 */
 function SvgBlock({ code }: { code: string }) {
   const { isDark } = useTheme()
+  const isMobile = useIsMobile()
   const [showSource, setShowSource] = useState(false)
   const [copied, setCopied] = useState(false)
   const [zoom, setZoom] = useState(false)
@@ -306,36 +341,41 @@ function SvgBlock({ code }: { code: string }) {
       }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>SVG 图形</span>
         <div style={{ flex: 1 }} />
-        <button onClick={() => setShowSource((s) => !s)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
-                   color: 'var(--text-muted)', padding: '2px 4px' }}>
-          {showSource ? '隐藏源码' : '查看源码'}
-        </button>
-        <button onClick={copy} className="yuan-tip" data-tip={copied ? '已复制' : '复制源码'}
-          aria-label="复制源码"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-                   color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex' }}>
-          {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
-        </button>
-        {/* 下载（2026-11-14 统一）：PNG 通用为主，SVG 源文件为辅（AI 标识注释放根元素后） */}
-        <button onClick={async () => {
-          const png = await svgToPngBlob(code)
-          if (png) downloadBlob(`xiaoyuan-svg-${downloadTs()}.png`, png, 'image/png')
-          else window.alert('PNG 转换失败：该图形引用了外部资源，请改下 SVG 格式')
-        }}
-          title="下载 PNG 图片（微信可直接发送）" aria-label="下载 PNG"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
-                   color: 'var(--accent)', padding: '2px 4px' }}>
-          PNG
-        </button>
-        <button onClick={() => downloadBlob(
-          `xiaoyuan-svg-${downloadTs()}.svg`,
-          `${code}\n<!-- 内容由 AI 生成 -->`, 'image/svg+xml;charset=utf-8')}
-          title="下载 SVG 源文件（浏览器可开；微信与部分软件不支持该格式）" aria-label="下载 SVG 文件"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
-                   color: 'var(--text-muted)', padding: '2px 4px' }}>
-          SVG
-        </button>
+        {/* 手机端小功能移入长按菜单（2026-11-17 用户拍板）；图形本身点击即放大 */}
+        {!isMobile && (
+          <>
+          <button onClick={() => setShowSource((s) => !s)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                     color: 'var(--text-muted)', padding: '2px 4px' }}>
+            {showSource ? '隐藏源码' : '查看源码'}
+          </button>
+          <button onClick={copy} className="yuan-tip" data-tip={copied ? '已复制' : '复制源码'}
+            aria-label="复制源码"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                     color: copied ? 'var(--success)' : 'var(--text-muted)', display: 'flex' }}>
+            {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+          </button>
+          {/* 下载（2026-11-14 统一）：PNG 通用为主，SVG 源文件为辅（AI 标识注释放根元素后） */}
+          <button onClick={async () => {
+            const png = await svgToPngBlob(code)
+            if (png) downloadBlob(`xiaoyuan-svg-${downloadTs()}.png`, png, 'image/png')
+            else window.alert('PNG 转换失败：该图形引用了外部资源，请改下 SVG 格式')
+          }}
+            title="下载 PNG 图片（微信可直接发送）" aria-label="下载 PNG"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                     color: 'var(--accent)', padding: '2px 4px' }}>
+            PNG
+          </button>
+          <button onClick={() => downloadBlob(
+            `xiaoyuan-svg-${downloadTs()}.svg`,
+            `${code}\n<!-- 内容由 AI 生成 -->`, 'image/svg+xml;charset=utf-8')}
+            title="下载 SVG 源文件（浏览器可开；微信与部分软件不支持该格式）" aria-label="下载 SVG 文件"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                     color: 'var(--text-muted)', padding: '2px 4px' }}>
+            SVG
+          </button>
+          </>
+        )}
       </div>
       {showSource && (
         <pre style={{
@@ -454,6 +494,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
   const [speaking, setSpeaking] = useState(false)
   // 移动端长按操作菜单（T14 P1-1）：桌面操作行隐藏，长按气泡弹底部 sheet
   const isMobile = useIsMobile()
+  const { isDark } = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
   const longPressTimerRef = useRef<number | null>(null)
   // 长按松手后浏览器会补发一次 click（落在菜单遮罩上）→ 吞掉这一次防「菜单即开即关」
@@ -472,6 +513,18 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     setMenuOpen(false)
   }
   useEffect(() => () => clearLongPress(), [])
+  // iframe（HTML 块）内长按桥接：__yuanMenu → 打开本气泡长按菜单
+  useEffect(() => {
+    if (!isMobile) return
+    const onMsg = (e: MessageEvent) => {
+      if (e.data && e.data.__yuanMenu === 1) {
+        _iframeMenuOpenedAt = Date.now()
+        setMenuOpen(true)
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [isMobile])
   const audioRef = useRef<HTMLAudioElement | null>(null)
   // 下一段预加载的音频（播完当前立即接上，消除分片接缝）
   const preloadRef = useRef<{ el: HTMLAudioElement; url: string } | null>(null)
@@ -836,6 +889,25 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
       if (onReport) mobileMenuItems.push({ label: '举报', onClick: () => onReport(index), disabled: loading })
       if (onRegenerate) mobileMenuItems.push({ label: '重新生成', onClick: () => onRegenerate(index), disabled: loading })
       if (msg.truncated && onContinue) mobileMenuItems.push({ label: '继续生成', onClick: onContinue, disabled: loading })
+    }
+  }
+  // 块级小功能（2026-11-17 用户拍板：HTML/SVG 块头部按钮手机端隐藏，下载移入长按菜单）
+  if (!isUser && !isExec && !isDelegation && !loading && msg.content) {
+    const blockSegs = splitSpecialBlocks(msg.content)
+    const htmlSeg = blockSegs.find((s) => s.type === 'html')
+    const svgSeg = blockSegs.find((s) => s.type === 'svg')
+    if (htmlSeg) {
+      mobileMenuItems.push({ label: '下载 HTML', onClick: () => downloadBlob(
+        `xiaoyuan-html-${downloadTs()}.html`,
+        `<!-- 内容由 AI 生成 -->\n${injectBrandFooter(buildInlineHtmlSrcDoc(htmlSeg.value, isDark))}`,
+        'text/html') })
+    }
+    if (svgSeg) {
+      mobileMenuItems.push({ label: '下载图表 PNG', onClick: () => {
+        void svgToPngBlob(svgSeg.value).then((png) => {
+          if (png) downloadBlob(`xiaoyuan-chart-${downloadTs()}.png`, png, 'image/png')
+        }).catch(() => {})
+      } })
     }
   }
 

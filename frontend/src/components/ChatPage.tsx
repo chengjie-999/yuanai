@@ -927,7 +927,19 @@ ${full}
           const last = prev.slice()
           const i = last.length - 1
           if (i >= 0) {
-            const calls = (last[i].toolCalls || []).map(function (c: any) { return c.name === del_name ? { ...c, status: event.data.is_error ? 'error' : 'done', result: event.data.output || '', ...(event.data.args ? { args: event.data.args } : {}) } : c })
+            // 2026-11-17 修复：按工具名整组覆盖 → 只更新第一条「运行中」的同名调用——
+            // CC 一轮 16 次 Bash 时，每次 tool_end 把全部 Bash 结果都覆盖成同一个值
+            // （库里 16 条结果全是最后一条清理命令的输出）；SDK loop 顺序执行，
+            // 任意时刻至多一条同名调用在运行中，first-running 匹配即精确对应
+            const calls = (last[i].toolCalls || []).slice()
+            let hit = false
+            for (let k = 0; k < calls.length; k++) {
+              const c = calls[k]
+              if (!hit && c.name === del_name && c.status === 'running') {
+                hit = true
+                calls[k] = { ...c, status: event.data.is_error ? 'error' : 'done', result: event.data.output || '', ...(event.data.args ? { args: event.data.args } : {}) }
+              }
+            }
             last[i] = { ...last[i], toolCalls: calls }
           }
           return last

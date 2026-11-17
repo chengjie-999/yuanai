@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>你好 · 小元AI</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0f1226;
+    font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* 背景光斑 */
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: .55;
+    animation: float 14s ease-in-out infinite;
+  }
+  .blob.a { width: 420px; height: 420px; background: #5b6cff; top: -120px; left: -100px; }
+  .blob.b { width: 380px; height: 380px; background: #ff5ea8; bottom: -140px; right: -80px; animation-delay: -5s; }
+  .blob.c { width: 300px; height: 300px; background: #17d0c4; top: 40%; left: 55%; animation-delay: -9s; }
+
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50%      { transform: translate(30px, -40px) scale(1.12); }
+  }
+
+  .card {
+    position: relative;
+    z-index: 1;
+    width: min(92vw, 560px);
+    padding: 48px 40px 40px;
+    border-radius: 24px;
+    background: rgba(255, 255, 255, .07);
+    border: 1px solid rgba(255, 255, 255, .14);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+    text-align: center;
+    animation: rise .8s cubic-bezier(.2, .8, .3, 1) both;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(26px) scale(.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .wave {
+    font-size: 58px;
+    display: inline-block;
+    transform-origin: 70% 70%;
+    animation: wave 2.2s ease-in-out infinite;
+  }
+  @keyframes wave {
+    0%, 60%, 100% { transform: rotate(0deg); }
+    10% { transform: rotate(16deg); }
+    20% { transform: rotate(-8deg); }
+    30% { transform: rotate(16deg); }
+    40% { transform: rotate(-4deg); }
+    50% { transform: rotate(12deg); }
+  }
+
+  h1 {
+    margin-top: 18px;
+    font-size: clamp(26px, 5vw, 36px);
+    font-weight: 700;
+    letter-spacing: .5px;
+    background: linear-gradient(92deg, #a8b4ff, #ffb0d4 50%, #86f0e6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .sub {
+    margin-top: 14px;
+    font-size: 15px;
+    line-height: 1.85;
+    color: rgba(255, 255, 255, .72);
+  }
+
+  .time {
+    margin-top: 26px;
+    display: inline-block;
+    padding: 9px 20px;
+    border-radius: 999px;
+    font-size: 14px;
+    color: #dfe4ff;
+    background: rgba(255, 255, 255, .1);
+    border: 1px solid rgba(255, 255, 255, .16);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .btn {
+    margin-top: 30px;
+    display: inline-block;
+    padding: 13px 34px;
+    border: none;
+    border-radius: 999px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #12142c;
+    cursor: pointer;
+    background: linear-gradient(95deg, #a8b4ff, #86f0e6);
+    transition: transform .2s ease, box-shadow .2s ease;
+    box-shadow: 0 10px 26px rgba(120, 150, 255, .38);
+  }
+  .btn:hover  { transform: translateY(-3px); box-shadow: 0 16px 34px rgba(120, 150, 255, .5); }
+  .btn:active { transform: translateY(-1px) scale(.98); }
+
+  .foot {
+    margin-top: 26px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, .38);
+    letter-spacing: .6px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="blob a"></div>
+  <div class="blob b"></div>
+  <div class="blob c"></div>
+
+  <main class="card">
+    <div class="wave">👋</div>
+    <h1>你好，很高兴见到你！</h1>
+    <p class="sub">
+      我是运行在你本机的 <strong>Claude Code</strong> 助手<br>
+      可以帮你读代码、改代码、跑命令、写文档
+    </p>
+
+    <div class="time" id="greeting">正在获取当前时间…</div>
+
+    <br>
+    <button class="btn" id="btn">再打个招呼</button>
+
+    <div class="foot">C:\Users\24727\Desktop\Code\yuanai</div>
+  </main>
+
+<script>
+  const greetings = [
+    "你好呀 😊",
+    "Hello there!",
+    "哈喽，今天也要顺利～",
+    "很高兴见到你！",
+    "准备好一起干活了吗？",
+    "Bonjour ~",
+    "こんにちは 👋"
+  ];
+
+  const el = document.getElementById('greeting');
+  const btn = document.getElementById('btn');
+
+  function tick() {
+    const now = new Date();
+    const week = ['周日','周一','周二','周三','周四','周五','周六'][now.getDay()];
+    const p = n => String(n).padStart(2, '0');
+    el.textContent = `${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())} ${week} ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  let i = 0;
+  btn.addEventListener('click', () => {
+    i = (i + 1) % greetings.length;
+    btn.textContent = greetings[i];
+    setTimeout(() => { btn.textContent = '再打个招呼'; }, 1600);
+
+    // 小彩屑
+    for (let k = 0; k < 14; k++) {
+      const s = document.createElement('span');
+      s.textContent = ['✨','💫','⭐','🎉'][k % 4];
+      s.style.cssText = `position:fixed;left:50%;top:60%;font-size:${14 + Math.random()*14}px;pointer-events:none;z-index:9;transition:transform .9s ease-out,opacity .9s ease-out`;
+      document.body.appendChild(s);
+      requestAnimationFrame(() => {
+        s.style.transform = `translate(${(Math.random()-0.5)*420}px,${-120 - Math.random()*220}px) rotate(${(Math.random()-0.5)*360}deg)`;
+        s.style.opacity = 0;
+      });
+      setTimeout(() => s.remove(), 1000);
+    }
+  });
+</script>
+</body>
+</html>

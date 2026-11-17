@@ -64,6 +64,9 @@ BRIDGE_SYSTEM_PROMPT = (
     "WebSearch/WebFetch 工具与 curl/wget 已被禁，直接执行 python 脚本文件（python xxx.py）也会被权限表拦截——"
     "不要反复尝试这些被禁途径；需要深度检索或用户要求交互式搜索时，"
     "说明搜索结果可在小元AI对话里用联网搜索获取。"
+    "【Windows cmd 环境】shell 是 cmd.exe：不支持 heredoc/多行内联脚本，复杂逻辑先用 Write "
+    "写临时脚本再运行；清理临时文件用单条 del /q 命令，不要在其后追加验证步骤"
+    "（验证会让整条命令返回失败码，误导后续判断）。"
     "完成后用简洁中文总结：做了什么、改了哪些文件、如何验证。"
 )
 
@@ -464,56 +467,72 @@ async def run_sdk_loop(
     try:
         while iteration < MAX_ITERATIONS:
             iteration += 1
-            stream = await client.messages.create(
-                model=model, max_tokens=max_tokens,
-                # 自适应思考（Opus 4.8 系唯一开启方式）+ 摘要可见（reasoning 流给用户）；
-                # 第三方网关不识别时用 CLAUDE_BRIDGE_THINKING=0 关闭
-                **({"thinking": {"type": "adaptive", "display": "summarized"}} if SDK_THINKING else {}),
-                system=system or None,
-                messages=pending_messages,
-                tools=sdk_tools(),
-                stream=True,
-            )
+            # B1（2026-11-17 手机实测「最后一条收到 TypeError: network error」）：
+            # 网关抖动/网络瞬时故障重试一次——仅限本轮回调尚未产出任何 token/工具
+            # 事件时（已出半截则不重试，防重复输出）
+            for _attempt in range(2):
+                yielded_any = False
+                try:
+                    stream = await client.messages.create(
+                        model=model, max_tokens=max_tokens,
+                        # 自适应思考（Opus 4.8 系唯一开启方式）+ 摘要可见（reasoning 流给用户）；
+                        # 第三方网关不识别时用 CLAUDE_BRIDGE_THINKING=0 关闭
+                        **({"thinking": {"type": "adaptive", "display": "summarized"}} if SDK_THINKING else {}),
+                        system=system or None,
+                        messages=pending_messages,
+                        tools=sdk_tools(),
+                        stream=True,
+                    )
 
-            content_blocks: Dict[str, Dict] = {}   # idx → {name, input, id}
-            text_parts: List[str] = []
-            current_block_idx = -1
-            # 用量记账（2026-10-22）：anthropic 流式 usage 分散在 message_start
-            # （input_tokens/cache_read_input_tokens）与 message_delta（output_tokens）
-            usage_in = usage_out = usage_cache_hit = 0
+                    content_blocks: Dict[str, Dict] = {}   # idx → {name, input, id}
+                    text_parts: List[str] = []
+                    current_block_idx = -1
+                    # 用量记账（2026-10-22）：anthropic 流式 usage 分散在 message_start
+                    # （input_tokens/cache_read_input_tokens）与 message_delta（output_tokens）
+                    usage_in = usage_out = usage_cache_hit = 0
 
-            async for event in stream:
-                kind = getattr(event, "type", "")
-                if kind == "message_start":
-                    u = getattr(getattr(event, "message", None), "usage", None) or {}
-                    usage_in = int(getattr(u, "input_tokens", 0) or 0)
-                    usage_cache_hit = int(getattr(u, "cache_read_input_tokens", 0) or 0)
-                elif kind == "message_delta":
-                    u = getattr(event, "usage", None) or {}
-                    usage_out = int(getattr(u, "output_tokens", 0) or 0)
-                elif kind == "content_block_start":
-                    blk = event.content_block
-                    current_block_idx = getattr(event, "index", -1)
-                    if getattr(blk, "type", "") == "tool_use":
-                        content_blocks[str(current_block_idx)] = {
-                            "name": blk.name, "input": "", "id": blk.id}
-                        yield {"type": "tool_start",
-                               "data": {"name": blk.name, "sender": "claude"}}
-                elif kind == "content_block_delta":
-                    delta = event.delta
-                    d_type = getattr(delta, "type", "")
-                    if d_type == "text_delta" and getattr(delta, "text", ""):
-                        text_parts.append(delta.text)
-                        yield {"type": "token", "data": delta.text}
-                    elif d_type == "thinking_delta" and getattr(delta, "thinking", ""):
-                        yield {"type": "reasoning", "data": delta.thinking}
-                    elif d_type == "input_json_delta" and getattr(delta, "partial_json", ""):
-                        blk = content_blocks.get(str(current_block_idx))
-                        if blk:
-                            blk["input"] += delta.partial_json
-                elif kind == "message_stop":
-                    break
-            _record_sdk_usage(model, usage_in, usage_out, usage_cache_hit)
+                    async for event in stream:
+                        kind = getattr(event, "type", "")
+                        if kind == "message_start":
+                            yielded_any = True
+                            u = getattr(getattr(event, "message", None), "usage", None) or {}
+                            usage_in = int(getattr(u, "input_tokens", 0) or 0)
+                            usage_cache_hit = int(getattr(u, "cache_read_input_tokens", 0) or 0)
+                        elif kind == "message_delta":
+                            u = getattr(event, "usage", None) or {}
+                            usage_out = int(getattr(u, "output_tokens", 0) or 0)
+                        elif kind == "content_block_start":
+                            blk = event.content_block
+                            current_block_idx = getattr(event, "index", -1)
+                            if getattr(blk, "type", "") == "tool_use":
+                                content_blocks[str(current_block_idx)] = {
+                                    "name": blk.name, "input": "", "id": blk.id}
+                                yielded_any = True
+                                yield {"type": "tool_start",
+                                       "data": {"name": blk.name, "sender": "claude"}}
+                        elif kind == "content_block_delta":
+                            delta = event.delta
+                            d_type = getattr(delta, "type", "")
+                            if d_type == "text_delta" and getattr(delta, "text", ""):
+                                text_parts.append(delta.text)
+                                yielded_any = True
+                                yield {"type": "token", "data": delta.text}
+                            elif d_type == "thinking_delta" and getattr(delta, "thinking", ""):
+                                yield {"type": "reasoning", "data": delta.thinking}
+                            elif d_type == "input_json_delta" and getattr(delta, "partial_json", ""):
+                                blk = content_blocks.get(str(current_block_idx))
+                                if blk:
+                                    blk["input"] += delta.partial_json
+                        elif kind == "message_stop":
+                            break
+                    _record_sdk_usage(model, usage_in, usage_out, usage_cache_hit)
+                    break  # 本轮回调成功（message_stop 后）
+                except Exception as e:
+                    if _attempt == 0 and not yielded_any and _is_network_error(e):
+                        logger.warning("SDK 流式请求网络故障，1s 后重试一次: %s", e)
+                        await asyncio.sleep(1)
+                        continue
+                    raise
 
             # 组装 assistant 消息（回复模型）
             assistant_content = []
@@ -610,6 +629,20 @@ def _safe_json(raw: str) -> dict:
         return data if isinstance(data, dict) else {}
     except json.JSONDecodeError:
         return {}
+
+
+def _is_network_error(e: Exception) -> bool:
+    """网络类瞬时故障判定（B1 重试用）：超时/连接/httpx 传输错误，
+    或报错文本含 network（网关层偶发 TypeError: network error 走此分支）"""
+    if isinstance(e, (asyncio.TimeoutError, TimeoutError, OSError, ConnectionError)):
+        return True
+    try:
+        import httpx  # noqa: F401
+        if isinstance(e, (httpx.HTTPError, httpx.TimeoutException, httpx.NetworkError)):
+            return True
+    except ImportError:
+        pass
+    return "network" in str(e).lower()
 
 
 async def _wait_decision(on_approval, decision_id: str, tool_name: str, command: str):

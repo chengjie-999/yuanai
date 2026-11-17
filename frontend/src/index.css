@@ -311,6 +311,14 @@ input, textarea, select {
   main {
     overscroll-behavior: none;
   }
+  /* 微信/X5 原生长按菜单抑制（2026-11-17 用户实测「两组菜单」「长按卡住」）：
+     禁原生文本选择/图片呼出——X5 的长按菜单由选择/呼出触发，禁用后不再
+     与我们的长按菜单叠加；复制走菜单「复制」项 */
+  .chat-msg-row {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 
 /* T14 P0-5：语音卡移动端底部 sheet 上滑入场（微交互 0.25s，尊重 reduced-motion） */

@@ -67,6 +67,8 @@ function buildInlineHtmlSrcDoc(html: string, isDark: boolean): string {
    点击放大防菜单+放大叠加） */
 const _HTML_INTERACT_SCRIPT = (
   `<script>(function(){`
+  + `var s=document.documentElement.style;s.webkitTouchCallout='none';s.webkitUserSelect='none';s.userSelect='none';`
+  + `document.addEventListener('contextmenu',function(e){e.preventDefault()});`
   + `document.addEventListener('click',function(e){if(e.target.closest('a,button,select,textarea,input,label'))return;`
   + `try{parent.postMessage({__yuanZoom:1},'*')}catch(_){}});`
   + `var t=null;document.addEventListener('touchstart',function(e){if(e.target.closest('a,button,select,textarea,input,label'))return;`

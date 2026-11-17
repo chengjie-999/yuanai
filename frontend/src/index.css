@@ -283,6 +283,13 @@ input, textarea, select {
 }
 
 /* ---- Responsive ---- */
+/* T14 P0-1（2026-11-17）：应用壳高度双声明 fallback——老内核（X5 等）不支持
+   dvh 时退回 100vh，不再整条失效塌陷 */
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
 @media (max-width: 640px) {
   .hide-mobile {
     display: none !important;
@@ -302,20 +309,31 @@ input, textarea, select {
 @media (max-width: 768px) {
   .chat-sidebar {
     position: fixed !important;
-    left: -280px;
+    /* T14 P0-6：窄屏抽屉不超过 85vw（85vw 先行，min() 支持的浏览器再收紧到 280px） */
+    left: -85vw;
+    left: min(-280px, -85vw);
     top: 0;
     height: 100%;
-    width: 280px !important;
+    width: 85vw !important;
+    width: min(280px, 85vw) !important;
     z-index: 1001;
     box-shadow: 2px 0 12px rgba(0,0,0,0.15);
   }
   .chat-sidebar.sidebar-open {
     left: 0;
   }
+  /* T14 P0-3：工具行图标按钮触控目标 ≥44px（iOS/Android 触控规范） */
+  .chat-tool-icon-btn {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
   .mobile-sidebar-backdrop {
     display: block;
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     background: rgba(0,0,0,0.3);
     z-index: 999;
   }

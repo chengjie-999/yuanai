@@ -192,7 +192,7 @@ export function ZoomViewer({ children, onClose, title }: {
 }) {
   return (
     <div onClick={() => onClose()} style={{
-      position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.8)',
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: 'rgba(0,0,0,0.8)',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       overflow: 'hidden', touchAction: 'none',

@@ -205,7 +205,7 @@ export default function PlanetPage({ onClose, hideBack }: { onClose?: () => void
       <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
         {isMobile && treeOpen && (
           <div onClick={() => setTreeOpen(false)}
-            style={{ position: 'absolute', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.4)' }} />
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 20, background: 'rgba(0,0,0,0.4)' }} />
         )}
         <div style={isMobile ? {
           position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 30,

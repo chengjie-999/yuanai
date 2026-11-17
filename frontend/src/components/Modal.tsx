@@ -25,7 +25,7 @@ export default function Modal({ open, onClose, title, children, footer, mode = '
   if (mode === 'right') {
     return (
       <>
-        <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 9998 }} />
+        <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.3)', zIndex: 9998 }} />
         <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: width || 420, maxWidth: '90vw',
           background: 'var(--bg-primary)', zIndex: 9999, boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
           display: 'flex', flexDirection: 'column', animation: 'slide-in-right 0.25s ease' }}>
@@ -50,7 +50,7 @@ export default function Modal({ open, onClose, title, children, footer, mode = '
   }
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 24, minWidth: 380, maxWidth: '92vw', maxHeight: '86vh', overflow: 'auto', boxShadow: '0 8px 40px var(--shadow-md)' }}>
         {title !== undefined && <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{title}</h3>}
         {children}

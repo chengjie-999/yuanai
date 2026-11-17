@@ -118,7 +118,10 @@ function AppLayout() {
   })
 
   return (
-    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
+    // T14 P0-1（2026-11-17）：高度走 .app-shell 双声明（100vh 先行、dvh 覆盖）——
+    // 老内核（X5 等）不支持 dvh 时整条失效 → 应用壳无高度、flex 列塌陷，是手机端
+    // 各类「偏移/塌陷」的根源；inline 单声明做不了 fallback
+    <div className="app-shell" style={{ display: 'flex', flexDirection: 'column' }}>
       {/* 更新公告条（2026-10-31）：顶栏下方最新未读一条，弹窗宿主形态下不显示 */}
       {!window.opener && <AnnouncementBar />}
       {/* 弹窗宿主（计划面板等独立窗口）：整个顶栏藏起——完全独立形态，无品牌行无导航 */}

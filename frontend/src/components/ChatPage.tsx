@@ -1699,7 +1699,7 @@ ${full}
           {/* 点击浮窗外侧关闭（2026-11-14 用户反馈：此前必须点「返回对话」）——
               透明遮罩在浮窗下层，点击即关；不影响浮窗内拖拽/交互 */}
           <div onClick={() => setPanel(null)} aria-hidden="true"
-            style={{ position: 'fixed', inset: 0, zIndex: 299, background: 'transparent' }} />
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 299, background: 'transparent' }} />
           <div style={{
             position: 'fixed', zIndex: 300,
             left: Math.max(8, Math.min(pos.x, window.innerWidth - 200)),
@@ -1795,7 +1795,7 @@ ${full}
         const { Comp, props } = resolved
         return (
         <div style={{
-          position: 'fixed', inset: 0, zIndex: 300,
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 300,
           background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column',
         }}>
           <div style={{

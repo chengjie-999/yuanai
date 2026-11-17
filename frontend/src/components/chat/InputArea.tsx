@@ -153,7 +153,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
                 : agentKind === 'automation' ? '向自动化 Agent 下达任务…'
                 : '输入消息...'}
               rows={1}
-              style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflow: 'hidden', color: 'var(--text-primary)' }}
+              style={{ flex: 1, border: 'none', outline: 'none', fontSize: 16, fontFamily: 'inherit', padding: '12px 0', background: 'transparent', resize: 'none', maxHeight: 200, overflow: 'hidden', color: 'var(--text-primary)' }}
             />
             {loading ? (
               <button onClick={onStop} title="停止生成" aria-label="停止生成"
@@ -184,14 +184,14 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               {/* @ 面板已移除（2026-11-13 多窗口 v2 用户拍板「小元里怎么还有艾特」）：
                   智能体切换走侧边栏切换器；从主对话派活由统筹自主委派（delegate 工具），
                   或切到该智能体执行窗口直接下达 */}
-              <button onClick={() => fileRef.current?.click()} className="yuan-tip" data-tip="上传图片或数据集" aria-label="上传图片或数据集"
+              <button onClick={() => fileRef.current?.click()} className="yuan-tip chat-tool-icon-btn" data-tip="上传图片或数据集" aria-label="上传图片或数据集"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
                 onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
               ><PaperclipIcon size={17} /></button>
               {/* 多窗口 P2：语音仅对话窗口——执行窗口是任务下发，无语音通话 */}
               {agentKind === 'chat' && (
-              <button onClick={onStartVoiceCall} className="yuan-tip" data-tip="语音通话" aria-label="语音通话"
+              <button onClick={onStartVoiceCall} className="yuan-tip chat-tool-icon-btn" data-tip="语音通话" aria-label="语音通话"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
                 onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
@@ -205,7 +205,7 @@ export default function InputArea({ input, setInput, loading, handleSend, images
               <button onClick={() => {
                 const s = sessions.find(s => s.session_id === currentSid)
                 downloadChat(messages, `${s?.title || 'chat'}.txt`)
-              }} className="yuan-tip chat-tool-download" data-tip="下载聊天记录" aria-label="下载聊天记录"
+              }} className="yuan-tip chat-tool-download chat-tool-icon-btn" data-tip="下载聊天记录" aria-label="下载聊天记录"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '7px', lineHeight: 1, opacity: 0.7, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32 }}
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
                 onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}

@@ -59,3 +59,20 @@
 ## 验收路径（傻瓜标准）
 
 用户云端打开 CC 私聊 → 顶部见「本机 Claude Code」徽标 → 直接说「改一下 xx 项目代码」→ CC 一次成功（无弹窗、无锁死）→ 发消息期间无身份分裂 → 分享出去角色标签齐全。
+
+## 2026-11-17 手机实测批次（已登记，待开工）
+
+用户手机（本机 IP 环境）实测 CC 执行窗口三问，从会话 64e93bce（agent_kind=claude，user 1）完整还原痕迹，发现以下问题：
+
+**已修复（1602cfb）**：① 状态灯误显离线——AgentStatus 对 admin 视角取设备列表第一个（历史测试设备离线）→ 改优先取任意在线设备；② 桥接提示未要求先读 CLAUDE.md——SDK 桥接不像 CC CLI 自动加载项目原则，用户抓到「没读 MD 就动手」→ 提示词补「动手前先 Read CLAUDE.md」。另：本地开发库设备 1799 绑定恢复 user 1（手机登录账号为 admin）。
+
+**待完善（本批次登记项）**：
+
+| # | 问题（实测痕迹） | 完善方案 |
+|---|---|---|
+| B1 | 最后一轮回答报 `TypeError: network error`（手机收到的最后一条是错误回复）——DeepSeek 网关瞬时故障，SDK loop 无重试 | `claude_loop.run_sdk_loop` 网络类异常（httpx/超时）自动重试一次，重试失败再报人话错误 |
+| B2 | 16 次 Bash `exit=1` 反复失败（同一命令连续重试，最终靠写临时脚本绕过）——cmd.exe 下命令写法（heredoc/引号）反复撞墙 | 排查根因后二选一：桥接提示加「Windows cmd 命令写法约束（禁 heredoc/多行内联 python，改用写脚本再跑）」或 Bash 执行器对 python -c 转义保护；提示词方案改动最小 |
+| B3 | CC 直接连本机 MySQL 读库（合法但读到测试垃圾数据，用户指出「应该去云端计划找」）——CC 最终自己找到 `chat_client.list_plans` 走通，但浪费了轮次 | 身份卡/提示补一句「云端数据（计划/会话/记忆）走 agent.chat_client 通道，不直连本机数据库」 |
+| B4 | 临时脚本残留（`scripts/_tmp_*.py`）——CC 事后自己清理 ✓，hello.html 为用户要求的产物保留 | 无需改动；观察即可 |
+
+执行条件：B1/B2/B3 均在 `agent/claude_loop.py` 或 `docs/agents/claude_code.md` 单点改动，可一批做完；验证=手机再发一条让 CC 处理的任务，看首轮成功率与错误兜底。

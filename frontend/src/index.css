@@ -290,6 +290,27 @@ input, textarea, select {
   height: 100dvh;
 }
 
+/* T14 修复（2026-11-17 用户实测「上划/左滑出现空白」）：vh 高度在地址栏
+   收起/展开动态变化的老内核里与可视区不一致，body 出现可滚动余量——上下/
+   左右划动露出空白。移动端改 100% 高度链（html→body→shell 跟随可视区，
+   不依赖 vh/dvh）+ 禁 body 滚动（页面滚动全部走 main/chat-main 内部容器）；
+   消息容器边缘关橡皮筋（overscroll）不再露白 */
+@media (max-width: 768px) {
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+  .app-shell {
+    height: 100%;
+  }
+  .chat-main {
+    overscroll-behavior: none;
+  }
+  main {
+    overscroll-behavior: none;
+  }
+}
+
 /* T14 P0-5：语音卡移动端底部 sheet 上滑入场（微交互 0.25s，尊重 reduced-motion） */
 @keyframes voiceSheetIn {
   from { transform: translateY(48px); opacity: 0.4; }

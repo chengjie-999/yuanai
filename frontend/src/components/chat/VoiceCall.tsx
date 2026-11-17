@@ -165,6 +165,7 @@ export default function VoiceCall({ onClose, ensureSession, onTranscript, onSend
         } : undefined}
         className={isMobile ? 'voice-sheet' : undefined}
         style={{
+        boxSizing: 'border-box',
         width: isMobile ? '100%' : 'min(360px, 92vw)',
         borderRadius: isMobile ? '16px 16px 0 0' : 16,
         padding: isMobile ? '20px 24px calc(20px + var(--safe-bottom, 0px))' : '20px 24px',

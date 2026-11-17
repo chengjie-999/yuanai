@@ -296,7 +296,9 @@ input, textarea, select {
    不依赖 vh/dvh）+ 禁 body 滚动（页面滚动全部走 main/chat-main 内部容器）；
    消息容器边缘关橡皮筋（overscroll）不再露白 */
 @media (max-width: 768px) {
-  html, body {
+  /* #root 必须同链给高度——漏掉它 100% 对 auto 父级解析失败，应用壳塌成
+     内容高度、底部输入框被裁掉且页面无法滚动（用户实测「输入框没了」） */
+  html, body, #root {
     height: 100%;
     overflow: hidden;
   }

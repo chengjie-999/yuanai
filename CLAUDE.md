@@ -184,6 +184,7 @@ data/                   数据目录
 4. **图片放大一律复用 ZoomableImage**（ZoomViewport 统一缩放），禁止自写放大弹层
 5. **可滚页面容器**：外层 `overflowY: auto` + 内容 `minHeight: 0`；flex 列布局检查父级是否给了确定高度
 6. 新增端点：middleware 公开/放行白名单、main.py include、gate 登记、测试四件套同批完成
+7. **老内核兼容纪律（2026-11-17 立规，微信 X5 连踩两轮）**：新代码禁用 `inset` 简写——一律显式 `top/left/right/bottom`（老内核不支持简写则定位整个失效）；视口高度禁单写 `100dvh`——CSS 双声明 `100vh` 先行 dvh 覆盖，inline style 禁单写 dvh；手机端弹层优先底部 sheet（居中弹窗已两次偏移），复用 `voiceSheetIn` 入场动画
 
 ## 配色与设计规范（2026-10-18 用户拍板：全前端统一，应用界面不搞首页式花哨）
 

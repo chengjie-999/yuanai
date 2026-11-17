@@ -29,6 +29,25 @@ export default function InputArea({ input, setInput, loading, handleSend, images
     }
   }, [input])
   const [uploading, setUploading] = useState(false)
+  // T14 P1-2（2026-11-17）：iOS Safari 键盘弹起时页面不重排、输入区可能被键盘
+  // 遮住——监听 visualViewport 收缩（高度骤减 >15% = 键盘弹出），把聚焦的
+  // 输入框滚进可视区兜底（安卓键盘会压缩视口，走浏览器默认行为即可）
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const onResize = () => {
+      if (window.innerWidth > 768) return
+      if (vv.height < window.innerHeight * 0.85
+        && document.activeElement?.tagName === 'TEXTAREA') {
+        requestAnimationFrame(() => {
+          ;(document.activeElement as HTMLElement | null)
+            ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+        })
+      }
+    }
+    vv.addEventListener('resize', onResize)
+    return () => vv.removeEventListener('resize', onResize)
+  }, [])
   // 切换即时反馈（方案 C1）：任何设置切换 → 提示条 2s 消失
   const [tip, setTip] = useState('')
   const tipTimerRef = useRef<number | null>(null)

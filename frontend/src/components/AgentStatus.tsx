@@ -37,9 +37,12 @@ export default function AgentStatus({ userId }: { userId?: number }) {
     return () => clearInterval(interval)
   }, [])
 
-  // 后端已按用户过滤（旧模式直连或绑定设备）；这里优先匹配 user_id，否则取第一个
+  // 后端已按用户过滤（旧模式直连或绑定设备）；优先匹配 user_id，其次取任意在线设备，
+  // 最后才取第一个——admin 视角能看到所有设备（含历史测试设备），取第一个会拿到
+  // 离线设备而误显示离线（用户实测「手机上显示离线」根因）
   const matched = agents.find((a) => String(a.agent_id) === String(userId))
-  const myAgents = userId ? (matched ? [matched] : agents.slice(0, 1)) : agents.slice(0, 1)
+  const onlineOne = agents.find((a) => a.online)
+  const myAgents = matched ? [matched] : onlineOne ? [onlineOne] : agents.slice(0, 1)
   const online = myAgents.length > 0 && myAgents[0].online
   const agent = myAgents[0]
   const capLabels: Record<string, string> = {

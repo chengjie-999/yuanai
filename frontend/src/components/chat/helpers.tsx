@@ -304,14 +304,22 @@ export function splitSpeechSegments(text: string, max = 200): string[] {
   return segments.length ? segments : [text.slice(0, max)]
 }
 
+/** 后端时间串解析（加固：iOS Safari 对 "YYYY-MM-DD HH:MM:SS" 空格分隔的
+    new Date 解析返回 Invalid Date——正则手动拆解，全端一致） */
+function parseServerTime(s: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s)
+  if (!m) return null
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0))
+}
+
 /** 消息时间分隔线文案（2026-11-18 用户「加上时间」）：相邻消息间隔 ≥5 分钟
     时返回微信式标签（今天 HH:MM / 昨天 HH:MM / M月D日 HH:MM），否则返回 ''
-    不渲染。create_time 是后端换算好的北京时间字符串，浏览器按本地解析 */
+    不渲染。create_time 是后端换算好的北京时间字符串 */
 export function timeDividerLabel(prev: ChatMessage | undefined, cur: ChatMessage | undefined): string {
   if (!prev?.create_time || !cur?.create_time) return ''
-  const p = new Date(prev.create_time)
-  const c = new Date(cur.create_time)
-  if (isNaN(p.getTime()) || isNaN(c.getTime())) return ''
+  const p = parseServerTime(prev.create_time)
+  const c = parseServerTime(cur.create_time)
+  if (!p || !c) return ''
   if (c.getTime() - p.getTime() < 5 * 60000) return ''
   const hm = `${String(c.getHours()).padStart(2, '0')}:${String(c.getMinutes()).padStart(2, '0')}`
   const sameDay = (a: Date, b: Date) =>

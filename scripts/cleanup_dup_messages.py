@@ -24,8 +24,10 @@ def _sig(role: str, content: str, images: str) -> str:
 
 
 def find_dup_blocks(sigs):
-    """返回 (block_len, last_block_start)：sigs 前 block_len 条在后续完整重复
-    至少 2 次；last_block_start = 最后一个完整重复块的起始下标。无重复返回 None"""
+    """返回 (block_len, last_block_start, dup_starts)：前 block_len 条在后续完整
+    重复 ≥2 次（各副本长度可不一致——真实事故数据每份副本 39~48 条不等，
+    步进式比对会提前断走）。last_block_start = 最后一个完整重复块的起始下标。
+    无重复返回 None"""
     n = len(sigs)
     if n < 16:
         return None
@@ -37,30 +39,20 @@ def find_dup_blocks(sigs):
             break
     if L is None or L < 8:
         return None
-    # 验证块内容完整一致（抽验首 8 条与尾 3 条）
+    # 验证首块自洽（抽验首 8 条与尾 3 条）
     for j in list(range(0, min(8, L))) + [L - 3, L - 2, L - 1]:
         if j < 0 or j >= L:
             continue
         if sigs[j] != sigs[L + j]:
             return None
-    # 找最后一个完整重复块的起点
-    last_start = 0
-    s = 0
-    while s + 2 * L <= n:
-        ok = True
-        for j in range(L):
-            if sigs[s + j] != sigs[s + L + j]:
-                ok = False
-                break
-        if ok:
-            last_start = s + L
-            s += L
-        else:
-            break
-    repeats = (last_start // L) if L else 0
-    if repeats < 2:
+    # 收集所有「完整重复块起点」（与首块逐一比对，容忍各副本长短不一）
+    starts = [0]
+    for p in range(L, n - L + 1):
+        if sigs[p:p + L] == sigs[0:L]:
+            starts.append(p)
+    if len(starts) < 3:  # 含原始块至少 3 份才认定整段重复病
         return None
-    return L, last_start
+    return L, starts[-1], starts
 
 
 def main():
@@ -92,12 +84,32 @@ def main():
         found = find_dup_blocks(sigs)
         if not found:
             continue
-        L, last_start = found
-        del_ids = [r[0] for r in rows[:last_start]]
-        print(f"[会话 {sid[:12]}…] 共 {len(rows)} 条，块长 {L}，重复块 {last_start // L} 份"
-              f" → 保留 {len(rows) - last_start} 条，删除 {len(del_ids)} 条")
+        L, last_start, starts = found
+        # 只删「内容在保留块中已存在」的行——副本间隙里的唯一消息（如藏文轮次）
+        # 内容不在保留块中 → 救援保留（宁可多留不可误删）
+        kept_sigs = set(sigs[last_start:])
+        del_ids = [r[0] for r, sg in zip(rows[:last_start], sigs[:last_start])
+                   if sg in kept_sigs]
+        rescued = last_start - len(del_ids)
+        print(f"[会话 {sid[:12]}…] 共 {len(rows)} 条，块长 {L}，重复块 {len(starts)} 份"
+              f" → 保留 {len(rows) - len(del_ids)} 条（含救援唯一消息 {rescued} 条），"
+              f"删除 {len(del_ids)} 条")
         if args.apply and del_ids:
             with db.session() as s:
+                # 删除前备份到 ai_chat_dup_backup（可回滚——加固：宁可多留不可误删）
+                s.execute(text(
+                    "CREATE TABLE IF NOT EXISTS ai_chat_dup_backup "
+                    "(id INT, session_id VARCHAR(64), role VARCHAR(16), content MEDIUMTEXT, "
+                    "images TEXT, msg_id VARCHAR(36), create_time TIMESTAMP NULL, "
+                    "deleted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)"))
+                for i in range(0, len(del_ids), 200):
+                    chunk = del_ids[i:i + 200]
+                    s.execute(text(
+                        "INSERT INTO ai_chat_dup_backup "
+                        "(id, session_id, role, content, images, msg_id, create_time) "
+                        "SELECT id, session_id, role, content, images, msg_id, create_time "
+                        "FROM ai_chat WHERE session_id=:sid AND id IN :ids"),
+                        {"sid": sid, "ids": tuple(chunk)})
                 # 分批删（单条 IN 太长）
                 for i in range(0, len(del_ids), 200):
                     chunk = del_ids[i:i + 200]
@@ -107,7 +119,8 @@ def main():
                 s.commit()
             total_del += len(del_ids)
     if args.apply:
-        print(f"完成：共删除 {total_del} 条重复消息")
+        print(f"完成：共删除 {total_del} 条重复消息（已备份到 ai_chat_dup_backup 表，"
+              f"确认无异常后可自行 DROP）")
     else:
         print("dry-run（未删除任何数据）——确认无误后加 --apply 执行")
 

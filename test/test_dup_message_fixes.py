@@ -60,9 +60,10 @@ def test_find_dup_blocks_detects_three_copies():
     from scripts.cleanup_dup_messages import find_dup_blocks
     base = [f"m{i}" for i in range(12)]
     seq = base + base + base + ["new1", "new2"]
-    L, last_start = find_dup_blocks(seq)
+    L, last_start, starts = find_dup_blocks(seq)
     assert L == 12
     assert last_start == 24  # 保留第三份副本 + 尾部新消息
+    assert starts == [0, 12, 24]
 
 
 def test_find_dup_blocks_no_dup_returns_none():
@@ -76,9 +77,35 @@ def test_find_dup_blocks_legit_repeats_inside_block_ok():
     from scripts.cleanup_dup_messages import find_dup_blocks
     base = ["a", "继续", "b", "继续", "c", "d", "e", "f"] * 2
     seq = base + base + base
-    L, last_start = find_dup_blocks(seq)
+    L, last_start, starts = find_dup_blocks(seq)
     assert L == 8          # 最短重复周期 = 单个 base
     assert last_start == 40  # 最后一个完整副本起点 = 40
+
+
+def test_find_dup_blocks_variable_length_copies():
+    # 真实事故形态：每份副本长度不一（39~48 条），步进比对会提前断走——
+    # 位置比对必须找到最后一个完整副本起点
+    from scripts.cleanup_dup_messages import find_dup_blocks
+    base = [f"m{i}" for i in range(10)]
+    seq = base + base + ["x1"] + base + ["x1", "x2"] + base + ["tail"]
+    L, last_start, starts = find_dup_blocks(seq)
+    assert L == 10
+    assert starts == [0, 10, 21, 33]
+    assert last_start == 33  # 最后一份完整副本起点
+
+
+def test_cleanup_rescues_unique_stragglers():
+    # 副本间隙里的唯一消息（真实事故中的藏文轮次）不在保留块中 → 救援保留
+    from scripts.cleanup_dup_messages import find_dup_blocks
+    base = [f"m{i}" for i in range(10)]
+    straggler = "藏文问答"
+    seq = base + base + [straggler] + base + ["tail"]
+    L, last_start, _ = find_dup_blocks(seq)
+    kept_sigs = set(seq[last_start:])
+    del_sigs = [s for s in seq[:last_start] if s in kept_sigs]
+    rescued = [s for s in seq[:last_start] if s not in kept_sigs]
+    assert del_sigs == base * 2          # 两份旧副本全删
+    assert rescued == [straggler]        # 唯一消息保留
 
 
 # ---------- 时间换算/排序口径 ----------

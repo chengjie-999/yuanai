@@ -3,6 +3,7 @@
 ① 连续相同工具结果去重（build_input_messages）
 ② 重复块检测（scripts/cleanup_dup_messages.find_dup_blocks）
 ③ (session_id, msg_id) 唯一索引兜底（0035 迁移）
+④ 模型输入末条 prompt 重复剥离（最新问题发两遍——分享会话实测）
 """
 
 import uuid
@@ -52,6 +53,73 @@ def test_non_consecutive_same_tool_results_kept():
     out = build_input_messages("继续", [], history, _mk_sys())
     tools = [m["content"] for m in out if m["role"] == "tool"]
     assert tools == ["结果X", "结果X"]  # 非连续不合并
+
+
+# ---------- ④ 末条 prompt 重复剥离 ----------
+
+def test_drop_trailing_prompt_dup_strips():
+    from api.v1.chat.router import _drop_trailing_prompt_dup
+    history = [
+        {"role": "user", "content": "你好"},
+        {"role": "assistant", "content": "在的"},
+        {"role": "user", "content": "再发一条"},
+    ]
+    assert _drop_trailing_prompt_dup(history, "再发一条") == history[:2]
+
+
+def test_drop_trailing_prompt_dup_keeps_mismatch():
+    # 末条 user 与 prompt 不同文 → 原样保留（防御：不误剥真实历史）
+    from api.v1.chat.router import _drop_trailing_prompt_dup
+    history = [{"role": "user", "content": "上一轮的问题"}]
+    assert _drop_trailing_prompt_dup(history, "这一轮的问题") == history
+
+
+def test_drop_trailing_prompt_dup_non_user_tail():
+    # 末条是 assistant → 原样保留
+    from api.v1.chat.router import _drop_trailing_prompt_dup
+    history = [{"role": "assistant", "content": "回答"}]
+    assert _drop_trailing_prompt_dup(history, "任意") == history
+
+
+def test_drop_trailing_prompt_dup_empty():
+    from api.v1.chat.router import _drop_trailing_prompt_dup
+    assert _drop_trailing_prompt_dup([], "x") == []
+    assert _drop_trailing_prompt_dup([{"role": "user", "content": "x"}], "") \
+        == [{"role": "user", "content": "x"}]
+
+
+def test_drop_trailing_prompt_dup_multimodal_content():
+    # 图片消息 content 是 list——按 text 部分比对
+    from api.v1.chat.router import _drop_trailing_prompt_dup
+    history = [{"role": "user",
+                "content": [{"type": "text", "text": "看图说话"},
+                            {"type": "image_url", "image_url": {"url": "data:img"}}]}]
+    assert _drop_trailing_prompt_dup(history, "看图说话") == []
+
+
+def test_cloud_fallback_input_no_duplicate_last_question():
+    # 端到端管道（前端 payload → /stream 云端回退构造）：
+    # 模型收到的输入里最新问题只出现一次
+    from api.v1.chat.router import (
+        _fix_history_for_api, _langchain_from_items, _drop_trailing_prompt_dup)
+    from yuanai_core.core.views import view_for
+    history = [
+        {"role": "user", "content": "先整一个对话，给我打个招呼就可以。"},
+        {"role": "assistant", "content": "你好，我是小元AI……"},
+        {"role": "user", "content": "你现在是不是只有一轮对话？"},
+        {"role": "assistant", "content": "不是一轮……"},
+        {"role": "user", "content": "是上一个发了两次吗？还是之前都发两次？"},
+    ]
+    prompt = "是上一个发了两次吗？还是之前都发两次？"
+    fixed = _fix_history_for_api(_drop_trailing_prompt_dup(history, prompt))
+    envs = [{"sender": m.get("sender"), "recipient": m.get("recipient"),
+             "turn": m.get("turn"), "type": m.get("type")} for m in fixed]
+    view = view_for("orchestrator", fixed, envelopes=envs)
+    out = _langchain_from_items(view, prompt, None, "SYSTEM")
+    texts = [m["content"] for m in out if m["role"] == "user"]
+    assert texts.count(prompt) == 1          # 最新问题只发一遍
+    assert texts == ["先整一个对话，给我打个招呼就可以。",
+                     "你现在是不是只有一轮对话？", prompt]  # 顺序完整
 
 
 # ---------- ② 重复块检测 ----------

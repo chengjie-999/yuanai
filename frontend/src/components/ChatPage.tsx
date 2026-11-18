@@ -1172,14 +1172,14 @@ ${full}
     const kindTarget = entMode ? '' : (agentKindRef.current !== 'chat' ? agentKindRef.current : '')
     const target = dmTarget || kindTarget || (entMode ? '' : targetAgentRef.current)
     const isClaude = !entMode && (target === 'claude' || chatMode === 'claude')
-    // 信封协议：最后一条 user 消息打 recipient（定向 @target）；说话人身份
-    // 走信封字段，【xx】前缀渲染由后端 views.py 视图滤波负责
-    const taggedMsgs = msgs.map((m, i) => (
-      i === msgs.length - 1 && m.role === 'user'
-        ? { ...m, recipient: target || undefined, turn: undefined }
-        : m
-    ))
-    const history = buildHistoryWithToolContext(taggedMsgs)
+    // 防重复发送（2026-11-18）：msgs 末条即本轮 prompt，后端还会把 prompt
+    // 单独追加为末条 user——同文时从历史剥掉，否则模型把最新问题看两遍
+    // （分享会话实测模型自报「本条出现 2 次」）；prompt 的信封（recipient 定向
+    // target / turn 计数）由后端按 target 字段构造，此处剥掉不丢信息
+    const last = msgs[msgs.length - 1]
+    const histMsgs = last && last.role === 'user' && last.content === prompt
+      ? msgs.slice(0, -1) : msgs
+    const history = buildHistoryWithToolContext(histMsgs)
     const placeholderSender = entMode ? 'orchestrator'
       : target && AGENT_CONFIG[target]
         ? target

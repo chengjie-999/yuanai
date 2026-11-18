@@ -491,6 +491,26 @@ def _fix_history_for_api(history: list) -> list:
     return fixed
 
 
+def _drop_trailing_prompt_dup(history: list, prompt: str) -> list:
+    """末条用户消息与 prompt 同文时从历史剥掉（2026-11-18 分享会话实测）。
+
+    前端把完整消息数组当 history 发（末条即本轮 prompt），后端又单独把
+    prompt 追加为末条 user——模型会把最新问题看两遍（实测模型自报
+    「本条出现 2 次，重复」）。剥掉历史里的重复末条，prompt 信封的
+    turn 计数也随之归位（此前因重复多算 1）。
+    """
+    if not history or not prompt:
+        return history
+    last = history[-1]
+    if not isinstance(last, dict) or last.get("role") != "user":
+        return history
+    content = last.get("content") or ""
+    if isinstance(content, list):  # 多模态 content（text + image_url）
+        content = "".join(
+            p.get("text", "") for p in content if isinstance(p, dict))
+    return history[:-1] if content == prompt else history
+
+
 def _langchain_from_items(items: list, prompt: str, images, system_content: str) -> list:
     """items（信封视图输出：role/content/tool_calls）→ langchain input_messages"""
     history = []
@@ -610,6 +630,9 @@ async def chat_stream(req: ChatRequest, request: Request):
         # 不被主对话口径切断（@Claude 走 claude-stream 天然不截断）
         hist_limit = 200 if (target and not ent_mode) else 60
         raw_history = req.history[-hist_limit:] if len(req.history) > hist_limit else req.history
+        # 防重复发送：历史末条即本轮 prompt（前端整组 history 所致）→ 剥掉，
+        # 否则模型把最新问题看两遍（信封计数一并归位）
+        raw_history = _drop_trailing_prompt_dup(raw_history, req.prompt or "")
         truncated = len(req.history) > hist_limit
         if truncated:
             # P4 归档提示：被整理的历史按说话人计数（群聊里各智能体的段落去向可见）
@@ -882,7 +905,8 @@ async def claude_stream(req: ChatRequest, request: Request):
 
         history = []
         envelopes = [{}]  # 与 /stream 同构：system 首项 + 历史 + 末位 prompt 项
-        fixed_items = _fix_history_for_api(req.history)
+        fixed_items = _fix_history_for_api(
+            _drop_trailing_prompt_dup(req.history, req.prompt or ""))
         turn = 0
         for m in fixed_items:
             if m.get("role") == "user":

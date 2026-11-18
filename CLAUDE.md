@@ -310,6 +310,7 @@ data/                   数据目录
 6. **exe 冻结模式下 `__file__` 指向 _MEI 临时解包目录——一切 `__file__` 旁写文件都是启动崩雷**（2026-11-06 tray 启动即崩 FileNotFoundError）：`config/settings.py` 把 `.jwt_secret` 写 `__file__` 旁，exe 下 config/ 非真实文件夹 + 临时目录退出即清。凡秘密/配置/数据写入一律走 `utils/data_path` 的 `frozen_data_root()`（%LOCALAPPDATA%\XiaoYuanAI\，.env/身份/配置同地）；新增代码先问「exe 模式下这条路径存在吗、退出后还在吗」。回归测试 test_frozen_settings.py 子进程模拟 sys.frozen。
 7. **PowerShell 对话框结果回传必须无 BOM**（2026-11-11 真机踩坑）：`[System.Text.Encoding]::UTF8` 自带 BOM（EF BB BF）——WriteAllText 写回的路径带 BOM，Python 按 utf-8 读入后 BOM 变路径首字符 → 路径不再以盘符开头 → abspath 错拼 cwd → 「设置失败：目录不存在: …bin\<BOM>C:\Users\…」。定稿：PowerShell 侧 `[System.Text.UTF8Encoding]::new($false)` 无 BOM 写回 + Python 读取侧 `lstrip('﻿')` 双保险（pick_directory 与 _inputbox_ps 同修，回归测试 4 项锁死）。凡 PowerShell/外部进程写临时文件回传 Python 的通道都要问「带不带 BOM」。
 8. **PyInstaller 单文件 _MEI 残留清理不能只跳过自己**（2026-11-12 真机事故）：`_cleanup_mei_residue` 只跳过当前进程解包目录——托盘在跑（目录 `_MEI182002`）时点「终端对话」，子进程启动清理把父进程**正在使用**的解包目录当残留删（加载中的 DLL 锁住删不掉、`_tcl_data` 等未锁文件被删光）→ 残缺目录被下次启动复用 → `FileNotFoundError: Tcl data directory ..._tcl_data not found` 启动即崩。定稿：目录名 `_MEI{pid}` 解析 PID 后 `OpenProcess` 探测存活——存活进程在用一律跳过（宁留不删），test_tray_updater 补回归。凡清理共享/临时目录的代码都要问「另一个进程正在用这个目录时会发生什么」。
+9. **同一条消息不要走两条通道进模型**（2026-11-18 分享会话实测「最新问题发两遍」）：前端 history 发完整数组（末条=本轮 prompt）+ 后端再追加 prompt 为末条 user——模型把最新问题看两遍（实测模型自报「本条出现 2 次，重复」）。凡「history + prompt」双字段协议：发送侧剥掉与 prompt 同文的末条，接收侧兜底再剥（`_drop_trailing_prompt_dup`，/stream 与 /claude-stream 双链路共用），prompt 信封的 turn 计数也随之归位（此前因重复多算 1）。
 
 ## 后台管理
 

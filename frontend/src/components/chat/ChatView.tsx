@@ -1,6 +1,7 @@
-import { useRef, useEffect, useState } from 'react'
+import { Fragment, useRef, useEffect, useState } from 'react'
 import type { ChatMessage } from '../../types'
 import type { SessionInfo } from './helpers'
+import { timeDividerLabel } from './helpers'
 import { SUGGESTIONS, ENT_SUGGESTIONS, AGENT_CONFIG } from '../../config/agents'
 import { ArrowDownIcon } from '../icons'
 import Mascot from '../Mascot'
@@ -178,8 +179,17 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
               )}
             </div>
           )}
-          {messages.map((msg, i) => (
-            <MessageBubble key={`${currentSid}-${i}`} msg={msg} index={i} isLast={i === messages.length - 1}
+          {messages.map((msg, i) => {
+            const divider = timeDividerLabel(i > 0 ? messages[i - 1] : undefined, msg)
+            return (
+            <Fragment key={`${currentSid}-${i}`}>
+              {divider && (
+                <div style={{
+                  textAlign: 'center', fontSize: 11, color: 'var(--text-muted)',
+                  margin: '10px 0 2px', userSelect: 'none',
+                }}>{divider}</div>
+              )}
+              <MessageBubble msg={msg} index={i} isLast={i === messages.length - 1}
               loading={loading} user={user}
               variant={agentKind === 'chat' ? 'chat' : 'exec'}
               liked={!!likes[(msg.msg_id as string) || String(i)]?.liked} disliked={!!likes[(msg.msg_id as string) || String(i)]?.disliked} editing={editingIndex === i}
@@ -196,7 +206,9 @@ export default function ChatView({ messages, loading, user, setExpandedImage, ag
               onOpenPanel={onOpenPanel}
               onSwitchWindow={onSwitchWindow}
               ccActivity={ccActivity} />
-          ))}
+            </Fragment>
+            )
+          })}
           {/* 空对话推荐问题（豆包式：欢迎页已退场，登录直接落主对话，此处承接快捷入口）；
               E5：娱乐模式换娱乐话题卡。
               2026-10-31 用户拍板：新对话及其他所有没内容的情况（降级后空对话/

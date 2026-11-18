@@ -304,6 +304,24 @@ export function splitSpeechSegments(text: string, max = 200): string[] {
   return segments.length ? segments : [text.slice(0, max)]
 }
 
+/** 消息时间分隔线文案（2026-11-18 用户「加上时间」）：相邻消息间隔 ≥5 分钟
+    时返回微信式标签（今天 HH:MM / 昨天 HH:MM / M月D日 HH:MM），否则返回 ''
+    不渲染。create_time 是后端换算好的北京时间字符串，浏览器按本地解析 */
+export function timeDividerLabel(prev: ChatMessage | undefined, cur: ChatMessage | undefined): string {
+  if (!prev?.create_time || !cur?.create_time) return ''
+  const p = new Date(prev.create_time)
+  const c = new Date(cur.create_time)
+  if (isNaN(p.getTime()) || isNaN(c.getTime())) return ''
+  if (c.getTime() - p.getTime() < 5 * 60000) return ''
+  const hm = `${String(c.getHours()).padStart(2, '0')}:${String(c.getMinutes()).padStart(2, '0')}`
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  const now = new Date()
+  if (sameDay(c, now)) return `今天 ${hm}`
+  if (sameDay(c, new Date(now.getTime() - 86400000))) return `昨天 ${hm}`
+  return `${c.getMonth() + 1}月${c.getDate()}日 ${hm}`
+}
+
 export function timeAgo(dateStr: string): string {
   const now = new Date()
   const d = new Date(dateStr)

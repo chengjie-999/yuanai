@@ -15,3 +15,15 @@ BEIJING_TZ = timezone(timedelta(hours=8), name="Asia/Shanghai")
 def beijing_now() -> datetime:
     """北京时间墙钟（naive datetime，UTC+8）"""
     return datetime.now(BEIJING_TZ).replace(tzinfo=None)
+
+
+def beijing_str(dt) -> str:
+    """DB naive 时间 → 北京时间字符串（2026-11-18 消息排序/时间显示口径）。
+
+    自校准偏移：按「本机时钟 vs 北京时钟」的实时差换算——云端容器（UTC）
+    +8h，用户本机（+8）偏移为 0，两种环境同一个函数都正确。
+    """
+    if dt is None:
+        return ""
+    offset = beijing_now() - datetime.now()
+    return str(dt + offset)

@@ -5,6 +5,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   msg_id?: string  // #30 消息 id（2026-11-14）：保存幂等/同步 diff/编辑删除定位
+  create_time?: string  // 消息落库时间（北京时间字符串，2026-11-18 起用于排序与时间分隔线）
   images?: string[]
   htmls?: string[]
   toolCalls?: ToolCall[]

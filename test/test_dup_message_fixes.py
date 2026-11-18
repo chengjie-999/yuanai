@@ -81,6 +81,22 @@ def test_find_dup_blocks_legit_repeats_inside_block_ok():
     assert last_start == 40  # 最后一个完整副本起点 = 40
 
 
+# ---------- 时间换算/排序口径 ----------
+
+def test_beijing_str_offset():
+    from datetime import datetime, timedelta
+    from yuanai_core.pure.beijing_time import beijing_str
+    assert beijing_str(None) == ""
+    dt = datetime(2026, 11, 18, 12, 30, 0)
+    out = beijing_str(dt)
+    assert out.startswith("2026-11-18")
+    # 自校准：换算后的时间与原始时间的「时刻」差恰为北京与本机时钟的差——
+    # 回推验证：beijing_str(dt) - dt 的偏移应为整 8 小时倍数（0 或 8h）
+    parsed = datetime.strptime(out, "%Y-%m-%d %H:%M:%S")
+    delta = parsed - dt
+    assert delta.total_seconds() in (0, 8 * 3600)
+
+
 # ---------- ③ 唯一索引兜底 ----------
 
 @pytest.fixture(scope="module")

@@ -661,15 +661,19 @@ class AgentDatabase:
             session.close()
 
     def get_chats(self, session_id: str) -> list:
-        """获取指定会话的消息（含信封四列；Redis 旧缓存缺键时前端按缺省处理）"""
+        """获取指定会话的消息（含信封四列；Redis 旧缓存缺键时前端按缺省处理）
+        2026-11-18：改按 create_time 排序（同秒内按 id 稳定）——插入顺序在多端
+        并发/语音转录场景下不等于时间顺序（用户实测「藏文轮次跑到最前面」）"""
         session = self.Session()
         try:
-            chats = session.query(AIChat).filter_by(session_id=session_id).order_by(AIChat.id).all()
+            from yuanai_core.pure.beijing_time import beijing_str
+            chats = session.query(AIChat).filter_by(session_id=session_id)\
+                .order_by(AIChat.create_time, AIChat.id).all()
             result = [{"role": c.role, "content": c.content,
                        "sender": c.sender or "", "recipient": c.recipient or "",
                        "turn": c.turn or 0, "type": c.type or "chat",
                        "msg_id": c.msg_id or "",  # #30：id 透传（前端同步 diff/保存幂等）
-                       "create_time": str(c.create_time)} for c in chats]
+                       "create_time": beijing_str(c.create_time)} for c in chats]
             for i, c in enumerate(chats):
                 if c.images:
                     try:

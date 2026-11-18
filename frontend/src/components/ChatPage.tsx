@@ -100,7 +100,8 @@ function parseHistory(history: any[]): ChatMessage[] {
     if (m.type) msgType = m.type
     return { role: m.role, content, images: m.images, sender, toolCalls,
              reasoning, finalReasoning, pageLink, recipient, turn, msgType, error, stopped, htmls, truncated,
-             windowSession, windowKind, msg_id: m.msg_id || undefined }
+             windowSession, windowKind, msg_id: m.msg_id || undefined,
+             create_time: m.create_time || undefined }
   })
 }
 

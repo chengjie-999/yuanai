@@ -108,6 +108,17 @@ def test_cleanup_rescues_unique_stragglers():
     assert rescued == [straggler]        # 唯一消息保留
 
 
+def test_sig_ignores_meta_envelope():
+    # 生产干跑零命中根因：副本正文一致但 META 信封（turn 等）不同——
+    # _sig 必须按剥 META 后的正文比对
+    from scripts.cleanup_dup_messages import _sig
+    a = "\x00META\x00{\"s\":\"orchestrator\",\"tn\":2}\x00今天天气不错"
+    b = "\x00META\x00{\"s\":\"orchestrator\",\"tn\":5}\x00今天天气不错"
+    c = "今天天气不错"
+    assert _sig("assistant", a, "") == _sig("assistant", b, "") == _sig("assistant", c, "")
+    assert _sig("assistant", a, "") != _sig("assistant", "今天天气不错啊", "")
+
+
 # ---------- 时间换算/排序口径 ----------
 
 def test_beijing_str_offset():

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { createPortal } from 'react-dom'
 import type { ChatMessage, ToolCall } from '../../types'
 import ToolCallCard from '../ToolCallCard'
 import TerminalView, { isTerminalCall } from './TerminalView'
@@ -11,7 +10,9 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { voiceTtsStream } from '../../api'
 import { LoadingDots, addToken, toSpeechText, splitSpeechSegments, useSecuredUrl, splitSpecialBlocks, fmtTokens, downloadBlob, downloadTs, svgToPngBlob, injectBrandFooter } from './helpers'
 import { BarChartIcon, BotIcon, ClipboardIcon, PlanetIcon, LinkIcon, CheckIcon, CopyIcon, DownloadIcon } from '../icons'
-import { ZoomViewer } from './ZoomableImage'
+import { ZoomViewer, isZoomViewerOpen } from './ZoomableImage'
+import MobileSheetMenu from './MobileSheetMenu'
+import BlockLongPress from './BlockLongPress'
 
 /* 统一下载（2026-11-14 收敛）：downloadBlob/downloadTs/svgToPngBlob 在 helpers.tsx
    单一实现点——HTML/SVG/PNG/聊天记录同款 Blob + a[download] 链路 */
@@ -60,23 +61,27 @@ function buildInlineHtmlSrcDoc(html: string, isDark: boolean): string {
     )
 }
 
-/* iframe 内点击/长按 → 宿主放大/长按菜单（2026-11-17 用户拍板「html 点击整体
+/* iframe 内点击/长按 → 宿主放大/块级菜单（2026-11-17 用户拍板「html 点击整体
    单击放大不要小功能」「小功能也是长按弹出操作菜单」）：iframe 独立文档事件
    不冒泡到宿主——注入脚本 postMessage 桥接；链接/按钮/表单控件除外（保留内容
-   自身交互）。长按 500ms 发 __yuanMenu（宿主弹长按菜单，并吞掉随后补发的
-   点击放大防菜单+放大叠加） */
-const _HTML_INTERACT_SCRIPT = (
+   自身交互）。长按 500ms 发 __yuanMenu（块自身弹块级菜单，并吞掉随后补发的
+   点击放大防菜单+放大叠加）。
+   T16 批次 2 微信策略（适配而非对抗）：微信内不注入长按桥接（原生菜单单独
+   出现不叠加），只保留单击放大桥接。 */
+const _HTML_BASE_SCRIPT = (
   `<script>(function(){`
   + `var s=document.documentElement.style;s.webkitTouchCallout='none';s.webkitUserSelect='none';s.userSelect='none';`
   + `document.addEventListener('contextmenu',function(e){e.preventDefault()});`
   + `document.addEventListener('click',function(e){if(e.target.closest('a,button,select,textarea,input,label'))return;`
   + `try{parent.postMessage({__yuanZoom:1},'*')}catch(_){}});`
-  + `var t=null;document.addEventListener('touchstart',function(e){if(e.target.closest('a,button,select,textarea,input,label'))return;`
+)
+const _HTML_LONGPRESS_SCRIPT = (
+  `var t=null;document.addEventListener('touchstart',function(e){if(e.target.closest('a,button,select,textarea,input,label'))return;`
   + `t=setTimeout(function(){try{parent.postMessage({__yuanMenu:1},'*')}catch(_){}},500)},{passive:true});`
   + `document.addEventListener('touchend',function(){if(t){clearTimeout(t);t=null}});`
   + `document.addEventListener('touchmove',function(){if(t){clearTimeout(t);t=null}});`
-  + `})()</script>`
 )
+const _HTML_BRIDGE_TAIL = `})()</script>`
 // iframe 长按打开菜单的时间戳（模块级：InlineHtmlFrame 的点击放大据此吞掉
 // 长按松手补发的 click，防菜单与放大叠加）
 let _iframeMenuOpenedAt = 0
@@ -87,16 +92,25 @@ function InlineHtmlFrame({ html }: { html: string }) {
   const [showSource, setShowSource] = useState(false)
   const [copied, setCopied] = useState(false)
   const [zoom, setZoom] = useState(false)
+  const [blockMenuOpen, setBlockMenuOpen] = useState(false)
   const { isDark } = useTheme()
   const isMobile = useIsMobile()
-  const srcDoc = buildInlineHtmlSrcDoc(html, isDark).replace('</body>', _HTML_INTERACT_SCRIPT + '</body>')
-  // iframe 内点击桥接：收到 __yuanZoom 消息 → 打开全屏查看（长按菜单刚打开
-  // 时松手补发的 click 吞掉，防「菜单 + 放大」叠加）
+  const isWx = /MicroMessenger/i.test(navigator.userAgent)
+  const baseSrcDoc = buildInlineHtmlSrcDoc(html, isDark)
+  const srcDoc = baseSrcDoc.replace('</body>',
+    _HTML_BASE_SCRIPT + (isWx ? '' : _HTML_LONGPRESS_SCRIPT) + _HTML_BRIDGE_TAIL + '</body>')
+  // iframe 内桥接：__yuanZoom → 打开全屏查看（长按菜单刚打开时松手补发的
+  // click 吞掉，防「菜单 + 放大」叠加）；__yuanMenu → 弹块级菜单（T16 批次 2：
+  // 块长按归块菜单，不再弹消息菜单；微信内不注入长按桥接故收不到）
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
-      if (e.data && e.data.__yuanZoom === 1) {
+      if (!e.data) return
+      if (e.data.__yuanZoom === 1) {
         if (Date.now() - _iframeMenuOpenedAt < 800) return
         setZoom(true)
+      } else if (e.data.__yuanMenu === 1) {
+        _iframeMenuOpenedAt = Date.now()
+        setBlockMenuOpen(true)
       }
     }
     window.addEventListener('message', onMsg)
@@ -108,7 +122,12 @@ function InlineHtmlFrame({ html }: { html: string }) {
     setTimeout(() => setCopied(false), 1500)
   }
   return (
-    <div style={{
+    <BlockLongPress ariaLabel="HTML 渲染块" menuItems={[
+      { label: '放大', onClick: () => setZoom(true) },
+      { label: '下载 HTML', onClick: () => downloadBlob(
+        `xiaoyuan-html-${downloadTs()}.html`,
+        `<!-- 内容由 AI 生成 -->\n${injectBrandFooter(baseSrcDoc)}`, 'text/html') },
+    ]} style={{
       margin: '8px 0', borderRadius: 10, overflow: 'hidden',
       border: '1px solid var(--border)', background: 'var(--bg-primary)',
     }}>
@@ -140,7 +159,7 @@ function InlineHtmlFrame({ html }: { html: string }) {
               下载版注入品牌页脚（用户拍板「下载的 html 有入口」，模型已写的跳过） */}
           <button onClick={() => downloadBlob(
             `xiaoyuan-html-${downloadTs()}.html`,
-            `<!-- 内容由 AI 生成 -->\n${injectBrandFooter(srcDoc)}`, 'text/html')}
+            `<!-- 内容由 AI 生成 -->\n${injectBrandFooter(baseSrcDoc)}`, 'text/html')}
             title="下载 HTML 文件（浏览器打开即所见）" aria-label="下载 HTML 文件"
             style={{
               background: 'none', border: 'none', cursor: 'pointer', padding: 2,
@@ -160,8 +179,17 @@ function InlineHtmlFrame({ html }: { html: string }) {
       )}
       <iframe srcDoc={srcDoc} sandbox="allow-scripts allow-popups" title="HTML 渲染"
         style={{ width: '100%', height: 420, border: 'none', display: 'block', cursor: 'zoom-in' }} />
-      {zoom && <HtmlViewer html={srcDoc} onClose={() => setZoom(false)} />}
-    </div>
+      {/* iframe 内长按桥接 → 块级菜单（非微信；点击放大吞掉由 _iframeMenuOpenedAt 负责） */}
+      {blockMenuOpen && (
+        <MobileSheetMenu items={[
+          { label: '放大', onClick: () => setZoom(true) },
+          { label: '下载 HTML', onClick: () => downloadBlob(
+            `xiaoyuan-html-${downloadTs()}.html`,
+            `<!-- 内容由 AI 生成 -->\n${injectBrandFooter(baseSrcDoc)}`, 'text/html') },
+        ]} onClose={() => setBlockMenuOpen(false)} />
+      )}
+      {zoom && <HtmlViewer html={html} onClose={() => setZoom(false)} />}
+    </BlockLongPress>
   )
 }
 
@@ -172,11 +200,15 @@ function InlineHtmlFrame({ html }: { html: string }) {
    zIndex 提到 9999 与图片查看器一致防遮挡 */
 function HtmlViewer({ html, onClose, title = 'HTML 全屏查看' }: { html: string; onClose: () => void; title?: string }) {
   // iframe 是独立文档，宿主滚轮事件不冒泡——注入内部缩放脚本（滚轮缩放 body.zoom
-  // + 双击切换 + 比例气泡）；外壳复用 ZoomViewer（2026-11-04 整体重构）
-  const zoomed = React.useMemo(() => html.replace(
+  // + 双击切换 + 比例气泡）；外壳复用 ZoomViewer（2026-11-04 整体重构）。
+  // T16 批次 2（2026-11-18）去桥接：查看器 srcDoc 用干净 base 重建（不含
+  // __yuanZoom/__yuanMenu 桥接）——查看器内点击/长按不再发桥接消息，
+  // 配合 ZoomViewer 打开标记，放大后长按彻底不生效
+  const { isDark } = useTheme()
+  const zoomed = React.useMemo(() => buildInlineHtmlSrcDoc(html, isDark).replace(
     /<\/head>/i,
     `<script>(function(){var s=1;function tip(){var t=document.getElementById('zTip')||(function(){var d=document.createElement('div');d.id='zTip';d.style.cssText='position:fixed;top:12px;left:12px;z-index:99999;background:rgba(0,0,0,.55);color:#fff;font:12px sans-serif;padding:4px 10px;border-radius:12px;pointer-events:none';document.body.appendChild(d);return d})();t.textContent=Math.round(s*100)+'%';t.style.display='block';clearTimeout(window.__zt);window.__zt=setTimeout(function(){t.style.display='none'},1200)}document.addEventListener('wheel',function(e){if(e.ctrlKey||e.metaKey)return;e.preventDefault();s=Math.max(.3,Math.min(10,s*(e.deltaY<0?1.12:1/1.12)));document.body.style.zoom=s;tip()},{passive:false});document.addEventListener('dblclick',function(e){if(e.target.closest('a,button,select,textarea,input'))return;s=s>1.1?1:2.5;document.body.style.zoom=s;tip()},{passive:true})})()</script></head>`,
-  ), [html])
+  ), [html, isDark])
   return (
     <ZoomViewer onClose={onClose} title={title}>
       <iframe srcDoc={zoomed} sandbox="allow-scripts allow-popups" title="全屏查看"
@@ -244,7 +276,14 @@ function MermaidBlock({ code }: { code: string }) {
     setTimeout(() => setCopied(false), 1500)
   }
   return (
-    <div style={{
+    <BlockLongPress ariaLabel="图表块" menuItems={[
+      { label: '放大', onClick: () => setZoom(true), disabled: !svg },
+      { label: '下载 PNG', onClick: async () => {
+        const png = await svgToPngBlob(svg)
+        if (png) downloadBlob(`xiaoyuan-chart-${downloadTs()}.png`, png, 'image/png')
+        else window.alert('PNG 转换失败：该图表引用了外部资源，请改下 SVG 格式')
+      }, disabled: !svg },
+    ]} style={{
       margin: '8px 0', borderRadius: 10, overflow: 'hidden',
       border: '1px solid var(--border)', background: 'var(--bg-primary)',
     }}>
@@ -315,7 +354,7 @@ function MermaidBlock({ code }: { code: string }) {
       {zoom && svg && (
         <SvgZoomViewer svg={svg} dark={isDark} onClose={() => setZoom(false)} />
       )}
-    </div>
+    </BlockLongPress>
   )
 }
 
@@ -333,7 +372,14 @@ function SvgBlock({ code }: { code: string }) {
     setTimeout(() => setCopied(false), 1500)
   }
   return (
-    <div style={{
+    <BlockLongPress ariaLabel="SVG 图形块" menuItems={[
+      { label: '放大', onClick: () => setZoom(true) },
+      { label: '下载 PNG', onClick: async () => {
+        const png = await svgToPngBlob(code)
+        if (png) downloadBlob(`xiaoyuan-svg-${downloadTs()}.png`, png, 'image/png')
+        else window.alert('PNG 转换失败：该图形引用了外部资源，请改下 SVG 格式')
+      } },
+    ]} style={{
       margin: '8px 0', borderRadius: 10, overflow: 'hidden',
       border: '1px solid var(--border)', background: 'var(--bg-primary)',
     }}>
@@ -394,57 +440,12 @@ function SvgBlock({ code }: { code: string }) {
       {zoom && (
         <SvgZoomViewer svg={code} dark={isDark} onClose={() => setZoom(false)} />
       )}
-    </div>
+    </BlockLongPress>
   )
 }
 
 // 跨挂载的已朗读 tick（模块级单例）：MessageBubble 卸载重挂后不重读
 const _lastReadTick: { current: number } = { current: 0 }
-
-/** 移动端长按气泡操作菜单（T14 P1-1，D2 拍板按建议）：底部 sheet 复用
-    voiceSheetIn 入场动画，操作项与桌面操作行一一对应 */
-function MobileBubbleMenu({ items, onClose }: {
-  items: { label: string; onClick: () => void; danger?: boolean; disabled?: boolean }[]
-  onClose: () => void
-}) {
-  return createPortal(
-    <div onClick={onClose} style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9600,
-      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-      background: 'rgba(15,23,42,0.4)',
-    }}>
-      <div onClick={(e) => e.stopPropagation()} className="voice-sheet" style={{
-        width: '100%', maxWidth: 560, borderRadius: '16px 16px 0 0',
-        background: 'var(--bg-primary)',
-        padding: '4px 12px calc(12px + var(--safe-bottom, 0px))',
-        boxShadow: '0 12px 40px var(--shadow-md)',
-      }}>
-        {items.map((it) => (
-          <button key={it.label} disabled={it.disabled}
-            onClick={() => { it.onClick(); onClose() }}
-            style={{
-              display: 'block', width: '100%', textAlign: 'left', border: 'none',
-              background: 'none', cursor: it.disabled ? 'default' : 'pointer',
-              padding: '14px 8px', fontSize: 15, borderBottom: '1px solid var(--border-light)',
-              color: it.danger ? 'var(--danger)' : 'var(--text-primary)',
-              opacity: it.disabled ? 0.4 : 1,
-            }}>
-            {it.label}
-          </button>
-        ))}
-        <button onClick={onClose}
-          style={{
-            display: 'block', width: '100%', textAlign: 'center', border: 'none',
-            background: 'none', cursor: 'pointer', padding: '14px 8px', fontSize: 15,
-            color: 'var(--text-muted)', marginTop: 2,
-          }}>
-          取消
-        </button>
-      </div>
-    </div>,
-    document.body,
-  )
-}
 
 const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLast, loading, liked, disliked, editing, user, setExpandedImage, onEditStart, onEditConfirm, onEditCancel, onFeedback, onReport, onRegenerate, onContinue, onFollowup, autoRead, autoReadTick, onOpenPanel, onSwitchWindow, ccActivity, variant }: {
   msg: ChatMessage; index: number; isLast: boolean; loading: boolean
@@ -515,18 +516,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
     setMenuOpen(false)
   }
   useEffect(() => () => clearLongPress(), [])
-  // iframe（HTML 块）内长按桥接：__yuanMenu → 打开本气泡长按菜单
-  useEffect(() => {
-    if (!isMobile) return
-    const onMsg = (e: MessageEvent) => {
-      if (e.data && e.data.__yuanMenu === 1) {
-        _iframeMenuOpenedAt = Date.now()
-        setMenuOpen(true)
-      }
-    }
-    window.addEventListener('message', onMsg)
-    return () => window.removeEventListener('message', onMsg)
-  }, [isMobile])
+  // 注：HTML 块 iframe 内的长按桥接（__yuanMenu）由 InlineHtmlFrame 自处理
+  // （T16 批次 2：块长按弹块级菜单而非消息菜单；微信内不注入长按桥接）
   const audioRef = useRef<HTMLAudioElement | null>(null)
   // 下一段预加载的音频（播完当前立即接上，消除分片接缝）
   const preloadRef = useRef<{ el: HTMLAudioElement; url: string } | null>(null)
@@ -918,7 +909,11 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
       onContextMenu={isMobile ? (e) => e.preventDefault() : undefined}
       onTouchStart={isMobile && mobileMenuItems.length ? (e) => {
         // 长按 500ms 弹菜单（滑动取消；松手即清除计时器）；松手补发的 click
-        // 由 suppressBackdropClickRef 吞掉防「即开即关」，700ms 后放行后续点按
+        // 由 suppressBackdropClickRef 吞掉防「即开即关」，700ms 后放行后续点按。
+        // T16 批次 2 互斥：命中块区域（data-block-area）不弹消息菜单（块长按
+        // 归块级菜单）；查看器打开时长按直接跳过（放大后长按不生效）
+        const t = e.target as HTMLElement
+        if (isZoomViewerOpen() || (t.closest && t.closest('[data-block-area]'))) return
         clearLongPress()
         longPressTimerRef.current = window.setTimeout(() => {
           suppressBackdropClickRef.current = true
@@ -938,7 +933,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({ msg, index, isLas
       minWidth: 0,  // 溢出修复：防止行内 flex 链把整页撑出横向滚动
     }}>
       {menuOpen && mobileMenuItems.length > 0 && (
-        <MobileBubbleMenu items={mobileMenuItems} onClose={closeMobileMenu} />
+        <MobileSheetMenu items={mobileMenuItems} onClose={closeMobileMenu} />
       )}
       {agent && !msg.windowKind && (
         <div style={{

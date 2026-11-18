@@ -387,6 +387,13 @@ const [feedback, setFeedbackState] = useState<Record<string, { liked: boolean; d
   }, [loading, answerTone])
   // 在途流（P1-1 停止生成/会话切换守卫）：sid + AbortController
   const streamRef = useRef<{ sid: string; controller: AbortController } | null>(null)
+  // 生成中消息排队（T16 批次 2，2026-11-18）：loading 时 Enter 排队而非停止
+  // （「停止」按钮保留显式停止）；队列上限 5 条，流完成/停止后链式自动发送，
+  // 切会话清空（openSession 统一清，防串会话）；drain 防重入守卫。
+  // voiceMsgId 透传：语音转录已落库的 msg_id 必须复用（单一写路径契约——
+  // 排队时重新生成 id 会把转录二次落库）
+  const pendingSendQueueRef = useRef<{ text: string; images?: string[]; voiceMsgId?: string }[]>([])
+  const queueDrainingRef = useRef(false)
   // 思考时长计时起点（2026-11-06）：发送时刻 → 首个回答 token 的间隔 =
   // 模型思考+工具执行时长，消息脚注展示（Claude Code 风格）
   const thinkingStartRef = useRef(0)
@@ -416,6 +423,9 @@ const [feedback, setFeedbackState] = useState<Record<string, { liked: boolean; d
     })()
     setMessages(stoppedMsgs)
     setLoading(false)
+    // T16 批次 2：停止生成后 AI 空闲 → 排队消息自动发送（显式停止不阻塞队列；
+    // 切换场景已由 guardBusySession 清队列，此处空转）
+    drainPendingQueue()
     // 立即保存已生成内容（encodeMsg 会带上 stopped 短键）；
     // 审查修复：与 onDone 同口径走委派双写（停止后执行日志同样落执行窗口）
     const finalMsgs = flushVoiceTranscripts(stoppedMsgs)
@@ -439,6 +449,9 @@ const [feedback, setFeedbackState] = useState<Record<string, { liked: boolean; d
   const guardBusySession = (): boolean => {
     if (!loading || !streamRef.current) return true
     if (!window.confirm('回复仍在生成，切换将停止并保存已生成内容，继续？')) return false
+    // T16 批次 2：切换场景排队消息不带到新会话——先清队列再停止
+    // （stopStream 的 drain 自然空转；显式停止按钮不走此守卫，队列保留）
+    pendingSendQueueRef.current = []
     stopStream()
     return true
   }
@@ -607,6 +620,8 @@ const [feedback, setFeedbackState] = useState<Record<string, { liked: boolean; d
 
   // 打开一个会话（切换器/会话列表/新建共用）：加载消息与点赞态
   const openSession = async (sid: string) => {
+    // T16 批次 2：切会话清空排队队列（防串会话——排队消息发进新会话）
+    pendingSendQueueRef.current = []
     setCurrentSid(sid)
     // 2026-10-19 修复①：切换会话清掉上一会话的审批卡——残留时点「同意」会把
     // 决议发给新会话（错会话审批）
@@ -751,6 +766,7 @@ ${full}
   // 主对话降级为普通对话（2026-10-30）：不清数据——自动新建空主对话并切过去
   const handleDemoteMain = async (sid: string) => {
     if (!window.confirm('将主对话转为普通对话？全部历史会保留在本对话中，并自动新建一条空主对话。')) return
+    pendingSendQueueRef.current = []  // T16 批次 2：会话变更清排队
     if (loading && streamRef.current && sidRef.current === sid) stopStream()
     try {
       const res = await fetch(`${API_BASE}/chat/demote-main`, {
@@ -770,6 +786,7 @@ ${full}
     e.stopPropagation()
     const title = sessions.find((s) => s.session_id === sid)?.title || '该会话'
     if (!window.confirm(`删除会话「${title}」？该操作不可恢复。`)) return
+    pendingSendQueueRef.current = []  // T16 批次 2：会话变更清排队
     if (loading && streamRef.current && sidRef.current === sid) stopStream()
     await deleteSession(sid)
     flashNotice('已移入回收站（可在侧栏回收站恢复）')
@@ -1155,6 +1172,27 @@ ${full}
     return next
   }
 
+  // 排队消息链式出队（T16 批次 2，2026-11-18）：AI 空闲（流完成/停止生成）时
+  // 自动发送下一条。守卫：无在途流 + drain 防重入 + 会话未切换（切会话已清队列）
+  const drainPendingQueue = () => {
+    if (queueDrainingRef.current || streamRef.current) return
+    const q = pendingSendQueueRef.current
+    if (!q.length) return
+    if (!sidRef.current) { q.length = 0; return }
+    queueDrainingRef.current = true
+    const item = q.shift()!
+    const prevMsgs = [...messagesRef.current, {
+      role: 'user' as const, content: item.text, images: item.images,
+      // voiceMsgId 复用（语音转录已落库 id）；普通消息新生成 id
+      msg_id: item.voiceMsgId || newMsgId(),
+    }]
+    messagesRef.current = prevMsgs
+    setMessages(prevMsgs)
+    setSendTick((t) => t + 1)
+    queueDrainingRef.current = false
+    sendMessages(prevMsgs, item.text, item.images)
+  }
+
   // 通用发送链路：msgs 为发送时的完整消息数组（不含新的 assistant 占位气泡），
   // 普通发送与「修改后截断重发」共用；sid 在发送时捕获，防止流式期间切换会话写错库。
   // 注意：Claude 桥接模式按 cloud session_id 续接 claude 会话（无法回退），
@@ -1204,6 +1242,8 @@ ${full}
       () => {
         const s = streamRef.current
         streamRef.current = null
+        // T16 批次 2：流结束 AI 空闲 → 排队消息自动发送（切会话已清队列，空转无害）
+        drainPendingQueue()
         // 会话切换守卫兜底：流结束时 sid 已变（异常路径）→ 不写库、不处理
         if (s && s.sid !== sid) { setLoading(false); return }
         setLoading(false)
@@ -1260,9 +1300,18 @@ ${full}
     if (!currentSid) { flashNotice('请先选择或创建一个会话'); return }
     // sweep 审查修复：历史加载失败时禁止发送——/chat/save 全量替换会清空既有历史
     if (loadFailed) { flashNotice('历史加载失败：直接发送会覆盖本会话历史，请刷新页面重试'); return }
-    if (loading) { flashNotice('正在生成中，可点击「停止」或等待完成'); return }
     if (!text) return
     const sentImages = images.length > 0 ? [...images] : undefined
+    // T16 批次 2（2026-11-18）：生成中 Enter = 排队自动发送（原行为=阻断提示）；
+    // 「停止」按钮保留显式停止。队列上限 5 条，流完成/停止后链式出队
+    if (loading) {
+      const q = pendingSendQueueRef.current
+      if (q.length >= 5) { flashNotice('排队已满（最多 5 条），请先等 AI 回答完'); return }
+      q.push({ text, images: sentImages, voiceMsgId })
+      setImages([]); setInput('')
+      flashNotice(`消息已排队（第 ${q.length} 条），AI 回答完后自动发送`)
+      return
+    }
     // voiceMsgId：语音发送复用转录落库的 msg_id（单一写路径——save upsert 幂等、
     // 轮询去重生效；2026-11-16 修复「语音消息显示两遍」根因）；
     // 普通消息创建即赋 id（2026-11-18 修复「整段对话重复 12 遍」：保存时才补 id

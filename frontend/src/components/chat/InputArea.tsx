@@ -155,7 +155,9 @@ export default function InputArea({ input, setInput, loading, handleSend, images
           <div style={{ display: 'flex', alignItems: 'flex-end', padding: '4px 4px 4px 16px' }}>
             <textarea ref={taRef} value={input} onChange={(e) => { setInput(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; t.style.overflowY = t.scrollHeight > 200 ? 'auto' : 'hidden' }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (loading) { onStop() } else { handleSend() } }
+                // T16 批次 2（2026-11-18）：生成中 Enter = 排队自动发送
+                // （handleSend 内部排队）；「停止」按钮保留显式停止
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
               }}
               onPaste={(e) => {
                 // U1：Ctrl+V 粘贴图片/截图（通用 AI 对话方案）

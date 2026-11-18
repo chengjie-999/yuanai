@@ -1,5 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 
+/* 查看器打开标记（T16 批次 2，2026-11-18）：查看器（图片/SVG/HTML 全屏放大）
+   渲染在气泡行 DOM 内，touch 事件会冒泡到行级/块级长按计时器 → 放大后长按
+   弹出与消息相同的菜单。ZoomViewer 挂载时计数 +1、卸载 -1，行级与块级
+   长按计时器检查 isZoomViewerOpen()，置位时直接跳过——查看器内长按彻底不生效。 */
+let _viewerOpenCount = 0
+export function isZoomViewerOpen(): boolean {
+  return _viewerOpenCount > 0
+}
+
 /* ============================================================
    统一查看器（2026-11-04 用户拍板「整体检查，不要再出问题」定稿）
 
@@ -190,6 +199,11 @@ export function ZoomViewport({ children, onClose }: {
 export function ZoomViewer({ children, onClose, title }: {
   children: React.ReactNode; onClose: () => void; title?: string
 }) {
+  // 挂载/卸载维护查看器打开计数（isZoomViewerOpen 供长按计时器检查）
+  useEffect(() => {
+    _viewerOpenCount += 1
+    return () => { _viewerOpenCount -= 1 }
+  }, [])
   return (
     <div onClick={() => onClose()} style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: 'rgba(0,0,0,0.8)',

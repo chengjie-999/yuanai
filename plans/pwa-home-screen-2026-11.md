@@ -1,6 +1,6 @@
 # 手机端 PWA「添加到主屏幕」方案（2026-11-17 立项）
 
-**状态**：✅ 已登记，待开工。
+**状态**：✅ P0+P1 已落地（2026-11-18）。P0：`public/manifest.webmanifest` + `public/icons/`（`scripts/gen_pwa_icons.py` PIL 重绘 mascot，192/512/180/maskable）+ `public/sw.js` 最小壳（API 永不缓存、微信内不注册）+ main.tsx 生产注册（updateViaCache none 绕 nginx immutable）。P1：设置页「安装到桌面」卡（`PwaInstallCard`：已安装态/一键安装/iOS 分享引导/微信引导）+ 对话页 `InstallBanner` 安装横幅（拒绝记档不再烦）+ wxTip 文案补安装引导。挂账：push 通知、iOS 角标（未排期）。真机验证路径见 §四。
 
 **背景**：用户评估手机端路线（微信小程序/商店 App 均卡算法备案 3-6 个月行政流程，网页是唯一零资质路线）后拍板登记 PWA——桌面安装后 App 级全屏体验、走系统内核（Chrome/Safari），**彻底绕开微信 X5 的全部适配坑**（长按/偏移/卡住等 T16 所修问题在 PWA 形态下自然消失）。零资质、零商店、ICP 域名直接可用。
 

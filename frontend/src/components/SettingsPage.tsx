@@ -3,6 +3,7 @@ import { getStoredModel, setStoredModel, fetchModels, getStoredEffort, setStored
 import { fetchAgentModels, updateAgentModel } from '../api'
 import { fetchAgentVoices, updateAgentVoice, fetchCustomModels, saveCustomModels, type CustomModelInfo } from '../api'
 import MemoryCard from './MemoryCard'
+import PwaInstallCard from './PwaInstallCard'
 import { useAutoRead, toggleAutoRead } from '../hooks/useAutoRead'
 import { useAnswerTone, toggleAnswerTone } from '../hooks/useAnswerTone'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -365,6 +366,9 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* ---- 安装到桌面（PWA，T17 2026-11-18：零资质 App 级全屏体验） ---- */}
+        <PwaInstallCard />
 
         {/* ---- 自定义模型（用户自持 API Key，2026-11-15 最稳定最合规通道） ---- */}
         <div style={C.card}>

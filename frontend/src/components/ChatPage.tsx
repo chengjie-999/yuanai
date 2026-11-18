@@ -7,6 +7,7 @@ import { setContextSid } from './chat/ContextUsageBadge'
 import Modal from './Modal'
 import Sidebar from './chat/Sidebar'
 import ChatView from './chat/ChatView'
+import InstallBanner from './chat/InstallBanner'
 import VoiceCall from './chat/VoiceCall'
 import ZoomableImage from './chat/ZoomableImage'
 import { useVoiceCall } from './chat/useVoiceCall'
@@ -1532,7 +1533,8 @@ ${full}
           alignItems: 'center', gap: 8, flexShrink: 0,
         }}>
           <span style={{ flex: 1, lineHeight: 1.6 }}>
-            微信内置浏览器对长回复的流式支持不佳，可能出现截断——建议点右上角「···」用系统浏览器打开本页。
+            微信内置浏览器对长回复的流式支持不佳，可能出现截断——建议点右上角「···」用系统浏览器打开本页
+            （打开后分享 →「添加到主屏幕」，像 App 一样全屏使用）。
           </span>
           <button onClick={dismissWxTip} aria-label="知道了"
             style={{ background: 'none', border: 'none', cursor: 'pointer',
@@ -1541,6 +1543,9 @@ ${full}
           </button>
         </div>
       )}
+      {/* PWA 安装横幅（T17，2026-11-18）：Chrome/Edge 捕获到安装事件且未拒绝过时提示；
+          拒绝后记档不再烦（设置页「安装到桌面」卡随时可再装） */}
+      <InstallBanner />
       {/* 执行窗口壳（多窗口 P1，2026-11-13）：长任务智能体头部条——身份/在线/最近活动；
           P2 起消息流换执行时间线渲染，本条保留为窗口身份栏 */}
       {agentKind !== 'chat' && (

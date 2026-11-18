@@ -1469,13 +1469,21 @@ async def save_messages(req: SaveMessagesRequest, request: Request):
                             AIChat.session_id == req.session_id,
                             AIChat.msg_id.in_(req.deleted_ids),
                         ).delete(synchronize_session=False)
-                    # 插入新消息（消息内容不可变——已存在的 id 跳过，幂等）
+                    # 插入新消息（消息内容不可变——已存在的 id 跳过，幂等）；
+                    # 0035 唯一索引后并发保存可能撞索引——savepoint 兜底跳过重复行
+                    from sqlalchemy.exc import IntegrityError
                     for msg in req.messages:
                         mid = msg.get("msg_id")
                         if mid in existing:
                             continue
                         existing.add(mid)
-                        sess.add(_build_ai_chat(req.session_id, msg))
+                        try:
+                            with sess.begin_nested():
+                                sess.add(_build_ai_chat(req.session_id, msg))
+                                sess.flush()  # savepoint 内立即落 insert——索引冲突在此暴露
+                        except IntegrityError:
+                            logger.warning("save 并发重复 id，唯一索引兜底跳过: %s", mid)
+                            continue
                         count += 1
                 else:
                     # 旧客户端兼容：全量替换（先删旧记录再批量插入）

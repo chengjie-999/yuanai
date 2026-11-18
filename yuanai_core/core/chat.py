@@ -132,10 +132,16 @@ def build_input_messages(
             else:
                 input_messages.append({"role": "assistant", "content": content})
         elif isinstance(msg, ToolMessage):
+            tool_content = msg.content or ""
+            # 连续相同工具结果去重（2026-11-18 用户实测「同一份结果注入两份/
+            # 同一空结果三份」）：对模型推理无增量信息，塞多份只挤占窗口
+            if (input_messages and input_messages[-1]["role"] == "tool"
+                    and input_messages[-1].get("content") == tool_content):
+                continue
             input_messages.append({
                 "role": "tool",
                 "tool_call_id": getattr(msg, "tool_call_id", ""),
-                "content": msg.content or "",
+                "content": tool_content,
             })
     if images_base64:
         content = [{"type": "text", "text": prompt}]

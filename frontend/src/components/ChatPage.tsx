@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import { streamChat, createSession, listSessions, ensureMainSession, deleteSession, renameSession, loadMessages, saveMessages, loadFeedback, setFeedback, reportMessage, getStoredModel, getStoredEffort, API_BASE, getToken, authHeaders, shareSession, fetchUserPrefs, putUserPrefs } from '../api'
 import type { ChatMessage } from '../types'
 import { senderFromTool, AGENT_CONFIG, WINDOW_AGENTS } from '../config/agents'
-import { encodeMsg, buildHistoryWithToolContext } from './chat/helpers'
+import { encodeMsg, newMsgId, buildHistoryWithToolContext } from './chat/helpers'
 import { setContextSid } from './chat/ContextUsageBadge'
 import Modal from './Modal'
 import Sidebar from './chat/Sidebar'
@@ -289,11 +289,15 @@ export default function ChatPage({ user }: { user?: any }) {
       }
       pollMsgSigRef.current = sig
       if (history.length > local.length) {
-        // 对端追加：尾部合入（本地流式态不动；贴底才跟随由 ChatView 滚动逻辑保证）；
-        // #30：按 msg_id 去重（多端同 id 不重复；旧数据无 id 时退回按条追加）
-        const extra = parseHistory(history.slice(local.length))
+        // 对端追加：按 msg_id 全量去重合入（2026-11-18 修复「整段对话重复 12 遍」：
+        // 此前按条数切片 history.slice(local.length)——库里一旦存在重复副本，
+        // 全部副本被当新消息合入本地，下一轮保存又整段重插，副本指数放大）；
+        // 旧数据无 id 时退回按「角色+内容」去重（内容级误杀概率低，可接受）
         const localIds = new Set(local.map((m) => m.msg_id).filter(Boolean))
-        const fresh = extra.filter((m) => !m.msg_id || !localIds.has(m.msg_id))
+        const localSig = new Set(local.map((m) => `${m.role}|${(m.content || '').slice(0, 200)}`))
+        const fresh = parseHistory(history).filter((m) =>
+          m.msg_id ? !localIds.has(m.msg_id)
+            : !localSig.has(`${m.role}|${(m.content || '').slice(0, 200)}`))
         if (fresh.length) {
           setMessages([...local, ...fresh])
           setAutoReadTick((t) => t + 1)  // 自动朗读联动（新消息到达即播）
@@ -1179,7 +1183,7 @@ ${full}
       : target && AGENT_CONFIG[target]
         ? target
         : chatMode === 'cloud' ? 'orchestrator' : 'local'
-    setMessages([...msgs, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [] }])
+    setMessages([...msgs, { role: 'assistant', content: '', sender: placeholderSender as any, toolCalls: [], msg_id: newMsgId() }])
     thinkingStartRef.current = Date.now()  // 思考时长起点（首个回答 token 结算）
 
     const { onEvent, onError } = makeStreamHandlers(isClaude || (!entMode && !!dmTarget))
@@ -1258,10 +1262,12 @@ ${full}
     if (!text) return
     const sentImages = images.length > 0 ? [...images] : undefined
     // voiceMsgId：语音发送复用转录落库的 msg_id（单一写路径——save upsert 幂等、
-    // 轮询去重生效；2026-11-16 修复「语音消息显示两遍」根因）
+    // 轮询去重生效；2026-11-16 修复「语音消息显示两遍」根因）；
+    // 普通消息创建即赋 id（2026-11-18 修复「整段对话重复 12 遍」：保存时才补 id
+    // 在 X5 等环境每次生成新 id，历史全量重插）
     const prevMsgs = [...messages, {
       role: 'user' as const, content: text, images: sentImages,
-      ...(voiceMsgId ? { msg_id: voiceMsgId } : {}),
+      msg_id: voiceMsgId || newMsgId(),
     }]
     setMessages(prevMsgs)
     setSendTick((t) => t + 1)

@@ -152,10 +152,17 @@ export function downloadChat(messages: ChatMessage[], filename: string) {
   downloadBlob(filename, AIGC_HEADER + text, 'text/plain;charset=utf-8')
 }
 
-export function encodeMsg(m: any) {
-  // #30：新消息生成 id（历史消息透传已有 id）——保存幂等/同步 diff 的键
-  if (!m.msg_id) m.msg_id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+/** 新消息 id 单一生成点（2026-11-18 起：创建即赋，不再等保存时才补——
+    保存时才 encodeMsg 补 id 曾是「整段对话重复 12 遍」事故的一环：
+    X5 无 crypto.randomUUID，每次保存生成的 id 不稳定） */
+export function newMsgId(): string {
+  return (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID() : `m${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+export function encodeMsg(m: any) {
+  // #30：历史消息透传已有 id；兜底补 id（旧数据/第三方构造）——保存幂等/同步 diff 的键
+  if (!m.msg_id) m.msg_id = newMsgId()
   const meta: any = {}
   if (m.sender && m.sender !== 'orchestrator') meta.s = m.sender
   if (m.toolCalls?.length) meta.t = m.toolCalls

@@ -11,7 +11,7 @@ import agent.mcp_server as m
 
 
 def test_build_server_tool_inventory():
-    """11 个工具：list_local_agents + 9 分析脚本 + 1 采集脚本"""
+    """19 个工具：list_local_agents + 10 脚本 + 8 A2 调用面"""
     server = m.build_server()
 
     async def _run():
@@ -22,6 +22,11 @@ def test_build_server_tool_inventory():
         # 关键脚本在场
         for key in ("script_descriptive_stats", "script_correlation",
                     "script_generic_crawl"):
+            assert key in names
+        # A2 调用面（2026-11-18）
+        for key in ("run_automation", "create_plan", "execute_plan",
+                    "plan_status", "get_memory", "remember",
+                    "retrieve_planet_knowledge", "cloud_chat"):
             assert key in names
     asyncio.run(_run())
 
@@ -38,6 +43,97 @@ def test_list_local_agents_discovers_agents():
         assert "script_descriptive_stats" in text
         assert "桌宠状态" in text
     asyncio.run(_run())
+
+
+def test_list_local_agents_mentions_a2_capabilities():
+    server = m.build_server()
+
+    async def _run():
+        res = await server.call_tool("list_local_agents", {})
+        text = res.content[0].text
+        assert "run_automation 直调" in text
+        assert "create_plan / execute_plan / plan_status" in text
+        assert "cloud_chat" in text
+        assert "知识星球" in text
+    asyncio.run(_run())
+
+
+def test_cloud_tools_without_identity_give_hint(monkeypatch):
+    """未注册 Agent → 云端依赖工具给注册引导（离线能力不受影响）"""
+    from yuanai_core.pure import agent_remote
+    monkeypatch.setattr(agent_remote, "read_identity", lambda: {})
+
+    async def _run():
+        for fn, kwargs in ((m.create_plan, {"title": "t", "goal": "g", "steps": "[]"}),
+                           (m.execute_plan, {}),
+                           (m.plan_status, {}),
+                           (m.get_memory, {}),
+                           (m.remember, {"info": "x"}),
+                           (m.retrieve_planet_knowledge, {"query": "q"}),
+                           (m.cloud_chat, {"message": "hi"})):
+            out = await fn(**kwargs)
+            assert "本机未注册小元AI Agent" in out, out
+            assert "本地 Agent 下载" in out
+    asyncio.run(_run())
+
+
+def test_memory_tool_passthrough(monkeypatch):
+    """记忆工具透传底层 langchain 工具（身份存在时不拦截）"""
+    from yuanai_core.pure import agent_remote
+    monkeypatch.setattr(agent_remote, "read_identity",
+                        lambda: {"agent_id": "1", "server_url": "wss://cjyuanai.cn",
+                                 "agent_secret": "s"})
+
+    class FakeMem:
+        def invoke(self, params):
+            return "记忆内容A"
+    monkeypatch.setattr("yuanai_core.tools.user_memory.get_user_memory",
+                        FakeMem(), raising=False)
+    import yuanai_core.tools.user_memory as um
+    monkeypatch.setattr(um, "get_user_memory", FakeMem())
+    out = asyncio.run(m.get_memory(query="x"))
+    assert out == "记忆内容A"
+
+
+def test_cloud_chat_collects_stream_and_denies_approval(monkeypatch):
+    """cloud_chat：流收集 token/工具名；审批默认拒绝（fail-closed）"""
+    from yuanai_core.pure import agent_remote
+    monkeypatch.setattr(agent_remote, "read_identity",
+                        lambda: {"agent_id": "1", "server_url": "wss://cjyuanai.cn",
+                                 "agent_secret": "s"})
+
+    class FakeClient:
+        denied = []
+
+        def main_session_id(self):
+            return "sid-1"
+
+        def load_messages(self, sid):
+            return [{"role": "user", "content": "旧问题"},
+                    {"role": "assistant", "content": "旧回答"},
+                    {"role": "user", "content": "本轮消息"}]
+
+        async def stream(self, sid, prompt, history, backend="auto"):
+            assert sid == "sid-1"
+            assert prompt == "新问题"
+            assert history[-1]["content"] == "旧回答"  # 末条用户消息已剥
+            yield {"type": "token", "data": "你好"}
+            yield {"type": "tool_start", "data": {"name": "search_web"}}
+            yield {"type": "approval", "data": {"decision_id": "d1"}}
+            yield {"type": "token", "data": "！"}
+
+        def send_decision(self, did, approve):
+            self.denied.append((did, approve))
+
+    fake = FakeClient()
+    monkeypatch.setattr(m, "_chat_client", lambda: fake)
+    out = asyncio.run(m.cloud_chat("新问题"))
+    assert out == "你好！\n\n工具调用 1 次：search_web；检测到需要审批的操作，已按默认拒绝（MCP 无交互审批通道）"
+    assert fake.denied == [("d1", False)]
+
+
+def test_cloud_chat_empty_message():
+    assert "请提供" in asyncio.run(m.cloud_chat(""))
 
 
 def test_dynamic_script_signature_from_decl():

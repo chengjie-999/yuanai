@@ -53,7 +53,7 @@
 ## 路线（建议执行序）
 
 1. **A1 本地 MCP 最小面**：stdio MCP 服务器 + 发现工具（list_local_agents）+ script_* 调用透传 ScriptRegistry——CC 终端即可发现并调用分析脚本（最快见效）
-2. **A2 调用面扩展**：automation / 计划 / 记忆 / 知识星球 / cloud_chat
+2. **A2 调用面扩展**：automation / 计划 / 记忆 / 知识星球 / cloud_chat（✅ 2026-11-18 落地：mcp_server 19 工具，云端依赖工具设备凭据前置检查 + 复用 Agent 工具双路径咽喉，cloud_chat 审批 fail-closed）
 3. **A3 注册与分发**：CC 安装指引直接链接 DeepSeek 官方集成指南（https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code，用户自持凭证，平台零代付——Anthropic 2026-09 条款禁代付/中介流量）+ MCP 一行注册；不自建 CC 安装分发
 4. 挂账：CC 浏览器 MCP（并入 A2）、MCP 客户端反方向（本地 Agent 消费 dsh 生态，product-positioning 路径 A 保留）
 

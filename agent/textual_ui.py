@@ -47,6 +47,7 @@ from textual.app import App
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
+from textual.theme import Theme
 from textual.widgets import Button, Input, Markdown, OptionList, ProgressBar, Static, TextArea
 from textual.widgets._option_list import Option
 
@@ -539,6 +540,45 @@ class BlocksScroll(VerticalScroll):
             self.app._following = True
 
 
+# T2 品牌对齐（2026-11-18）：色板与网站 index.css 变量对偶。Textual 8 的
+# CSS tokenizer 不支持在规则内声明 `$var:`——主题色走 Theme 注册
+# （App.register_theme；$text/$text-muted 等派生变量由 ColorSystem 从
+# foreground 生成）。对应关系：surface=--bg-primary / panel=--bg-secondary /
+# boost=--bg-tertiary / primary=--accent / secondary=--border /
+# foreground=--text-primary；primary-solid=用户气泡底（variables 扩展键，
+# 暗色下用深调——浅蓝底白字对比不足）。
+_YUANAI_THEMES = {
+    "yuanai-light": Theme(
+        name="yuanai-light",
+        primary="#2563eb",
+        secondary="#cbd5e1",
+        warning="#d97706",
+        error="#dc2626",
+        success="#16a34a",
+        foreground="#0f172a",
+        background="#f8fafc",
+        surface="#f8fafc",
+        panel="#f1f5f9",
+        boost="#e2e8f0",
+        dark=False,
+    ),
+    "yuanai-dark": Theme(
+        name="yuanai-dark",
+        primary="#60a5fa",
+        secondary="#2b3b56",
+        warning="#fbbf24",
+        error="#f87171",
+        success="#4ade80",
+        foreground="#e2e8f0",
+        background="#0b1220",
+        surface="#0b1220",
+        panel="#101a2c",
+        boost="#16233a",
+        dark=True,
+    ),
+}
+
+
 class YuanTerminalApp(App):
     """终端 TUI v4 三区布局：状态栏 Header（常驻不重绘）+ 对话块流（
     BlocksScroll，diff 增量）+ 输入 dock（DockInput）+ 观测右栏 + 计划视图。
@@ -660,6 +700,12 @@ class YuanTerminalApp(App):
     YuanTerminalApp.exec-mode BlockWidget.answer-block .abubble {{
         border-left: heavy #e8a06b;
     }}
+    /* T2（2026-11-18）：暗色下用户气泡底换深调 #1d4ed8——$primary 在
+       yuanai-dark 里是浅蓝 #60a5fa，白字对比不足（-dark-mode 类随主题
+       dark 标记自动挂载；特异性高于基础气泡规则） */
+    YuanTerminalApp.-dark-mode BlockWidget.user-block .ububble {{
+        background: #1d4ed8;
+    }}
     YuanTerminalApp.exec-mode BlockWidget.thinking-block,
     YuanTerminalApp.exec-mode BlockWidget.tool-block {{
         border-left: heavy #e8a06b;
@@ -688,6 +734,9 @@ class YuanTerminalApp(App):
 
     def __init__(self, session: dict, store, renderer: "TextualRenderer"):
         super().__init__()
+        # T2 品牌主题注册（2026-11-18）：网站色板对偶；apply_theme 按名切换
+        self.register_theme(_YUANAI_THEMES["yuanai-light"])
+        self.register_theme(_YUANAI_THEMES["yuanai-dark"])
         self.session = session
         self.store = store
         self.renderer = renderer
@@ -728,6 +777,11 @@ class YuanTerminalApp(App):
     def busy(self) -> bool:
         return self._busy_task is not None
 
+    def apply_theme(self, theme: str) -> None:
+        """主题应用唯一入口（T2：/theme 命令与启动链共用；v3 遗留的
+        TERMINAL_DARK 直设已收敛到 terminal_theme.resolve_startup_theme）"""
+        self.theme = "yuanai-dark" if theme == "dark" else "yuanai-light"
+
     def compose(self):
         yield Static("", id="header")
         with Horizontal(id="body"):
@@ -749,13 +803,10 @@ class YuanTerminalApp(App):
     # ———— 生命周期 ————
 
     def on_mount(self) -> None:
-        # 明暗自适应（v3 TERMINAL_DARK 同源；默认暗色）
-        try:
-            dark = os.getenv("TERMINAL_DARK", "1") == "1"
-        except Exception:
-            dark = True
-        if not dark:
-            self.theme = "textual-light"
+        # T2 品牌对齐（2026-11-18）：主题跟随 = 云端 my-theme（设备凭据）→
+        # data/theme.json 缓存 → TERMINAL_DARK 环境（v3 兼容）→ 默认暗色
+        from agent.terminal_theme import resolve_startup_theme
+        self.apply_theme(resolve_startup_theme())
         self._header_widget = self.query_one("#header", Static)
         self._hintbar = self.query_one("#hintbar", Static)
         self._blocks_container = self.query_one("#blocks", BlocksScroll)
@@ -1198,6 +1249,20 @@ class TextualRenderer:
 
     def is_attached(self) -> bool:
         return self._app is not None
+
+    # ———— T2 品牌对齐（2026-11-18）：主题应用/读取（/theme 命令经
+    #     dispatch_command 鸭子调用；App 主题变更只走这里） ————
+
+    def set_theme(self, theme: str) -> None:
+        app = getattr(self, "_app", None)
+        if app is not None:
+            app.apply_theme(theme)
+
+    def current_theme(self) -> str:
+        app = getattr(self, "_app", None)
+        if app is None:
+            return "dark"
+        return "dark" if app.current_theme.dark else "light"
 
     def _agent_dot_tuple(self) -> tuple:
         from agent.terminal import _agent_dot_tuple

@@ -82,7 +82,7 @@ PLAN_ST_STYLE = {"queued": "bold cyan", "running": "bold yellow",
 # 新增命令只改这里 + dispatch_command；2026-11-15 审查后收敛）
 SLASH_COMMANDS = ["/claude", "/chat", "/local", "/new", "/web", "/sessions",
                   "/history", "/clear", "/quit", "/help", "/plan", "/status",
-                  "/panel", "/pet"]
+                  "/panel", "/pet", "/theme"]
 
 
 def _normalize_mode(mode: str) -> str:
@@ -1746,6 +1746,18 @@ async def dispatch_command(line: str, ctx: ReplContext) -> str | None:
         want_on = arg.lower() not in ("off", "stop", "0")
         ok, msg = launch_pet() if want_on else stop_pet()
         render.info(msg)
+    elif cmd == "/theme":
+        # T2 品牌对齐（2026-11-18）：明暗切换 /theme [dark|light]（无参=翻转）。
+        # 写本地缓存 + 回推云端 my-theme（与网站 ThemeContext 同一列——
+        # 网站改主题终端下次启动跟随，终端改主题网站登录时同步）
+        from agent.terminal_theme import set_theme_synced
+        current = render.current_theme() if hasattr(render, "current_theme") else "dark"
+        theme = arg if arg in ("dark", "light") else ("light" if current == "dark" else "dark")
+        set_theme_synced(theme)
+        if hasattr(render, "set_theme"):
+            render.set_theme(theme)
+        render.info(f"主题已切换为{'深色' if theme == 'dark' else '浅色'}"
+                    f"（已同步到网站偏好，下次打开网站/终端保持一致）")
     elif cmd == "/new":
         # 新会话（D3 拍板 2026-11-15）：按当前窗口新建并切入（对称网页
         # 「新对话」按钮——终端不是二等端）

@@ -301,6 +301,32 @@ async def agent_my_profile(request: Request):
                 "user": user}
 
 
+class AgentThemeBody(BaseModel):
+    theme: str  # 'light' | 'dark'
+
+
+@router.get("/my-theme")
+async def agent_get_theme(request: Request):
+    """终端主题跟随（T2 品牌对齐，2026-11-18）：设备凭据 → 绑定用户主题
+    （与网站 /auth/theme 同一 users.theme 列——网站改主题，终端下次启动
+    跟随；终端 /theme 回写，网站登录时同步）"""
+    uid = require_agent_uid(request)
+    from db.session import get_db
+    return {"theme": get_db().get_user_theme(uid)}
+
+
+@router.put("/my-theme")
+async def agent_put_theme(request: Request, body: AgentThemeBody):
+    """终端主题回写（/theme 命令；网站同列互同步）"""
+    if body.theme not in ("light", "dark"):
+        raise HTTPException(status_code=400, detail="theme 必须为 light 或 dark")
+    uid = require_agent_uid(request)
+    from db.session import get_db
+    if not get_db().update_user_theme(uid, body.theme):
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return {"ok": True, "theme": body.theme}
+
+
 @router.post("/chat-token")
 async def agent_chat_token(request: Request):
     """终端 TUI v3 云端对话通道（2026-11-12，任务 #40）：设备凭据 → 绑定用户的会话 JWT。

@@ -82,11 +82,10 @@
 - `/plan` 全屏视图：queued/running 计划列表 + 步骤进度条（rich Progress 列）
 - 桌宠事件流（pet_events 六态）进状态栏色点
 
-## 品牌对齐（v3.3）
+## 品牌对齐（v3.3 → T2，✅ 2026-11-18 落地）
 
-- **色板**：网站变量同值（蓝 accent #2563eb、棕 CC #d97757、灰兜底 #64748b、success/danger/warning）——终端内常量与 frontend CSS 变量对偶，改一处同步
-- **主题跟随**：优先读本机缓存 `data/theme.json`（Agent 进程 set_theme 时写）；缓存缺失读终端环境探测（WT/COLORTERM）；**云端下发**新增 `/api/v1/agent/my-theme`（设备凭据 → 绑定用户 users.theme，与 /agent/my-profile 同模式）——终端启动拉一次即与网站明暗一致
-- **吉祥物彩蛋**：状态栏 braille 字符 + 渐变色阶渲染呼吸核心球（纯文本回退跳过）
+- **色板**：✅ Textual 8 的 CSS tokenizer 不支持规则内 `$var:` 声明（实测 TokenError）——改走 `App.register_theme` 注册 `yuanai-dark`/`yuanai-light` 两套 Theme（surface/panel/boost/primary/secondary/foreground 与网站 index.css 变量对偶；$text/$text-muted 等派生变量由 ColorSystem 生成）；用户气泡暗色底经 `-dark-mode` 类覆盖 #1d4ed8（浅蓝底白字对比不足）。吉祥物彩蛋挂账
+- **主题跟随**：✅ `agent/terminal_theme.py`——启动链 云端 my-theme → data/theme.json 缓存 → TERMINAL_DARK 环境（v3 兼容）→ 默认暗色；`/theme [dark|light]` 命令翻转主题 + 写缓存 + 回推云端（与网站 ThemeContext 同一 users.theme 列，两端互同步）；**云端新增 `/api/v1/agent/my-theme`**（设备凭据 → 绑定用户，middleware 白名单已加）
 
 ## 依赖与发布
 

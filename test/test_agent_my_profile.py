@@ -74,3 +74,46 @@ def test_my_profile_unbound(client, authed, db):
     d = resp.json()
     assert d["bound"] is False
     assert d["user"] is None
+
+
+# ---------- T2 终端主题（2026-11-18）：my-theme 端点 ----------
+
+def test_my_theme_requires_creds(client):
+    assert client.get("/api/v1/agent/my-theme").status_code == 401
+    assert client.put("/api/v1/agent/my-theme",
+                      json={"theme": "dark"}).status_code == 401
+
+
+def test_my_theme_unbound_403(client, authed, db):
+    """未绑定设备 → 403（主题是用户数据，与记忆/计划同口径）"""
+    dev_id = _mk_dev(db, user_id=None)
+    resp = client.get("/api/v1/agent/my-theme", headers=_h(dev_id))
+    assert resp.status_code == 403
+
+
+def test_my_theme_roundtrip(client, authed, db):
+    """已绑定设备：默认空 → PUT dark → GET dark；非法值 400"""
+    from db.session import User
+    r = db.register_user("__theme_user__", "test1234")
+    if "error" in r:
+        with db.session() as sess:
+            uid = sess.query(User).filter_by(username="__theme_user__").first().id
+    else:
+        uid = r["id"]
+    dev_id = _mk_dev(db, user_id=uid)
+    h = _h(dev_id)
+    db.update_user_theme(uid, "")  # 幂等：重置前轮残留（同用户跨轮复用）
+    resp = client.get("/api/v1/agent/my-theme", headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["theme"] == ""  # 默认未设置
+
+    resp = client.put("/api/v1/agent/my-theme", json={"theme": "dark"}, headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["theme"] == "dark"
+
+    resp = client.get("/api/v1/agent/my-theme", headers=h)
+    assert resp.json()["theme"] == "dark"
+
+    # 与网站 /auth/theme 同列互同步（用户 JWT 视角读到终端写的值）
+    assert client.put("/api/v1/agent/my-theme",
+                      json={"theme": "pink"}, headers=h).status_code == 400

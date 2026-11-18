@@ -610,13 +610,17 @@ def test_app_user_block_right_aligned_blue_bubble(tmp_path, monkeypatch):
                                "folded": False, "sender": "orchestrator"})
         render._notify()
         await pilot.pause()
+        app.apply_theme("light")  # T2 品牌主题（2026-11-18）：显式浅色取确定性
+        await pilot.pause()
         w = app.query("BlockWidget.user-block").first()
         assert w is not None
         bubble = w.query(".ububble").first()
         assert "我的问题" in bubble.render().plain
         from textual.color import Color
-        # 蓝底白字（网页 var(--accent) + #fff 同款）
-        assert bubble.styles.background == Color(1, 120, 212)  # $primary 品牌蓝
+        # 蓝底白字（网页 var(--accent)=#2563eb + #fff 同款；T2 品牌对齐。
+        # 注：主题色经 textual ColorSystem HSL 变换有 ±1 舍入——实测
+        # #2563eb → rgb(37,98,235)，断言实际计算值）
+        assert bubble.styles.background == Color(37, 98, 235)
         assert bubble.styles.color == Color(255, 255, 255)
     _run_app_test(body, tmp_path, monkeypatch)
 
